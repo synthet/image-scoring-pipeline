@@ -1,0 +1,27 @@
+# RAW Processing Dependencies for MUSIQ Image Quality Assessment
+# Install these for Nikon RAW (.NEF) and other RAW format support
+
+# Core RAW processing (recommended - best quality)
+rawpy>=0.18.0
+
+# Alternative RAW processing tools
+# dcraw (command line tool - install separately)
+# ImageMagick (command line tool - install separately)
+
+# Existing dependencies (already in main requirements)
+tensorflow>=2.15.0
+tensorflow-hub>=0.15.0
+kagglehub>=0.2.0
+Pillow>=9.0.0
+numpy>=1.21.0
+
+# Installation notes:
+# 1. For rawpy: pip install rawpy
+# 2. For dcraw: Install via package manager (apt, brew, etc.)
+# 3. For ImageMagick: Install via package manager or download from imagemagick.org
+#
+# The system will automatically try these tools in order:
+# 1. rawpy (Python library - best quality)
+# 2. dcraw (command line - fast, reliable)
+# 3. ImageMagick (command line - good compatibility)
+# 4. Pillow (fallback - limited RAW support)

@@ -54,11 +54,16 @@ class BatchImageProcessor:
             f.write(log_entry + '\n')
     
     def find_images(self, directory: str) -> List[str]:
-        """Find all image files in the specified directory."""
-        image_extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff', '*.tif']
+        """Find all image files in the specified directory (including RAW files)."""
+        image_extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff', '*.tif', '*.webp']
+        raw_extensions = ['*.nef', '*.NEF', '*.nrw', '*.NRW', '*.cr2', '*.CR2', '*.cr3', '*.CR3', 
+                         '*.arw', '*.ARW', '*.dng', '*.DNG', '*.orf', '*.ORF', '*.pef', '*.PEF', 
+                         '*.raf', '*.RAF', '*.rw2', '*.RW2', '*.x3f', '*.X3F']
+        all_extensions = image_extensions + raw_extensions
+        
         image_files = []
         
-        for ext in image_extensions:
+        for ext in all_extensions:
             pattern = os.path.join(directory, ext)
             image_files.extend(glob.glob(pattern))
             # Also check subdirectories
@@ -179,14 +184,19 @@ class BatchImageProcessor:
         
         self.log(f"Found {len(image_files)} image files to process")
         
-        # Initialize MUSIQ scorer
-        self.log("Initializing MUSIQ models...")
+        # Initialize MUSIQ scorer (skip VILA to avoid TensorFlow Hub hanging)
+        self.log("Initializing MUSIQ models (SPAQ, AVA, KONIQ, PAQ2PIQ only)...")
         try:
             scorer = MultiModelMUSIQ()
-            load_results = scorer.load_all_models()
+            
+            # Load only MUSIQ models, skip VILA to avoid TensorFlow Hub hanging
+            musiq_models = ['spaq', 'ava', 'koniq', 'paq2piq']
+            load_results = {}
+            for model_name in musiq_models:
+                load_results[model_name] = scorer.load_model(model_name)
             
             successful_loads = sum(1 for success in load_results.values() if success)
-            self.log(f"Loaded {successful_loads}/{len(load_results)} models successfully")
+            self.log(f"Loaded {successful_loads}/{len(load_results)} MUSIQ models successfully")
             
             if successful_loads == 0:
                 self.log("No models loaded successfully. Aborting batch processing.", "ERROR")
@@ -240,6 +250,10 @@ class BatchImageProcessor:
                 self.log(f"Best image: {best_image['image_name']} (score: {best_image['average_normalized_score']})")
                 self.log(f"Worst image: {worst_image['image_name']} (score: {worst_image['average_normalized_score']})")
         
+        # Clean up temporary files
+        self.log("Cleaning up temporary files...")
+        scorer.cleanup_temp_files()
+        
         # Save batch summary
         summary_file = os.path.join(output_dir, f"batch_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
         batch_summary = {
@@ -278,6 +292,7 @@ Examples:
     parser.add_argument('--input-dir', required=True, help='Input directory containing images')
     parser.add_argument('--output-dir', help='Output directory for JSON results (default: same as input)')
     parser.add_argument('--log-file', help='Custom log file name (default: auto-generated with timestamp)')
+    parser.add_argument('--rate-nef', action='store_true', help='Write ratings to Nikon NEF files based on quality scores')
     
     args = parser.parse_args()
     

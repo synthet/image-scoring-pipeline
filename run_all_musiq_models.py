@@ -8,7 +8,10 @@ import argparse
 import json
 import os
 import sys
-from typing import Dict, List, Optional
+import tempfile
+import shutil
+import subprocess
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
 import numpy as np
@@ -22,7 +25,15 @@ class MultiModelMUSIQ:
     """Run multiple MUSIQ and VILA models on a single image."""
     
     # Version identifier for this implementation
-    VERSION = "2.3.1"  # Fixed: Windows path conversion for browser compatibility
+    VERSION = "2.3.2"  # Added: Nikon NEF rating functionality
+    
+    # RAW file extensions to detect (case insensitive)
+    RAW_EXTENSIONS = {'.nef', '.NEF', '.nrw', '.NRW', '.cr2', '.CR2', '.cr3', '.CR3', 
+                     '.arw', '.ARW', '.dng', '.DNG', '.orf', '.ORF', '.pef', '.PEF', 
+                     '.raf', '.RAF', '.rw2', '.RW2', '.x3f', '.X3F'}
+    
+    # Nikon NEF extensions for rating (case insensitive)
+    NEF_EXTENSIONS = {'.nef', '.NEF', '.nrw', '.NRW'}
     
     @staticmethod
     def wsl_to_windows_path(path: str) -> str:
@@ -38,6 +49,276 @@ class MultiModelMUSIQ:
                 # Just drive letter
                 return f"{parts[0].upper()}:/"
         return path
+    
+    def is_raw_file(self, file_path: str) -> bool:
+        """Check if file is a RAW image."""
+        ext = Path(file_path).suffix.lower()
+        return ext in self.RAW_EXTENSIONS
+    
+    def is_nef_file(self, file_path: str) -> bool:
+        """Check if file is a Nikon NEF file that can be rated."""
+        ext = Path(file_path).suffix.lower()
+        return ext in self.NEF_EXTENSIONS
+    
+    def score_to_rating(self, score: float) -> int:
+        """Convert normalized MUSIQ score (0-1) to 1-5 star rating."""
+        if score >= 0.9:
+            return 5  # Excellent
+        elif score >= 0.75:
+            return 4  # Very Good
+        elif score >= 0.6:
+            return 3  # Good
+        elif score >= 0.4:
+            return 2  # Fair
+        else:
+            return 1  # Poor
+    
+    def write_rating_to_nef(self, nef_path: str, rating: int) -> bool:
+        """Write 1-5 star rating to Nikon NEF file EXIF metadata."""
+        if rating < 1 or rating > 5:
+            print(f"Invalid rating: {rating}. Must be 1-5.")
+            return False
+        
+        if not self.is_nef_file(nef_path):
+            print(f"File is not a Nikon NEF file: {nef_path}")
+            return False
+        
+        try:
+            # Try pyexiv2 first (best for NEF files)
+            return self._write_rating_pyexiv2(nef_path, rating)
+        except ImportError:
+            try:
+                # Fallback to exiftool
+                return self._write_rating_exiftool(nef_path, rating)
+            except Exception as e:
+                print(f"Failed to write rating to NEF file: {e}")
+                print("Install pyexiv2 for best NEF support: pip install pyexiv2")
+                return False
+    
+    def _write_rating_pyexiv2(self, nef_path: str, rating: int) -> bool:
+        """Write rating using pyexiv2 library."""
+        try:
+            import pyexiv2
+            
+            # Backup original file
+            backup_path = f"{nef_path}.backup"
+            shutil.copy2(nef_path, backup_path)
+            
+            # Open and modify EXIF
+            with pyexiv2.Image(nef_path) as img:
+                # Set rating in multiple EXIF fields for compatibility
+                img.modify_exif({
+                    'Exif.Photo.UserComment': f'MUSIQ Quality Rating: {rating}/5',
+                    'Exif.Image.Rating': rating,
+                    'Exif.Image.RatingPercent': rating * 20,  # 1=20%, 2=40%, etc.
+                })
+                
+                # Also set XMP rating for broader compatibility
+                img.modify_xmp({
+                    'Xmp.xmp.Rating': rating
+                })
+            
+            print(f"✓ Rating {rating}/5 written to NEF file: {nef_path}")
+            
+            # Remove backup if successful
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
+            
+            return True
+            
+        except ImportError:
+            print("pyexiv2 not available - install with: pip install pyexiv2")
+            raise
+        except Exception as e:
+            print(f"pyexiv2 rating write failed: {e}")
+            # Restore backup if it exists
+            backup_path = f"{nef_path}.backup"
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, nef_path)
+                print("Restored backup file")
+            return False
+    
+    def _write_rating_exiftool(self, nef_path: str, rating: int) -> bool:
+        """Write rating using exiftool command line."""
+        try:
+            # Backup original file
+            backup_path = f"{nef_path}.backup"
+            shutil.copy2(nef_path, backup_path)
+            
+            # Use exiftool to write rating
+            cmd = [
+                'exiftool',
+                '-overwrite_original',  # Modify in place
+                '-Rating=' + str(rating),
+                '-RatingPercent=' + str(rating * 20),
+                '-UserComment=MUSIQ Quality Rating: ' + str(rating) + '/5',
+                nef_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                print(f"✓ Rating {rating}/5 written to NEF file: {nef_path}")
+                # Remove backup if successful
+                if os.path.exists(backup_path):
+                    os.remove(backup_path)
+                return True
+            else:
+                print(f"exiftool failed: {result.stderr}")
+                # Restore backup
+                if os.path.exists(backup_path):
+                    shutil.move(backup_path, nef_path)
+                return False
+                
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            print(f"exiftool not available or failed: {e}")
+            print("Install exiftool for NEF rating support")
+            # Restore backup
+            backup_path = f"{nef_path}.backup"
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, nef_path)
+            return False
+    
+    def setup_temp_directory(self) -> str:
+        """Setup temporary directory for RAW conversion."""
+        if self.temp_dir is None:
+            self.temp_dir = tempfile.mkdtemp(prefix='musiq_raw_')
+            print(f"Created temporary directory: {self.temp_dir}")
+        return self.temp_dir
+    
+    def cleanup_temp_files(self):
+        """Clean up all temporary files and directories."""
+        for temp_file in self.temp_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                    print(f"Cleaned up temporary file: {temp_file}")
+            except Exception as e:
+                print(f"Warning: Could not remove temporary file {temp_file}: {e}")
+        
+        self.temp_files.clear()
+        
+        if self.temp_dir and os.path.exists(self.temp_dir):
+            try:
+                shutil.rmtree(self.temp_dir)
+                print(f"Cleaned up temporary directory: {self.temp_dir}")
+                self.temp_dir = None
+            except Exception as e:
+                print(f"Warning: Could not remove temporary directory {self.temp_dir}: {e}")
+    
+    def convert_raw_to_jpeg(self, raw_path: str) -> Optional[str]:
+        """Convert RAW file to temporary JPEG for processing."""
+        print(f"Converting RAW file: {raw_path}")
+        
+        # Setup temp directory
+        temp_dir = self.setup_temp_directory()
+        
+        # Generate temp JPEG path
+        raw_name = Path(raw_path).stem
+        temp_jpeg = os.path.join(temp_dir, f"{raw_name}_temp.jpg")
+        
+        # Try different RAW conversion tools in order of preference
+        conversion_methods = [
+            self._convert_with_rawpy,
+            self._convert_with_dcraw,
+            self._convert_with_imagemagick,
+            self._convert_with_pillow
+        ]
+        
+        for method in conversion_methods:
+            try:
+                if method(raw_path, temp_jpeg):
+                    self.temp_files.append(temp_jpeg)
+                    print(f"✓ RAW conversion successful: {temp_jpeg}")
+                    return temp_jpeg
+            except Exception as e:
+                print(f"⚠ Conversion method failed: {method.__name__}: {e}")
+                continue
+        
+        print(f"✗ All RAW conversion methods failed for: {raw_path}")
+        return None
+    
+    def _convert_with_rawpy(self, raw_path: str, output_path: str) -> bool:
+        """Convert RAW using rawpy library (best quality)."""
+        try:
+            import rawpy
+            with rawpy.imread(raw_path) as raw:
+                # Process with minimal settings for speed
+                rgb = raw.postprocess(
+                    half_size=True,  # Half resolution for speed
+                    use_camera_wb=True,  # Use camera white balance
+                    output_color=rawpy.ColorSpace.sRGB,
+                    output_bps=8  # 8-bit for smaller files
+                )
+                
+                # Save as JPEG
+                from PIL import Image
+                img = Image.fromarray(rgb)
+                img.save(output_path, 'JPEG', quality=85, optimize=True)
+                return True
+        except ImportError:
+            print("rawpy not available - install with: pip install rawpy")
+            return False
+        except Exception as e:
+            print(f"rawpy conversion failed: {e}")
+            return False
+    
+    def _convert_with_dcraw(self, raw_path: str, output_path: str) -> bool:
+        """Convert RAW using dcraw command line tool."""
+        try:
+            # Try dcraw command
+            cmd = [
+                'dcraw',
+                '-h',  # Half-size
+                '-w',  # Use camera white balance
+                '-c',  # Output to stdout
+                raw_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                # Pipe output to convert to JPEG
+                jpeg_cmd = ['convert', '-', '-quality', '85', output_path]
+                convert_result = subprocess.run(jpeg_cmd, input=result.stdout, 
+                                             capture_output=True, text=True, timeout=30)
+                return convert_result.returncode == 0
+            return False
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+            print(f"dcraw conversion failed: {e}")
+            return False
+    
+    def _convert_with_imagemagick(self, raw_path: str, output_path: str) -> bool:
+        """Convert RAW using ImageMagick."""
+        try:
+            cmd = [
+                'magick',
+                raw_path,
+                '-resize', '50%',  # Half size for speed
+                '-quality', '85',
+                output_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            return result.returncode == 0 and os.path.exists(output_path)
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+            print(f"ImageMagick conversion failed: {e}")
+            return False
+    
+    def _convert_with_pillow(self, raw_path: str, output_path: str) -> bool:
+        """Convert RAW using Pillow (limited RAW support)."""
+        try:
+            # Pillow has limited RAW support, mainly for DNG
+            img = Image.open(raw_path)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Resize for speed
+            img.thumbnail((img.width // 2, img.height // 2), Image.Resampling.LANCZOS)
+            img.save(output_path, 'JPEG', quality=85, optimize=True)
+            return True
+        except Exception as e:
+            print(f"Pillow conversion failed: {e}")
+            return False
     
     def __init__(self):
         self.device = None
@@ -301,6 +582,37 @@ class MultiModelMUSIQ:
     
     def run_all_models(self, image_path: str) -> Dict[str, any]:
         """Run all loaded models on the image and return results."""
+        # Check if this is a RAW file
+        is_raw = self.is_raw_file(image_path)
+        processing_path = image_path
+        
+        if is_raw:
+            print(f"RAW file detected: {image_path}")
+            # Convert RAW to temporary JPEG
+            temp_jpeg = self.convert_raw_to_jpeg(image_path)
+            if temp_jpeg is None:
+                return {
+                    "version": self.VERSION,
+                    "image_path": self.wsl_to_windows_path(image_path),
+                    "image_name": os.path.basename(image_path),
+                    "device": "GPU" if self.gpu_available else "CPU",
+                    "gpu_available": self.gpu_available,
+                    "models": {},
+                    "summary": {
+                        "total_models": 0,
+                        "successful_predictions": 0,
+                        "failed_predictions": 0,
+                        "average_normalized_score": None,
+                        "error": "RAW conversion failed"
+                    },
+                    "raw_conversion": {
+                        "original_raw": image_path,
+                        "temp_jpeg": None,
+                        "conversion_success": False
+                    }
+                }
+            processing_path = temp_jpeg
+        
         # Convert WSL path to Windows path for browser compatibility
         browser_path = self.wsl_to_windows_path(image_path)
         
@@ -319,7 +631,17 @@ class MultiModelMUSIQ:
             }
         }
         
+        # Add RAW conversion info if applicable
+        if is_raw:
+            results["raw_conversion"] = {
+                "original_raw": image_path,
+                "temp_jpeg": processing_path,
+                "conversion_success": True
+            }
+        
         print(f"\nRunning all models on: {image_path}")
+        if is_raw:
+            print(f"Processing converted JPEG: {processing_path}")
         print("=" * 60)
         
         normalized_scores = []
@@ -327,7 +649,7 @@ class MultiModelMUSIQ:
         for model_name in self.model_sources.keys():
             if model_name in self.models:
                 print(f"Processing with {model_name.upper()} model...")
-                score = self.predict_quality(image_path, model_name)
+                score = self.predict_quality(processing_path, model_name)
                 
                 if score is not None:
                     min_score, max_score = self.model_ranges[model_name]
@@ -373,6 +695,18 @@ class MultiModelMUSIQ:
             if normalized_scores_dict:
                 advanced_scores = self.calculate_advanced_scores(normalized_scores_dict)
                 results["summary"]["advanced_scoring"] = advanced_scores
+                
+                # Write rating to NEF files if applicable
+                if self.is_nef_file(image_path):
+                    avg_score = results["summary"].get("average_normalized_score", 0)
+                    if avg_score is not None:
+                        rating = self.score_to_rating(avg_score)
+                        rating_success = self.write_rating_to_nef(image_path, rating)
+                        results["summary"]["nef_rating"] = {
+                            "rating": rating,
+                            "rating_written": rating_success,
+                            "score_mapping": f"{avg_score:.3f} -> {rating}/5"
+                        }
         
         return results
     
@@ -593,6 +927,9 @@ Available Models:
         for model_name, model_result in results['models'].items():
             if model_result['status'] == 'success':
                 print(f"  {model_name.upper()}: {model_result['score']} ({model_result['score_range']}) - Normalized: {model_result['normalized_score']}")
+    
+    # Clean up temporary files
+    scorer.cleanup_temp_files()
     
     sys.exit(0)
 
