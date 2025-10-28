@@ -324,6 +324,8 @@ class MultiModelMUSIQ:
         self.device = None
         self.gpu_available = False
         self.models = {}
+        self.temp_dir = None
+        self.temp_files = []
         
         # Model availability on different platforms
         # All models with TensorFlow Hub, Kaggle Hub, and local checkpoint paths
@@ -637,7 +639,7 @@ class MultiModelMUSIQ:
                 "original_raw": image_path,
                 "temp_jpeg": processing_path,
                 "conversion_success": True
-            }
+        }
         
         print(f"\nRunning all models on: {image_path}")
         if is_raw:
@@ -711,7 +713,7 @@ class MultiModelMUSIQ:
         return results
     
     def is_already_processed(self, image_path: str, output_dir: str) -> bool:
-        """Check if image has already been processed with current version."""
+        """Check if image has already been processed with current version and correct path."""
         image_name = os.path.splitext(os.path.basename(image_path))[0]
         json_path = os.path.join(output_dir, f"{image_name}.json")
         
@@ -724,12 +726,19 @@ class MultiModelMUSIQ:
             
             # Check if version matches
             existing_version = existing_data.get('version', 'unknown')
-            if existing_version == self.VERSION:
-                print(f"Image already processed with version {self.VERSION}: {image_path}")
-                return True
-            else:
+            if existing_version != self.VERSION:
                 print(f"Version mismatch - existing: {existing_version}, current: {self.VERSION}")
                 return False
+            
+            # Check if image_path matches current working folder
+            existing_image_path = existing_data.get('image_path', '')
+            if existing_image_path != image_path:
+                print(f"Path mismatch - existing: {existing_image_path}, current: {image_path}")
+                print(f"Re-analyzing image due to path change...")
+                return False
+            
+            print(f"Image already processed with version {self.VERSION}: {image_path}")
+            return True
                 
         except Exception as e:
             print(f"Error checking existing results: {e}")

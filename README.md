@@ -1,6 +1,9 @@
 # MUSIQ: Multi-scale Image Quality Transformer - CLI Tool
 
-A minimal, CPU-only Python CLI tool for scoring image aesthetic/quality using Google's MUSIQ model.
+A comprehensive Python CLI tool for image analysis including:
+- **Image Quality Scoring**: Using Google's MUSIQ model and multiple quality assessment models
+- **AI Keyword Extraction**: Using BLIP + CLIP models for automatic keyword generation from images
+- **NEF File Support**: Full support for Nikon Raw files and other RAW formats
 
 ## Quick Setup
 
@@ -101,17 +104,19 @@ python test_vila.py
 
 ## Usage
 
+### Image Quality Scoring
+
 ```bash
 python run_musiq.py --image sample.jpg
 ```
 
-### Options
+#### Options
 
 - `--image`: Path to input image (required)
 - `--model`: Model variant - `spaq` (default), `ava`, `koniq`, or `paq2piq`
 - `--save-preprocessed`: Save preprocessed image for debugging
 
-### Examples
+#### Examples
 
 ```bash
 # Basic usage
@@ -124,11 +129,76 @@ python run_musiq.py --image sample.jpg --model ava
 python run_musiq.py --image sample.jpg --save-preprocessed preprocessed.jpg
 ```
 
+### AI Keyword Extraction (NEW!)
+
+```bash
+# Process a folder of NEF files
+python scripts/python/keyword_extractor.py --input-dir "D:/Photos/NEF_Files"
+
+# Process with custom output directory
+python scripts/python/keyword_extractor.py --input-dir "D:/Photos/NEF_Files" --output-dir "D:/Keywords"
+
+# Process single file
+python scripts/python/keyword_extractor.py --input-file "D:/Photos/image.nef"
+
+# Adjust confidence threshold
+python scripts/python/keyword_extractor.py --input-dir "D:/Photos" --confidence-threshold 0.05
+```
+
+#### Windows Batch Scripts
+
+```batch
+# Process folder
+extract_keywords.bat "D:\Photos\NEF_Files"
+
+# Process with custom output
+extract_keywords.bat "D:\Photos\NEF_Files" "D:\Keywords"
+
+# Process with custom confidence threshold
+extract_keywords.bat "D:\Photos\NEF_Files" "D:\Keywords" 0.05
+```
+
+#### PowerShell Script
+
+```powershell
+# Process folder
+.\extract_keywords.ps1 "C:\Path\To\NEF\Folder"
+
+# Process with custom output
+.\extract_keywords.ps1 "C:\Path\To\NEF\Folder" "C:\Output\Folder"
+
+# Process with custom confidence threshold
+.\extract_keywords.ps1 "C:\Path\To\NEF\Folder" "C:\Output\Folder" 0.05
+```
+
 ## Output Format
+
+### Image Quality Scoring
 
 The tool outputs two lines:
 1. Human-readable score: `MUSIQ score: 6.87`
 2. JSON format: `{"path": "sample.jpg", "score": 6.87, "model": "spaq"}`
+
+### AI Keyword Extraction
+
+Each processed image generates a JSON file with:
+
+```json
+{
+  "image_path": "D:/Photos/image.nef",
+  "caption": "a bird standing on a rock near water",
+  "keywords": [
+    {"keyword": "bird", "confidence": 0.85, "source": "clip"},
+    {"keyword": "water", "confidence": 0.72, "source": "clip"},
+    {"keyword": "nature", "confidence": 0.68, "source": "clip"}
+  ],
+  "total_keywords_found": 45,
+  "keywords_above_threshold": 12,
+  "confidence_threshold": 0.03,
+  "device": "cuda",
+  "timestamp": "2024-01-15T10:30:00"
+}
+```
 
 ## Available Models
 
@@ -268,13 +338,35 @@ The score scale depends on the training dataset:
 
 After first successful run, models are cached locally and can be used offline.
 
+## Features
+
+### Image Quality Scoring
+- **MUSIQ Models**: SPAQ, AVA, KONIQ, PAQ2PIQ quality assessment
+- **VILA Integration**: Advanced aesthetic scoring (WSL recommended)
+- **Batch Processing**: Process entire folders of images
+- **NEF Support**: Full Nikon Raw file support
+
+### AI Keyword Extraction (NEW!)
+- **BLIP + CLIP Pipeline**: State-of-the-art AI models for keyword extraction
+- **Automatic Captioning**: Generate natural language descriptions
+- **Confidence Scoring**: Each keyword comes with confidence scores
+- **Domain-Aware**: Photography-specific keyword enhancement
+- **Batch Processing**: Extract keywords from entire folders
+
 ## Dependencies
 
+### Core Dependencies (Image Quality Scoring)
 - **tensorflow-cpu==2.15.0**: CPU-only TensorFlow
 - **Pillow==10.4.0**: Image processing
 - **numpy==1.24.4**: Numerical computing
 - **tensorflow-hub==0.16.1**: TensorFlow Hub model loading (primary source)
 - **kagglehub==0.3.4**: Kaggle Hub for VILA and all models (fallback source)
+
+### Keyword Extraction Dependencies (Optional)
+- **torch>=2.0.0**: PyTorch framework
+- **transformers>=4.30.0**: Hugging Face transformers
+- **keybert>=0.7.0**: Keyword extraction
+- **spacy>=3.6.0**: Natural language processing
 
 **Optional**:
 - Local checkpoint files (for offline support): See [CHECKPOINT_STATUS.md](docs/technical/CHECKPOINT_STATUS.md)
@@ -294,6 +386,7 @@ This tool uses a simplified approach for CPU-only inference:
 - **[VERSION_2.3.0_RELEASE_NOTES.md](docs/getting-started/VERSION_2.3.0_RELEASE_NOTES.md)** - Current release highlights
 - **[TRIPLE_FALLBACK_SYSTEM.md](docs/technical/TRIPLE_FALLBACK_SYSTEM.md)** - Fallback mechanism guide
 - **[CHECKPOINT_STATUS.md](docs/technical/CHECKPOINT_STATUS.md)** - Local checkpoint inventory
+- **[README_KEYWORD_EXTRACTION.md](docs/keyword-extraction/README_KEYWORD_EXTRACTION.md)** - AI keyword extraction tool guide
 
 ## References
 

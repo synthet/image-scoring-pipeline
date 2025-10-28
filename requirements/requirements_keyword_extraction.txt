@@ -1,0 +1,23 @@
+# Keyword Extraction Tool Dependencies
+# AI-powered keyword extraction using BLIP + CLIP pipeline
+
+# Core ML frameworks
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Keyword extraction
+keybert>=0.7.0
+
+# NLP processing
+spacy>=3.6.0
+
+# Numerical computing
+numpy>=1.24.0
+
+# Optional: GPU acceleration (uncomment if using CUDA)
+# torch-audio>=2.0.0
+# torchaudio>=2.0.0

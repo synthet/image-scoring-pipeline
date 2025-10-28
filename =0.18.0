@@ -1,7 +1,0 @@
-Collecting rawpy
-  Downloading rawpy-0.25.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (6.4 kB)
-Requirement already satisfied: numpy>=1.26.0 in /home/owner/.venvs/tf/lib/python3.12/site-packages (from rawpy) (2.1.3)
-Downloading rawpy-0.25.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.9 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 28.9 MB/s  0:00:00
-Installing collected packages: rawpy
-Successfully installed rawpy-0.25.1
