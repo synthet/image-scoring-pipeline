@@ -25,7 +25,7 @@ from run_all_musiq_models import MultiModelMUSIQ
 class BatchImageProcessor:
     """Batch process images with comprehensive logging."""
     
-    def __init__(self, log_file: str = None, output_dir: str = None):
+    def __init__(self, log_file: str = None, output_dir: str = None, skip_existing: bool = False):
         if log_file is None:
             log_file = f"musiq_batch_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         
@@ -36,6 +36,7 @@ class BatchImageProcessor:
             log_file = os.path.abspath(log_file)
         
         self.log_file = log_file
+        self.skip_existing = skip_existing
         self.processed_count = 0
         self.failed_count = 0
         self.skipped_count = 0
@@ -77,9 +78,21 @@ class BatchImageProcessor:
         try:
             self.log(f"Processing: {image_path}")
             
+            # Check if likely already processed (fast check)
+            json_path = os.path.join(output_dir, f"{Path(image_path).stem}.json")
+            should_skip = False
+            skip_reason = ""
+            
+            if self.skip_existing and os.path.exists(json_path):
+                should_skip = True
+                skip_reason = "existing result found (skipping version check)"
+            elif scorer.is_already_processed(image_path, output_dir):
+                should_skip = True
+                skip_reason = f"already processed with version {scorer.VERSION}"
+            
             # Check if already processed with current version
-            if scorer.is_already_processed(image_path, output_dir):
-                self.log(f"Skipping {image_path} - already processed with version {scorer.VERSION}")
+            if should_skip:
+                self.log(f"Skipping {image_path} - {skip_reason}")
                 
                 # Load existing results for summary
                 image_name = os.path.splitext(os.path.basename(image_path))[0]
@@ -293,6 +306,7 @@ Examples:
     parser.add_argument('--output-dir', help='Output directory for JSON results (default: same as input)')
     parser.add_argument('--log-file', help='Custom log file name (default: auto-generated with timestamp)')
     parser.add_argument('--rate-nef', action='store_true', help='Write ratings to Nikon NEF files based on quality scores')
+    parser.add_argument('--skip-existing', action='store_true', help='Skip images that have any existing JSON result file, regardless of version')
     
     args = parser.parse_args()
     
@@ -306,7 +320,7 @@ Examples:
         sys.exit(1)
     
     # Initialize processor with output directory for log file
-    processor = BatchImageProcessor(args.log_file, args.output_dir)
+    processor = BatchImageProcessor(args.log_file, args.output_dir, args.skip_existing)
     
     # Process directory
     try:

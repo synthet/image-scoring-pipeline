@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0..\.."
 setlocal enabledelayedexpansion
 
 echo ========================================
@@ -102,7 +103,7 @@ if %errorlevel% == 0 (
     wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python scripts/python/batch_process_images.py --input-dir '!WSL_PATH!' --output-dir '!WSL_PATH!' --rate-nef"
 ) else (
     echo Using Windows Python environment for multi-model processing...
-    python "%~dp0..\..\scripts\python\batch_process_images.py" --input-dir "%INPUT_FOLDER%" --output-dir "%INPUT_FOLDER%" --rate-nef
+    python "scripts\python\batch_process_images.py" --input-dir "%INPUT_FOLDER%" --output-dir "%INPUT_FOLDER%" --rate-nef
 )
 
 echo.
@@ -111,7 +112,7 @@ echo.
 
 REM Run the Python gallery generator
 echo Running gallery generator...
-python "%~dp0..\..\scripts\python\gallery_generator.py" "%INPUT_FOLDER%"
+python "scripts\python\gallery_generator.py" "%INPUT_FOLDER%"
 
 REM Check if gallery was created successfully
 if exist "%OUTPUT_FILE%" (

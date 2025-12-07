@@ -2,7 +2,7 @@
 # Usage: .\create_gallery_simple.ps1 "C:\Path\To\Your\Images"
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$ImageFolder
 )
 
@@ -24,7 +24,7 @@ if (-not (Test-Path $ImageFolder)) {
 }
 
 # Check if folder contains images
-$imageFiles = Get-ChildItem $ImageFolder -Include "*.jpg","*.jpeg","*.png","*.bmp","*.tiff","*.tif","*.webp","*.nef","*.nrw","*.cr2","*.cr3","*.arw","*.dng","*.orf","*.pef","*.raf","*.rw2","*.x3f" -Recurse
+$imageFiles = Get-ChildItem $ImageFolder -Include "*.jpg", "*.jpeg", "*.png", "*.bmp", "*.tiff", "*.tif", "*.webp", "*.nef", "*.nrw", "*.cr2", "*.cr3", "*.arw", "*.dng", "*.orf", "*.pef", "*.raf", "*.rw2", "*.x3f" -Recurse
 if ($imageFiles.Count -eq 0) {
     Write-Host "ERROR: No supported image files found in: $ImageFolder" -ForegroundColor Red
     Write-Host "Supported formats: JPG, PNG, TIFF, WEBP, NEF, CR2, ARW, DNG, etc." -ForegroundColor Yellow
@@ -41,7 +41,7 @@ Write-Host ""
 
 # Run the main gallery creation script
 try {
-    & ".\Create-Gallery.ps1" $ImageFolder
+    & "$PSScriptRoot\Create-Gallery.ps1" $ImageFolder
     
     Write-Host ""
     Write-Host "✅ Gallery creation completed successfully!" -ForegroundColor Green
@@ -50,7 +50,8 @@ try {
     Write-Host "The gallery should have opened in your web browser." -ForegroundColor Cyan
     Write-Host "You can also open it manually by double-clicking gallery.html" -ForegroundColor Cyan
     
-} catch {
+}
+catch {
     Write-Host ""
     Write-Host "❌ Error during gallery creation:" -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
