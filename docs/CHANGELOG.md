@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: Updated `INSTRUCTIONS_RUN_SCORING.md` to reflect new script paths.
 - **New Documentation**: Added `docs/FOLDER_STRUCTURE.md` to describe the new layout.
 
+### Removed
+- **Dead Code Cleanup**: Removed 23 legacy/unused scripts to improve maintainability.
+  - Python: `run_musiq_*.py`, `nef_embedder_*.py`
+  - PowerShell: `Run-*.ps1`, `process_nef_folder_local/timeout.ps1`
+  - Batch: `run_musiq_*.bat`, `run_vila_*.bat`, `process_images.bat`
+
 ## [2.3.1] - 2025-10-09
 
 ### Changed
