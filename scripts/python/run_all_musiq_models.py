@@ -391,12 +391,12 @@ class MultiModelMUSIQ:
                 "tfhub": "https://tfhub.dev/google/musiq/paq2piq/1",
                 "kaggle": "google/musiq/tensorFlow2/paq2piq",
                 "local": os.path.join(checkpoint_dir, "paq2piq_ckpt.npz")
-            },
-            "vila": {
-                "tfhub": "https://tfhub.dev/google/vila/image/1",
-                "kaggle": "google/vila/tensorFlow2/image",
-                "local": os.path.join(checkpoint_dir, "vila-tensorflow2-image-v1")  # SavedModel format
             }
+            # "vila": {
+            #     "tfhub": "https://tfhub.dev/google/vila/image/1",
+            #     "kaggle": "google/vila/tensorFlow2/image",
+            #     "local": os.path.join(checkpoint_dir, "vila-tensorflow2-image-v1")
+            # }
         }
         
         # Model types (for processing logic)
@@ -422,11 +422,11 @@ class MultiModelMUSIQ:
         
         # Model weights for weighted scoring (based on statistical analysis)
         self.model_weights = {
-            "koniq": 0.30,      # Best balance of discrimination and reliability
-            "spaq": 0.25,       # Best discrimination (widest range)
-            "paq2piq": 0.20,    # Most lenient, good for high-quality detection
-            "vila": 0.15,       # Vision-language aesthetics assessment
-            "ava": 0.10         # Most conservative, narrow range
+            "koniq": 0.35,      # Primary technical reference (reliability)
+            "spaq": 0.30,       # Secondary technical (discrimination)
+            "paq2piq": 0.25,    # Detail/Artifact detection
+            "ava": 0.10,        # Aesthetic input
+            "vila": 0.00        # Disabled/Removed
         }
     
     def _setup_gpu(self):

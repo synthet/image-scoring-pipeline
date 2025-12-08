@@ -5,6 +5,16 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] - 2025-12-07
+
+### Changed
+- **Score Calibration**: Updated model weights to focus on technical quality:
+  - KONIQ: 30% -> 35%
+  - SPAQ: 25% -> 30%
+  - PAQ2PIQ: 20% -> 25%
+  - AVA: 10% (unchanged)
+- **Model Clean-up**: Disabled VILA model (was failing to load) to prevent errors and noise.
+
 ## [2.5.0] - 2025-12-07
 
 ### Added
