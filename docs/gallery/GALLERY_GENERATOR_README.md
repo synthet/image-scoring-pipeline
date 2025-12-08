@@ -40,11 +40,12 @@ create_gallery.bat "C:\Path\To\Your\Images"
 
 ### 1. Image Processing (`process_images.bat` / `Process-Images.ps1`)
 - Scans the specified folder for image files (JPG, PNG, etc.)
-- Runs all 4 MUSIQ models on each image:
+- Runs Hybrid Pipeline models:
   - **SPAQ** (0-100 scale)
-  - **AVA** (1-10 scale) 
+  - **AVA** (1-10 scale)
   - **KONIQ** (0-100 scale)
   - **PAQ2PIQ** (0-100 scale)
+  - **LIQE** (0-1 scale)
 - Generates JSON files with quality scores for each image
 - Creates a batch processing log file
 

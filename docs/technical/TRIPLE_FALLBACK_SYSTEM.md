@@ -1,4 +1,9 @@
-# Triple Fallback System - Complete Guide
+# Triple Fallback System (Legacy)
+
+> [!WARNING]
+> **Deprecated System**: This document describes the "Triple Fallback" system (TFHub -> Kaggle -> Local) primarily designed for the **VILA** model. Since VILA has been disabled in v2.5.1, this fallback complexity is largely irrelevant for the current Hybrid (MUSIQ + LIQE) pipeline. MUSIQ models use a simpler TFHub -> Cache mechanism.
+
+
 
 **Version**: 2.3.0  
 **Date**: 2025-10-09  

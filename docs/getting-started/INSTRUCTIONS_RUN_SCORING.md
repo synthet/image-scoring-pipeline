@@ -14,7 +14,9 @@ This process will:
 
 1. **Detect all NEF files** in the specified folder
 2. **Convert RAW files** to JPEG for processing (uses rawpy library)
-3. **Run 4 MUSIQ models** (SPAQ, AVA, KONIQ, PAQ2PIQ) on each image
+3. **Run Hybrid Scoring Pipeline**:
+    - **Technical**: KONIQ, SPAQ, PAQ2PIQ (MUSIQ models)
+    - **Aesthetic**: LIQE (PyTorch), AVA (Legacy)
 4. **Calculate quality scores** and normalized ratings
 5. **Write star ratings (1-5)** directly to NEF files' EXIF data
 6. **Generate JSON files** with detailed scores for each image
@@ -41,7 +43,7 @@ After processing completes, you'll find:
 ### In the photo folder:
 
 - **JSON files**: One per image (e.g., `DSC_5732.json`) with:
-  - Individual model scores (SPAQ, AVA, KONIQ, PAQ2PIQ)
+  - Individual model scores (KONIQ, SPAQ, PAQ2PIQ, LIQE, AVA)
   - Normalized scores (0-1 range)
   - Advanced scoring methods (weighted, median, trimmed mean)
   - Star rating (1-5)

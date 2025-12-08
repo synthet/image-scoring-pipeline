@@ -1,81 +1,37 @@
-# MUSIQ Model Checkpoints Summary
+# Model Summary
 
-## Downloaded Models
+This project uses a hybrid ensemble of models to assess image quality from multiple perspectives.
 
-All MUSIQ model checkpoints have been successfully downloaded from Google Cloud Storage (`gresearch/musiq`):
+## 1. Google MUSIQ (Multi-scale Image Quality Transformer)
+*TensorFlow Implementation*
 
-| Model | File | Size | Scale | Dataset |
-|-------|------|------|-------|---------|
-| **SPAQ** | `spaq_ckpt.npz` | 155.4 MB | 1.0-5.0 | SPAQ dataset |
-| **KonIQ** | `koniq_ckpt.npz` | 155.4 MB | 1.0-5.0 | KonIQ-10k dataset |
-| **PaQ-2-PiQ** | `paq2piq_ckpt.npz` | 155.4 MB | 1.0-5.0 | PaQ-2-PiQ dataset |
-| **AVA** | `ava_ckpt.npz` | 155.4 MB | 1.0-10.0 | AVA dataset |
-| **ImageNet Pretrained** | `imagenet_pretrain.npz` | 315.1 MB | N/A | ImageNet (base model) |
+The backbone of the scoring system. Processing multi-scale inputs to capture global and local details.
 
-## Location
+| Variant | Dataset | Range | Role |
+|---------|---------|-------|------|
+| **KONIQ** | KonIQ-10k | 0-100 | **Reliability**. Large dataset of in-the-wild images. |
+| **SPAQ** | SPAQ | 0-100 | **Discrimination**. Smartphone photography dataset. |
+| **PAQ2PIQ**| PaQ-2-PiQ | 0-100 | **Detail**. Massive dataset, good for artifacts. |
+| **AVA** | AVA | 1-10 | **Legacy Aesthetic**. Professional curation dataset. |
 
-All checkpoints are stored in: `musiq_original/checkpoints/`
+## 2. LIQE (Language-Image Quality Evaluator)
+*PyTorch Implementation*
 
-## Usage with Simple Implementation
+**Status: Active (15% Weight)**
+A state-of-the-art model (2023) that uses CLIP (Contrastive Language-Image Pre-training) to understand the *content* of an image, not just its pixels.
+- **Strengths**: Understands "semantic" quality (e.g., a "good photo of a dog" vs just "sharp pixels").
+- **Range**: 0.0 - 1.0
+- **Speed**: Moderate (runs as subprocess).
 
-The simple CLI tool (`run_musiq_simple.py`) works with all model variants:
+## 3. VILA (Vision-Language Aesthetics)
+*TensorFlow Implementation*
 
-```bash
-# SPAQ model (1.0-5.0 scale)
-python run_musiq_simple.py --image sample.jpg --model spaq
-# Output: MUSIQ score: 2.99
+**Status: DISABLED**
+Originally integrated for semantic scoring, but removed due to persistent instability with TensorFlow Hub loading and dependencies. Replaced by LIQE.
 
-# KonIQ model (1.0-5.0 scale)  
-python run_musiq_simple.py --image sample.jpg --model koniq
-# Output: MUSIQ score: 2.99
+## 4. Model Correlation
+*Based on internal testing (v2.5.0)*
 
-# PaQ-2-PiQ model (1.0-5.0 scale)
-python run_musiq_simple.py --image sample.jpg --model paq2piq
-# Output: MUSIQ score: 2.99
-
-# AVA model (1.0-10.0 scale)
-python run_musiq_simple.py --image sample.jpg --model ava
-# Output: MUSIQ score: 5.47
-```
-
-## Dataset Information
-
-### SPAQ Dataset
-- **Scale**: 1.0 to 5.0
-- **Focus**: Smartphone photo quality assessment
-- **Images**: Real-world smartphone photos
-
-### KonIQ-10k Dataset  
-- **Scale**: 1.0 to 5.0
-- **Focus**: Large-scale perceptual image quality
-- **Images**: 10,073 images with diverse content
-
-### PaQ-2-PiQ Dataset
-- **Scale**: 1.0 to 5.0  
-- **Focus**: Perceptual image quality assessment
-- **Images**: User-generated content from social media
-
-### AVA Dataset
-- **Scale**: 1.0 to 10.0
-- **Focus**: Aesthetic quality assessment
-- **Images**: Photography with aesthetic annotations
-
-## Model Architecture
-
-All models use the same MUSIQ (Multi-Scale Image Quality Transformer) architecture:
-- Multi-scale patch processing
-- Transformer-based feature extraction
-- Quality prediction head
-- Trained on different datasets for specialized quality assessment
-
-## Next Steps
-
-1. **For Production Use**: Integrate these checkpoints with the original MUSIQ implementation once dependency issues are resolved
-2. **TensorFlow Hub**: Models are also available on TensorFlow Hub for easier integration
-3. **Custom Training**: Use ImageNet pretrained weights as starting point for custom quality assessment tasks
-
-## References
-
-- [MUSIQ Paper](https://arxiv.org/abs/2108.05997)
-- [Google Research Repository](https://github.com/google-research/google-research/tree/master/musiq)
-- [Model Checkpoints](https://console.cloud.google.com/storage/browser/gresearch/musiq)
+- **High Correlation**: KONIQ <-> SPAQ (They generally agree).
+- **Moderate**: KONIQ <-> PAQ2PIQ.
+- **Low Correlation**: Technical Models <-> Aesthetic Models (AVA/LIQE). This is expected; a blur can be artistic (Good Aesthetic) but technically poor (Low Sharpness). The weighted score balances this.

@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **LIQE Model Integration**: Added support for Language-Image Quality Evaluator (SOTA CLIP-based model)
 - **Hybrid Pipeline**: Batch processor can now orchestrate both TensorFlow (MUSIQ) and PyTorch (LIQE) models
 - **External Scoring Support**: Updated `run_all_musiq_models.py` to accept and weight scores from external scripts
+- **Universal Runner**: New single entry-point `Run-Scoring.ps1` handles both Files and Folders, automatically routing to WSL/GPU.
+- **GUI Wrapper**: Added `scoring_gui.py` for easy file/folder selection.
+- **Root Cleanup**: Removed legacy scripts (`create_gallery.bat`, etc.) in favor of the new universal runner.
 
 ### Changed
 - **Score Calibration**: Updated weights to incorporate LIQE (15%):

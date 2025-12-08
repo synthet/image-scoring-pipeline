@@ -55,7 +55,8 @@ create_gallery.bat "D:\Photos\YourFolder"
 ## Troubleshooting
 
 ❌ **"Folder not found"** → Check path spelling
-❌ **"No images found"** → Check file formats  
+❌ **"No images found"** → Check file formats
+❌ **"LIQE failed"** → Check PyTorch install / GPU memory
 ❌ **Processing errors** → Check WSL status
 ❌ **Slow processing** → Close other apps
 

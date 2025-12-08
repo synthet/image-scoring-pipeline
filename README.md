@@ -202,18 +202,49 @@ Each processed image generates a JSON file with:
 
 ## Available Models
 
-This project supports multiple image quality and aesthetic assessment models:
+This project uses a **Hybrid Scoring System** combining Google's MUSIQ (Technical) and LIQE (Aesthetic/Semantic):
 
-### MUSIQ Models (Image Quality)
-- **SPAQ**: Trained on SPAQ dataset (range: 0-100)
-- **AVA**: Trained on AVA dataset (range: 1-10)
-- **KONIQ**: Trained on KONIQ-10K dataset (range: 0-100)
-- **PAQ2PIQ**: Trained on PaQ-2-PiQ dataset (range: 0-100)
+### 1. MUSIQ Models (Technical Foundation - 75%)
+Based on Google's Multi-scale Image Quality Transformer:
+- **KONIQ** (30%): Primary technical reference (Reliability).
+- **SPAQ** (25%): Secondary technical reference (Discrimination).
+- **PAQ2PIQ** (20%): Detail and artifact detection.
+- **AVA** (10%): Legacy aesthetic input.
 
-### VILA Model (Vision-Language Aesthetics)
-- **VILA**: Vision-language aesthetic assessment (range: 0-1, normalized)
+### 2. LIQE Model (Aesthetic & Semantic - 15%)
+**Language-Image Quality Evaluator**: A state-of-the-art model using CLIP technology to understand image content and aesthetics.
+- *Requires PyTorch environment.*
+- *Automatically runs as a sub-process.*
 
-For detailed VILA setup and usage, see [README_VILA.md](docs/vila/README_VILA.md).
+### 3. VILA (Disabled)
+Note: The VILA model has been disabled in version 2.5.1 due to stability issues with TensorFlow Hub dependencies.
+
+## Score Weights (v2.5.2)
+
+The final "Representative Score" is a weighted average:
+
+| Model | Weight | Role |
+|-------|--------|------|
+| **KONIQ** | 30% | Technical Reliability |
+| **SPAQ** | 25% | Technical Discrimination |
+| **PAQ2PIQ** | 20% | Artifacts/Detail |
+| **LIQE** | **15%** | **SOTA Aesthetic/Semantic** |
+| **AVA** | 10% | Legacy Aesthetic |
+
+## Environment Setup
+
+### 1. Install Dependencies
+```powershell
+# Core + Hybrid Pipeline support
+pip install -r requirements.txt
+pip install pyiqa torch torchvision ftfy regex tqdm
+```
+
+### 2. Verify Hybrid System
+```powershell
+python tests/test_liqe_simple.py
+```
+*Expected: "LIQE script ran successfully"*
 
 ## Gallery Generation
 

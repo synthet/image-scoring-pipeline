@@ -1,4 +1,9 @@
-# VILA Model Integration
+# VILA Model Integration (Legacy/Disabled)
+
+> [!WARNING]
+> **VILA is currently DISABLED in the main pipeline (v2.5.1+)**. It has been replaced by **LIQE** due to stability issues with TensorFlow Hub dependencies. This documentation is preserved for historical reference or for users attempting to re-enable it manually.
+
+
 
 This document explains how to use Google's VILA (Vision-Language) models for image aesthetic assessment in this project.
 

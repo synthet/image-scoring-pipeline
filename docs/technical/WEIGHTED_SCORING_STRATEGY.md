@@ -1,131 +1,46 @@
-# Weighted Scoring Strategy for MUSIQ Models
+# Weighted Scoring Strategy (Hybrid Pipeline)
 
 ## Overview
 
-Based on statistical analysis of 1,334 images, I've developed an advanced weighted scoring strategy that combines multiple robust methods to provide more accurate and reliable image quality assessment.
+The image quality assessment system uses a **Hybrid Pipeline** combining Google's MUSIQ (Technical) and LIQE (Aesthetic/Semantic). This strategy leverages the strengths of specific models to filter technically flawed images while rewarding aesthetically pleasing ones.
 
-## Model Analysis & Weight Assignment
+## Score Weights (v2.5.2)
 
-### Statistical Characteristics of Each Model:
+The final "Representative Score" is a weighted average of 5 models:
 
-| Model | Average Score | Range | Discrimination | Reliability | Weight |
-|-------|---------------|-------|----------------|-------------|---------|
-| **KONIQ** | 63.2% | 58.3% | High | High | **35%** |
-| **SPAQ** | 59.4% | 61.0% | Highest | Medium | **30%** |
-| **PAQ2PIQ** | 71.8% | 33.1% | Low | High | **25%** |
-| **AVA** | 43.9% | 25.3% | Lowest | Highest | **10%** |
+| Model | Weight | Role | Description |
+|-------|--------|------|-------------|
+| **KONIQ** | **30%** | Technical Reliability | Best general purpose technical scorer. High reliability. |
+| **SPAQ** | **25%** | Technical Discrimination | Excellent at distinguishing fine technical details (sharpness, noise). |
+| **PAQ2PIQ** | **20%** | Artifact Detection | Specialized in detecting compression artifacts and local defects. |
+| **LIQE** | **15%** | Aesthetic/Semantic | State-of-the-art PyTorch model using CLIP. Understands "content" and aesthetics. |
+| **AVA** | **10%** | Legacy Aesthetic | Older aesthetic model. Kept for continuity but de-emphasized. |
+| **VILA** | **0%** | Disabled | Disabled in v2.5.1 due to stability issues. |
 
-### Weight Rationale:
-- **KONIQ (35%)**: Best balance of discrimination and reliability
-- **SPAQ (30%)**: Highest discrimination power (widest range)
-- **PAQ2PIQ (25%)**: Most lenient, good for high-quality detection
-- **AVA (10%)**: Most conservative, narrow range limits usefulness
+## Scoring Logic
 
-## Scoring Methodology
+1.  **Normalization**: All scores are normalized to a 0.0 - 1.0 range.
+    *   SPAQ/KONIQ/PAQ2PIQ (0-100) -> /100
+    *   AVA (1-10) -> (x-1)/9
+    *   LIQE (0-1) -> Direct (already normalized)
 
-### 1. **Weighted Average (50%)**
-- Combines all model scores using the weights above
-- Accounts for model reliability and discrimination power
+2.  **Weighted Calculation**:
+    ```python
+    final_score = (
+        (koniq_score * 0.30) +
+        (spaq_score * 0.25) +
+        (paq2piq_score * 0.20) +
+        (liqe_score * 0.15) +
+        (ava_score * 0.10)
+    )
+    ```
 
-### 2. **Median Score (30%)**
-- Robust to outliers
-- Provides stable baseline score
+3.  **Outlier Detection**:
+    *   If a model deviates significantly (> 2 standard deviations) from the consensus, it is flagged as an outlier.
+    *   Robust metrics (Median, Trimmed Mean) are calculated alongside the weighted mean for reference.
 
-### 3. **Trimmed Mean (20%)**
-- Removes extreme values (top/bottom 10%)
-- Reduces impact of model inconsistencies
+## Rationale (Why this distribution?)
 
-### 4. **Outlier Detection**
-- Uses IQR method to identify outlier model scores
-- Automatically excludes unreliable scores from calculation
-
-## Results Comparison
-
-### Original Simple Average vs. Weighted Strategy:
-
-| Metric | Simple Average | Weighted Strategy | Improvement |
-|--------|----------------|-------------------|-------------|
-| **Mean Score** | 0.596 | 0.624 | +4.7% |
-| **Median Score** | 0.608 | 0.638 | +4.9% |
-| **Standard Deviation** | 0.067 | 0.094 | +40% (better discrimination) |
-| **Score Range** | 0.345-0.709 | 0.279-0.779 | +10% wider range |
-
-### Quality Distribution:
-
-| Category | Simple Average | Weighted Strategy | Change |
-|----------|----------------|-------------------|---------|
-| **Excellent** | 0% | 5.0% | +67 images |
-| **Good** | 56.8% | 61.2% | +58 images |
-| **Average** | 38.8% | 27.6% | -149 images |
-| **Poor** | 4.3% | 6.1% | +24 images |
-
-## Key Benefits
-
-### ✅ **Better Discrimination**
-- 40% increase in standard deviation
-- More images classified as "excellent" quality
-- Better separation between quality levels
-
-### ✅ **Robustness**
-- Outlier detection prevents unreliable scores
-- Median and trimmed mean reduce noise
-- More consistent scoring across similar images
-
-### ✅ **Model Optimization**
-- Higher weight for reliable models (KONIQ, SPAQ)
-- Lower weight for conservative models (AVA)
-- Balanced approach considering all model strengths
-
-### ✅ **Ranking Improvements**
-- 406 images (30%) had significant score changes
-- Only 2/10 images remained in top 10 (shows better discrimination)
-- More accurate identification of truly high-quality images
-
-## Top 5 Images (Weighted Scoring)
-
-1. **DSC_3652-Enhanced-NR-2.jpg** - 0.779 (excellent)
-2. **DSC_9375-2.jpg** - 0.775 (excellent)
-3. **20250412_313-Enhanced-NR.jpg** - 0.775 (excellent)
-4. **DSC_3652-Enhanced-NR.jpg** - 0.775 (excellent)
-5. **20250506_1121-Enhanced-NR-2.jpg** - 0.774 (excellent)
-
-## Implementation
-
-The weighted scoring strategy is implemented in `weighted_scoring_strategy.py` and can be used as follows:
-
-```bash
-python weighted_scoring_strategy.py --directory "D:/Photos/Export/2025"
-```
-
-### Output Files:
-- `weighted_scoring_results.json` - Complete analysis with robust scores
-- Quality categories for each image
-- Outlier detection results
-- Statistical comparisons
-
-## Recommendations
-
-### For Image Curation:
-1. **Use "Excellent" category** (top 5%) for portfolio selection
-2. **Focus on "Good" category** (61.2%) for general use
-3. **Review "Poor" category** (6.1%) for potential deletion
-
-### For Model Development:
-1. **KONIQ and SPAQ** are most valuable for quality assessment
-2. **AVA** could be improved to have wider discrimination range
-3. **PAQ2PIQ** is good for high-quality detection but less discriminating
-
-### For Batch Processing:
-1. **Use weighted scoring** for more accurate results
-2. **Monitor outlier detection** to identify problematic images
-3. **Apply quality thresholds** for automated categorization
-
-## Conclusion
-
-The weighted scoring strategy provides a significant improvement over simple averaging by:
-- **Better discrimination** between quality levels
-- **More robust scoring** through outlier detection
-- **Optimized model weighting** based on statistical analysis
-- **Improved ranking accuracy** for image selection
-
-This approach is particularly valuable for large-scale image collections where accurate quality assessment is crucial for curation and organization.
+1.  **Technical First (75%)**: The primary goal is to filter technically flawed images (blurred, noisy, bad exposure). MUSIQ models (KONIQ, SPAQ, PAQ2PIQ) excel here.
+2.  **Aesthetic Second (25%)**: Once technical quality is assured, we use LIQE (15%) and AVA (10%) to judge composition and beauty. LIQE is significantly more advanced than AVA.
+3.  **VILA Removal**: VILA was removed from the active pipeline to improve system stability without sacrificing accuracy, as LIQE fills the semantic niche better.

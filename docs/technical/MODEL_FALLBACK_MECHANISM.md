@@ -1,4 +1,9 @@
-# Model Fallback Mechanism
+# Model Fallback Mechanism (Legacy)
+
+> [!WARNING]
+> **Deprecated System**: This document describes the unified fallback mechanism (TFHub -> Kaggle) primarily designed for the **VILA** model. Since VILA has been disabled in v2.5.1, this mechanism is largely irrelevant for the current Hybrid (MUSIQ + LIQE) pipeline.
+
+
 
 **Version**: 2.2.0  
 **Date**: 2025-10-09  
