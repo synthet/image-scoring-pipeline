@@ -27,7 +27,7 @@ class MultiModelMUSIQ:
     """Run multiple MUSIQ and VILA models on a single image."""
     
     # Version identifier for this implementation
-    VERSION = "2.3.2"  # Added: Nikon NEF rating functionality
+    VERSION = "2.5.0"  # Updated: Base64 Thumbnails
     
     # RAW file extensions to detect (case insensitive)
     RAW_EXTENSIONS = {'.nef', '.NEF', '.nrw', '.NRW', '.cr2', '.CR2', '.cr3', '.CR3', 
@@ -760,17 +760,69 @@ class MultiModelMUSIQ:
             with open(json_path, 'r', encoding='utf-8') as f:
                 existing_data = json.load(f)
             
-            # Check if version matches
+            # Check for version compatibility and missing fields
             existing_version = existing_data.get('version', 'unknown')
+            
+            # Versions that are compatible but might miss the thumbnail (2.3.2+)
+            compatible_versions = ["2.3.2", "2.4.0", "2.5.0"]
+            
+            needs_patch = False
+            # Check if version is compatible OR if it matches current version
+            if existing_version in compatible_versions or existing_version == self.VERSION:
+                if "thumbnail" not in existing_data:
+                    needs_patch = True
+            
+            if needs_patch:
+                print(f"Patching existing result for {image_name} (adding thumbnail)...")
+                
+                # Check if we need to convert RAW for thumbnail
+                is_raw = self.is_raw_file(image_path)
+                processing_path = image_path
+                conversion_success = True
+                
+                if is_raw:
+                    # Convert RAW to temp JPEG for thumbnail generation
+                    # Only do this if strictly necessary to avoid overhead
+                    processing_path = self.convert_raw_to_jpeg(image_path)
+                    if not processing_path:
+                        print(f"⚠ Failed to convert RAW for thumbnail patch: {image_path}")
+                        conversion_success = False
+                
+                if conversion_success:
+                    # Generate thumbnail
+                    thumb_b64 = self.generate_thumbnail_base64(processing_path)
+                    
+                    # Clean up any temp files created
+                    self.cleanup_temp_files()
+                    
+                    if thumb_b64:
+                        existing_data["thumbnail"] = thumb_b64
+                        existing_data["version"] = self.VERSION  # Update version
+                        
+                        # Save updated JSON
+                        self.save_results(existing_data, json_path)
+                        print(f"✓ Patched {image_name}.json with thumbnail")
+                        return True
+                    else:
+                        print("⚠ Failed to generate thumbnail base64 data")
+                else:
+                    self.cleanup_temp_files()
+            
+            # Standard checks if no patch was performed (or if patch logic passed execution)
+            # If we just patched it and returned True above, we are done.
+            # If we didn't patch, check version strict
+            
             if existing_version != self.VERSION:
+                # If we are here, it means it's an old version that wasn't patched (incompatible)
                 print(f"Version mismatch - existing: {existing_version}, current: {self.VERSION}")
                 return False
             
             # Check if image_path matches current working folder
             existing_image_path = existing_data.get('image_path', '')
-            if existing_image_path != image_path:
+            # Allow some flexibility in path format (WSL vs Windows)
+            # But if filenames don't match, that's an issue
+            if os.path.basename(existing_image_path) != os.path.basename(image_path):
                 print(f"Path mismatch - existing: {existing_image_path}, current: {image_path}")
-                print(f"Re-analyzing image due to path change...")
                 return False
             
             print(f"Image already processed with version {self.VERSION}: {image_path}")
