@@ -9,6 +9,8 @@ import json
 import os
 import sys
 import tempfile
+import base64
+import io
 import shutil
 import subprocess
 from typing import Dict, List, Optional, Tuple
@@ -72,6 +74,39 @@ class MultiModelMUSIQ:
             return 2  # Fair
         else:
             return 1  # Poor
+    
+    def generate_thumbnail_base64(self, image_path: str, max_size: int = 400) -> Optional[str]:
+        """
+        Generate a base64 encoded JPEG thumbnail of the image.
+        
+        Args:
+            image_path: Path to the image file
+            max_size: Maximum size (width or height) in pixels
+            
+        Returns:
+            Base64 encoded string with data URI prefix, or None if failed
+        """
+        try:
+            with Image.open(image_path) as img:
+                # Convert to RGB if needed (e.g. for PNGs with alpha)
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                
+                # Copy image and resize
+                thumb = img.copy()
+                thumb.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                
+                # Save to memory
+                buffer = io.BytesIO()
+                thumb.save(buffer, format="JPEG", quality=70, optimize=True)
+                
+                # Encode
+                img_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                return f"data:image/jpeg;base64,{img_str}"
+                
+        except Exception as e:
+            print(f"Error generating thumbnail for {image_path}: {e}")
+            return None
     
     def write_rating_to_nef(self, nef_path: str, rating: int) -> bool:
         """Write 1-5 star rating to Nikon NEF file EXIF metadata."""
@@ -622,6 +657,7 @@ class MultiModelMUSIQ:
             "version": self.VERSION,
             "image_path": browser_path,
             "image_name": os.path.basename(image_path),
+            "thumbnail": self.generate_thumbnail_base64(processing_path),
             "device": "GPU" if self.gpu_available else "CPU",
             "gpu_available": self.gpu_available,
             "models": {},

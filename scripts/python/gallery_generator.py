@@ -537,10 +537,13 @@ def generate_html_with_embedded_data(image_data: List[Dict[str, Any]], output_pa
             const primaryScore = getScore(image, currentSort);
             const primaryLabel = getScoreLabel(currentSort);
             
+            // Use base64 thumbnail if available, otherwise use image path
+            const imageSrc = image.thumbnail ? image.thumbnail : imagePath;
+            
             card.innerHTML = `
                 <div class="image-container">
-                    <img src="${imagePath}" alt="${imageName}" loading="lazy" 
-                         onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4='">
+                    <img src="${imageSrc}" alt="${imageName}" loading="lazy" 
+                         onerror="if (this.src !== '${imagePath}') this.src = '${imagePath}'; else this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4='">
                 </div>
                 <div class="image-info">
                     <div class="image-name">${imageName}</div>

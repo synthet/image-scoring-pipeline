@@ -5,6 +5,17 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2025-12-07
+
+### Added
+- **Base64 Thumbnails**: JSON output now includes a base64-encoded JPEG thumbnail (~400px)
+- **Gallery Previews**: HTML gallery displays embedded thumbnails for faster loading and portability
+- **Improved Fallback**: Gallery generator falls back to original image path if thumbnail is missing
+
+### Changed
+- **MultiModelMUSIQ**: Added `generate_thumbnail_base64` method to `run_all_musiq_models.py`
+- **Gallery Generator**: Updated template to prioritize `data:image/jpeg;base64` source
+
 ## [2.4.0] - 2025-12-06
 
 ### Changed
