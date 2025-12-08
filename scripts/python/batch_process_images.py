@@ -73,6 +73,37 @@ class BatchImageProcessor:
         
         return sorted(list(set(image_files)))  # Remove duplicates and sort
     
+    def score_liqe_external(self, image_path: str) -> dict:
+        """Run LIQE scoring via external script."""
+        try:
+            # We assume score_liqe.py is in same directory as this script
+            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "score_liqe.py")
+            
+            # Run the script
+            # Ensure we use the same python executable
+            cmd = [sys.executable, script_path, image_path, "--json"]
+            
+            # Use subprocess to run
+            import subprocess
+            # Set explicit environment variables if needed, or inherit
+            # We assume torch is installed in current env
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120) 
+            
+            if result.returncode == 0:
+                try:
+                    data = json.loads(result.stdout)
+                    return data
+                except json.JSONDecodeError:
+                    self.log(f"LIQE JSON decode error. Output: {result.stdout[:100]}...", "WARNING")
+                    return {"error": "Invalid JSON output from LIQE", "status": "failed"}
+            else:
+                self.log(f"LIQE script error: {result.stderr}", "WARNING")
+                return {"error": f"LIQE script failed: {result.stderr}", "status": "failed"}
+                
+        except Exception as e:
+            self.log(f"LIQE execution exception: {str(e)}", "ERROR")
+            return {"error": str(e), "status": "failed"}
+
     def process_single_image(self, image_path: str, scorer: MultiModelMUSIQ, output_dir: str) -> dict:
         """Process a single image and return results."""
         try:
@@ -130,8 +161,26 @@ class BatchImageProcessor:
                     self.log(f"Error loading existing results for {image_path}: {e}", "WARNING")
                     # Fall through to reprocess
             
-            # Run all models on the image
-            results = scorer.run_all_models(image_path)
+            # --- LIQE Scoring Integration ---
+            self.log("Running LIQE scoring...")
+            liqe_score_data = None
+            
+            # Handle RAW for LIQE
+            liqe_path = image_path
+            if scorer.is_raw_file(image_path):
+                # Convert explicitly for LIQE
+                temp_jpg = scorer.convert_raw_to_jpeg(image_path)
+                if temp_jpg:
+                    liqe_path = temp_jpg
+                else:
+                    self.log(f"Failed to convert RAW for LIQE: {image_path}", "WARNING")
+                    liqe_score_data = {"error": "RAW conversion failed", "status": "failed"}
+
+            if not liqe_score_data:
+                liqe_score_data = self.score_liqe_external(liqe_path)
+            
+            # Run all models on the image (passing external scores)
+            results = scorer.run_all_models(image_path, external_scores={'liqe': liqe_score_data})
             
             # Save results to JSON
             image_name = Path(image_path).stem

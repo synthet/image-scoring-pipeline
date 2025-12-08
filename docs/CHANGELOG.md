@@ -5,6 +5,21 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] - 2025-12-07
+
+### Added
+- **LIQE Model Integration**: Added support for Language-Image Quality Evaluator (SOTA CLIP-based model)
+- **Hybrid Pipeline**: Batch processor can now orchestrate both TensorFlow (MUSIQ) and PyTorch (LIQE) models
+- **External Scoring Support**: Updated `run_all_musiq_models.py` to accept and weight scores from external scripts
+
+### Changed
+- **Score Calibration**: Updated weights to incorporate LIQE (15%):
+  - KONIQ: 35% -> 30%
+  - SPAQ: 30% -> 25%
+  - PAQ2PIQ: 25% -> 20%
+  - LIQE: 15% (New)
+  - AVA: 10% (Unchanged)
+
 ## [2.5.1] - 2025-12-07
 
 ### Changed

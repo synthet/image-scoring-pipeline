@@ -422,10 +422,11 @@ class MultiModelMUSIQ:
         
         # Model weights for weighted scoring (based on statistical analysis)
         self.model_weights = {
-            "koniq": 0.35,      # Primary technical reference (reliability)
-            "spaq": 0.30,       # Secondary technical (discrimination)
-            "paq2piq": 0.25,    # Detail/Artifact detection
-            "ava": 0.10,        # Aesthetic input
+            "koniq": 0.30,      # Primary technical reference (reliability)
+            "spaq": 0.25,       # Secondary technical (discrimination)
+            "paq2piq": 0.20,    # Detail/Artifact detection
+            "liqe": 0.15,       # Semantic/Aesthetic (SOTA PyTorch)
+            "ava": 0.10,        # Legacy Aesthetic
             "vila": 0.00        # Disabled/Removed
         }
     
@@ -617,8 +618,14 @@ class MultiModelMUSIQ:
             print(f"Error predicting with {model_name.upper()} model: {e}")
             return None
     
-    def run_all_models(self, image_path: str) -> Dict[str, any]:
-        """Run all loaded models on the image and return results."""
+    def run_all_models(self, image_path: str, external_scores: Dict[str, any] = None) -> Dict[str, any]:
+        """
+        Run all loaded models on the image and return results.
+        
+        Args:
+            image_path: Path to the image file
+            external_scores: Dictionary of pre-calculated scores to include (e.g. {'liqe': {'score': 0.8, ...}})
+        """
         # Check if this is a RAW file
         is_raw = self.is_raw_file(image_path)
         processing_path = image_path
@@ -683,6 +690,34 @@ class MultiModelMUSIQ:
         print("=" * 60)
         
         normalized_scores = []
+        
+        # Merge external scores if provided
+        if external_scores:
+            print("Incorporating external scores...")
+            for model_name, model_data in external_scores.items():
+                results["models"][model_name] = model_data
+                results["summary"]["total_models"] += 1
+                
+                if model_data.get("status") == "success":
+                    norm_score = model_data.get("normalized_score")
+                    
+                    # If normalized score not provided, try to calculate from score if we know the model
+                    if norm_score is None and model_data.get("score") is not None:
+                        # For LIQE, range is typically 0-1, so score is normalized score
+                        if model_name.lower() == 'liqe':
+                            norm_score = model_data.get("score")
+                            results["models"][model_name]["normalized_score"] = norm_score
+                            results["models"][model_name]["score_range"] = "0.0-1.0"
+                    
+                    if norm_score is not None:
+                        normalized_scores.append(norm_score)
+                        results["summary"]["successful_predictions"] += 1
+                        print(f"  {model_name.upper()} score: {model_data.get('score', 0):.2f} (external)")
+                    else:
+                        print(f"  {model_name.upper()} score: {model_data.get('score')} (external, normalization failed)")
+                else:
+                    results["summary"]["failed_predictions"] += 1
+                    print(f"  {model_name.upper()} model: FAILED (external)")
         
         for model_name in self.model_sources.keys():
             if model_name in self.models:
