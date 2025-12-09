@@ -16,10 +16,6 @@ tensorflow-hub==0.16.1
 # Kaggle Hub for advanced model loading (KONIQ, VILA)
 kagglehub==0.3.4
 
-# Keyword Extraction Tool Dependencies (optional)
-# Uncomment the following lines to enable keyword extraction functionality:
-# torch>=2.0.0
-# torchvision>=0.15.0
-# transformers>=4.30.0
-# keybert>=0.7.0
-# spacy>=3.6.0
+# keyword extraction deps omitted
+rawpy
+imageio

@@ -537,13 +537,33 @@ def generate_html_with_embedded_data(image_data: List[Dict[str, Any]], output_pa
             const primaryScore = getScore(image, currentSort);
             const primaryLabel = getScoreLabel(currentSort);
             
-            // Use base64 thumbnail if available, otherwise use image path
-            const imageSrc = image.thumbnail ? image.thumbnail : imagePath;
+            // Helper to check if file is web-viewable
+            const isWebViewable = (path) => {
+                if (!path) return false;
+                const ext = path.split('.').pop().toLowerCase();
+                return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext);
+            };
+
+            // Determine initial source
+            let imageSrc = '';
+            let imageClass = '';
+            
+            if (image.thumbnail) {
+                // Best case: Base64 thumbnail
+                imageSrc = image.thumbnail;
+            } else if (isWebViewable(imagePath)) {
+                // Fallback: Original file (if Viewable)
+                imageSrc = imagePath;
+            } else {
+                // No thumbnail and not viewable (e.g. NEF) -> Placeholder
+                imageSrc = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjhmOGY4Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJSegoeIFVJLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiBmaWxsPSIjNzdlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+Tm8gUHJldmlldzwvdGV4dD48L3N2Zz4=';
+                imageClass = 'placeholder';
+            }
             
             card.innerHTML = `
-                <div class="image-container">
+                <div class="image-container ${imageClass}">
                     <img src="${imageSrc}" alt="${imageName}" loading="lazy" 
-                         onerror="if (this.src !== '${imagePath}') this.src = '${imagePath}'; else this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4='">
+                         onerror="this.onerror=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIEVycm9yPC90ZXh0Pjwvc3ZnPg==';">
                 </div>
                 <div class="image-info">
                     <div class="image-name">${imageName}</div>

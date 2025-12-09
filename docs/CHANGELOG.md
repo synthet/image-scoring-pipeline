@@ -5,6 +5,25 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2025-12-08
+
+### Added
+- **Database Persistence**: Migrated from JSON files to SQLite (`scoring_history.db`) for robust data management.
+- **WebUI Enhancements**:
+  - **Pagination**: Efficiently browse large image collections.
+  - **Advanced Sorting**: Sort by individual model scores (SPAQ, AVA, KONIQ, PAQ2PIQ) and date.
+  - **Image Details**: View full scoring metadata and JSON payload on selection.
+  - **Path Display**: Gallery labels now include the source folder path.
+- **NEF Thumbnail Support**: Integrated `rawpy` for direct thumbnail generation from RAW files.
+- **Modular Architecture**: Refactored monolithic scripts into `modules/engine.py`, `modules/scoring.py`, `modules/db.py`, and `modules/thumbnails.py`.
+- **WSL Integration**: `run_webui.bat` now automatically launches the application within the WSL environment.
+
+### Changed
+- **Scoring Pipeline**: Scores are now streamed to the UI and database in real-time.
+- **LIQE Normalization**: Fixed LIQE score normalization to correctly map 1-5 range to 0-1.
+- **Gallery Interaction**: Restored full preview functionality with keyboard navigation.
+- **Cleanup**: Removed "Delete" button from gallery per user request.
+
 ## [2.5.2] - 2025-12-07
 
 ### Added
@@ -13,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **External Scoring Support**: Updated `run_all_musiq_models.py` to accept and weight scores from external scripts
 - **Universal Runner**: New single entry-point `Run-Scoring.ps1` handles both Files and Folders, automatically routing to WSL/GPU.
 - **GUI Wrapper**: Added `scoring_gui.py` for easy file/folder selection.
+- **Gallery Generator**: Fixed infinite loop when loading non-web images (NEF) without thumbnails. Now shows "No Preview" placeholder.
 - **Root Cleanup**: Removed legacy scripts (`create_gallery.bat`, etc.) in favor of the new universal runner.
 
 ### Changed

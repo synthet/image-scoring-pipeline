@@ -17,9 +17,16 @@ description: Verify the scoring system environment and models
    ```
    **Success**: All models (koniq, spaq, paq2piq) return "success".
 
+3. **Verify Database**:
+   Check that the SQLite database exists (it is created on first run/import):
+   ```bash
+   ls -l scoring_history.db
+   ```
+
+
 3. **Verify Dependencies**:
    // turbo
    ```bash
    pip list
    ```
-   Check for: `tensorflow`, `torch`, `pyiqa`, `pillow`.
+   **Success**: `tensorflow`, `torch`, `pyiqa`, `pillow`, `gradio`, `pydantic`.

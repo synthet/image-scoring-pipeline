@@ -29,12 +29,17 @@ def score_image_liqe(image_path, device='cuda'):
             device = 'cpu'
             
         # Initialize LIQE metric
-        # metric_mode='NR' (No Reference) is default for LIQE
-        metric = pyiqa.create_metric('liqe', device=device)
+        import contextlib
+        import io
         
-        # Lower case metric name for consistency
-        # pyiqa models usually take path or tensor
-        score = metric(image_path).item()
+        # Suppress "Loading pretrained model..." output
+        with contextlib.redirect_stdout(io.StringIO()):
+             # metric_mode='NR' (No Reference) is default for LIQE
+             metric = pyiqa.create_metric('liqe', device=device)
+             
+             # Lower case metric name for consistency
+             # pyiqa models usually take path or tensor
+             score = metric(image_path).item()
         
         return {
             "score": score,

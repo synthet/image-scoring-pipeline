@@ -63,17 +63,22 @@ class MultiModelMUSIQ:
         return ext in self.NEF_EXTENSIONS
     
     def score_to_rating(self, score: float) -> int:
-        """Convert normalized MUSIQ score (0-1) to 1-5 star rating."""
-        if score >= 0.9:
-            return 5  # Excellent
-        elif score >= 0.75:
-            return 4  # Very Good
-        elif score >= 0.6:
-            return 3  # Good
-        elif score >= 0.4:
-            return 2  # Fair
+        """
+        Convert normalized MUSIQ score (0-1) to 1-5 star rating.
+        Thresholds adjusted based on real-world distribution (Mean ~0.51).
+        Old: 0.9/0.75/0.6/0.4
+        New: 0.65/0.56/0.48/0.40
+        """
+        if score >= 0.65:
+            return 5  # Excellent (Top ~1-2%)
+        elif score >= 0.56:
+            return 4  # Very Good (Top ~20%)
+        elif score >= 0.48:
+            return 3  # Good (Average ~40-50%)
+        elif score >= 0.40:
+            return 2  # Fair (Bottom ~30%)
         else:
-            return 1  # Poor
+            return 1  # Poor (Bottom ~5-10%)
     
     def generate_thumbnail_base64(self, image_path: str, max_size: int = 400) -> Optional[str]:
         """
@@ -705,9 +710,16 @@ class MultiModelMUSIQ:
                     if norm_score is None and model_data.get("score") is not None:
                         # For LIQE, range is typically 0-1, so score is normalized score
                         if model_name.lower() == 'liqe':
-                            norm_score = model_data.get("score")
+                            raw_score = model_data.get("score", 0)
+                            # LIQE range is 1-5
+                            min_val = 1.0
+                            max_val = 5.0
+                            norm_score = (raw_score - min_val) / (max_val - min_val)
+                            # Clamp
+                            norm_score = max(0.0, min(1.0, norm_score))
+                            
                             results["models"][model_name]["normalized_score"] = norm_score
-                            results["models"][model_name]["score_range"] = "0.0-1.0"
+                            results["models"][model_name]["score_range"] = "1.0-5.0"
                     
                     if norm_score is not None:
                         normalized_scores.append(norm_score)

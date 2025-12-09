@@ -1,19 +1,21 @@
 ---
-description: Run the image scoring pipeline on a full folder (NEF/JPG)
+description: Run the image scoring pipeline on a full folder (NEF/JPG) or single file
 ---
 
-1. **Identify Target Folder**: Ask the user which folder to process if not provided.
-2. **Execute Powershell Script**:
-   Run the following command in the terminal.
+1. **Identify Target**: Determine the folder or file you want to score.
+
+2. **Execute Runner Script**:
+   Run the universal runner script. It handles WSL path conversion automatically.
    ```powershell
-   .\process_nef_folder.ps1 -FolderPath "PATH_TO_FOLDER"
+   .\Run-Scoring.ps1 -InputPath "D:\Photos\..."
    ```
-   *(Replace `PATH_TO_FOLDER` with the actual path)*
 
-3. **Monitor Output**:
-   - Watch for "LIQE score" logs to confirm hybrid model is active.
-   - Watch for "Processing completed" message.
+3. **Monitor Progress**:
+   - The script will start the WSL environment.
+   - You will see "Starting Batch Processing in WSL..." (for folders) or "Scoring Single Image..." (for files).
+   - "LIQE score" logs indicate the hybrid model is active.
 
-4. **Verify Output**:
-   - Check that JSON files are created in the target folder.
-   - Check that `gallery.html` is generated.
+4. **Verify Results**:
+   - **Console**: Look for "Done." at the end of the logs.
+   - **Gallery**: If processing a folder, the script attempts to launch `gallery.html` automatically.
+   - **Database**: Results are upserted to `scoring_history.db`. You can verify this in the WebUI.
