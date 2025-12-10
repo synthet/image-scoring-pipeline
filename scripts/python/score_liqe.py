@@ -37,8 +37,25 @@ def score_image_liqe(image_path, device='cuda'):
              # metric_mode='NR' (No Reference) is default for LIQE
              metric = pyiqa.create_metric('liqe', device=device)
              
-             # Lower case metric name for consistency
-             # pyiqa models usually take path or tensor
+        try:
+            from PIL import Image
+            from torchvision.transforms import functional as TF
+            
+            # Load and resize image if too large
+            img = Image.open(image_path).convert('RGB')
+            if max(img.size) > 518:
+               ratio = 518 / max(img.size)
+               new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+               img = img.resize(new_size, Image.BICUBIC)
+            
+            # Convert to tensor (0-1, BCHW)
+            img_tensor = TF.to_tensor(img).unsqueeze(0).to(device)
+            
+            # Score
+            score = metric(img_tensor).item()
+        except Exception as img_err:
+             # Fallback to direct path if PIL/Torchvision fails
+             print(f"Warning: Resize failed, using original path. Error: {img_err}")
              score = metric(image_path).item()
         
         return {

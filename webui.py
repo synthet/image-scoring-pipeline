@@ -64,17 +64,43 @@ def get_gallery_data(page, sort_by, sort_order):
         # Format path for display (showing parent directory)
         folder = os.path.dirname(file_path)
         
-        # New Format:
-        # File Name (Score)
-        # Path
-        label = f"{row['file_name']} (Score: {row['score']:.2f})\n{folder}"
+        # Dynamic Label Generation based on Sort Criteria
+        if sort_by == "created_at":
+             date_val = row['created_at']
+             # Truncate microseconds if present
+             if date_val and isinstance(date_val, str) and "." in date_val:
+                 date_val = date_val.split('.')[0]
+             label = f"{row['file_name']} ({date_val})"
+             
+        elif sort_by.startswith("score_"):
+             # Specific Score
+             val = row[sort_by]
+             val = val if val is not None else 0.0
+             
+             # Pretty Label
+             lbl_map = {
+                 "score_general": "General",
+                 "score_technical": "Technical", 
+                 "score_aesthetic": "Aesthetic",
+                 "score_spaq": "SPAQ",
+                 "score_ava": "AVA",
+                 "score_koniq": "KonIQ",
+                 "score_paq2piq": "PaQ2PiQ",
+                 "score_liqe": "LIQE"
+             }
+             metric_name = lbl_map.get(sort_by, sort_by.replace("score_", "").title())
+             label = f"{row['file_name']} ({metric_name}: {val:.2f})"
+             
+        else:
+             # Fallback (shouldn't happen with current dropdown)
+             label = row['file_name']
         results.append((image_path, label))
         
     return results, f"Page {page} of {total_pages}", total_pages, raw_paths
 
 def update_gallery(page, sort_by, sort_order):
     images, label, _, raw_paths = get_gallery_data(page, sort_by, sort_order)
-    return images, label, raw_paths
+    return images, label, raw_paths, {}
 
 def next_page(page, sort_by, sort_order):
     _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order)
@@ -134,8 +160,10 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     input_dir = gr.Textbox(label="Input Folder Path", placeholder="D:\\Photos\\...")
-                    skip_checkbox = gr.Checkbox(label="Skip Existing Results", value=True)
-                    run_btn = gr.Button("Start Scoring", variant="primary")
+                    skip_checkbox = gr.Checkbox(label="Skip already scored images", value=True)
+                    with gr.Row():
+                        run_btn = gr.Button("Start Scoring", variant="primary")
+                        stop_btn = gr.Button("Stop Scoring", variant="stop")
                 
                 with gr.Column(scale=2):
                     status_label = gr.Label(value="Ready", label="Status")
@@ -146,21 +174,27 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
                 inputs=[input_dir, skip_checkbox],
                 outputs=[log_output, status_label]
             )
+            
+            stop_btn.click(
+                fn=lambda: runner.stop(),
+                inputs=[],
+                outputs=[]
+            )
 
         # TAB 2: GALLERY
         with gr.TabItem("Gallery"):
             with gr.Row():
                 refresh_btn = gr.Button("Refresh / First Page")
                 sort_dropdown = gr.Dropdown(
-                    choices=["score", "created_at", "score_spaq", "score_ava", "score_koniq", "score_paq2piq"], 
-                    value="score", 
+                    choices=["created_at", "score_general", "score_technical", "score_aesthetic", "score_spaq", "score_ava", "score_koniq", "score_paq2piq", "score_liqe"], 
+                    value="created_at", 
                     label="Sort By"
                 )
                 order_dropdown = gr.Dropdown(choices=["desc", "asc"], value="desc", label="Order")
             
             with gr.Row():
                 prev_btn = gr.Button("Previous")
-                page_label = gr.Label(value="Page 1", show_label=False)
+                page_label = gr.Button(value="Page 1", interactive=False)
                 next_btn = gr.Button("Next")
             
             gallery = gr.Gallery(label="Scored Images", columns=5, height="auto", allow_preview=True)
@@ -171,7 +205,7 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
             # Events
             
             # Helper to link outputs
-            gallery_outputs = [gallery, page_label, current_paths]
+            gallery_outputs = [gallery, page_label, current_paths, image_details]
             
             refresh_btn.click(
                 fn=first_page,
@@ -198,17 +232,7 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
             # Selection -> Details
             gallery.select(fn=display_details, inputs=[current_paths], outputs=[image_details])
             
-        # TAB 3: HISTORY
-        with gr.TabItem("Job History"):
-            refresh_history_btn = gr.Button("Refresh History")
-            history_table = gr.Dataframe(
-                headers=["ID", "Path", "Status", "Created At", "Completed At"],
-                datatype=["number", "str", "str", "str", "str"],
-                interactive=False
-            )
-            
-            refresh_history_btn.click(fn=get_jobs_history, inputs=[], outputs=history_table)
-            refresh_history_btn.click()
+
 
 if __name__ == "__main__":
     allowed_paths = [os.path.abspath("."), os.path.abspath("thumbnails")]

@@ -41,7 +41,7 @@ def test_nef_rating():
         
         # Test rating write (will fail gracefully if file doesn't exist)
         rating = 4
-        success = scorer.write_rating_to_nef(sample_nef, rating)
+        success = scorer.write_metadata_to_nef(sample_nef, rating, label="Blue")
         print(f"Rating write test: {'SUCCESS' if success else 'FAILED (expected if file missing)'}")
     else:
         print(f"✗ File not identified as NEF: {sample_nef}")
@@ -87,7 +87,7 @@ Examples:
             return
         
         print(f"Writing rating {args.rating}/5 to: {args.nef_file}")
-        success = scorer.write_rating_to_nef(args.nef_file, args.rating)
+        success = scorer.write_metadata_to_nef(args.nef_file, args.rating, label="Green") # Default label for testing
         
         if success:
             print("✓ Rating written successfully!")

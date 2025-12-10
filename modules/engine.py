@@ -27,14 +27,23 @@ except ImportError:
         sys.path.insert(0, str(project_root / "scripts" / "python"))
         from run_all_musiq_models import MultiModelMUSIQ
 
+# Import LIQE Scorer
+try:
+    from modules.liqe import LiqeScorer
+except ImportError:
+    # Graceful fallback if module setup is still in flux
+    LiqeScorer = None
+    print("Warning: Could not import LiqeScorer from modules.liqe")
+
 class BatchImageProcessor:
     """Batch process images with callback support and comprehensive logging."""
     
     def __init__(self, log_file: str = None, output_dir: str = None, 
                  skip_existing: bool = False, json_stdout: bool = False,
-                 write_json: bool = True):
+                 write_json: bool = True, skip_predicate: Callable[[str], bool] = None):
         self.json_stdout = json_stdout
         self.write_json = write_json
+        self.skip_predicate = skip_predicate
         
         if log_file is None:
             log_file = f"musiq_batch_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -123,7 +132,7 @@ class BatchImageProcessor:
             self.log(f"LIQE execution exception: {str(e)}", "ERROR")
             return {"error": str(e), "status": "failed"}
 
-    def process_single_image(self, image_path: str, scorer: MultiModelMUSIQ, output_dir: str) -> dict:
+    def process_single_image(self, image_path: str, scorer: MultiModelMUSIQ, output_dir: str, liqe_scorer: LiqeScorer = None) -> dict:
         """Process a single image and return results."""
         try:
             self.log(f"Processing: {image_path}")
@@ -138,9 +147,15 @@ class BatchImageProcessor:
             # (via DB query), or we blindly re-process.
             # But let's keep the file check if file exists.
             
-            if self.skip_existing and os.path.exists(json_path):
-                 should_skip = True
-                 skip_reason = "existing result found (skipping version check)"
+            if self.skip_existing:
+                 # Check predicate first (e.g. DB check)
+                 if self.skip_predicate and self.skip_predicate(image_path):
+                     should_skip = True
+                     skip_reason = "already in database"
+                 # Fallback to file check
+                 elif os.path.exists(json_path):
+                     should_skip = True
+                     skip_reason = "existing result found (skipping version check)"
             elif scorer.is_already_processed(image_path, output_dir):
                  should_skip = True
                  skip_reason = f"already processed with version {scorer.VERSION}"
@@ -161,7 +176,8 @@ class BatchImageProcessor:
                             "status": "skipped",
                             "models_successful": existing_data.get("summary", {}).get("successful_predictions", 0),
                             "models_failed": existing_data.get("summary", {}).get("failed_predictions", 0),
-                            "average_normalized_score": existing_data.get("summary", {}).get("average_normalized_score", 0),
+                            "models_failed": existing_data.get("summary", {}).get("failed_predictions", 0),
+                            "score": existing_data.get("summary", {}).get("weighted_scores", {}).get("general", 0),
                             "individual_scores": {},
                             "version": existing_data.get("version", "unknown")
                         }
@@ -175,17 +191,17 @@ class BatchImageProcessor:
                                         "normalized_score": model_result.get("normalized_score", 0)
                                     }
                         
-                        self.log(f"Skipped: {image_path} - Version: {summary['version']} - Average Score: {summary['average_normalized_score']}")
+                        self.log(f"Skipped: {image_path} - Version: {summary['version']} - Score: {summary.get('score', 'N/A')}")
                         return summary
                     except:
                         pass
                 
                 return {"image_path": image_path, "status": "skipped"}
 
-            # --- LIQE ---
-            self.log("Running LIQE scoring...")
-            liqe_score_data = None
+
             
+            # --- LIQE ---
+            liqe_score_data = None
             liqe_path = image_path
             if scorer.is_raw_file(image_path):
                 temp_jpg = scorer.convert_raw_to_jpeg(image_path)
@@ -196,10 +212,19 @@ class BatchImageProcessor:
                     liqe_score_data = {"error": "RAW conversion failed", "status": "failed"}
 
             if not liqe_score_data:
-                liqe_score_data = self.score_liqe_external(liqe_path)
+                if liqe_scorer and liqe_scorer.available:
+                    liqe_score_data = liqe_scorer.predict(liqe_path)
+                else:
+                    # Fallback to external script if internal scorer not available?
+                    # Or just fail since we are optimizing
+                    liqe_score_data = self.score_liqe_external(liqe_path)
             
             # Run models
-            results = scorer.run_all_models(image_path, external_scores={'liqe': liqe_score_data})
+            external_scores = {}
+            if liqe_score_data:
+                external_scores['liqe'] = liqe_score_data
+            
+            results = scorer.run_all_models(image_path, external_scores=external_scores, logger=self.log)
             
             # Save results if enabled
             if self.write_json:
@@ -213,13 +238,20 @@ class BatchImageProcessor:
                  sys.stdout.flush()
 
             # Construct summary
+            # Use 'general' weighted score as the primary score for logging/DB
+            ws = results["summary"]["weighted_scores"]
+            primary_score = ws["general"]
+            
             summary = {
                 "image_path": image_path,
                 "image_name": Path(image_path).stem,
                 "status": "success",
                 "models_successful": results["summary"]["successful_predictions"],
                 "models_failed": results["summary"]["failed_predictions"],
-                "average_normalized_score": results["summary"]["average_normalized_score"],
+                "score": primary_score,
+                "score_general": ws.get("general", 0),
+                "score_technical": ws.get("technical", 0),
+                "score_aesthetic": ws.get("aesthetic", 0),
                 "individual_scores": {},
                 "full_results": results # Include full results for callback
             }
@@ -231,7 +263,7 @@ class BatchImageProcessor:
                         "normalized_score": model_result["normalized_score"]
                     }
             
-            self.log(f"Completed: {image_path} - Average Score: {summary['average_normalized_score']}")
+            self.log(f"Completed: {image_path} - General Score: {summary['score']}")
             return summary
             
         except Exception as e:
@@ -290,6 +322,11 @@ class BatchImageProcessor:
             self.log(f"Failed to initialize models: {str(e)}", "ERROR")
             return
         
+        self.log("Initializing LIQE model...")
+        liqe_scorer = LiqeScorer()
+        if not liqe_scorer.available:
+            self.log("LIQE model failed to load or not available. Will fallback to script.", "WARNING")
+
         self.log("Starting image processing...")
         self.log("-" * 80)
         
@@ -301,7 +338,7 @@ class BatchImageProcessor:
 
             self.log(f"Progress: {i}/{len(image_files)}")
             
-            result = self.process_single_image(image_path, scorer, output_dir)
+            result = self.process_single_image(image_path, scorer, output_dir, liqe_scorer=liqe_scorer)
             self.results.append(result)
             
             if result["status"] == "success":
@@ -312,9 +349,13 @@ class BatchImageProcessor:
                 self.failed_count += 1
             
             # Invoke Callback
+            # Invoke Callback
             if callback:
                 try:
                     callback(result)
+                except InterruptedError:
+                    self.log("Batch processing stopped by user.")
+                    break
                 except Exception as cb_err:
                     self.log(f"Callback error: {cb_err}", "ERROR")
 

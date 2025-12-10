@@ -27,7 +27,8 @@ class MultiModelMUSIQ:
     """Run multiple MUSIQ and VILA models on a single image."""
     
     # Version identifier for this implementation
-    VERSION = "2.5.0"  # Updated: Base64 Thumbnails
+    # Version identifier for this implementation
+    VERSION = "3.0.0"  # Updated: Weighted Scoring Checkpoints
     
     # RAW file extensions to detect (case insensitive)
     RAW_EXTENSIONS = {'.nef', '.NEF', '.nrw', '.NRW', '.cr2', '.CR2', '.cr3', '.CR3', 
@@ -64,57 +65,67 @@ class MultiModelMUSIQ:
     
     def score_to_rating(self, score: float) -> int:
         """
-        Convert normalized MUSIQ score (0-1) to 1-5 star rating.
-        Thresholds adjusted based on real-world distribution (Mean ~0.51).
-        Old: 0.9/0.75/0.6/0.4
-        New: 0.65/0.56/0.48/0.40
-        """
-        if score >= 0.65:
-            return 5  # Excellent (Top ~1-2%)
-        elif score >= 0.56:
-            return 4  # Very Good (Top ~20%)
-        elif score >= 0.48:
-            return 3  # Good (Average ~40-50%)
-        elif score >= 0.40:
-            return 2  # Fair (Bottom ~30%)
-        else:
-            return 1  # Poor (Bottom ~5-10%)
-    
-    def generate_thumbnail_base64(self, image_path: str, max_size: int = 400) -> Optional[str]:
-        """
-        Generate a base64 encoded JPEG thumbnail of the image.
+        Convert normalized score (0-1) to 1-5 star rating based on General Score.
+        Formula: (0.35 * PaQ) + (0.30 * AVA) + (0.25 * LIQE) + (0.10 * KonIQ)
         
-        Args:
-            image_path: Path to the image file
-            max_size: Maximum size (width or height) in pixels
-            
-        Returns:
-            Base64 encoded string with data URI prefix, or None if failed
+        Rating brackets:
+        0.85 - 1.00 : 5 Stars (Masterpiece)
+        0.70 - 0.84 : 4 Stars (Excellent)
+        0.55 - 0.69 : 3 Stars (Good)
+        0.40 - 0.54 : 2 Stars (Weak)
+        0.00 - 0.39 : 1 Star  (Reject)
         """
-        try:
-            with Image.open(image_path) as img:
-                # Convert to RGB if needed (e.g. for PNGs with alpha)
-                if img.mode in ('RGBA', 'P'):
-                    img = img.convert('RGB')
-                
-                # Copy image and resize
-                thumb = img.copy()
-                thumb.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                
-                # Save to memory
-                buffer = io.BytesIO()
-                thumb.save(buffer, format="JPEG", quality=70, optimize=True)
-                
-                # Encode
-                img_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                return f"data:image/jpeg;base64,{img_str}"
-                
-        except Exception as e:
-            print(f"Error generating thumbnail for {image_path}: {e}")
-            return None
+        # Ensure score is between 0.0 and 1.0
+        s = max(0.0, min(1.0, score))
+        
+        if s >= 0.85:
+            return 5  # Masterpiece
+        elif s >= 0.70:
+            return 4  # Excellent
+        elif s >= 0.55:
+            return 3  # Good
+        elif s >= 0.40:
+            return 2  # Weak
+        else:
+            return 1  # Reject
+            
+    def determine_lightroom_label(self, scores: Dict[str, float]) -> Optional[str]:
+        """
+        Determine Lightroom color label based on Tech/Art scores.
+        
+        Tech_Score (Sharpness/Quality) = Average of PaQ2PiQ and LIQE
+        Art_Score (Aesthetics/Vibes) = Average of AVA and KonIQ
+        """
+        def get_s(model):
+            return scores.get(model, 0.0)
+
+        # Calculate sub-scores
+        tech_score = (get_s('paq2piq') + get_s('liqe')) / 2.0
+        art_score = (get_s('ava') + get_s('koniq')) / 2.0
+        
+        # 1. 🔴 Red = "The Reject" (Technical Failure)
+        if tech_score < 0.40:
+            return "Red"
+
+        # 2. 🟣 Purple = "The Anomaly" (Artistic but Low Tech)
+        if art_score > 0.75 and tech_score < 0.55:
+            return "Purple"
+
+        # 3. 🔵 Blue = "The Portfolio Shot" (High Aesthetics & Sharp)
+        if art_score > 0.70 and tech_score > 0.70:
+            return "Blue"
+
+        # 4. 🟢 Green = "The Reference Shot" (High Technical)
+        if tech_score > 0.65:
+            return "Green"
+
+        # 5. 🟡 Yellow = "The Maybe" (The Middle)
+        return "Yellow"
     
-    def write_rating_to_nef(self, nef_path: str, rating: int) -> bool:
-        """Write 1-5 star rating to Nikon NEF file EXIF metadata."""
+
+    
+    def write_metadata_to_nef(self, nef_path: str, rating: int, label: str = None) -> bool:
+        """Write rating and color label to Nikon NEF file EXIF/XMP metadata."""
         if rating < 1 or rating > 5:
             print(f"Invalid rating: {rating}. Must be 1-5.")
             return False
@@ -125,18 +136,18 @@ class MultiModelMUSIQ:
         
         try:
             # Try pyexiv2 first (best for NEF files)
-            return self._write_rating_pyexiv2(nef_path, rating)
+            return self._write_metadata_pyexiv2(nef_path, rating, label)
         except ImportError:
             try:
                 # Fallback to exiftool
-                return self._write_rating_exiftool(nef_path, rating)
+                return self._write_metadata_exiftool(nef_path, rating, label)
             except Exception as e:
-                print(f"Failed to write rating to NEF file: {e}")
+                print(f"Failed to write metadata to NEF file: {e}")
                 print("Install pyexiv2 for best NEF support: pip install pyexiv2")
                 return False
     
-    def _write_rating_pyexiv2(self, nef_path: str, rating: int) -> bool:
-        """Write rating using pyexiv2 library."""
+    def _write_metadata_pyexiv2(self, nef_path: str, rating: int, label: str = None) -> bool:
+        """Write metadata using pyexiv2 library."""
         try:
             import pyexiv2
             
@@ -153,12 +164,14 @@ class MultiModelMUSIQ:
                     'Exif.Image.RatingPercent': rating * 20,  # 1=20%, 2=40%, etc.
                 })
                 
-                # Also set XMP rating for broader compatibility
-                img.modify_xmp({
-                    'Xmp.xmp.Rating': rating
-                })
+                # Also set XMP rating and label for broader compatibility
+                xmp_data = {'Xmp.xmp.Rating': rating}
+                if label:
+                    xmp_data['Xmp.xmp.Label'] = label
+                
+                img.modify_xmp(xmp_data)
             
-            print(f"✓ Rating {rating}/5 written to NEF file: {nef_path}")
+            print(f"✓ Rating {rating}/5 and Label '{label}' written to NEF file: {nef_path}")
             
             # Remove backup if successful
             if os.path.exists(backup_path):
@@ -178,8 +191,8 @@ class MultiModelMUSIQ:
                 print("Restored backup file")
             return False
     
-    def _write_rating_exiftool(self, nef_path: str, rating: int) -> bool:
-        """Write rating using exiftool command line."""
+    def _write_metadata_exiftool(self, nef_path: str, rating: int, label: str = None) -> bool:
+        """Write metadata using exiftool command line."""
         try:
             # Backup original file
             backup_path = f"{nef_path}.backup"
@@ -192,8 +205,12 @@ class MultiModelMUSIQ:
                 '-Rating=' + str(rating),
                 '-RatingPercent=' + str(rating * 20),
                 '-UserComment=MUSIQ Quality Rating: ' + str(rating) + '/5',
-                nef_path
             ]
+            
+            if label:
+                cmd.append(f'-Label={label}')
+                
+            cmd.append(nef_path)
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             
@@ -623,20 +640,21 @@ class MultiModelMUSIQ:
             print(f"Error predicting with {model_name.upper()} model: {e}")
             return None
     
-    def run_all_models(self, image_path: str, external_scores: Dict[str, any] = None) -> Dict[str, any]:
+    def run_all_models(self, image_path: str, external_scores: Dict[str, any] = None, logger=print) -> Dict[str, any]:
         """
         Run all loaded models on the image and return results.
         
         Args:
             image_path: Path to the image file
             external_scores: Dictionary of pre-calculated scores to include (e.g. {'liqe': {'score': 0.8, ...}})
+            logger: Function to use for logging (default: print)
         """
         # Check if this is a RAW file
         is_raw = self.is_raw_file(image_path)
         processing_path = image_path
         
         if is_raw:
-            print(f"RAW file detected: {image_path}")
+            logger(f"RAW file detected: {image_path}")
             # Convert RAW to temporary JPEG
             temp_jpeg = self.convert_raw_to_jpeg(image_path)
             if temp_jpeg is None:
@@ -669,15 +687,13 @@ class MultiModelMUSIQ:
             "version": self.VERSION,
             "image_path": browser_path,
             "image_name": os.path.basename(image_path),
-            "thumbnail": self.generate_thumbnail_base64(processing_path),
             "device": "GPU" if self.gpu_available else "CPU",
             "gpu_available": self.gpu_available,
             "models": {},
             "summary": {
                 "total_models": len(self.models),
                 "successful_predictions": 0,
-                "failed_predictions": 0,
-                "average_normalized_score": None
+                "failed_predictions": 0
             }
         }
         
@@ -689,16 +705,15 @@ class MultiModelMUSIQ:
                 "conversion_success": True
         }
         
-        print(f"\nRunning all models on: {image_path}")
+        logger(f"\nRunning all models on: {image_path}")
         if is_raw:
-            print(f"Processing converted JPEG: {processing_path}")
-        print("=" * 60)
+            logger(f"Processing converted JPEG: {processing_path}")
+        logger("=" * 60)
         
         normalized_scores = []
         
         # Merge external scores if provided
         if external_scores:
-            print("Incorporating external scores...")
             for model_name, model_data in external_scores.items():
                 results["models"][model_name] = model_data
                 results["summary"]["total_models"] += 1
@@ -724,16 +739,16 @@ class MultiModelMUSIQ:
                     if norm_score is not None:
                         normalized_scores.append(norm_score)
                         results["summary"]["successful_predictions"] += 1
-                        print(f"  {model_name.upper()} score: {model_data.get('score', 0):.2f} (external)")
+                        rng = model_data.get("score_range", "unknown")
+                        logger(f"  {model_name.upper()} score: {model_data.get('score', 0):.2f} (range: {rng})")
                     else:
-                        print(f"  {model_name.upper()} score: {model_data.get('score')} (external, normalization failed)")
+                        logger(f"  {model_name.upper()} score: {model_data.get('score')} (external, normalization failed)")
                 else:
                     results["summary"]["failed_predictions"] += 1
-                    print(f"  {model_name.upper()} model: FAILED (external)")
+                    logger(f"  {model_name.upper()} model: FAILED (external)")
         
         for model_name in self.model_sources.keys():
             if model_name in self.models:
-                print(f"Processing with {model_name.upper()} model...")
                 score = self.predict_quality(processing_path, model_name)
                 
                 if score is not None:
@@ -748,7 +763,7 @@ class MultiModelMUSIQ:
                         "status": "success"
                     }
                     results["summary"]["successful_predictions"] += 1
-                    print(f"  {model_name.upper()} score: {score:.2f} (range: {min_score}-{max_score})")
+                    logger(f"  {model_name.upper()} score: {score:.2f} (range: {min_score}-{max_score})")
                 else:
                     results["models"][model_name] = {
                         "score": None,
@@ -756,7 +771,7 @@ class MultiModelMUSIQ:
                         "status": "failed"
                     }
                     results["summary"]["failed_predictions"] += 1
-                    print(f"  {model_name.upper()} model: FAILED")
+                    logger(f"  {model_name.upper()} model: FAILED")
             else:
                 results["models"][model_name] = {
                     "score": None,
@@ -764,34 +779,34 @@ class MultiModelMUSIQ:
                     "status": "not_loaded"
                 }
                 results["summary"]["failed_predictions"] += 1
-                print(f"  {model_name.upper()} model: NOT LOADED")
+                logger(f"  {model_name.upper()} model: NOT LOADED")
         
-        # Calculate average normalized score
-        if normalized_scores:
-            average_normalized = sum(normalized_scores) / len(normalized_scores)
-            results["summary"]["average_normalized_score"] = round(average_normalized, 3)
-            
-            # Calculate advanced scoring methods
-            normalized_scores_dict = {}
-            for model_name, model_result in results["models"].items():
-                if model_result["status"] == "success":
-                    normalized_scores_dict[model_name] = model_result["normalized_score"]
-            
-            if normalized_scores_dict:
-                advanced_scores = self.calculate_advanced_scores(normalized_scores_dict)
-                results["summary"]["advanced_scoring"] = advanced_scores
-                
-                # Write rating to NEF files if applicable
-                if self.is_nef_file(image_path):
-                    avg_score = results["summary"].get("average_normalized_score", 0)
-                    if avg_score is not None:
-                        rating = self.score_to_rating(avg_score)
-                        rating_success = self.write_rating_to_nef(image_path, rating)
-                        results["summary"]["nef_rating"] = {
-                            "rating": rating,
-                            "rating_written": rating_success,
-                            "score_mapping": f"{avg_score:.3f} -> {rating}/5"
-                        }
+        normalized_scores_dict = {}
+        for model_name, model_result in results["models"].items():
+            if model_result["status"] == "success":
+                normalized_scores_dict[model_name] = model_result["normalized_score"]
+        
+        if normalized_scores_dict:
+             weighted_scores = self.calculate_weighted_categories(normalized_scores_dict)
+             results["summary"]["weighted_scores"] = weighted_scores
+             
+             # Calculate rating and label
+             avg_score = weighted_scores["general"]
+             
+             # Write rating to NEF files if applicable
+             if self.is_nef_file(image_path):
+                 if avg_score is not None:
+                     rating = self.score_to_rating(avg_score)
+                     label = self.determine_lightroom_label(normalized_scores_dict)
+                     
+                     success = self.write_metadata_to_nef(image_path, rating, label)
+                     results["summary"]["nef_metadata"] = {
+                         "rating": rating,
+                         "label": label,
+                         "write_success": success,
+                         "score_mapping": f"{avg_score:.3f} -> {rating}/5, {label}"
+                     }
+
         
         return results
     
@@ -892,71 +907,43 @@ class MultiModelMUSIQ:
         
         return weighted_sum / total_weight if total_weight > 0 else 0.0
     
-    def calculate_median_score(self, scores: Dict[str, float]) -> float:
-        """Calculate median score (robust to outliers)."""
-        valid_scores = [score for score in scores.values() if score is not None]
-        return np.median(valid_scores) if valid_scores else 0.0
-    
-    def calculate_trimmed_mean(self, scores: Dict[str, float], trim_percent: float = 0.1) -> float:
-        """Calculate trimmed mean (remove extreme values)."""
-        valid_scores = [score for score in scores.values() if score is not None]
-        if not valid_scores:
-            return 0.0
+    def calculate_weighted_categories(self, scores: Dict[str, float]) -> Dict[str, float]:
+        """
+        Calculate weighted scores for different categories:
+        1. Technical Safety (Culling)
+        2. Portfolio Potential (Ranking)
+        3. General Purpose (Balanced)
+        """
         
-        valid_scores.sort()
-        n = len(valid_scores)
-        trim_count = int(n * trim_percent)
-        
-        if trim_count > 0:
-            trimmed_scores = valid_scores[trim_count:-trim_count]
-        else:
-            trimmed_scores = valid_scores
-        
-        return np.mean(trimmed_scores) if trimmed_scores else 0.0
-    
-    def detect_outliers(self, scores: Dict[str, float]) -> List[str]:
-        """Detect models with outlier scores using IQR method."""
-        valid_scores = [(model, score) for model, score in scores.items() if score is not None]
-        if len(valid_scores) < 3:
-            return []
-        
-        scores_only = [score for _, score in valid_scores]
-        q1 = np.percentile(scores_only, 25)
-        q3 = np.percentile(scores_only, 75)
-        iqr = q3 - q1
-        
-        lower_bound = q1 - 1.5 * iqr
-        upper_bound = q3 + 1.5 * iqr
-        
-        outliers = []
-        for model, score in valid_scores:
-            if score < lower_bound or score > upper_bound:
-                outliers.append(model)
-        
-        return outliers
-    
-    def calculate_advanced_scores(self, normalized_scores: Dict[str, float]) -> Dict[str, float]:
-        """Calculate advanced scoring methods."""
-        # Remove outliers
-        outliers = self.detect_outliers(normalized_scores)
-        filtered_scores = {k: v for k, v in normalized_scores.items() if k not in outliers}
-        
-        # Calculate different scoring methods
-        weighted = self.calculate_weighted_score(filtered_scores)
-        median = self.calculate_median_score(filtered_scores)
-        trimmed_mean = self.calculate_trimmed_mean(filtered_scores)
-        
-        # Combine methods (weighted average of methods)
-        final_score = (weighted * 0.5 + median * 0.3 + trimmed_mean * 0.2)
-        
+        # Helper to safely get score (default to 0 if missing)
+        def get_s(model):
+            return scores.get(model, 0.0)
+
+        # 1. Technical Safety
+        # PaQ: 0.40, LIQE: 0.35, KonIQ: 0.15, SPAQ: 0.10
+        technical = (0.40 * get_s('paq2piq') + 
+                     0.35 * get_s('liqe') + 
+                     0.15 * get_s('koniq') + 
+                     0.10 * get_s('spaq'))
+                     
+        # 2. Portfolio Potential
+        # AVA: 0.50, KonIQ: 0.30, LIQE: 0.10, PaQ: 0.10
+        aesthetic = (0.50 * get_s('ava') + 
+                     0.30 * get_s('koniq') + 
+                     0.10 * get_s('liqe') + 
+                     0.10 * get_s('paq2piq'))
+
+        # 3. General Purpose
+        # PaQ: 0.35, AVA: 0.30, LIQE: 0.25, KonIQ: 0.10
+        general = (0.35 * get_s('paq2piq') + 
+                   0.30 * get_s('ava') + 
+                   0.25 * get_s('liqe') + 
+                   0.10 * get_s('koniq'))
+                   
         return {
-            "weighted_score": round(weighted, 3),
-            "median_score": round(median, 3),
-            "trimmed_mean_score": round(trimmed_mean, 3),
-            "final_robust_score": round(final_score, 3),
-            "outliers_detected": outliers,
-            "outlier_count": len(outliers),
-            "models_used": len(filtered_scores)
+            "technical": round(technical, 3),
+            "aesthetic": round(aesthetic, 3),
+            "general": round(general, 3)
         }
     
     def save_results(self, results: Dict[str, any], output_path: str):
@@ -1057,14 +1044,12 @@ Available Models:
     if results['summary']['average_normalized_score'] is not None:
         print(f"Average normalized score: {results['summary']['average_normalized_score']}")
     
-    # Show advanced scoring if available
-    if 'advanced_scoring' in results['summary']:
-        advanced = results['summary']['advanced_scoring']
-        print(f"Weighted score: {advanced['weighted_score']}")
-        print(f"Median score: {advanced['median_score']}")
-        print(f"Final robust score: {advanced['final_robust_score']}")
-        if advanced['outlier_count'] > 0:
-            print(f"Outliers detected: {advanced['outliers_detected']}")
+    # Show weighted scoring if available
+    if 'weighted_scores' in results['summary']:
+        weighted = results['summary']['weighted_scores']
+        print(f"Technical Score: {weighted['technical']}")
+        print(f"Aesthetic Score: {weighted['aesthetic']}")
+        print(f"General Score:   {weighted['general']}")
     
     if results['summary']['successful_predictions'] > 0:
         print("\nScores:")

@@ -5,6 +5,19 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2025-12-09
+
+### Fixed
+- **Database Integrity**: Resolved critical bug where weighted scores (`score_technical`, `score_aesthetic`, `score_general`) were stored as `0` in the database.
+- **Log Visibility**: Fixed issue where scoring logs were swallowed by the WebUI handler and not shown in the terminal.
+- **Crash Fixes**: Resolved `UnboundLocalError` in LIQE scoring and `AttributeError` in `engine.py`.
+- **Zero-Score Skip**: Improved "Skip already scored" logic to correctly identify and re-process images with invalid zero scores.
+
+### Changed
+- **WebUI Labels**: Gallery labels now display specific score names (e.g., "General: 0.85") instead of generic "Score".
+- **Log Cleanup**: Removed verbose "Processing with..." and "Incorporating..." transition messages for cleaner output.
+- **UI Cleanup**: Removed unused "Job History" tab.
+
 ## [3.0.0] - 2025-12-08
 
 ### Added
@@ -23,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **LIQE Normalization**: Fixed LIQE score normalization to correctly map 1-5 range to 0-1.
 - **Gallery Interaction**: Restored full preview functionality with keyboard navigation.
 - **Cleanup**: Removed "Delete" button from gallery per user request.
+
+### Fixed
+- **LIQE Model Scoring**: Fixed an issue where high-resolution images (e.g., RAW conversions) resulted in incorrect "noise" scores (~1.0). Implemented automatic downscaling to 518px for LIQE inference, restoring accurate scoring (~3.0-4.0).
+- **Database Analysis**: Verified score ranges and normalization logic for all models.
+- **WebUI Logic**: Fixed label clarity for "Skip already scored images".
 
 ## [2.5.2] - 2025-12-07
 

@@ -63,9 +63,3 @@ def generate_thumbnail(image_path):
     except Exception as e:
         print(f"Error generating thumbnail for {image_path}: {e}")
         return None
-    except Exception as e:
-        print(f"Error generating thumbnail for {image_path}: {e}")
-        # Return original if fail, or None?
-        # If we return original, browser might fail to show NEF.
-        # Let's return None to indicate failure.
-        return None

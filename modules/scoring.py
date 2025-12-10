@@ -3,6 +3,22 @@ import os
 import threading
 from modules import db, thumbnails
 from modules.engine import BatchImageProcessor
+import sys
+from pathlib import Path
+
+# Ensure paths are set up to import scripts
+# Assuming project root is parent of 'modules'
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root / "scripts" / "python") not in sys.path:
+    sys.path.insert(0, str(project_root / "scripts" / "python"))
+
+try:
+    from run_all_musiq_models import MultiModelMUSIQ
+except ImportError:
+    # Fallback or allow failure if script not found (unlikely)
+    print("Warning: Could not import MultiModelMUSIQ for version info")
+    class MultiModelMUSIQ:
+        VERSION = "0.0.0"
 
 class ScoringRunner:
     """
@@ -51,8 +67,16 @@ class ScoringRunner:
                 # Need to normalize result format if needed, but engine returns what we need
                 # Ensure image_path is absolute/correct
                 
-                # Check for existing thumbnail or generate one
+                
                 image_path = result.get("image_path")
+                
+                # If skipped because already in DB, result brings no data, so DO NOT upsert (would overwrite with 0s)
+                if result.get("status") == "skipped":
+                     if "average_normalized_score" not in result and "summary" not in result:
+                         # Log/debug if needed, but definitely don't overwrite DB
+                         return
+
+                # Check for existing thumbnail or generate one
                 thumb_path = thumbnails.get_thumb_path(image_path)
                 if not os.path.exists(thumb_path):
                      generated = thumbnails.generate_thumbnail(image_path)
@@ -72,7 +96,8 @@ class ScoringRunner:
             output_dir=input_path,
             skip_existing=skip_existing,
             write_json=False, # DB only
-            json_stdout=False
+            json_stdout=False,
+            skip_predicate=(lambda p: db.image_exists(p, current_version=MultiModelMUSIQ.VERSION)) if skip_existing else None
         )
         
         # Override log method to yield to generator?
@@ -90,7 +115,9 @@ class ScoringRunner:
         log_queue = queue.Queue()
         
         def log_capture(msg, level="INFO"):
-            log_queue.put(f"[{level}] {msg}")
+            formatted = f"[{level}] {msg}"
+            log_queue.put(formatted)
+            print(formatted)
             
         processor.log = log_capture
         
