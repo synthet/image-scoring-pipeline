@@ -9,6 +9,7 @@ Wrapper around modules.engine.BatchImageProcessor.
 import argparse
 import sys
 import os
+import logging
 from pathlib import Path
 
 # Add project root to Python path
@@ -39,6 +40,23 @@ Examples:
     parser.add_argument('--json-stdout', action='store_true', help='Print result JSON to stdout instead of saving files (logs go to stderr)')
     
     args = parser.parse_args()
+
+    # Configure logging
+    log_level = logging.INFO
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        stream=sys.stderr if args.json_stdout else sys.stdout
+    )
+    
+    # Add file handler if requested
+    if args.log_file:
+        file_handler = logging.FileHandler(args.log_file)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s'))
+        logging.getLogger().addHandler(file_handler)
     
     # Validate input directory
     if not os.path.exists(args.input_dir):
@@ -55,7 +73,7 @@ Examples:
     write_json = not args.json_stdout
     
     processor = BatchImageProcessor(
-        log_file=args.log_file, 
+        # log_file argument removed, handling logging via global config
         output_dir=args.output_dir, 
         skip_existing=args.skip_existing, 
         json_stdout=args.json_stdout,

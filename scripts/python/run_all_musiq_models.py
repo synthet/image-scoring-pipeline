@@ -13,6 +13,7 @@ import base64
 import io
 import shutil
 import subprocess
+import logging
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
@@ -142,8 +143,8 @@ class MultiModelMUSIQ:
                 # Fallback to exiftool
                 return self._write_metadata_exiftool(nef_path, rating, label)
             except Exception as e:
-                print(f"Failed to write metadata to NEF file: {e}")
-                print("Install pyexiv2 for best NEF support: pip install pyexiv2")
+                logging.getLogger(__name__).error(f"Failed to write metadata to NEF file: {e}")
+                logging.getLogger(__name__).info("Install pyexiv2 for best NEF support: pip install pyexiv2")
                 return False
     
     def _write_metadata_pyexiv2(self, nef_path: str, rating: int, label: str = None) -> bool:
@@ -171,7 +172,7 @@ class MultiModelMUSIQ:
                 
                 img.modify_xmp(xmp_data)
             
-            print(f"✓ Rating {rating}/5 and Label '{label}' written to NEF file: {nef_path}")
+            logging.getLogger(__name__).info(f"✓ Rating {rating}/5 and Label '{label}' written to NEF file: {nef_path}")
             
             # Remove backup if successful
             if os.path.exists(backup_path):
@@ -180,15 +181,15 @@ class MultiModelMUSIQ:
             return True
             
         except ImportError:
-            print("pyexiv2 not available - install with: pip install pyexiv2")
+            logging.getLogger(__name__).warning("pyexiv2 not available - install with: pip install pyexiv2")
             raise
         except Exception as e:
-            print(f"pyexiv2 rating write failed: {e}")
+            logging.getLogger(__name__).error(f"pyexiv2 rating write failed: {e}")
             # Restore backup if it exists
             backup_path = f"{nef_path}.backup"
             if os.path.exists(backup_path):
                 shutil.move(backup_path, nef_path)
-                print("Restored backup file")
+                logging.getLogger(__name__).info("Restored backup file")
             return False
     
     def _write_metadata_exiftool(self, nef_path: str, rating: int, label: str = None) -> bool:
@@ -215,21 +216,21 @@ class MultiModelMUSIQ:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             
             if result.returncode == 0:
-                print(f"✓ Rating {rating}/5 written to NEF file: {nef_path}")
+                logging.getLogger(__name__).info(f"✓ Rating {rating}/5 written to NEF file: {nef_path}")
                 # Remove backup if successful
                 if os.path.exists(backup_path):
                     os.remove(backup_path)
                 return True
             else:
-                print(f"exiftool failed: {result.stderr}")
+                logging.getLogger(__name__).error(f"exiftool failed: {result.stderr}")
                 # Restore backup
                 if os.path.exists(backup_path):
                     shutil.move(backup_path, nef_path)
                 return False
                 
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-            print(f"exiftool not available or failed: {e}")
-            print("Install exiftool for NEF rating support")
+            logging.getLogger(__name__).warning(f"exiftool not available or failed: {e}")
+            logging.getLogger(__name__).info("Install exiftool for NEF rating support")
             # Restore backup
             backup_path = f"{nef_path}.backup"
             if os.path.exists(backup_path):
@@ -240,7 +241,7 @@ class MultiModelMUSIQ:
         """Setup temporary directory for RAW conversion."""
         if self.temp_dir is None:
             self.temp_dir = tempfile.mkdtemp(prefix='musiq_raw_')
-            print(f"Created temporary directory: {self.temp_dir}")
+            logging.getLogger(__name__).debug(f"Created temporary directory: {self.temp_dir}")
         return self.temp_dir
     
     def cleanup_temp_files(self):
@@ -249,23 +250,23 @@ class MultiModelMUSIQ:
             try:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
-                    print(f"Cleaned up temporary file: {temp_file}")
+                    logging.getLogger(__name__).debug(f"Cleaned up temporary file: {temp_file}")
             except Exception as e:
-                print(f"Warning: Could not remove temporary file {temp_file}: {e}")
+                logging.getLogger(__name__).warning(f"Warning: Could not remove temporary file {temp_file}: {e}")
         
         self.temp_files.clear()
         
         if self.temp_dir and os.path.exists(self.temp_dir):
             try:
                 shutil.rmtree(self.temp_dir)
-                print(f"Cleaned up temporary directory: {self.temp_dir}")
+                logging.getLogger(__name__).debug(f"Cleaned up temporary directory: {self.temp_dir}")
                 self.temp_dir = None
             except Exception as e:
-                print(f"Warning: Could not remove temporary directory {self.temp_dir}: {e}")
+                logging.getLogger(__name__).warning(f"Warning: Could not remove temporary directory {self.temp_dir}: {e}")
     
     def convert_raw_to_jpeg(self, raw_path: str) -> Optional[str]:
         """Convert RAW file to temporary JPEG for processing."""
-        print(f"Converting RAW file: {raw_path}")
+        logging.getLogger(__name__).info(f"Converting RAW file: {raw_path}")
         
         # Setup temp directory
         temp_dir = self.setup_temp_directory()
@@ -286,13 +287,13 @@ class MultiModelMUSIQ:
             try:
                 if method(raw_path, temp_jpeg):
                     self.temp_files.append(temp_jpeg)
-                    print(f"✓ RAW conversion successful: {temp_jpeg}")
+                    logging.getLogger(__name__).info(f"✓ RAW conversion successful: {temp_jpeg}")
                     return temp_jpeg
             except Exception as e:
-                print(f"⚠ Conversion method failed: {method.__name__}: {e}")
+                logging.getLogger(__name__).warning(f"⚠ Conversion method failed: {method.__name__}: {e}")
                 continue
         
-        print(f"✗ All RAW conversion methods failed for: {raw_path}")
+        logging.getLogger(__name__).error(f"✗ All RAW conversion methods failed for: {raw_path}")
         return None
     
     def _convert_with_rawpy(self, raw_path: str, output_path: str) -> bool:
@@ -377,8 +378,9 @@ class MultiModelMUSIQ:
             print(f"Pillow conversion failed: {e}")
             return False
     
-    def __init__(self):
+    def __init__(self, skip_gpu: bool = False):
         self.device = None
+
         self.gpu_available = False
         self.models = {}
         self.temp_dir = None
@@ -440,7 +442,11 @@ class MultiModelMUSIQ:
         }
         
         # Initialize GPU support
-        self._setup_gpu()
+        if not skip_gpu:
+            self._setup_gpu()
+        else:
+             self.gpu_available = False
+             self.device = '/CPU:0'
         
         # Model weights for weighted scoring (based on statistical analysis)
         self.model_weights = {
@@ -461,11 +467,13 @@ class MultiModelMUSIQ:
                     tf.config.experimental.set_memory_growth(gpu, True)
                 self.gpu_available = True
                 self.device = '/GPU:0'
-                print(f"GPU detected: {len(gpus)} device(s) available")
-                print(f"Using device: {self.device}")
+                self.gpu_available = True
+                self.device = '/GPU:0'
+                logging.getLogger(__name__).info(f"GPU detected: {len(gpus)} device(s) available")
+                logging.getLogger(__name__).info(f"Using device: {self.device}")
             except RuntimeError as e:
-                print(f"GPU setup failed: {e}")
-                print("Falling back to CPU")
+                logging.getLogger(__name__).error(f"GPU setup failed: {e}")
+                logging.getLogger(__name__).warning("Falling back to CPU")
                 self.gpu_available = False
                 self.device = '/CPU:0'
         else:
@@ -484,7 +492,7 @@ class MultiModelMUSIQ:
         authentication states, and offline scenarios.
         """
         if model_name not in self.model_sources:
-            print(f"Error: Unknown model variant '{model_name}'")
+            logging.getLogger(__name__).error(f"Error: Unknown model variant '{model_name}'")
             return False
         
         sources = self.model_sources[model_name]
@@ -495,40 +503,40 @@ class MultiModelMUSIQ:
         # Try TensorFlow Hub first (preferred - no auth needed, usually faster)
         if tfhub_url:
             try:
-                print(f"Loading {model_name.upper()} model from TensorFlow Hub: {tfhub_url}")
+                logging.getLogger(__name__).info(f"Loading {model_name.upper()} model from TensorFlow Hub: {tfhub_url}")
                 with tf.device(self.device):
                     model = hub.load(tfhub_url)
                     self.models[model_name] = model
-                    print(f"✓ {model_name.upper()} model loaded successfully from TensorFlow Hub")
+                    logging.getLogger(__name__).info(f"✓ {model_name.upper()} model loaded successfully from TensorFlow Hub")
                     return True
             except Exception as e:
-                print(f"⚠ TensorFlow Hub failed for {model_name.upper()}: {str(e)[:80]}...")
-                print(f"  Falling back to Kaggle Hub...")
+                logging.getLogger(__name__).warning(f"⚠ TensorFlow Hub failed for {model_name.upper()}: {str(e)[:80]}...")
+                logging.getLogger(__name__).info(f"  Falling back to Kaggle Hub...")
         
         # Fall back to Kaggle Hub (requires authentication)
         if kaggle_path:
             try:
-                print(f"Loading {model_name.upper()} model from Kaggle Hub: {kaggle_path}")
+                logging.getLogger(__name__).info(f"Loading {model_name.upper()} model from Kaggle Hub: {kaggle_path}")
                 
                 # Download model from Kaggle Hub
                 model_path = kagglehub.model_download(kaggle_path)
-                print(f"Model downloaded to: {model_path}")
+                logging.getLogger(__name__).debug(f"Model downloaded to: {model_path}")
                 
                 # Load the model
                 with tf.device(self.device):
                     model = tf.saved_model.load(model_path)
                     self.models[model_name] = model
-                    print(f"✓ {model_name.upper()} model loaded successfully from Kaggle Hub")
+                    logging.getLogger(__name__).info(f"✓ {model_name.upper()} model loaded successfully from Kaggle Hub")
                     return True
                     
             except Exception as e:
-                print(f"⚠ Kaggle Hub failed for {model_name.upper()}: {str(e)[:80]}...")
-                print(f"  Falling back to local checkpoint...")
+                logging.getLogger(__name__).warning(f"⚠ Kaggle Hub failed for {model_name.upper()}: {str(e)[:80]}...")
+                logging.getLogger(__name__).info(f"  Falling back to local checkpoint...")
         
         # Fall back to local checkpoint (offline, no network needed)
         if local_path and os.path.exists(local_path):
             try:
-                print(f"Loading {model_name.upper()} model from local checkpoint: {local_path}")
+                logging.getLogger(__name__).info(f"Loading {model_name.upper()} model from local checkpoint: {local_path}")
                 
                 with tf.device(self.device):
                     # Check if it's a SavedModel directory or .npz file
@@ -536,38 +544,38 @@ class MultiModelMUSIQ:
                         # Load SavedModel (VILA cached model)
                         model = tf.saved_model.load(local_path)
                         self.models[model_name] = model
-                        print(f"✓ {model_name.upper()} model loaded successfully from local SavedModel")
+                        logging.getLogger(__name__).info(f"✓ {model_name.upper()} model loaded successfully from local SavedModel")
                         return True
                     elif local_path.endswith('.npz'):
                         # Load .npz checkpoint (MUSIQ models)
                         # Note: .npz files require the original MUSIQ loading code
                         # For now, try loading as SavedModel if conversion exists
-                        print(f"⚠ .npz checkpoint loading not yet implemented for {model_name.upper()}")
-                        print(f"  Checkpoint available at: {local_path}")
-                        print(f"  Consider using TF Hub or Kaggle Hub sources instead")
+                        logging.getLogger(__name__).warning(f"⚠ .npz checkpoint loading not yet implemented for {model_name.upper()}")
+                        logging.getLogger(__name__).info(f"  Checkpoint available at: {local_path}")
+                        logging.getLogger(__name__).info(f"  Consider using TF Hub or Kaggle Hub sources instead")
                         return False
                     else:
-                        print(f"⚠ Unknown local checkpoint format: {local_path}")
+                        logging.getLogger(__name__).warning(f"⚠ Unknown local checkpoint format: {local_path}")
                         return False
                         
             except Exception as e:
-                print(f"✗ Failed to load {model_name.upper()} model from local checkpoint: {str(e)[:80]}...")
+                logging.getLogger(__name__).error(f"✗ Failed to load {model_name.upper()} model from local checkpoint: {str(e)[:80]}...")
         elif local_path:
-            print(f"⚠ Local checkpoint not found: {local_path}")
-            print(f"  Download checkpoints from: https://storage.googleapis.com/gresearch/musiq/")
+            logging.getLogger(__name__).warning(f"⚠ Local checkpoint not found: {local_path}")
+            logging.getLogger(__name__).info(f"  Download checkpoints from: https://storage.googleapis.com/gresearch/musiq/")
         
         # All sources failed or unavailable
-        print(f"✗ Failed to load {model_name.upper()} model: All available sources failed")
+        logging.getLogger(__name__).error(f"✗ Failed to load {model_name.upper()} model: All available sources failed")
         if "vila" in model_name.lower():
-            print("\nNote: For VILA model:")
-            print("  - TF Hub: No authentication needed")
-            print("  - Kaggle Hub: Requires kaggle.json authentication")
-            print("  See docs/vila/README_VILA.md for setup instructions.")
+            logging.getLogger(__name__).info("\nNote: For VILA model:")
+            logging.getLogger(__name__).info("  - TF Hub: No authentication needed")
+            logging.getLogger(__name__).info("  - Kaggle Hub: Requires kaggle.json authentication")
+            logging.getLogger(__name__).info("  See docs/vila/README_VILA.md for setup instructions.")
         else:
-            print("\nNote: For MUSIQ models:")
-            print("  - TF Hub: No authentication needed (recommended)")
-            print("  - Kaggle Hub: Requires kaggle.json authentication")
-            print("  - Local .npz: Download from https://storage.googleapis.com/gresearch/musiq/")
+            logging.getLogger(__name__).info("\nNote: For MUSIQ models:")
+            logging.getLogger(__name__).info("  - TF Hub: No authentication needed (recommended)")
+            logging.getLogger(__name__).info("  - Kaggle Hub: Requires kaggle.json authentication")
+            logging.getLogger(__name__).info("  - Local .npz: Download from https://storage.googleapis.com/gresearch/musiq/")
         
         return False
     
@@ -581,7 +589,7 @@ class MultiModelMUSIQ:
     def predict_quality(self, image_path: str, model_name: str) -> Optional[float]:
         """Predict image quality using a specific model."""
         if model_name not in self.models:
-            print(f"Error: Model '{model_name}' not loaded")
+            logging.getLogger(__name__).error(f"Error: Model '{model_name}' not loaded")
             return None
         
         model = self.models[model_name]
@@ -637,10 +645,10 @@ class MultiModelMUSIQ:
             return score
             
         except Exception as e:
-            print(f"Error predicting with {model_name.upper()} model: {e}")
+            logging.getLogger(__name__).error(f"Error predicting with {model_name.upper()} model: {e}")
             return None
     
-    def run_all_models(self, image_path: str, external_scores: Dict[str, any] = None, logger=print) -> Dict[str, any]:
+    def run_all_models(self, image_path: str, external_scores: Dict[str, any] = None, logger=print, write_metadata: bool = True) -> Dict[str, any]:
         """
         Run all loaded models on the image and return results.
         
@@ -648,6 +656,7 @@ class MultiModelMUSIQ:
             image_path: Path to the image file
             external_scores: Dictionary of pre-calculated scores to include (e.g. {'liqe': {'score': 0.8, ...}})
             logger: Function to use for logging (default: print)
+            write_metadata: Whether to write ratings back to the image file (default: True)
         """
         # Check if this is a RAW file
         is_raw = self.is_raw_file(image_path)
@@ -795,7 +804,7 @@ class MultiModelMUSIQ:
              results["summary"]["average_normalized_score"] = avg_score
              
              # Write rating to NEF files if applicable
-             if self.is_nef_file(image_path):
+             if write_metadata and self.is_nef_file(image_path):
                  if avg_score is not None:
                      rating = self.score_to_rating(avg_score)
                      label = self.determine_lightroom_label(normalized_scores_dict)

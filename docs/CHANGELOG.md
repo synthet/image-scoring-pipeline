@@ -5,6 +5,17 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2] - 2025-12-14
+
+### Fixed
+- **Scoring Zeros**: Fixed critical bug where individual model scores (SPAQ, AVA, KONIQ, PAQ2PIQ) were failing to persist to the database (recorded as 0) due to a key mismatch in the scoring pipeline.
+- **Delete Button**: Resolved WebUI issue where the "Delete NEF" button was not visible for eligible images (rating <= 2 or specific labels).
+- **CUDA Init**: Improved handling of CUDA initialization errors (e.g., Unknown Error 303) to prevent silent failures or confusing fallback states.
+
+### Changed
+- **Logging**: Standardized logging across the entire codebase. Replaced `print` statements with Python's `logging` module for consistent formatting, timestamps, and thread identification.
+- **Pipeline Robustness**: Enhanced `sync_folder_to_db` and `ResultWorker` to better handle unscored images and prevent thumbnail path loss.
+
 ## [3.0.1] - 2025-12-09
 
 ### Fixed

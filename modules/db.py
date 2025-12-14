@@ -2,6 +2,7 @@ import sqlite3
 import json
 import os
 import datetime
+import logging
 from pathlib import Path
 
 DB_FILE = "scoring_history.db"
@@ -34,7 +35,7 @@ def image_exists(file_path, current_version=None):
     conn = get_db()
     c = conn.cursor()
     # Check existence AND if score is valid (not 0 or NULL)
-    c.execute("SELECT score, model_version, score_general FROM images WHERE file_path = ?", (file_path,))
+    c.execute("SELECT score, model_version, score_general, thumbnail_path FROM images WHERE file_path = ?", (file_path,))
     row = c.fetchone()
     conn.close()
     
@@ -44,6 +45,11 @@ def image_exists(file_path, current_version=None):
         # Check if score is valid
         if score is None or score <= 0:
             return False 
+
+        # Check thumbnail existence (User Requirement)
+        thumb = row['thumbnail_path'] if 'thumbnail_path' in row.keys() else row[3]
+        if not thumb:
+             return False
 
         # Check version if provided
         if current_version:
@@ -244,7 +250,7 @@ def sync_folder_to_db(folder_path, job_id=None):
             
             count += 1
         except Exception as e:
-            print(f"Failed to sync {json_file}: {e}")
+            logging.error(f"Failed to sync {json_file}: {e}")
             
     conn.commit()
     conn.close()
@@ -259,9 +265,9 @@ def upsert_image(job_id, result):
     c = conn.cursor()
     
     # DEBUG
-    print("DEBUG UPSERT ID:", result.get("image_name"))
-    print("DEBUG UPSERT TECH:", result.get("score_technical"))
-    print("DEBUG UPSERT GEN:", result.get("score_general"))
+    logging.debug(f"DEBUG UPSERT ID: {result.get('image_name')}")
+    logging.debug(f"DEBUG UPSERT TECH: {result.get('score_technical')}")
+    logging.debug(f"DEBUG UPSERT GEN: {result.get('score_general')}")
 
     # Extract fields
     image_path = result.get("image_path", "")
@@ -286,9 +292,17 @@ def upsert_image(job_id, result):
         
     # Individual Scores
     individual_scores = result.get("individual_scores", {})
+    models_scores = result.get("models", {})
     
     def get_ind_score(name):
-        # Handle cases where value is dict or float
+        # Try 'models' first (new format)
+        if name in models_scores:
+            m_data = models_scores[name]
+            if isinstance(m_data, dict):
+                 return m_data.get("normalized_score", m_data.get("score", 0))
+            return 0
+            
+        # Try 'individual_scores' (legacy format)
         val = individual_scores.get(name)
         if isinstance(val, dict):
             return val.get("normalized_score", val.get("score", 0))
@@ -384,3 +398,37 @@ def delete_image(file_path):
     c.execute("DELETE FROM images WHERE file_path = ?", (file_path,))
     conn.commit()
     conn.close()
+
+def backup_database(max_backups=5):
+    """
+    Creates a backup of the database file and rotates old backups.
+    """
+    if not os.path.exists(DB_FILE):
+        return
+
+    backup_dir = "backups"
+    if not os.path.exists(backup_dir):
+        os.makedirs(backup_dir)
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(backup_dir, f"scoring_history_{timestamp}.db")
+
+    try:
+        # Copy file
+        import shutil
+        shutil.copy2(DB_FILE, backup_path)
+        print(f"Database backup created: {backup_path}")
+
+        # Rotate
+        backups = sorted([os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.startswith("scoring_history_") and f.endswith(".db")])
+        
+        while len(backups) > max_backups:
+            oldest = backups.pop(0)
+            try:
+                os.remove(oldest)
+                print(f"Removed old backup: {oldest}")
+            except Exception as e:
+                print(f"Failed to remove old backup {oldest}: {e}")
+
+    except Exception as e:
+        print(f"Backup failed: {e}")

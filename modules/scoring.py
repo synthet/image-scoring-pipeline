@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 # Ensure paths are set up to import scripts
-# Assuming project root is parent of 'modules'
 project_root = Path(__file__).resolve().parent.parent
 if str(project_root / "scripts" / "python") not in sys.path:
     sys.path.insert(0, str(project_root / "scripts" / "python"))
@@ -15,7 +14,6 @@ if str(project_root / "scripts" / "python") not in sys.path:
 try:
     from run_all_musiq_models import MultiModelMUSIQ
 except ImportError:
-    # Fallback or allow failure if script not found (unlikely)
     print("Warning: Could not import MultiModelMUSIQ for version info")
     class MultiModelMUSIQ:
         VERSION = "0.0.0"
@@ -25,30 +23,26 @@ class ScoringRunner:
     Runs scoring in a local thread using modules.engine.
     """
     def __init__(self):
-        self.stop_event = threading.Event()
-        self.current_thread = None
+        # We hold the shared scorer here to persist it across runs
         self.shared_scorer = None
+        # We keep a ref to the current processor to stop it
+        self.current_processor = None
         
     def run_batch(self, input_path, job_id, skip_existing=False):
         """
         Generator that runs the batch process and yields log lines.
-        Upserts results to DB and generates thumbnails via callback.
         """
-        # Convert Windows path to WSL path if running in WSL
-        # User input: D:\Photos\... -> /mnt/d/Photos/...
+        # Convert Windows path to WSL path if running in WSL (legacy check)
         if ":" in input_path and input_path[1] == ":":
             drive = input_path[0].lower()
             path = input_path[2:].replace("\\", "/")
             wsl_path = f"/mnt/{drive}{path}"
-            if os.path.exists(wsl_path):
-                input_path = wsl_path
-            else:
-                 yield f"Error: Converted WSL path not found: {wsl_path}"
-                 # Fallback to original path just in case
-                 if not os.path.exists(input_path):
-                     yield f"Error: Original path not found: {input_path}"
-                     return
-        elif not os.path.exists(input_path):
+            # Check if we are actually in WSL context
+            if os.path.exists("/mnt/"): 
+                 if os.path.exists(wsl_path):
+                     input_path = wsl_path
+
+        if not os.path.exists(input_path):
             yield f"Error: Path not found: {input_path}"
             return
 
@@ -60,10 +54,9 @@ class ScoringRunner:
         if self.shared_scorer is None:
             yield "Initializing models first (this happens once)..."
             try:
-                # Initialize local reference
                 new_scorer = MultiModelMUSIQ()
                 
-                # Load models one by one to show progress
+                # Load models
                 musiq_models = ['spaq', 'ava', 'koniq', 'paq2piq']
                 for model_name in musiq_models:
                     yield f"Loading model: {model_name.upper()}..."
@@ -78,87 +71,42 @@ class ScoringRunner:
                 yield f"Error loading models: {str(e)}"
                 return
 
-        self.stop_event.clear()
-        
-        # Define callback to handle results
-        def result_callback(result):
-            if self.stop_event.is_set():
-                raise InterruptedError("Stopped by user")
-                
-            if result.get("status") in ["success", "skipped"]:
-                # Handle DB Upsert
-                # Need to normalize result format if needed, but engine returns what we need
-                # Ensure image_path is absolute/correct
-                
-                
-                image_path = result.get("image_path")
-                
-                # If skipped because already in DB, result brings no data, so DO NOT upsert (would overwrite with 0s)
-                if result.get("status") == "skipped":
-                     if "average_normalized_score" not in result and "summary" not in result:
-                         # Log/debug if needed, but definitely don't overwrite DB
-                         return
-
-                # Check for existing thumbnail or generate one
-                thumb_path = thumbnails.get_thumb_path(image_path)
-                if not os.path.exists(thumb_path):
-                     generated = thumbnails.generate_thumbnail(image_path)
-                     if generated:
-                         thumb_path = generated
-                     else:
-                         thumb_path = None
-                
-                result["thumbnail_path"] = thumb_path
-                
-                # DB Upsert
-                db.upsert_image(job_id, result)
-        
         # Initialize processor
-        # We generally do NOT write JSON files in this mode, only DB.
         processor = BatchImageProcessor(
             output_dir=input_path,
             skip_existing=skip_existing,
-            write_json=False, # DB only
-            json_stdout=False,
-            skip_predicate=(lambda p: db.image_exists(p, current_version=MultiModelMUSIQ.VERSION)) if skip_existing else None,
-            scorer=self.shared_scorer  # PROVISIONED SCORER
+            scorer=self.shared_scorer
         )
+        self.current_processor = processor
         
-        # Override log method to yield to generator?
-        # Typically generators are pulled.
-        # We can use a queue or shared buffer if we want to stream logs realtime.
-        # Simplest: Just run it and rely on the fact that `run_batch` generator architecture
-        # expects to yield lines. 
-        # But `process_directory` blocks. 
+        # Inject job_id for DB upserts (Engine HACK)
+        processor.current_job_id = job_id
         
-        # Solution: We can monkeypatch processor.log to append to a list, 
-        # but that doesn't yield realtime.
-        # Better: run processor in a thread, and consume a queue in this generator.
-        
+        # Setup log capture
         import queue
         log_queue = queue.Queue()
         
-        def log_capture(msg, level="INFO"):
-            formatted = f"[{level}] {msg}"
-            log_queue.put(formatted)
-            print(formatted, flush=True)
+        def log_capture(msg):
+            log_queue.put(msg)
+            print(msg, flush=True) # Still print to stdout for debugging
             
-        processor.log = log_capture
+        processor.log_func = log_capture
+        
+        # Database Backup before starting
+        yield "Creating database backup..."
+        db.backup_database()
         
         # Run processing in background thread so we can yield logs
         def target():
             try:
-                processor.process_directory(input_path, input_path, callback=result_callback)
+                # process_directory now blocks until all workers are done
+                processor.process_directory(input_path, input_path)
                 log_queue.put(None) # Signal done
-            except InterruptedError:
-                log_queue.put("Stopped.")
-                log_queue.put(None)
             except Exception as e:
                 log_queue.put(f"Error: {e}")
                 log_queue.put(None)
                 
         t = threading.Thread(target=target)
-        self.current_thread = t
         t.start()
         
         # Yield from queue
@@ -174,7 +122,14 @@ class ScoringRunner:
                 continue
                 
         t.join()
+        
+        # Cleanup
+        self.current_processor = None
         yield "Processing finished."
+        
+        # Backup after
+        db.backup_database()
 
     def stop(self):
-        self.stop_event.set()
+        if self.current_processor:
+            self.current_processor.stop_event.set()
