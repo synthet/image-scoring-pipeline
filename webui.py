@@ -1,3 +1,6 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logging (1=INFO, 2=WARN, 3=ERROR)
+
 import gradio as gr
 import threading
 import time
@@ -116,10 +119,10 @@ def first_page(sort_by, sort_order):
 
 def display_details(evt: gr.SelectData, raw_paths):
     if evt is None:
-        return {}
+        return {}, gr.update(visible=False)
     index = evt.index
     if index is None or not raw_paths or index >= len(raw_paths):
-        return {}
+        return {}, gr.update(visible=False)
     
     file_path = raw_paths[index]
     details = db.get_image_details(file_path)
@@ -131,7 +134,141 @@ def display_details(evt: gr.SelectData, raw_paths):
         except:
             pass
             
-    return details
+    # Check for Delete Button Visibility
+    # Criteria: 1. Is NEF file? 2. Rating <= 2 OR Label "Red"/"Yellow"
+    
+    show_delete = False
+    
+    # 1. Check if it's a NEF file
+    is_nef = False
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in ['.nef', '.nrw']:
+        is_nef = True
+        
+    if is_nef:
+        # 2. Check Logic based on Score/Rating
+        
+        # Parse scores_json safely
+        data = details.get('scores_json', {})
+        if isinstance(data, str): 
+            try: data = json.loads(data) 
+            except: data = {}
+            
+        # Locate nef_metadata (could be in multiple places depending on version)
+        # 1. Top level
+        nef_meta = data.get('nef_metadata')
+        
+        # 2. Inside summary (Legacy)
+        if not nef_meta and 'summary' in data:
+            nef_meta = data['summary'].get('nef_metadata')
+            
+        # 3. Inside full_results -> summary (New 3.0.0 structure)
+        if not nef_meta and 'full_results' in data:
+             full_res = data['full_results']
+             if 'summary' in full_res:
+                 nef_meta = full_res['summary'].get('nef_metadata')
+        
+        rating = 0
+        label = ""
+        
+        if nef_meta:
+            rating = nef_meta.get('rating', 0)
+            label = nef_meta.get('label', '')
+        else:
+            # Fallback: Calculate from score_general in details
+            sg = details.get('score_general')
+            if sg is not None:
+                try:
+                    s = float(sg)
+                    if s < 0.40: rating = 1
+                    elif s < 0.55: rating = 2
+                    elif s < 0.70: rating = 3
+                    elif s < 0.85: rating = 4
+                    else: rating = 5
+                except:
+                    pass
+            
+        rate_cond = False
+        try:
+            # Check rating <= 2
+            if int(rating) > 0 and int(rating) <= 2:
+                rate_cond = True
+        except:
+            pass
+            
+        label_cond = label in ["Red", "Yellow"]
+        
+        if rate_cond or label_cond:
+            show_delete = True
+
+    return details, gr.update(visible=show_delete)
+
+def delete_nef(details):
+    """
+    Deletes the NEF file associated with the image.
+    """
+    if not details:
+        return "No image selected", gr.update(visible=False)
+    
+    try:
+        # Resolve 'details' if it's a string (though it should be dict from State?)
+        # Gradio might pass the dict as JSON object
+        
+        # Find NEF path
+        # 1. Try nef_metadata['file_path']
+        # 2. Try replacing extension of main file_path
+        
+        nef_path = None
+        
+        # Check nef_metadata
+        scores_json = details.get('scores_json', {})
+        if isinstance(scores_json, str):
+             try: scores_json = json.loads(scores_json)
+             except: scores_json = {}
+             
+        nef_meta = scores_json.get('nef_metadata', {})
+        if nef_meta.get('file_path'):
+            nef_path = nef_meta.get('file_path')
+            
+        # Fallback: Assume simple sidecar
+        if not nef_path:
+            base_path = details.get('file_path', '')
+            if base_path:
+                # Replace suffix with .NEF (try sensitive)
+                p = os.path.splitext(base_path)[0]
+                candidates = [p + ".NEF", p + ".nef"]
+                for c in candidates:
+                    if os.path.exists(c):
+                        nef_path = c
+                        break
+        
+        deleted_files = []
+        if nef_path and os.path.exists(nef_path):
+            os.remove(nef_path)
+            deleted_files.append("NEF")
+            
+        # Delete Thumbnail
+        thumb_path = details.get('thumbnail_path')
+        if thumb_path and os.path.exists(thumb_path):
+            try:
+                os.remove(thumb_path)
+                deleted_files.append("Thumb")
+            except:
+                pass
+                
+        # Delete DB Record
+        file_path = details.get('file_path')
+        if file_path:
+            db.delete_image(file_path)
+            deleted_files.append("DB")
+            
+        if deleted_files:
+            return f"Deleted: {', '.join(deleted_files)}", gr.update(visible=False)
+        else:
+            return f"NEF file not found: {nef_path}", gr.update(visible=False)
+            
+    except Exception as e:
+        return f"Error deleting: {e}", gr.update(visible=True)
 
 def get_jobs_history():
     rows = db.get_jobs()
@@ -200,7 +337,10 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
             gallery = gr.Gallery(label="Scored Images", columns=5, height="auto", allow_preview=True)
             
             with gr.Row():
-                image_details = gr.JSON(label="Image Details")
+                with gr.Column():
+                    image_details = gr.JSON(label="Image Details")
+                    delete_btn = gr.Button("Delete Original NEF", variant="stop", visible=False)
+                    delete_status = gr.Textbox(label="Deletion Status", interactive=False, visible=True)
 
             # Events
             
@@ -230,7 +370,15 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
             order_dropdown.change(first_page, [sort_dropdown, order_dropdown], [current_page, *gallery_outputs])
             
             # Selection -> Details
-            gallery.select(fn=display_details, inputs=[current_paths], outputs=[image_details])
+            # Update: added delete_btn to outputs
+            gallery.select(fn=display_details, inputs=[current_paths], outputs=[image_details, delete_btn])
+            
+            # Delete Action
+            delete_btn.click(
+                fn=delete_nef,
+                inputs=[image_details],
+                outputs=[delete_status, delete_btn]
+            )
             
 
 

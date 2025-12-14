@@ -377,3 +377,10 @@ def get_image_details(file_path):
         return dict(row)
     return {}
 
+
+def delete_image(file_path):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("DELETE FROM images WHERE file_path = ?", (file_path,))
+    conn.commit()
+    conn.close()

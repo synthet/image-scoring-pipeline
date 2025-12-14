@@ -40,10 +40,12 @@ class BatchImageProcessor:
     
     def __init__(self, log_file: str = None, output_dir: str = None, 
                  skip_existing: bool = False, json_stdout: bool = False,
-                 write_json: bool = True, skip_predicate: Callable[[str], bool] = None):
+                 write_json: bool = True, skip_predicate: Callable[[str], bool] = None,
+                 scorer: 'MultiModelMUSIQ' = None):
         self.json_stdout = json_stdout
         self.write_json = write_json
         self.skip_predicate = skip_predicate
+        self.external_scorer = scorer
         
         if log_file is None:
             log_file = f"musiq_batch_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -224,6 +226,14 @@ class BatchImageProcessor:
             if liqe_score_data:
                 external_scores['liqe'] = liqe_score_data
             
+            # Clear PyTorch cache to free up VRAM for TensorFlow
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+            
             results = scorer.run_all_models(image_path, external_scores=external_scores, logger=self.log)
             
             # Save results if enabled
@@ -303,24 +313,28 @@ class BatchImageProcessor:
         
         self.log(f"Found {len(image_files)} image files")
         
-        self.log("Initializing MUSIQ models (SPAQ, AVA, KONIQ, PAQ2PIQ)...")
-        try:
-            scorer = MultiModelMUSIQ()
-            musiq_models = ['spaq', 'ava', 'koniq', 'paq2piq']
-            load_results = {}
-            for model_name in musiq_models:
-                load_results[model_name] = scorer.load_model(model_name)
-            
-            successful_loads = sum(1 for success in load_results.values() if success)
-            self.log(f"Loaded {successful_loads}/{len(load_results)} models")
-            
-            if successful_loads == 0:
-                self.log("No models loaded. Aborting.", "ERROR")
-                return
+        if self.external_scorer:
+            self.log("Using pre-loaded MUSIQ models.")
+            scorer = self.external_scorer
+        else:
+            self.log("Initializing MUSIQ models (SPAQ, AVA, KONIQ, PAQ2PIQ)...")
+            try:
+                scorer = MultiModelMUSIQ()
+                musiq_models = ['spaq', 'ava', 'koniq', 'paq2piq']
+                load_results = {}
+                for model_name in musiq_models:
+                    load_results[model_name] = scorer.load_model(model_name)
                 
-        except Exception as e:
-            self.log(f"Failed to initialize models: {str(e)}", "ERROR")
-            return
+                successful_loads = sum(1 for success in load_results.values() if success)
+                self.log(f"Loaded {successful_loads}/{len(load_results)} models")
+                
+                if successful_loads == 0:
+                    self.log("No models loaded. Aborting.", "ERROR")
+                    return
+                    
+            except Exception as e:
+                self.log(f"Failed to initialize models: {str(e)}", "ERROR")
+                return
         
         self.log("Initializing LIQE model...")
         liqe_scorer = LiqeScorer()

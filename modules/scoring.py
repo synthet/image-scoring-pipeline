@@ -27,6 +27,7 @@ class ScoringRunner:
     def __init__(self):
         self.stop_event = threading.Event()
         self.current_thread = None
+        self.shared_scorer = None
         
     def run_batch(self, input_path, job_id, skip_existing=False):
         """
@@ -55,6 +56,28 @@ class ScoringRunner:
         yield f"Input: {input_path}"
         yield "-" * 20
         
+        # Checking/Loading Models
+        if self.shared_scorer is None:
+            yield "Initializing models first (this happens once)..."
+            try:
+                # Initialize local reference
+                new_scorer = MultiModelMUSIQ()
+                
+                # Load models one by one to show progress
+                musiq_models = ['spaq', 'ava', 'koniq', 'paq2piq']
+                for model_name in musiq_models:
+                    yield f"Loading model: {model_name.upper()}..."
+                    success = new_scorer.load_model(model_name)
+                    if not success:
+                         yield f"Warning: Failed to load {model_name}"
+                
+                self.shared_scorer = new_scorer
+                yield "Models initialized successfully."
+                
+            except Exception as e:
+                yield f"Error loading models: {str(e)}"
+                return
+
         self.stop_event.clear()
         
         # Define callback to handle results
@@ -97,7 +120,8 @@ class ScoringRunner:
             skip_existing=skip_existing,
             write_json=False, # DB only
             json_stdout=False,
-            skip_predicate=(lambda p: db.image_exists(p, current_version=MultiModelMUSIQ.VERSION)) if skip_existing else None
+            skip_predicate=(lambda p: db.image_exists(p, current_version=MultiModelMUSIQ.VERSION)) if skip_existing else None,
+            scorer=self.shared_scorer  # PROVISIONED SCORER
         )
         
         # Override log method to yield to generator?
@@ -117,7 +141,7 @@ class ScoringRunner:
         def log_capture(msg, level="INFO"):
             formatted = f"[{level}] {msg}"
             log_queue.put(formatted)
-            print(formatted)
+            print(formatted, flush=True)
             
         processor.log = log_capture
         

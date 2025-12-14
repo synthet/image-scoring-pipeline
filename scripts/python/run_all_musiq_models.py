@@ -792,6 +792,7 @@ class MultiModelMUSIQ:
              
              # Calculate rating and label
              avg_score = weighted_scores["general"]
+             results["summary"]["average_normalized_score"] = avg_score
              
              # Write rating to NEF files if applicable
              if self.is_nef_file(image_path):
@@ -813,6 +814,11 @@ class MultiModelMUSIQ:
     def is_already_processed(self, image_path: str, output_dir: str) -> bool:
         """Check if image has already been processed with current version and correct path."""
         image_name = os.path.splitext(os.path.basename(image_path))[0]
+        
+        # Default to image directory if output_dir is not specified
+        if output_dir is None:
+            output_dir = os.path.dirname(image_path)
+            
         json_path = os.path.join(output_dir, f"{image_name}.json")
         
         if not os.path.exists(json_path):
