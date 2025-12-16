@@ -5,6 +5,24 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2025-12-15
+
+### Added
+- **Fix DB Feature**: Added "Fix DB" button to WebUI to identify and rescore images with missing models. 
+- **Gallery Filters**: Added dropdown to filter images by Color Label and Star Rating.
+- **Persistent Model Caching**: TensorFlow Hub models now cache locally to prevent repeated downloads.
+- **Portable Database**: Implemented content-based hashing to support moving the database and images between devices.
+
+### Changed
+- **Z8 Thumbnail Fix**: Improved `dcraw` extraction for Nikon Z8 NEF files to prevent corrupted thumbnails.
+- **Speed Optimization**: Optimized skip logic to check database existence before calculating hashes.
+- **Database Cleanup**: Removed unused fields (`metadata`, `keywords`, `normalized_score`) and simplified schema.
+- **Logging**: Standardized logging format across all modules.
+
+### Fixed
+- **Scoring Pipeline**: Resolved "get" attribute error in `ResultWorker` and fixed zero-value recording for missing scores.
+- **Thumbnail Regeneration**: `generate_thumbnails.py` now correctly identifies and replaces corrupted Z8 thumbnails.
+
 ## [3.0.2] - 2025-12-14
 
 ### Fixed

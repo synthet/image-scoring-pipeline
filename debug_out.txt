@@ -1,0 +1,9 @@
+Checking for exiftool in path: /usr/bin/exiftool
+Target File: /mnt/d/Photos/Z8/180-600mm/2025/2025-11-16/DSC_6007.NEF
+Running command: exiftool -Compression -s -S /mnt/d/Photos/Z8/180-600mm/2025/2025-11-16/DSC_6007.NEF
+Return Code: 0
+Stdout: 'Nikon NEF Compressed
+'
+Stderr: ''
+Parsed Compression: 'Nikon NEF Compressed'
+NO MATCH: Nikon HE not found in string.

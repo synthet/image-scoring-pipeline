@@ -60,6 +60,11 @@ def test_upsert_mapping():
                 "general": 0.439
             },
             "average_normalized_score": 0.439
+        },
+        # Simulate the injection done by ResultWorker
+        "nef_metadata": {
+            "rating": 4,
+            "label": "Blue"
         }
     }
     
@@ -89,27 +94,33 @@ def test_upsert_mapping():
         "score_spaq": 0.527,
         "score_ava": 0.396,
         "score_koniq": 0.639,
-        "score_paq2piq": 0.732
+        "score_paq2piq": 0.732,
+        "rating": 4,
+        "label": "Blue",
+        "score_general": 0.439
     }
     
     for col, expected in expectations.items():
         actual = row[col]
         # Handle None if not inserted
         if actual is None:
-            actual = 0
+            if isinstance(expected, (int, float)):
+                actual = 0
+            else:
+                actual = ""
             
-        if abs(actual - expected) > 0.001:
-            print(f"FAIL: {col} expected {expected}, got {actual}")
-            errors += 1
+        if isinstance(expected, (int, float)):
+            if abs(actual - expected) > 0.001:
+                print(f"FAIL: {col} expected {expected}, got {actual}")
+                errors += 1
+            else:
+                print(f"PASS: {col} = {actual}")
         else:
-            print(f"PASS: {col} = {actual}")
-            
-    # Check Weighted
-    if abs(row["score_general"] - 0.439) > 0.001:
-        print(f"FAIL: score_general expected 0.439, got {row['score_general']}")
-        errors += 1
-    else:
-        print(f"PASS: score_general = {row['score_general']}")
+            if actual != expected:
+               print(f"FAIL: {col} expected {expected}, got {actual}")
+               errors += 1
+            else:
+               print(f"PASS: {col} = {actual}")
 
     conn.close()
     

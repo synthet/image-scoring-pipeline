@@ -125,3 +125,70 @@ class BatchImageProcessor:
         result_worker.join()
         
         self.log("Batch processing finished.")
+
+    def process_list(self, jobs_list, job_id_override=None):
+        """
+        Process a specific list of ImageJob objects.
+        """
+        if not self.scorer:
+            self.log("Error: Scorer not provided!", "ERROR")
+            return
+            
+        if not jobs_list:
+            self.log("No jobs to process.")
+            return
+            
+        self.log(f"Processing list of {len(jobs_list)} images...")
+        
+        # Setup Queues
+        prep_queue = queue.Queue(maxsize=50)
+        scoring_queue = queue.Queue(maxsize=10)
+        result_queue = queue.Queue(maxsize=50)
+        
+        self.stop_event.clear()
+        
+        # Workers
+        prep_worker = pipeline.PrepWorker(prep_queue, scoring_queue, self.stop_event, self.scorer)
+        scoring_worker = pipeline.ScoringWorker(scoring_queue, result_queue, self.stop_event, self.scorer)
+        
+        def result_logger(msg):
+             # Ensure we log to the capturing function if set
+             if hasattr(self, 'log_func') and self.log_func:
+                 self.log_func(msg)
+             else:
+                 self.log(msg)
+                 
+        result_worker = pipeline.ResultWorker(result_queue, None, self.stop_event, scorer_instance=self.scorer, progress_callback=result_logger)
+        
+        workers = [prep_worker, scoring_worker, result_worker]
+        for w in workers:
+            w.start()
+            
+        # Feed jobs
+        for job in jobs_list:
+            if self.stop_event.is_set():
+                break
+                
+            # Ensure job has correct ID if overridden
+            if job_id_override:
+                job.job_id = job_id_override
+            
+            try:
+                prep_queue.put(job, timeout=2.0)
+                while prep_queue.full() and not self.stop_event.is_set():
+                     time.sleep(0.1)
+            except KeyboardInterrupt:
+                self.stop_event.set()
+                break
+                
+        # Wait for completion
+        if not self.stop_event.is_set():
+            prep_queue.put(None)
+            
+        prep_worker.join()
+        scoring_queue.put(None)
+        scoring_worker.join()
+        result_queue.put(None)
+        result_worker.join()
+        
+        self.log("List processing finished.")

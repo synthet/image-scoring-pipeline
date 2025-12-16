@@ -19,6 +19,8 @@ if str(project_root) not in sys.path:
 
 from modules.engine import BatchImageProcessor
 
+from scripts.python.run_all_musiq_models import MultiModelMUSIQ
+
 def main():
     """Main CLI function."""
     parser = argparse.ArgumentParser(
@@ -72,12 +74,24 @@ Examples:
     # The original script default was writing files.
     write_json = not args.json_stdout
     
+    # Initialize Scorer
+    scorer = MultiModelMUSIQ(skip_gpu=False)
+    # Check loading? load_all_models()?
+    # BatchImageProcessor uses the scorer instance and calls run_all_models.
+    # It might expect models to be loaded?
+    # pipeline.ScoringWorker calls self.scorer.run_all_models.
+    # run_all_models calls load_model implicitly? No.
+    # MultiModelMUSIQ.run_all_models iterates self.models.
+    # So we MUST load models.
+    scorer.load_all_models()
+
     processor = BatchImageProcessor(
         # log_file argument removed, handling logging via global config
         output_dir=args.output_dir, 
         skip_existing=args.skip_existing, 
         json_stdout=args.json_stdout,
-        write_json=write_json
+        write_json=write_json,
+        scorer=scorer
     )
     
     # Process directory

@@ -14,10 +14,14 @@ db.init_db()
 
 runner = scoring.ScoringRunner()
 
+
 def run_scoring_wrapper(input_path, skip_existing):
     """
     Wrapper to run scoring and update UI.
     """
+    # Disable Run/Fix, Enable Stop
+    yield "", "Starting...", gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=False)
+    
     job_id = db.create_job(input_path)
     db.update_job_status(job_id, "running")
     
@@ -27,24 +31,48 @@ def run_scoring_wrapper(input_path, skip_existing):
         # Run the generator
         for line in runner.run_batch(input_path, job_id, skip_existing):
             log_buffer += line + "\n"
-            yield log_buffer, "Running..."
+            yield log_buffer, "Running...", gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=False)
         
         # Finished
         db.update_job_status(job_id, "completed", log_buffer)
-        yield log_buffer, "Done"
+        yield log_buffer, "Done", gr.update(interactive=True), gr.update(interactive=False), gr.update(interactive=True)
         
     except Exception as e:
         log_buffer += f"\nError: {str(e)}"
         db.update_job_status(job_id, "failed", log_buffer)
-        yield log_buffer, "Failed"
+        yield log_buffer, "Failed", gr.update(interactive=True), gr.update(interactive=False), gr.update(interactive=True)
+
+def run_fix_db_wrapper():
+    """
+    Wrapper to run DB fix
+    """
+    # Disable Run/Fix, Enable Stop
+    yield "", "Starting...", gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=False)
+
+    job_id = db.create_job("DB_FIX_OPERATION")
+    db.update_job_status(job_id, "running")
+    
+    log_buffer = ""
+    try:
+        runner.current_processor = None # Ensure clean state
+        for line in runner.fix_db(job_id):
+            log_buffer += line + "\n"
+            yield log_buffer, "Fixing...", gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=False)
+            
+        db.update_job_status(job_id, "completed", log_buffer)
+        yield log_buffer, "Done", gr.update(interactive=True), gr.update(interactive=False), gr.update(interactive=True)
+    except Exception as e:
+        log_buffer += f"\nError: {str(e)}"
+        db.update_job_status(job_id, "failed", log_buffer)
+        yield log_buffer, "Failed", gr.update(interactive=True), gr.update(interactive=False), gr.update(interactive=True)
 
 # Pagination State
 PAGE_SIZE = 50
 
-def get_gallery_data(page, sort_by, sort_order):
+def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter):
     """Fetch images for gallery with pagination."""
-    rows = db.get_images_paginated(page, PAGE_SIZE, sort_by, sort_order)
-    total_count = db.get_image_count()
+    rows = db.get_images_paginated(page, PAGE_SIZE, sort_by, sort_order, rating_filter, label_filter)
+    total_count = db.get_image_count(rating_filter, label_filter)
     total_pages = math.ceil(total_count / PAGE_SIZE) if total_count > 0 else 1
     
     results = []
@@ -101,21 +129,21 @@ def get_gallery_data(page, sort_by, sort_order):
         
     return results, f"Page {page} of {total_pages}", total_pages, raw_paths
 
-def update_gallery(page, sort_by, sort_order):
-    images, label, _, raw_paths = get_gallery_data(page, sort_by, sort_order)
+def update_gallery(page, sort_by, sort_order, rating_filter, label_filter):
+    images, label, _, raw_paths = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter)
     return images, label, raw_paths, {}
 
-def next_page(page, sort_by, sort_order):
-    _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order)
+def next_page(page, sort_by, sort_order, rating_filter, label_filter):
+    _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter)
     new_page = min(page + 1, total_pages)
-    return new_page, *update_gallery(new_page, sort_by, sort_order)
+    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter)
 
-def prev_page(page, sort_by, sort_order):
+def prev_page(page, sort_by, sort_order, rating_filter, label_filter):
     new_page = max(page - 1, 1)
-    return new_page, *update_gallery(new_page, sort_by, sort_order)
+    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter)
 
-def first_page(sort_by, sort_order):
-     return 1, *update_gallery(1, sort_by, sort_order)
+def first_page(sort_by, sort_order, rating_filter, label_filter):
+     return 1, *update_gallery(1, sort_by, sort_order, rating_filter, label_filter)
 
 def display_details(evt: gr.SelectData, raw_paths):
     if evt is None:
@@ -284,7 +312,20 @@ def get_jobs_history():
     return data
 
 # --- UI Definition ---
-with gr.Blocks(title="Image Scoring WebUI") as demo:
+# Custom CSS to prevent upscaling of images in preview/gallery
+custom_css = """
+.preview img, .lightbox img, .modal img {
+    object-fit: scale-down !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 90vh !important;
+    margin: auto;
+}
+/* Ensure grid thumbnails still look okay if needed, though scale-down is usually fine */
+"""
+
+with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
     gr.Markdown("# Image Scoring WebUI")
     
     # State
@@ -300,7 +341,8 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
                     skip_checkbox = gr.Checkbox(label="Skip already scored images", value=True)
                     with gr.Row():
                         run_btn = gr.Button("Start Scoring", variant="primary")
-                        stop_btn = gr.Button("Stop Scoring", variant="stop")
+                        stop_btn = gr.Button("Stop Scoring", variant="stop", interactive=False)
+                    fix_btn = gr.Button("Fix DB (Re-run missing)", variant="secondary")
                 
                 with gr.Column(scale=2):
                     status_label = gr.Label(value="Ready", label="Status")
@@ -309,13 +351,19 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
             run_btn.click(
                 fn=run_scoring_wrapper,
                 inputs=[input_dir, skip_checkbox],
-                outputs=[log_output, status_label]
+                outputs=[log_output, status_label, run_btn, stop_btn, fix_btn]
             )
             
             stop_btn.click(
                 fn=lambda: runner.stop(),
                 inputs=[],
                 outputs=[]
+            )
+            
+            fix_btn.click(
+                fn=run_fix_db_wrapper,
+                inputs=[],
+                outputs=[log_output, status_label, run_btn, stop_btn, fix_btn]
             )
 
         # TAB 2: GALLERY
@@ -328,6 +376,17 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
                     label="Sort By"
                 )
                 order_dropdown = gr.Dropdown(choices=["desc", "asc"], value="desc", label="Order")
+            
+            with gr.Accordion("Filters", open=False):
+                with gr.Row():
+                    filter_rating = gr.CheckboxGroup(
+                        choices=["1", "2", "3", "4", "5"], 
+                        label="Filter by Rating"
+                    )
+                    filter_label = gr.CheckboxGroup(
+                        choices=["Red", "Yellow", "Green", "Blue", "Purple", "None"], 
+                        label="Filter by Color Label"
+                    )
             
             with gr.Row():
                 prev_btn = gr.Button("Previous")
@@ -344,30 +403,37 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
 
             # Events
             
+            # Events
+            
             # Helper to link outputs
             gallery_outputs = [gallery, page_label, current_paths, image_details]
+            filter_inputs = [sort_dropdown, order_dropdown, filter_rating, filter_label]
             
             refresh_btn.click(
                 fn=first_page,
-                inputs=[sort_dropdown, order_dropdown],
+                inputs=filter_inputs,
                 outputs=[current_page, *gallery_outputs]
             )
             
             prev_btn.click(
                 fn=prev_page,
-                inputs=[current_page, sort_dropdown, order_dropdown],
+                inputs=[current_page, *filter_inputs],
                 outputs=[current_page, *gallery_outputs]
             )
             
             next_btn.click(
                 fn=next_page,
-                inputs=[current_page, sort_dropdown, order_dropdown],
+                inputs=[current_page, *filter_inputs],
                 outputs=[current_page, *gallery_outputs]
             )
             
             # Auto-refresh on sort change
-            sort_dropdown.change(first_page, [sort_dropdown, order_dropdown], [current_page, *gallery_outputs])
-            order_dropdown.change(first_page, [sort_dropdown, order_dropdown], [current_page, *gallery_outputs])
+            sort_dropdown.change(first_page, filter_inputs, [current_page, *gallery_outputs])
+            order_dropdown.change(first_page, filter_inputs, [current_page, *gallery_outputs])
+            
+            # Auto-refresh on filter change
+            filter_rating.change(first_page, filter_inputs, [current_page, *gallery_outputs])
+            filter_label.change(first_page, filter_inputs, [current_page, *gallery_outputs])
             
             # Selection -> Details
             # Update: added delete_btn to outputs

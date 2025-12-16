@@ -43,10 +43,56 @@ def generate_thumbnail(image_path):
         # RAW handling
         is_raw = Path(image_path).suffix.lower() in ['.nef', '.cr2', '.dng', '.arw', '.orf']
         
-        if is_raw and HAS_RAWPY:
-            with rawpy.imread(str(image_path)) as raw:
-                rgb = raw.postprocess(use_camera_wb=True, bright=1.0, user_sat=None)
-                img = Image.fromarray(rgb)
+        if is_raw:
+            # Try rawpy first
+            if HAS_RAWPY:
+                try:
+                    with rawpy.imread(str(image_path)) as raw:
+                        rgb = raw.postprocess(use_camera_wb=True, bright=1.0, user_sat=None)
+                        img = Image.fromarray(rgb)
+                except Exception as e:
+                    # Fallback for Z8/HE* files
+                    # print(f"Rawpy failed for {image_path}, trying dcraw: {e}")
+                    img = None
+            else:
+                img = None
+
+            # Fallback to dcraw if rawpy failed or missing
+            if img is None:
+                import subprocess
+                import shutil
+                import io
+                
+                if shutil.which("dcraw"):
+                    # dcraw -e -c > stdout (Extract embedded thumbnail)
+                    # This is much faster and avoids decoding issues with Z8 HE* files
+                    cmd = ["dcraw", "-e", "-c", str(image_path)]
+                    res = subprocess.run(cmd, capture_output=True, text=False) # Binary output
+                    if res.returncode == 0 and len(res.stdout) > 0:
+                        try:
+                            # It is usually a JPEG
+                            img = Image.open(io.BytesIO(res.stdout))
+                            img.load() # Verify validity
+                        except Exception as e:
+                            # If extraction failed, maybe try full decode?
+                            # But if -e failed, likely file is really weird.
+                            # We can try fallback to Magick below.
+                            img = None
+                            pass
+            
+            if img is None:
+                # Last resort: Magick?
+                 if shutil.which("magick"):
+                     # magick input -resize 512x512 output
+                     # We can write directly to thumb_path
+                     cmd = ["magick", str(image_path), "-resize", "512x512", "-quality", "85", thumb_path]
+                     res = subprocess.run(cmd, capture_output=True)
+                     if res.returncode == 0:
+                         return thumb_path
+                     # If failed, raise error
+                     raise Exception("All RAW conversion methods failed")
+                 else:
+                     raise Exception("All RAW conversion methods failed")
         else:
             # Standard image handling
             img = Image.open(image_path)

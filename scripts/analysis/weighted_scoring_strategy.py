@@ -175,7 +175,8 @@ def process_json_files(directory: str, output_file: str = None):
             result = {
                 "image_name": data.get("image_name", json_file),
                 "image_path": data.get("image_path", file_path),
-                "original_average": data.get("summary", {}).get("average_normalized_score"),
+                # Use general weighted score
+                "original_average": data.get("summary", {}).get("weighted_scores", {}).get("general"),
                 "weighted_analysis": analysis
             }
             

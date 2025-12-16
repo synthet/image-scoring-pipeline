@@ -13,6 +13,7 @@ from typing import Optional, Dict, Any, List
 # Local imports
 from modules import db, thumbnails
 from scripts.python.run_all_musiq_models import MultiModelMUSIQ
+from modules.liqe import LiqeScorer
 
 # Setup logging
 logging.basicConfig(
@@ -57,7 +58,8 @@ class PipelineWorker(threading.Thread):
                 continue
 
             if item is None: # Sentinel
-                self.output_queue.put(None)
+                if self.output_queue:
+                    self.output_queue.put(None)
                 break
             
             try:
@@ -87,8 +89,89 @@ class PrepWorker(PipelineWorker):
         self.scorer = scorer_ref # Reference to scorer class for static methods (is_raw, etc)
         
     def process(self, job: ImageJob):
-        # 1. Check if should skip
+        image_hash = None
+        
+        # Optimization: Check DB by Path first to avoid File I/O (Hash calculation)
         if job.skip_existing:
+            try:
+                # If we trust the path (User Request), reusing the hash from the DB is safe
+                # This makes skipping near-instantaneous
+                path_record = db.get_image_details(job.image_path)
+                if path_record and path_record.get('image_hash'):
+                     image_hash = path_record.get('image_hash')
+                     job.external_scores["image_hash"] = image_hash
+            except Exception as e:
+                logger.error(f"Path lookup failed for {job.image_path}: {e}")
+
+        # Compute Hash (New deduplication logic) - Only if not found by path
+        try:
+            from modules import utils
+            if not image_hash:
+                image_hash = utils.compute_file_hash(job.image_path)
+                job.external_scores["image_hash"] = image_hash # Store for result
+            
+            if image_hash:
+                # Check DB by Hash
+                existing_record = db.get_image_by_hash(image_hash)
+                if existing_record:
+                    # Update Path if different (Portability)
+                    db_path = existing_record.get('file_path')
+                    image_id = existing_record.get('id')
+                    
+                    # Register this path as well
+                    db.register_image_path(image_id, job.image_path)
+
+                    if db_path != job.image_path:
+                        logger.info(f"Relocating image {image_hash[:8]}... from {db_path} to {job.image_path}")
+                        db.update_image_path(image_hash, job.image_path)
+                    
+                    # Skip Logic
+                    if job.skip_existing:
+                        # Check version/validity
+                        current_ver = self.scorer.VERSION
+                        db_ver = existing_record.get('model_version')
+                        
+                        # Smart Backfill Logic
+                        # Check if ALL required scores are present
+                        required_models = ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']
+                        missing_models = []
+                        valid_scores = {}
+                        
+                        for m in required_models:
+                            key = f"score_{m}"
+                            val = existing_record.get(key)
+                            # Check if value is valid (non-zero)
+                            if val and isinstance(val, (int, float)) and val > 0:
+                                valid_scores[m] = {
+                                    "score": val,
+                                    "status": "success"
+                                }
+                            else:
+                                missing_models.append(m)
+                                
+                        # Check Metadata presence (Rating/Label)
+                        # User requirement: If rating or label is missing, we must NOT skip, 
+                        # even if all scores are present.
+                        has_rating = existing_record.get('rating') is not None and existing_record.get('rating') > 0
+                        has_label = bool(existing_record.get('label'))
+                        
+                        # If everything is present AND version matches AND metadata exists, then skip
+                        if not missing_models and db_ver == current_ver and has_rating and has_label:
+                             job.status = "skipped"
+                             self.output_queue.put(job)
+                             return
+                        
+                        # If we have some valid scores but missing others (or missing metadata), 
+                        # proceed but backfill valid scores to avoid re-calculation.
+                        if valid_scores:
+                             logger.info(f"Backfilling {job.image_path}: Missing models {missing_models}, Missing Meta: {not (has_rating and has_label)}. Reuse: {list(valid_scores.keys())}")
+                             job.external_scores.update(valid_scores)
+
+        except Exception as e:
+            logger.error(f"Hashing failed for {job.image_path}: {e}")
+
+        # 1. Check if should skip (Legacy Path Check - Fallback)
+        if job.skip_existing and not image_hash:
              if db.image_exists(job.image_path, current_version=self.scorer.VERSION):
                  job.status = "skipped"
                  # Forward to ResultWorker to log/count skip, bypass Scoring
@@ -177,6 +260,8 @@ class ScoringWorker(PipelineWorker):
     def __init__(self, input_queue, output_queue, stop_event, scorer_instance):
         super().__init__("ScoringWorker", input_queue, output_queue, stop_event)
         self.scorer = scorer_instance # The actual loaded heavy model
+        self.liqe_scorer = LiqeScorer() # Keep LIQE loaded
+
         
     def process(self, job: ImageJob):
         if job.status in ["skipped", "failed"]:
@@ -184,11 +269,20 @@ class ScoringWorker(PipelineWorker):
             return
 
         # Prepare external scores container
-        external = {}
+        external = job.external_scores if job.external_scores else {}
         
-        # We could run LIQE here or in Prep. 
-        # Putting it here keeps "Scoring" unified.
-        
+        # Check/Run LIQE if missing
+        if "liqe" not in external:
+            try:
+                # Run LIQE
+                # Ensure we have a process path
+                path = job.process_path
+                liqe_result = self.liqe_scorer.predict(path)
+                external["liqe"] = liqe_result
+            except Exception as e:
+                logger.error(f"LIQE failed for {job.image_path}: {e}")
+                external["liqe"] = {"status": "failed", "error": str(e)}
+
         try:
             # Run All Models
             # We assume scorer.run_all_models is thread safe if called serially by this single worker
@@ -268,9 +362,16 @@ class ResultWorker(PipelineWorker):
                     # Use original image path, not temp path
                     success = self.scorer.write_metadata_to_nef(job.image_path, rating, label)
                     
-                    if success and self.progress_callback:
-                        # Maybe detailed log?
-                        pass
+                    if success:
+                        # CRITICAL FIX: Inject metadata into result for DB upsert
+                        job.result["nef_metadata"] = {
+                            "rating": rating,
+                            "label": label
+                        }
+                        
+                        if self.progress_callback:
+                            # Maybe detailed log?
+                            pass
                 except Exception as e:
                     if self.progress_callback:
                         self.progress_callback(f"Metadata Write Failed: {e}")
@@ -280,6 +381,9 @@ class ResultWorker(PipelineWorker):
                 # Add original path to result so DB knows
                 job.result["image_path"] = job.image_path
                 job.result["image_name"] = Path(job.image_path).name
+                if "image_hash" in job.external_scores:
+                    job.result["image_hash"] = job.external_scores["image_hash"]
+                
                 
                 if job.thumbnail_path:
                     job.result["thumbnail_path"] = job.thumbnail_path

@@ -112,9 +112,17 @@ class JSONResultsAnalyzer:
         failed_predictions = 0
         
         for result in self.results:
+            # Use weighted_scores['general'] as primary score
             summary = result.get('summary', {})
-            if summary.get('average_normalized_score') is not None:
-                avg_scores.append(summary['average_normalized_score'])
+            ws = summary.get('weighted_scores', {})
+            score = ws.get('general')
+            
+            # Legacy fallback if explicitly needed, but per user request we prefer general
+            if score is None:
+                 score = summary.get('average_normalized_score')
+
+            if score is not None:
+                avg_scores.append(score)
             
             successful_predictions += summary.get('successful_predictions', 0)
             failed_predictions += summary.get('failed_predictions', 0)
@@ -167,21 +175,29 @@ class JSONResultsAnalyzer:
     def _find_best_worst_images(self):
         """Find best and worst images overall and by model."""
         # Overall best and worst
-        valid_results = [r for r in self.results if r.get('summary', {}).get('average_normalized_score') is not None]
+        valid_results = []
+        for r in self.results:
+            summary = r.get('summary', {})
+            val = summary.get('weighted_scores', {}).get('general')
+            if val is None: val = summary.get('average_normalized_score')
+            if val is not None:
+                # Inject a helper key for sorting without modifying original structure permanently if improper
+                r['_sort_score'] = val
+                valid_results.append(r)
         
         if valid_results:
-            best_overall = max(valid_results, key=lambda x: x['summary']['average_normalized_score'])
-            worst_overall = min(valid_results, key=lambda x: x['summary']['average_normalized_score'])
+            best_overall = max(valid_results, key=lambda x: x['_sort_score'])
+            worst_overall = min(valid_results, key=lambda x: x['_sort_score'])
             
             self.summary["best_worst_images"]["overall"] = {
                 "best": {
                     "image_name": best_overall['image_name'],
-                    "average_normalized_score": best_overall['summary']['average_normalized_score'],
+                    "average_normalized_score": best_overall['_sort_score'],
                     "individual_scores": self._extract_individual_scores(best_overall)
                 },
                 "worst": {
                     "image_name": worst_overall['image_name'],
-                    "average_normalized_score": worst_overall['summary']['average_normalized_score'],
+                    "average_normalized_score": worst_overall['_sort_score'],
                     "individual_scores": self._extract_individual_scores(worst_overall)
                 }
             }

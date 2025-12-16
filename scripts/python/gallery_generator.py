@@ -454,13 +454,14 @@ def generate_html_with_embedded_data(image_data: List[Dict[str, Any]], output_pa
             switch (metric) {
                 case 'final_robust_score':
                     return image.summary?.advanced_scoring?.final_robust_score || 
-                           image.summary?.average_normalized_score || 0;
+                           image.summary?.weighted_scores?.general || 0;
                 case 'weighted_score':
                     return image.summary?.advanced_scoring?.weighted_score || 0;
                 case 'median_score':
                     return image.summary?.advanced_scoring?.median_score || 0;
                 case 'average_normalized_score':
-                    return image.summary?.average_normalized_score || 0;
+                    // Map to general score
+                    return image.summary?.weighted_scores?.general || 0;
                 case 'spaq_score':
                     return image.models?.spaq?.normalized_score || 0;
                 case 'ava_score':
@@ -574,7 +575,7 @@ def generate_html_with_embedded_data(image_data: List[Dict[str, Any]], output_pa
                         </div>
                         <div class="score-item">
                             <span class="score-label">Avg</span>
-                            <span class="score-value">${(summary.average_normalized_score || 0).toFixed(3)}</span>
+                            <span class="score-value">${(summary.weighted_scores?.general || 0).toFixed(3)}</span>
                         </div>
                         <div class="score-item">
                             <span class="score-label">SPAQ</span>

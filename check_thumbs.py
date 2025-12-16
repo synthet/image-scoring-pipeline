@@ -6,10 +6,11 @@ if os.path.exists("scoring_history.db"):
         conn = sqlite3.connect("scoring_history.db")
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        c.execute("SELECT file_path, thumbnail_path FROM images WHERE thumbnail_path IS NOT NULL LIMIT 5")
+        c.execute("SELECT file_path, thumbnail_path FROM images WHERE file_path LIKE '%Z8%' LIMIT 5")
         rows = c.fetchall()
         print(f"Found {len(rows)} records with thumbnails.")
         for r in rows:
+            print(f"File Path: {r['file_path']}")
             tp = r['thumbnail_path']
             print(f"Thumb Path: {tp}")
             print(f"Exists: {os.path.exists(tp)}")

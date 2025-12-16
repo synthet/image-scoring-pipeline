@@ -264,6 +264,70 @@ class MultiModelMUSIQ:
             except Exception as e:
                 logging.getLogger(__name__).warning(f"Warning: Could not remove temporary directory {self.temp_dir}: {e}")
     
+    def _is_safe_for_rawpy(self, raw_path: str) -> bool:
+        """
+        Check if RAW file is safe for rawpy (libraw).
+        Nikon Z8/Z9 HE/HE* (TicoRAW) compression causes libraw to hang/fail slowly.
+        Returns:
+            True if file is likely compatible (or check fails)
+            False if file is definitely incompatible (Nikon HE detected)
+        """
+        try:
+            # Requires exiftool
+            if shutil.which("exiftool") is None:
+                return True # assume safe if we can't check
+                
+            cmd = ['exiftool', '-Model', '-Compression', '-s', '-S', raw_path]
+            # Fast timeout (2s) because we want to be quicker than the 7s rawpy hang
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
+            
+            if result.returncode == 0:
+                output = result.stdout.strip()
+                # Parse output (Model\nCompression)
+                lines = output.splitlines()
+                model = ""
+                compression = ""
+                
+                # Exiftool -s -S output is just values, one per line usually, but order depends on args?
+                # Actually -s -S prints tag names if -s is used? No -S is very short (no tag name).
+                # But order is preserved?
+                # Safest is to not use -S so we get "Tag: Value"
+                
+            # Retry with tags to be safe
+            cmd = ['exiftool', '-Model', '-Compression', '-s', '-s', '-s', raw_path] # -s -s -s = values only
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
+            if result.returncode == 0:
+                 # We can't guarantee order if we just ask for values.
+                 # Let's parse proper json? No, too heavy?
+                 # JSON is robust.
+                 pass
+
+            # Robust approach: Use JSON
+            cmd = ['exiftool', '-Model', '-Compression', '-j', raw_path] 
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
+            if result.returncode == 0:
+                import json
+                data = json.loads(result.stdout)
+                if data and isinstance(data, list):
+                    info = data[0]
+                    model = info.get("Model", "")
+                    compression = info.get("Compression", "")
+                    
+                    # 1. Explicit HE detection
+                    if "Nikon HE" in compression:
+                        return False
+                        
+                    # 2. Ambiguous Z8/Z9 Compressed detection
+                    # "Nikon NEF Compressed" on Z8/Z9 often fails in LibRaw (TicoRAW?)
+                    if "Z 8" in model or "Z 9" in model:
+                        if "Nikon NEF Compressed" in compression:
+                            return False
+            
+            return True
+        except Exception as e:
+            # If check fails, default to trying rawpy
+            return True
+
     def convert_raw_to_jpeg(self, raw_path: str) -> Optional[str]:
         """Convert RAW file to temporary JPEG for processing."""
         logging.getLogger(__name__).info(f"Converting RAW file: {raw_path}")
@@ -276,13 +340,22 @@ class MultiModelMUSIQ:
         temp_jpeg = os.path.join(temp_dir, f"{raw_name}_temp.jpg")
         
         # Try different RAW conversion tools in order of preference
-        conversion_methods = [
-            self._convert_with_rawpy,
-            self._convert_with_dcraw,
-            self._convert_with_imagemagick,
-            self._convert_with_pillow
-        ]
-        
+        # Check for HE/HE* compression which hangs rawpy
+        if self._is_safe_for_rawpy(raw_path):
+             conversion_methods = [
+                 self._convert_with_rawpy,
+                 self._convert_with_dcraw,
+                 self._convert_with_imagemagick,
+                 self._convert_with_pillow
+             ]
+        else:
+             logging.getLogger(__name__).info(f"Skipping rawpy for likely HE/HE* compressed file: {raw_name}")
+             conversion_methods = [
+                 self._convert_with_dcraw,
+                 self._convert_with_imagemagick,
+                 self._convert_with_pillow
+             ]
+
         for method in conversion_methods:
             try:
                 if method(raw_path, temp_jpeg):
@@ -290,6 +363,10 @@ class MultiModelMUSIQ:
                     logging.getLogger(__name__).info(f"✓ RAW conversion successful: {temp_jpeg}")
                     return temp_jpeg
             except Exception as e:
+                msg = str(e).lower()
+                if "corrupted" in msg or "data error" in msg:
+                    logging.getLogger(__name__).error(f"⚠ File appears corrupted, skipping fallback methods: {raw_path}")
+                    break
                 logging.getLogger(__name__).warning(f"⚠ Conversion method failed: {method.__name__}: {e}")
                 continue
         
@@ -318,12 +395,40 @@ class MultiModelMUSIQ:
             print("rawpy not available - install with: pip install rawpy")
             return False
         except Exception as e:
-            print(f"rawpy conversion failed: {e}")
+            msg = str(e).lower()
+            if "corrupted" in msg or "unsupported" in msg:
+                logging.getLogger(__name__).warning(f"⚠ rawpy cannot read file (likely Nikon Z8 HE* or unsupported format): {e}")
+                logging.getLogger(__name__).info("  Attempting fallback to dcraw/magick...")
+            else:
+                logging.getLogger(__name__).warning(f"rawpy conversion failed: {e}")
             return False
     
     def _convert_with_dcraw(self, raw_path: str, output_path: str) -> bool:
-        """Convert RAW using dcraw command line tool."""
+        """
+        Convert RAW using dcraw command line tool.
+        Prioritizes extracting embedded JPEG (fast, correct colors) over full decode.
+        """
         try:
+            if shutil.which("dcraw") is None:
+                return False
+                
+            # Method 1: Extraction (-e) - Fast & Compatible with Z8
+            cmd_extract = ['dcraw', '-e', '-c', raw_path] 
+            res_extract = subprocess.run(cmd_extract, capture_output=True, text=False, timeout=10)
+            
+            if res_extract.returncode == 0 and len(res_extract.stdout) > 1000:
+                # Check for JPEG header (FF D8)
+                if res_extract.stdout.startswith(b'\xff\xd8'):
+                    try:
+                        with open(output_path, 'wb') as f:
+                            f.write(res_extract.stdout)
+                        logging.getLogger(__name__).info(f"✓ Extracted embedded JPEG")
+                        return True
+                    except Exception as e:
+                        logging.getLogger(__name__).warning(f"Failed to write extracted JPEG: {e}")
+            
+            # Method 2: Full Decode (-c -w -h) - Slow, Fallback
+            logging.getLogger(__name__).info(f"Fallback to dcraw full decode...")
             # Try dcraw command
             cmd = [
                 'dcraw',
@@ -333,21 +438,26 @@ class MultiModelMUSIQ:
                 raw_path
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            # Run dcraw (output is binary PPM)
+            result = subprocess.run(cmd, capture_output=True, text=False, timeout=60) # Increased timeout
             if result.returncode == 0:
-                # Pipe output to convert to JPEG
+                # Pipe output to convert to JPEG (input must be binary)
                 jpeg_cmd = ['convert', '-', '-quality', '85', output_path]
                 convert_result = subprocess.run(jpeg_cmd, input=result.stdout, 
-                                             capture_output=True, text=True, timeout=30)
+                                             capture_output=True, text=False, timeout=30)
                 return convert_result.returncode == 0
             return False
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
-            print(f"dcraw conversion failed: {e}")
+            logging.getLogger(__name__).warning(f"dcraw conversion failed: {e}")
             return False
     
     def _convert_with_imagemagick(self, raw_path: str, output_path: str) -> bool:
         """Convert RAW using ImageMagick."""
         try:
+            # Check if magick is available first to avoid noise
+            if shutil.which("magick") is None:
+                return False
+
             cmd = [
                 'magick',
                 raw_path,
@@ -359,7 +469,7 @@ class MultiModelMUSIQ:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             return result.returncode == 0 and os.path.exists(output_path)
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
-            print(f"ImageMagick conversion failed: {e}")
+            # logging.getLogger(__name__).debug(f"ImageMagick conversion failed: {e}") # Debug only
             return False
     
     def _convert_with_pillow(self, raw_path: str, output_path: str) -> bool:
@@ -380,6 +490,26 @@ class MultiModelMUSIQ:
     
     def __init__(self, skip_gpu: bool = False):
         self.device = None
+
+        # Configure persistent TF Hub cache
+        try:
+            # Resolve project root: scripts/python/ -> scripts/ -> root/
+            current_file = os.path.abspath(__file__)
+            # scripts/python -> scripts -> image-scoring
+            self.project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+            
+            # Use 'models/tfhub_cache' for persistent storage
+            self.tfhub_cache_dir = os.path.join(self.project_root, "models", "tfhub_cache")
+            
+            # Create directory if it doesn't exist
+            os.makedirs(self.tfhub_cache_dir, exist_ok=True)
+            
+            # Set environment variable BEFORE loading any models
+            os.environ['TFHUB_CACHE_DIR'] = self.tfhub_cache_dir
+            logging.getLogger(__name__).info(f"TF Hub cache directory set to: {self.tfhub_cache_dir}")
+            
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to set custom TF Hub cache directory: {e}")
 
         self.gpu_available = False
         self.models = {}
@@ -724,6 +854,10 @@ class MultiModelMUSIQ:
         # Merge external scores if provided
         if external_scores:
             for model_name, model_data in external_scores.items():
+                # Skip non-dictionary items (like 'image_hash') which are metadata, not model results
+                if not isinstance(model_data, dict):
+                     continue
+
                 results["models"][model_name] = model_data
                 results["summary"]["total_models"] += 1
                 
@@ -757,6 +891,10 @@ class MultiModelMUSIQ:
                     logger(f"  {model_name.upper()} model: FAILED (external)")
         
         for model_name in self.model_sources.keys():
+            # Check if already computed (external)
+            if model_name in results["models"]:
+                continue
+
             if model_name in self.models:
                 score = self.predict_quality(processing_path, model_name)
                 

@@ -13,20 +13,84 @@ def get_db():
     return conn
 
 
-def get_image_count():
+def get_image_count(rating_filter=None, label_filter=None):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM images")
+    
+    query = "SELECT COUNT(*) FROM images"
+    params = []
+    conditions = []
+    
+    if rating_filter:
+        placeholders = ','.join(['?'] * len(rating_filter))
+        # Handle "Unrated" (0) separate or included? 
+        # UI sends ["1", "2"] etc. "Unrated" might be sent as "0" or "Unrated"
+        # Let's assume input is list of ints. "Unrated" maps to 0.
+        conditions.append(f"rating IN ({placeholders})")
+        params.extend(rating_filter)
+        
+    if label_filter:
+        # Handle "None" label
+        clean_labels = [l for l in label_filter if l != "None"]
+        has_none = "None" in label_filter
+        
+        lbl_conds = []
+        if clean_labels:
+            placeholders = ','.join(['?'] * len(clean_labels))
+            lbl_conds.append(f"label IN ({placeholders})")
+            params.extend(clean_labels)
+            
+        if has_none:
+            lbl_conds.append("(label IS NULL OR label = '')")
+            
+        if lbl_conds:
+            conditions.append(f"({' OR '.join(lbl_conds)})")
+            
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+        
+    c.execute(query, tuple(params))
     count = c.fetchone()[0]
     conn.close()
     return count
 
-def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc"):
+def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", rating_filter=None, label_filter=None):
     conn = get_db()
     c = conn.cursor()
     offset = (page - 1) * page_size
-    query = f"SELECT * FROM images ORDER BY {sort_by} {order.upper()} LIMIT ? OFFSET ?"
-    c.execute(query, (page_size, offset))
+    
+    query = "SELECT * FROM images"
+    params = []
+    conditions = []
+    
+    if rating_filter:
+        placeholders = ','.join(['?'] * len(rating_filter))
+        conditions.append(f"rating IN ({placeholders})")
+        params.extend(rating_filter)
+        
+    if label_filter:
+        clean_labels = [l for l in label_filter if l != "None"]
+        has_none = "None" in label_filter
+        
+        lbl_conds = []
+        if clean_labels:
+            placeholders = ','.join(['?'] * len(clean_labels))
+            lbl_conds.append(f"label IN ({placeholders})")
+            params.extend(clean_labels)
+            
+        if has_none:
+            lbl_conds.append("(label IS NULL OR label = '')")
+            
+        if lbl_conds:
+            conditions.append(f"({' OR '.join(lbl_conds)})")
+            
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    
+    query += f" ORDER BY {sort_by} {order.upper()} LIMIT ? OFFSET ?"
+    params.extend([page_size, offset])
+    
+    c.execute(query, tuple(params))
     rows = c.fetchall()
     conn.close()
     return rows
@@ -87,7 +151,7 @@ def init_db():
         file_name TEXT,
         file_type TEXT,
         score REAL,
-        normalized_score REAL,
+        score REAL,
         keywords TEXT,
         metadata TEXT,
         thumbnail_path TEXT,
@@ -110,14 +174,7 @@ def init_db():
     if "scores_json" not in columns:
         c.execute("ALTER TABLE images ADD COLUMN scores_json TEXT")
 
-    if "normalized_score" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN normalized_score REAL")
 
-    if "keywords" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN keywords TEXT")
-
-    if "metadata" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN metadata TEXT")
 
     # Migration for individual scores
     if "score_spaq" not in columns:
@@ -141,8 +198,91 @@ def init_db():
     if "score_general" not in columns:
         c.execute("ALTER TABLE images ADD COLUMN score_general REAL")
 
+    # Migration for Filtering
+    if "rating" not in columns:
+        c.execute("ALTER TABLE images ADD COLUMN rating INTEGER")
+    if "label" not in columns:
+        c.execute("ALTER TABLE images ADD COLUMN label TEXT")
+
+    # Migration for Deduplication
+    if "image_hash" not in columns:
+        c.execute("ALTER TABLE images ADD COLUMN image_hash TEXT")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_image_hash ON images(image_hash)")
+
+    # Migration for Multi-Path (File Paths Table)
+    c.execute('''CREATE TABLE IF NOT EXISTS file_paths (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_id INTEGER,
+        path TEXT,
+        last_seen TIMESTAMP,
+        FOREIGN KEY(image_id) REFERENCES images(id),
+        UNIQUE(image_id, path)
+    )''')
+    
     conn.commit()
     conn.close()
+
+def get_image_by_hash(image_hash):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM images WHERE image_hash = ?", (image_hash,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        data = dict(row)
+        data['file_paths'] = get_all_paths(data['id'])
+        return data
+    return None
+
+def update_image_path(image_hash, new_path):
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Also need to update file_name
+        from pathlib import Path
+        new_name = Path(new_path).name
+        c.execute("UPDATE images SET file_path = ?, file_name = ? WHERE image_hash = ?", (new_path, new_name, image_hash))
+        
+        # Also register in file_paths
+        # We need image_id
+        c.execute("SELECT id FROM images WHERE image_hash = ?", (image_hash,))
+        row = c.fetchone()
+        if row:
+            img_id = row[0]
+            c.execute("INSERT OR REPLACE INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?)", 
+                      (img_id, new_path, datetime.datetime.now()))
+        
+        conn.commit()
+        return True
+    except Exception as e:
+        logging.error(f"Failed to update path for hash {image_hash}: {e}")
+        return False
+    finally:
+        conn.close()
+
+def register_image_path(image_id, path):
+    """
+    Registers a path for a given image ID.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("INSERT OR REPLACE INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?)", 
+                  (image_id, path, datetime.datetime.now()))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Failed to register path {path} for image {image_id}: {e}")
+    finally:
+        conn.close()
+
+def get_all_paths(image_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT path FROM file_paths WHERE image_id = ?", (image_id,))
+    rows = c.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
+
 
 def create_job(input_path):
     conn = get_db()
@@ -288,7 +428,8 @@ def upsert_image(job_id, result):
     elif "summary" in result: # Legacy fallback
         score = result["summary"].get("average_normalized_score", 0)
     
-    normalized_score = score # General score is already 0-1
+    # normalized_score removal
+    # normalized_score = score # General score is already 0-1
         
     # Individual Scores
     individual_scores = result.get("individual_scores", {})
@@ -341,16 +482,8 @@ def upsert_image(job_id, result):
     # Ensure main score matches general if not set
     if score == 0 and score_general > 0:
         score = score_general
-        normalized_score = score_general
 
-    # Keywords & Metadata (if present)
-    keywords = result.get("keywords", [])
-    if isinstance(keywords, list):
-        keywords = ",".join(keywords)
-        
-    metadata = result.get("metadata", {})
-    if isinstance(metadata, dict):
-        metadata = json.dumps(metadata)
+
     
     thumbnail_path = result.get("thumbnail_path")
     
@@ -360,24 +493,72 @@ def upsert_image(job_id, result):
         model_version = result["version"]
     elif "full_results" in result:
         model_version = result["full_results"].get("version", "0.0.0")
+
+    # Extract Metadata (Rating, Label)
+    rating = 0
+    label = ""
+    
+    # Try finding in nef_metadata
+    nef_meta = None
+    if "nef_metadata" in result: # Direct
+         nef_meta = result["nef_metadata"]
+    elif "full_results" in result and "summary" in result["full_results"]:
+         nef_meta = result["full_results"]["summary"].get("nef_metadata")
+    elif "summary" in result: # Legacy
+         nef_meta = result["summary"].get("nef_metadata")
+         
+    if nef_meta:
+        rating = nef_meta.get("rating", 0)
+        label = nef_meta.get("label", "")
     
 
+
+    # Keywords & Metadata (if present)
+    keywords = result.get("keywords", [])
+    if isinstance(keywords, list):
+        keywords = ",".join(keywords)
+        
+    metadata = result.get("metadata", {})
+    if isinstance(metadata, dict):
+        metadata = json.dumps(metadata)
+
+    image_hash = result.get("image_hash", None)
 
     c.execute('''INSERT OR REPLACE INTO images 
                  (job_id, file_path, file_name, file_type, 
-                  score, normalized_score, 
+                  score, 
                   score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                   score_technical, score_aesthetic, score_general, model_version,
-                  keywords, metadata, scores_json, thumbnail_path, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  rating, label,
+                  keywords, metadata, scores_json, thumbnail_path, image_hash, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
               (job_id, image_path, file_name, file_type, 
-               score, normalized_score,
+               score,
                score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                score_technical, score_aesthetic, score_general, model_version,
-               keywords, metadata, json.dumps(result), thumbnail_path, datetime.datetime.now()))
+               rating, label,
+               keywords, metadata, json.dumps(result), thumbnail_path, image_hash, datetime.datetime.now()))
     
+    # Get ID of inserted/updated record
+    image_id = c.lastrowid
+    # If it was a replace where ID didn't change, lastrowid might be 0 or unexpected depending on sqlite version/driver
+    # But for INSERT OR REPLACE, it usually works. 
+    # Safest is to query by hash or path if 0.
+    if not image_id or image_id == 0:
+        if image_hash:
+             c.execute("SELECT id FROM images WHERE image_hash = ?", (image_hash,))
+        else:
+             c.execute("SELECT id FROM images WHERE file_path = ?", (image_path,))
+        row = c.fetchone()
+        if row:
+            image_id = row[0]
+            
     conn.commit()
     conn.close()
+    
+    # Register path in file_paths
+    if image_id:
+        register_image_path(image_id, image_path)
 
 
 
@@ -388,7 +569,9 @@ def get_image_details(file_path):
     row = c.fetchone()
     conn.close()
     if row:
-        return dict(row)
+        data = dict(row)
+        data['file_paths'] = get_all_paths(data['id'])
+        return data
     return {}
 
 
@@ -432,3 +615,38 @@ def backup_database(max_backups=5):
 
     except Exception as e:
         print(f"Backup failed: {e}")
+
+def get_incomplete_records():
+    """
+    Retrieves records that have missing scores or metadata.
+    Criteria:
+    - Any model score <= 0 or NULL
+    - Rating <= 0 or NULL
+    - Label empty or NULL
+    """
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Check for missing individual scores
+    score_checks = []
+    models = ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']
+    for m in models:
+        score_checks.append(f"(score_{m} <= 0 OR score_{m} IS NULL)")
+        
+    scores_condition = " OR ".join(score_checks)
+    
+    # Check metadata
+    meta_condition = "(rating <= 0 OR rating IS NULL) OR (label IS NULL OR label = '')"
+    
+    query = f"SELECT * FROM images WHERE {scores_condition} OR {meta_condition}"
+    
+    c.execute(query)
+    rows = c.fetchall()
+    conn.close()
+    
+    # Convert to list of dicts
+    results = []
+    for row in rows:
+        results.append(dict(row))
+        
+    return results
