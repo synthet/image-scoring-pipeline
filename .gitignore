@@ -122,3 +122,6 @@ results/
 !README*
 !LICENSE*
 !requirements*.txt
+
+# Database
+scoring_history.db
