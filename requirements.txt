@@ -19,3 +19,4 @@ kagglehub==0.3.4
 # keyword extraction deps omitted
 rawpy
 imageio
+gradio>=5.0,<6.0

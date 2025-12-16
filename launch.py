@@ -11,7 +11,7 @@ def main():
         import gradio
     except ImportError:
         print("Installing gradio...")
-        install("gradio")
+        install("gradio>=5.0,<6.0")
 
     try:
         import pydantic
