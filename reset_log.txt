@@ -1,4 +1,0 @@
-2025-12-15 19:00:50,253 - INFO - Starting Z8 record reset...
-2025-12-15 19:00:50,279 - INFO - Found 29 records matching '%Z8%'
-2025-12-15 19:00:50,585 - INFO - Successfully reset 29 records.
-2025-12-15 19:00:50,585 - INFO - These images should now be re-scored when you run the scoring process.

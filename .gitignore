@@ -125,3 +125,5 @@ results/
 
 # Database
 scoring_history.db
+
+backups/
