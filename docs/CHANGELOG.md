@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Gallery Keyword Filter**: Added a text search field to the WebUI gallery to allow filtering images by keywords.
+- **Auto-Tagging Module**: Added `modules/tagging.py` using CLIP for zero-shot image auto-tagging and BLIP for captioning.
+- **Tagging Tab**: Added "Keywords" tab to WebUI for batch processing tags and descriptions.
 
 ## [3.1.0] - 2025-12-15
 
