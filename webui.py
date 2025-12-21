@@ -7,18 +7,20 @@ import time
 import math
 import os
 import json
-from modules import scoring, db
+from modules import scoring, db, tagging
 
 # Initialize DB on load
 db.init_db()
 
 runner = scoring.ScoringRunner()
+tagging_runner = tagging.TaggingRunner()
 
 
-def run_scoring_wrapper(input_path, skip_existing):
+def run_scoring_wrapper(input_path, force_rescore):
     """
     Wrapper to run scoring and update UI.
     """
+    skip_existing = not force_rescore
     # Disable Run/Fix, Enable Stop
     yield "", "Starting...", gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=False)
     
@@ -66,13 +68,35 @@ def run_fix_db_wrapper():
         db.update_job_status(job_id, "failed", log_buffer)
         yield log_buffer, "Failed", gr.update(interactive=True), gr.update(interactive=False), gr.update(interactive=True)
 
+def run_tagging_wrapper(input_path, custom_keywords, overwrite, generate_captions):
+    """
+    Wrapper to run tagging.
+    """
+    yield "", "Starting Tagging...", gr.update(interactive=False), gr.update(interactive=True)
+    
+    # Simple keyword parsing
+    keywords_list = None
+    if custom_keywords:
+        keywords_list = [k.strip() for k in custom_keywords.split(",") if k.strip()]
+        
+    log_buffer = ""
+    try:
+        for line in tagging_runner.run_batch(input_path, keywords_list, overwrite, generate_captions):
+            log_buffer += line + "\n"
+            yield log_buffer, "Tagging...", gr.update(interactive=False), gr.update(interactive=True)
+            
+        yield log_buffer, "Done", gr.update(interactive=True), gr.update(interactive=False)
+    except Exception as e:
+        log_buffer += f"\nError: {str(e)}"
+        yield log_buffer, "Failed", gr.update(interactive=True), gr.update(interactive=False)
+
 # Pagination State
 PAGE_SIZE = 50
 
-def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter):
+def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter):
     """Fetch images for gallery with pagination."""
-    rows = db.get_images_paginated(page, PAGE_SIZE, sort_by, sort_order, rating_filter, label_filter)
-    total_count = db.get_image_count(rating_filter, label_filter)
+    rows = db.get_images_paginated(page, PAGE_SIZE, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
+    total_count = db.get_image_count(rating_filter, label_filter, keyword_filter)
     total_pages = math.ceil(total_count / PAGE_SIZE) if total_count > 0 else 1
     
     results = []
@@ -129,21 +153,21 @@ def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter):
         
     return results, f"Page {page} of {total_pages}", total_pages, raw_paths
 
-def update_gallery(page, sort_by, sort_order, rating_filter, label_filter):
-    images, label, _, raw_paths = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter)
+def update_gallery(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter):
+    images, label, _, raw_paths = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
     return images, label, raw_paths, {}
 
-def next_page(page, sort_by, sort_order, rating_filter, label_filter):
-    _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter)
+def next_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter):
+    _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
     new_page = min(page + 1, total_pages)
-    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter)
+    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
 
-def prev_page(page, sort_by, sort_order, rating_filter, label_filter):
+def prev_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter):
     new_page = max(page - 1, 1)
-    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter)
+    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
 
-def first_page(sort_by, sort_order, rating_filter, label_filter):
-     return 1, *update_gallery(1, sort_by, sort_order, rating_filter, label_filter)
+def first_page(sort_by, sort_order, rating_filter, label_filter, keyword_filter):
+     return 1, *update_gallery(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
 
 def display_details(evt: gr.SelectData, raw_paths):
     if evt is None:
@@ -338,7 +362,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     input_dir = gr.Textbox(label="Input Folder Path", placeholder="D:\\Photos\\...")
-                    skip_checkbox = gr.Checkbox(label="Skip already scored images", value=True)
+                    force_checkbox = gr.Checkbox(label="Force Re-score (Overwrite existing)", value=False)
                     with gr.Row():
                         run_btn = gr.Button("Start Scoring", variant="primary")
                         stop_btn = gr.Button("Stop Scoring", variant="stop", interactive=False)
@@ -350,7 +374,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             
             run_btn.click(
                 fn=run_scoring_wrapper,
-                inputs=[input_dir, skip_checkbox],
+                inputs=[input_dir, force_checkbox],
                 outputs=[log_output, status_label, run_btn, stop_btn, fix_btn]
             )
             
@@ -366,12 +390,41 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                 outputs=[log_output, status_label, run_btn, stop_btn, fix_btn]
             )
 
-        # TAB 2: GALLERY
+        # TAB 2: KEYWORDS
+        with gr.TabItem("Keywords"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    k_input_dir = gr.Textbox(label="Input Folder Path", placeholder="D:\\Photos\\... (Leave empty to process all DB images matching folder)")
+                    k_custom = gr.Textbox(label="Custom Keywords (comma separated)", placeholder="e.g. vintage, cinematic, rainy")
+                    with gr.Row():
+                        k_overwrite = gr.Checkbox(label="Overwrite existing keywords", value=False)
+                        k_captions = gr.Checkbox(label="Generate Title & Description (Attributes)", value=False)
+                    with gr.Row():
+                        k_run_btn = gr.Button("Generate Keywords", variant="primary")
+                        k_stop_btn = gr.Button("Stop", variant="stop", interactive=False)
+                
+                with gr.Column(scale=2):
+                    k_status_label = gr.Label(value="Ready", label="Status")
+                    k_log_output = gr.Textbox(label="Console Output", lines=20, interactive=False)
+            
+            k_run_btn.click(
+                fn=run_tagging_wrapper,
+                inputs=[k_input_dir, k_custom, k_overwrite, k_captions],
+                outputs=[k_log_output, k_status_label, k_run_btn, k_stop_btn]
+            )
+            
+            k_stop_btn.click(
+                fn=lambda: tagging_runner.stop(),
+                inputs=[],
+                outputs=[]
+            )
+
+        # TAB 3: GALLERY
         with gr.TabItem("Gallery"):
             with gr.Row():
                 refresh_btn = gr.Button("Refresh / First Page")
                 sort_dropdown = gr.Dropdown(
-                    choices=["created_at", "score_general", "score_technical", "score_aesthetic", "score_spaq", "score_ava", "score_koniq", "score_paq2piq", "score_liqe"], 
+                    choices=["created_at", "id", "score_general", "score_technical", "score_aesthetic", "score_spaq", "score_ava", "score_koniq", "score_paq2piq", "score_liqe"], 
                     value="created_at", 
                     label="Sort By"
                 )
@@ -387,6 +440,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                         choices=["Red", "Yellow", "Green", "Blue", "Purple", "None"], 
                         label="Filter by Color Label"
                     )
+                filter_keyword = gr.Textbox(label="Filter by Keyword", placeholder="Search tags...")
             
             with gr.Row():
                 prev_btn = gr.Button("Previous")
@@ -407,7 +461,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             
             # Helper to link outputs
             gallery_outputs = [gallery, page_label, current_paths, image_details]
-            filter_inputs = [sort_dropdown, order_dropdown, filter_rating, filter_label]
+            filter_inputs = [sort_dropdown, order_dropdown, filter_rating, filter_label, filter_keyword]
             
             refresh_btn.click(
                 fn=first_page,
@@ -434,6 +488,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             # Auto-refresh on filter change
             filter_rating.change(first_page, filter_inputs, [current_page, *gallery_outputs])
             filter_label.change(first_page, filter_inputs, [current_page, *gallery_outputs])
+            filter_keyword.submit(first_page, filter_inputs, [current_page, *gallery_outputs])
             
             # Selection -> Details
             # Update: added delete_btn to outputs

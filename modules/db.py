@@ -13,7 +13,7 @@ def get_db():
     return conn
 
 
-def get_image_count(rating_filter=None, label_filter=None):
+def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None):
     conn = get_db()
     c = conn.cursor()
     
@@ -46,6 +46,10 @@ def get_image_count(rating_filter=None, label_filter=None):
         if lbl_conds:
             conditions.append(f"({' OR '.join(lbl_conds)})")
             
+    if keyword_filter and keyword_filter.strip():
+        conditions.append("keywords LIKE ?")
+        params.append(f"%{keyword_filter.strip()}%")
+            
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
         
@@ -54,7 +58,7 @@ def get_image_count(rating_filter=None, label_filter=None):
     conn.close()
     return count
 
-def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", rating_filter=None, label_filter=None):
+def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None):
     conn = get_db()
     c = conn.cursor()
     offset = (page - 1) * page_size
@@ -83,6 +87,10 @@ def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", ra
             
         if lbl_conds:
             conditions.append(f"({' OR '.join(lbl_conds)})")
+            
+    if keyword_filter and keyword_filter.strip():
+        conditions.append("keywords LIKE ?")
+        params.append(f"%{keyword_filter.strip()}%")
             
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -153,6 +161,8 @@ def init_db():
         score REAL,
         score REAL,
         keywords TEXT,
+        title TEXT,
+        description TEXT,
         metadata TEXT,
         thumbnail_path TEXT,
         scores_json TEXT, -- Full JSON output from scorer
@@ -219,6 +229,23 @@ def init_db():
         UNIQUE(image_id, path)
     )''')
     
+    conn.commit()
+    conn.close()
+
+    # Separate connection for migrations to handle errors gracefully
+    conn = get_db()
+    c = conn.cursor()
+    
+    try:
+        c.execute("ALTER TABLE images ADD COLUMN title TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        c.execute("ALTER TABLE images ADD COLUMN description TEXT")
+    except sqlite3.OperationalError:
+        pass
+        
     conn.commit()
     conn.close()
 
@@ -518,6 +545,9 @@ def upsert_image(job_id, result):
     if isinstance(keywords, list):
         keywords = ",".join(keywords)
         
+    title = result.get("title", "")
+    description = result.get("description", "")
+        
     metadata = result.get("metadata", {})
     if isinstance(metadata, dict):
         metadata = json.dumps(metadata)
@@ -530,14 +560,14 @@ def upsert_image(job_id, result):
                   score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                   score_technical, score_aesthetic, score_general, model_version,
                   rating, label,
-                  keywords, metadata, scores_json, thumbnail_path, image_hash, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  keywords, title, description, metadata, scores_json, thumbnail_path, image_hash, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
               (job_id, image_path, file_name, file_type, 
                score,
                score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                score_technical, score_aesthetic, score_general, model_version,
                rating, label,
-               keywords, metadata, json.dumps(result), thumbnail_path, image_hash, datetime.datetime.now()))
+               keywords, title, description, metadata, json.dumps(result), thumbnail_path, image_hash, datetime.datetime.now()))
     
     # Get ID of inserted/updated record
     image_id = c.lastrowid
