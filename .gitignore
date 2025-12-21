@@ -127,3 +127,4 @@ results/
 scoring_history.db
 
 backups/
+.venv_wsl/
