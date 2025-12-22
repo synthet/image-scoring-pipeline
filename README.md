@@ -3,7 +3,7 @@
 A comprehensive Python CLI tool for image analysis including:
 - **Image Quality Scoring**: Using Google's MUSIQ model and multiple quality assessment models
 - **AI Keyword Extraction**: Using BLIP + CLIP models for automatic keyword generation from images
-- **NEF File Support**: Full support for Nikon Raw files and other RAW formats
+- **NEF File Support**: Full support for Nikon Raw files (including Z8/Z9 HE* via ExifTool) and other RAW formats
 
 ## Quick Setup
 
@@ -377,7 +377,14 @@ After first successful run, models are cached locally and can be used offline.
 - **Batch Processing**: Process entire folders of images
 - **NEF Support**: Full Nikon Raw file support
 
-### AI Keyword Extraction (NEW!)
+### Web Interface (v2.0 - Digital Asset Management)
+- **Visual Dashboard**: Deep-dive analysis with score bars and model breakdowns
+- **Interactive Metadata Editor**: Edit Title, Description, Keywords, Rating, and Color Label directly
+- **Smart Filters**: Filter by Score Ranges (e.g., Aesthetic > 0.7) and Date
+- **Export Workflow**: Curate and export your best shots
+- **Persistence**: Remembers your settings between sessions
+
+### AI Keyword Extraction
 - **BLIP + CLIP Pipeline**: State-of-the-art AI models for keyword extraction
 - **Automatic Captioning**: Generate natural language descriptions
 - **Confidence Scoring**: Each keyword comes with confidence scores

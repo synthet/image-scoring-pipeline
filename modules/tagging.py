@@ -289,7 +289,7 @@ class TaggingRunner:
                 
         yield f"Done. Processed: {processed_count}, Skipped: {skipped_count}"
 
-    def write_metadata(self, image_path: str, keywords: List[str], title: str = "", description: str = "") -> bool:
+    def write_metadata(self, image_path: str, keywords: List[str], title: str = "", description: str = "", rating: int = 0, label: str = "") -> bool:
         """
         Write keywords to image metadata (XMP/IPTC).
         """
@@ -323,8 +323,17 @@ class TaggingRunner:
                 cmd.append(f'-XPComment={description}') 
                 # Caption-Abstract for old IPTC
                 cmd.append(f'-IPTC:Caption-Abstract={description}')
+            
+            if rating and rating > 0:
+                cmd.append(f'-Rating={rating}')
+                cmd.append(f'-XMP:Rating={rating}')
+                
+            if label:
+                 cmd.append(f'-Label={label}')
+                 cmd.append(f'-XMP:Label={label}')
+
             # Hierarchical keywords often used by Lightroom
-            # cmd.append(f'-HierarchicalSubject={kw_str}') 
+            # cmd.append(f'-HierarchicalSubject={kw_str}')  
             
             cmd.append(image_path)
             

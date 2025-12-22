@@ -101,8 +101,18 @@ class MultiModelMUSIQ:
             return scores.get(model, 0.0)
 
         # Calculate sub-scores
-        tech_score = (get_s('paq2piq') + get_s('liqe')) / 2.0
-        art_score = (get_s('ava') + get_s('koniq')) / 2.0
+        # Calculate sub-scores (Matching calculate_weighted_categories)
+        # Technical: PaQ(0.35), LIQE(0.35), KonIQ(0.15), SPAQ(0.15)
+        tech_score = (0.35 * get_s('paq2piq') + 
+                      0.35 * get_s('liqe') + 
+                      0.15 * get_s('koniq') + 
+                      0.15 * get_s('spaq'))
+
+        # Aesthetic: AVA(0.40), KonIQ(0.30), SPAQ(0.20), PaQ(0.10)
+        art_score = (0.40 * get_s('ava') + 
+                     0.30 * get_s('koniq') + 
+                     0.20 * get_s('spaq') + 
+                     0.10 * get_s('paq2piq'))
         
         # 1. 🔴 Red = "The Reject" (Technical Failure)
         if tech_score < 0.40:
@@ -328,6 +338,50 @@ class MultiModelMUSIQ:
             # If check fails, default to trying rawpy
             return True
 
+    def _convert_with_exiftool(self, raw_path: str, output_path: str) -> bool:
+        """
+        Convert RAW using exiftool to extract embedded JPEG.
+        This is often the most robust method for modern proprietary formats like Z8/Z9 HE*.
+        """
+        try:
+            if shutil.which("exiftool") is None:
+                return False
+
+            # -b: binary output
+            # -JpgFromRaw: tag to extract
+            # -w!: overwrite output file, %0f means original filename
+            # But here we want specific output path. 
+            # exiftool -b -JpgFromRaw source > destination is simplest standard shell way, 
+            # but acts differently on windows vs linux potentially with redirects.
+            # safer: use -W (capital) or just write to stdout and capture.
+            
+            cmd = ['exiftool', '-b', '-JpgFromRaw', raw_path]
+            result = subprocess.run(cmd, capture_output=True, text=False, timeout=10)
+            
+            if result.returncode == 0 and len(result.stdout) > 1000:
+                if result.stdout.startswith(b'\xff\xd8'):
+                    with open(output_path, 'wb') as f:
+                        f.write(result.stdout)
+                    logging.getLogger(__name__).info(f"✓ Extracted embedded JPEG via ExifTool")
+                    return True
+            
+            # Try PreviewImage if JpgFromRaw fails
+            cmd = ['exiftool', '-b', '-PreviewImage', raw_path]
+            result = subprocess.run(cmd, capture_output=True, text=False, timeout=10)
+            
+            if result.returncode == 0 and len(result.stdout) > 1000:
+                 if result.stdout.startswith(b'\xff\xd8'):
+                    with open(output_path, 'wb') as f:
+                        f.write(result.stdout)
+                    logging.getLogger(__name__).info(f"✓ Extracted embedded JPEG (PreviewImage) via ExifTool")
+                    return True
+                    
+            return False
+            
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+            # logging.getLogger(__name__).warning(f"exiftool conversion failed: {e}")
+            return False
+
     def convert_raw_to_jpeg(self, raw_path: str) -> Optional[str]:
         """Convert RAW file to temporary JPEG for processing."""
         logging.getLogger(__name__).info(f"Converting RAW file: {raw_path}")
@@ -344,6 +398,7 @@ class MultiModelMUSIQ:
         if self._is_safe_for_rawpy(raw_path):
              conversion_methods = [
                  self._convert_with_rawpy,
+                 self._convert_with_exiftool,  # Add ExifTool here as strong secondary
                  self._convert_with_dcraw,
                  self._convert_with_imagemagick,
                  self._convert_with_pillow
@@ -351,6 +406,7 @@ class MultiModelMUSIQ:
         else:
              logging.getLogger(__name__).info(f"Skipping rawpy for likely HE/HE* compressed file: {raw_name}")
              conversion_methods = [
+                 self._convert_with_exiftool,  # Priority 1 for HE* files
                  self._convert_with_dcraw,
                  self._convert_with_imagemagick,
                  self._convert_with_pillow
@@ -579,13 +635,14 @@ class MultiModelMUSIQ:
              self.device = '/CPU:0'
         
         # Model weights for weighted scoring (based on statistical analysis)
+        # Model weights for weighted scoring (based on statistical analysis)
         self.model_weights = {
-            "koniq": 0.30,      # Primary technical reference (reliability)
-            "spaq": 0.25,       # Secondary technical (discrimination)
-            "paq2piq": 0.20,    # Detail/Artifact detection
-            "liqe": 0.15,       # Semantic/Aesthetic (SOTA PyTorch)
-            "ava": 0.10,        # Legacy Aesthetic
-            "vila": 0.00        # Disabled/Removed
+            "paq2piq": 0.25,
+            "liqe": 0.25,
+            "ava": 0.20,
+            "koniq": 0.20,
+            "spaq": 0.10,
+            "vila": 0.00
         }
     
     def _setup_gpu(self):
@@ -1072,26 +1129,27 @@ class MultiModelMUSIQ:
         def get_s(model):
             return scores.get(model, 0.0)
 
-        # 1. Technical Safety
-        # PaQ: 0.40, LIQE: 0.35, KonIQ: 0.15, SPAQ: 0.10
-        technical = (0.40 * get_s('paq2piq') + 
+        # 1. Technical Safety (Culling)
+        # PaQ: 0.35, LIQE: 0.35, KonIQ: 0.15, SPAQ: 0.15
+        technical = (0.35 * get_s('paq2piq') + 
                      0.35 * get_s('liqe') + 
                      0.15 * get_s('koniq') + 
-                     0.10 * get_s('spaq'))
+                     0.15 * get_s('spaq'))
                      
-        # 2. Portfolio Potential
-        # AVA: 0.50, KonIQ: 0.30, LIQE: 0.10, PaQ: 0.10
-        aesthetic = (0.50 * get_s('ava') + 
+        # 2. Portfolio Potential (Ranking)
+        # AVA: 0.40, KonIQ: 0.30, SPAQ: 0.20, PaQ: 0.10
+        aesthetic = (0.40 * get_s('ava') + 
                      0.30 * get_s('koniq') + 
-                     0.10 * get_s('liqe') + 
+                     0.20 * get_s('spaq') + 
                      0.10 * get_s('paq2piq'))
 
-        # 3. General Purpose
-        # PaQ: 0.35, AVA: 0.30, LIQE: 0.25, KonIQ: 0.10
-        general = (0.35 * get_s('paq2piq') + 
-                   0.30 * get_s('ava') + 
+        # 3. General Purpose (Balanced)
+        # PaQ: 0.25, LIQE: 0.25, AVA: 0.20, KonIQ: 0.20, SPAQ: 0.10
+        general = (0.25 * get_s('paq2piq') + 
                    0.25 * get_s('liqe') + 
-                   0.10 * get_s('koniq'))
+                   0.20 * get_s('ava') + 
+                   0.20 * get_s('koniq') + 
+                   0.10 * get_s('spaq'))
                    
         return {
             "technical": round(technical, 3),

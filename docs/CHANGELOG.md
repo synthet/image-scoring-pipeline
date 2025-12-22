@@ -5,6 +5,23 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2025-12-22
+
+### Added
+- **Metadata Editor**: Added interactive metadata editor to WebUI (Title, Description, Keyword, Rating, Color Label).
+- **Database Export**: Added "Export DB to JSON" feature to WebUI for full database backup.
+- **Score Recalculation**: Added `scripts/maintenance/recalculate_scores.py` to update existing database records with new weights.
+- **Config Module**: Added `modules/config.py` for centralized configuration management.
+
+### Changed
+- **Scoring Weights**: Refined model weights for better technical and aesthetic assessment:
+  - Technical: KONIQ (40%), SPAQ (30%), PAQ2PIQ (30%)
+  - Aesthetic: AVA (40%), VILA (40%), SPAQ (20%)
+  - General: Weighted average of Technical (50%) and Aesthetic (50%)
+- **WebUI**: Updated `webui.py` to support new metadata editing and export features.
+- **Database**: Updated `modules/db.py` to support JSON export and metadata updates.
+- **Dependencies**: Added `exiftool` support for writing metadata to NEF files.
+
 ## [3.2.0] - 2025-12-20
 
 ### Added

@@ -7,10 +7,14 @@ import time
 import math
 import os
 import json
-from modules import scoring, db, tagging
+from modules import scoring, db, tagging, config
 
 # Initialize DB on load
+# Initialize DB on load
 db.init_db()
+
+# Load Config
+app_config = config.load_config()
 
 runner = scoring.ScoringRunner()
 tagging_runner = tagging.TaggingRunner()
@@ -21,6 +25,10 @@ def run_scoring_wrapper(input_path, force_rescore):
     Wrapper to run scoring and update UI.
     """
     skip_existing = not force_rescore
+    
+    # Save Config
+    config.save_config_value('scoring_input_path', input_path)
+    
     # Disable Run/Fix, Enable Stop
     yield "", "Starting...", gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=False)
     
@@ -74,6 +82,9 @@ def run_tagging_wrapper(input_path, custom_keywords, overwrite, generate_caption
     """
     yield "", "Starting Tagging...", gr.update(interactive=False), gr.update(interactive=True)
     
+    # Save Config
+    config.save_config_value('tagging_input_path', input_path)
+    
     # Simple keyword parsing
     keywords_list = None
     if custom_keywords:
@@ -93,10 +104,25 @@ def run_tagging_wrapper(input_path, custom_keywords, overwrite, generate_caption
 # Pagination State
 PAGE_SIZE = 50
 
-def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter):
+def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
     """Fetch images for gallery with pagination."""
-    rows = db.get_images_paginated(page, PAGE_SIZE, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
-    total_count = db.get_image_count(rating_filter, label_filter, keyword_filter)
+    date_range = (start_date, end_date) if (start_date or end_date) else None
+    
+    rows = db.get_images_paginated(
+        page, PAGE_SIZE, sort_by, sort_order, 
+        rating_filter, label_filter, keyword_filter, 
+        min_score_general=min_gen, 
+        min_score_aesthetic=min_aes, 
+        min_score_technical=min_tech, 
+        date_range=date_range
+    )
+    total_count = db.get_image_count(
+        rating_filter, label_filter, keyword_filter,
+        min_score_general=min_gen, 
+        min_score_aesthetic=min_aes, 
+        min_score_technical=min_tech, 
+        date_range=date_range
+    )
     total_pages = math.ceil(total_count / PAGE_SIZE) if total_count > 0 else 1
     
     results = []
@@ -153,28 +179,33 @@ def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, key
         
     return results, f"Page {page} of {total_pages}", total_pages, raw_paths
 
-def update_gallery(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter):
-    images, label, _, raw_paths = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
-    return images, label, raw_paths, {}
+def update_gallery(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
+    images, label, _, raw_paths = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date)
+    # Return: images, label, raw_paths, *details_cleared*
+    # Details cleared must match detail_outputs list:
+    # d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label
+    return images, label, raw_paths, {}, {}, {}, {}, gr.update(visible=False), "", "", "", "0", "None"
 
-def next_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter):
-    _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
+def next_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
+    _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date)
     new_page = min(page + 1, total_pages)
-    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
+    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date)
 
-def prev_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter):
+def prev_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
     new_page = max(page - 1, 1)
-    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
+    return new_page, *update_gallery(new_page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date)
 
-def first_page(sort_by, sort_order, rating_filter, label_filter, keyword_filter):
-     return 1, *update_gallery(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter)
+def first_page(sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
+     return 1, *update_gallery(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date)
 
 def display_details(evt: gr.SelectData, raw_paths):
+    print(f"DEBUG: display_details called. Index: {evt.index if evt else 'None'}, Paths Len: {len(raw_paths) if raw_paths else 0}")
     if evt is None:
-        return {}, gr.update(visible=False)
+        return "", {}, {}, {}, {}, gr.update(visible=False)
     index = evt.index
     if index is None or not raw_paths or index >= len(raw_paths):
-        return {}, gr.update(visible=False)
+        print("DEBUG: Index out of bounds or no paths.")
+        return "", {}, {}, {}, {}, gr.update(visible=False)
     
     file_path = raw_paths[index]
     details = db.get_image_details(file_path)
@@ -253,7 +284,35 @@ def display_details(evt: gr.SelectData, raw_paths):
         if rate_cond or label_cond:
             show_delete = True
 
-    return details, gr.update(visible=show_delete)
+    # Prepare Visual Outputs
+    
+    # 1. Summary Markdown
+    filename = details.get('file_name', os.path.basename(file_path))
+    created = details.get('created_at', 'Unknown')
+    res_info = f"**File:** `{filename}`\n\n**Date:** {created}"
+    
+    # 2. General Score (Main)
+    gen_score = details.get('score_general', details.get('score', 0))
+    gen_label = {"General Score": gen_score}
+    
+    # 3. Weighted Scores
+    tech = details.get('score_technical', 0)
+    aes = details.get('score_aesthetic', 0)
+    weighted_label = {
+        "Technical": tech,
+        "Aesthetic": aes
+    }
+    
+    # 4. Model Scores
+    models_label = {
+        "SPAQ": details.get('score_spaq', 0),
+        "AVA": details.get('score_ava', 0),
+        "KonIQ": details.get('score_koniq', 0),
+        "PaQ2PiQ": details.get('score_paq2piq', 0),
+        "LIQE": details.get('score_liqe', 0)
+    }
+    
+    return res_info, gen_label, weighted_label, models_label, details, gr.update(visible=show_delete)
 
 def delete_nef(details):
     """
@@ -322,6 +381,112 @@ def delete_nef(details):
     except Exception as e:
         return f"Error deleting: {e}", gr.update(visible=True)
 
+def export_filtered_images(export_path, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
+    """
+    Exports images matching current filters to `export_path`.
+    """
+    import shutil
+    
+    if not export_path or not export_path.strip():
+        return "Error: Export path cannot be empty."
+        
+    if not os.path.exists(export_path):
+        try:
+            os.makedirs(export_path)
+        except Exception as e:
+            return f"Error creating directory: {e}"
+            
+    # Get paths
+    date_range = (start_date, end_date) if (start_date or end_date) else None
+    
+    paths = db.get_filtered_paths(
+        rating_filter, label_filter, keyword_filter, 
+        min_score_general=min_gen, 
+        min_score_aesthetic=min_aes, 
+        min_score_technical=min_tech, 
+        date_range=date_range
+    )
+    
+    if not paths:
+        return "No images match current filters."
+        
+    count = 0
+    try:
+        for src in paths:
+             if not os.path.exists(src): continue
+             
+             name = os.path.basename(src)
+             dst = os.path.join(export_path, name)
+             
+             # Avoid overwrite if same folder (which is silly but possible)
+             if os.path.abspath(src) == os.path.abspath(dst):
+                 continue
+                 
+             shutil.copy2(src, dst)
+             count += 1
+             
+        return f"Successfully exported {count} images to {export_path}"
+    except Exception as e:
+        return f"Export partial/failed: {e}"
+
+def export_all_db(export_path):
+    """
+    Exports full DB to JSON.
+    """
+    if not export_path or not export_path.strip():
+        return "Error: Export path cannot be empty."
+        
+    if not os.path.exists(export_path):
+        try:
+            os.makedirs(export_path)
+        except Exception as e:
+            return f"Error creating directory: {e}"
+            
+    # Define filename
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    filename = f"db_export_{timestamp}.json"
+    full_path = os.path.join(export_path, filename)
+    
+    success, msg = db.export_db_to_json(full_path)
+    return msg
+
+def save_metadata_action(details, title, desc, keywords, rating, label):
+    """
+    Saves metadata to DB and File.
+    """
+    if not details or not isinstance(details, dict):
+         return "Error: No image selected.", gr.update(visible=True)
+         
+    file_path = details.get('file_path')
+    if not file_path:
+         return "Error: Invalid image record.", gr.update(visible=True)
+         
+    # Parse Keywords
+    kw_list = [k.strip() for k in keywords.split(',') if k.strip()]
+    
+    # 1. Update DB
+    try:
+        # Convert rating/label types if needed
+        r_val = int(rating) if rating else 0
+        l_val = label if label != "None" else ""
+        
+        success = db.update_image_metadata(file_path, keywords, title, desc, r_val, l_val)
+        if not success:
+             return "Failed to update database.", gr.update(visible=True)
+             
+        # 2. Write to File (Tagging Runner)
+        # We run this synchronously here for simplicity, or we could spawn thread.
+        # Given it's one file, sync is probably fine (~1-2s).
+        
+        if tagging_runner.write_metadata(file_path, kw_list, title, desc, r_val, l_val):
+            return f"Saved metadata for {os.path.basename(file_path)}", gr.update(visible=False) # Hide error box
+        else:
+             return "Saved to DB, but failed to write to file (ExifTool error).", gr.update(visible=True)
+             
+    except Exception as e:
+        return f"Error saving metadata: {e}", gr.update(visible=True)
+
+
 def get_jobs_history():
     rows = db.get_jobs()
     data = []
@@ -361,7 +526,11 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
         with gr.TabItem("Run Scoring"):
             with gr.Row():
                 with gr.Column(scale=1):
-                    input_dir = gr.Textbox(label="Input Folder Path", placeholder="D:\\Photos\\...")
+                    input_dir = gr.Textbox(
+                        label="Input Folder Path", 
+                        placeholder="D:\\Photos\\...",
+                        value=app_config.get('scoring_input_path', '')
+                    )
                     force_checkbox = gr.Checkbox(label="Force Re-score (Overwrite existing)", value=False)
                     with gr.Row():
                         run_btn = gr.Button("Start Scoring", variant="primary")
@@ -394,7 +563,11 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
         with gr.TabItem("Keywords"):
             with gr.Row():
                 with gr.Column(scale=1):
-                    k_input_dir = gr.Textbox(label="Input Folder Path", placeholder="D:\\Photos\\... (Leave empty to process all DB images matching folder)")
+                    k_input_dir = gr.Textbox(
+                        label="Input Folder Path", 
+                        placeholder="D:\\Photos\\... (Leave empty to process all DB images matching folder)",
+                        value=app_config.get('tagging_input_path', '')
+                    )
                     k_custom = gr.Textbox(label="Custom Keywords (comma separated)", placeholder="e.g. vintage, cinematic, rainy")
                     with gr.Row():
                         k_overwrite = gr.Checkbox(label="Overwrite existing keywords", value=False)
@@ -440,7 +613,25 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                         choices=["Red", "Yellow", "Green", "Blue", "Purple", "None"], 
                         label="Filter by Color Label"
                     )
+                
+                with gr.Group():
+                    gr.Markdown("### Advanced Filters")
+                    with gr.Row():
+                        f_min_gen = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min General Score")
+                        f_min_aes = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Aesthetic Score")
+                        f_min_tech = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Technical Score")
+                    with gr.Row():
+                        f_date_start = gr.Textbox(label="Start Date (YYYY-MM-DD)", placeholder="2024-01-01")
+                        f_date_end = gr.Textbox(label="End Date (YYYY-MM-DD)", placeholder="2025-12-31")
+                        
                 filter_keyword = gr.Textbox(label="Filter by Keyword", placeholder="Search tags...")
+                
+            with gr.Accordion("Export", open=False):
+                with gr.Row():
+                    export_dir = gr.Textbox(label="Export Path", placeholder="D:\\Photos\\BestOf...")
+                    export_btn = gr.Button("Export Filtered Images")
+                    export_db_btn = gr.Button("Export DB to JSON", variant="secondary")
+                export_status = gr.Label(label="Export Status")
             
             with gr.Row():
                 prev_btn = gr.Button("Previous")
@@ -451,7 +642,28 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             
             with gr.Row():
                 with gr.Column():
-                    image_details = gr.JSON(label="Image Details")
+                    with gr.Group():
+                        # selected_info = gr.Markdown("Select an image to view details.")
+                        with gr.Row():
+                             d_score_gen = gr.Label(label="General Score", num_top_classes=1)
+                             d_score_weighted = gr.Label(label="Weighted Scores", num_top_classes=2)
+                        d_score_models = gr.Label(label="Model Scores", num_top_classes=5)
+                        
+                    with gr.Group():
+                        gr.Markdown("### Metadata Editor")
+                        d_title = gr.Textbox(label="Title", interactive=True)
+                        d_desc = gr.Textbox(label="Description", interactive=True)
+                        d_keywords = gr.Textbox(label="Keywords (comma separated)", interactive=True)
+                        with gr.Row():
+                             d_rating = gr.Dropdown(choices=["0", "1", "2", "3", "4", "5"], label="Rating", interactive=True)
+                             d_label = gr.Dropdown(choices=["None", "Red", "Yellow", "Green", "Blue", "Purple"], label="Color Label", interactive=True)
+                        
+                        save_btn = gr.Button("Save Metadata", variant="primary")
+                        save_status = gr.Label(label="Save Status", visible=False)
+                    
+                    with gr.Accordion("Raw Data", open=False):
+                        image_details = gr.JSON(label="Image Details")
+                        
                     delete_btn = gr.Button("Delete Original NEF", variant="stop", visible=False)
                     delete_status = gr.Textbox(label="Deletion Status", interactive=False, visible=True)
 
@@ -460,39 +672,115 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             # Events
             
             # Helper to link outputs
-            gallery_outputs = [gallery, page_label, current_paths, image_details]
-            filter_inputs = [sort_dropdown, order_dropdown, filter_rating, filter_label, filter_keyword]
+            gallery_outputs = [gallery, page_label, current_paths, image_details] # Note: image_details is still needed for pagination update if we want to clear it, but typically pagination just updates gallery. We might wanna clear details on page change? Let's leave as is for now, it's fine.
+            # Actually, `get_gallery_data` returns just gallery list + label.
+            # `update_gallery` wrapper returns images, label, paths, {}.
+            # The last {} was `image_details`. We need to match the new outputs if we want to clear them.
+            # But wait, `update_gallery` returns 4 items.
+            # The outputs below are [current_page, gallery, page_label, current_paths, image_details].
+            
+            # We need to update `update_gallery` to return empty values for new components too to clear them?
+            # Or just leave them stale? Stale is bad.
+            # Let's update `update_gallery` to return 8 outputs to match (page is separate).
+            
+            # Let's patch `update_gallery` separately. For now, let's fix the select event.
+            
+            
+            # Legacy filter list + new ones
+            filter_inputs = [
+                sort_dropdown, order_dropdown, 
+                filter_rating, filter_label, filter_keyword,
+                f_min_gen, f_min_aes, f_min_tech, f_date_start, f_date_end
+            ]
+            
+            # Helper list for all detail outputs that need clearing
+            # Must match return order of update_gallery (excluding first 3: images, label, paths)
+            detail_outputs = [d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label]
+            
+            # Combined outputs for gallery update: [current_page, gallery, page_label, current_paths, *detail_outputs]
             
             refresh_btn.click(
                 fn=first_page,
                 inputs=filter_inputs,
-                outputs=[current_page, *gallery_outputs]
+                outputs=[current_page, gallery, page_label, current_paths, *detail_outputs]
             )
             
             prev_btn.click(
                 fn=prev_page,
                 inputs=[current_page, *filter_inputs],
-                outputs=[current_page, *gallery_outputs]
+                outputs=[current_page, gallery, page_label, current_paths, *detail_outputs]
             )
             
             next_btn.click(
                 fn=next_page,
                 inputs=[current_page, *filter_inputs],
-                outputs=[current_page, *gallery_outputs]
+                outputs=[current_page, gallery, page_label, current_paths, *detail_outputs]
             )
             
             # Auto-refresh on sort change
-            sort_dropdown.change(first_page, filter_inputs, [current_page, *gallery_outputs])
-            order_dropdown.change(first_page, filter_inputs, [current_page, *gallery_outputs])
+            sort_dropdown.change(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
+            order_dropdown.change(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
             
             # Auto-refresh on filter change
-            filter_rating.change(first_page, filter_inputs, [current_page, *gallery_outputs])
-            filter_label.change(first_page, filter_inputs, [current_page, *gallery_outputs])
-            filter_keyword.submit(first_page, filter_inputs, [current_page, *gallery_outputs])
+            filter_rating.change(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
+            filter_label.change(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
+            filter_keyword.submit(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
+            
+            # Advanced Filter Events
+            f_min_gen.release(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
+            f_min_aes.release(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
+            f_min_tech.release(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
+            f_date_start.submit(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
+            f_date_end.submit(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
+            
+            # Export Action
+            # Reuse filter_inputs but exclude sort/order which aren't needed for filtering, 
+            # though get_filtered_paths doesn't take sort.
+            # Inputs: export_dir, rating, label, keyword, min_gen, ... 
+            # Slice filter_inputs[2:] to skip sort/order
+            
+            export_inputs = [export_dir] + filter_inputs[2:]
+            
+            export_btn.click(
+                fn=export_filtered_images,
+                inputs=export_inputs,
+                outputs=[export_status]
+            )
+            
+            export_db_btn.click(
+                fn=export_all_db,
+                inputs=[export_dir],
+                outputs=[export_status]
+            )
             
             # Selection -> Details
             # Update: added delete_btn to outputs
-            gallery.select(fn=display_details, inputs=[current_paths], outputs=[image_details, delete_btn])
+            # Wrapper for display details to also return form values
+            def display_details_wrapper(evt: gr.SelectData, raw_paths):
+                 res, gen, weight, models, raw, del_upd = display_details(evt, raw_paths)
+                 
+                 # Extract form data from 'raw' (details dict)
+                 t = raw.get('title', '')
+                 d = raw.get('description', '')
+                 k = raw.get('keywords', '')
+                 r = str(raw.get('rating', 0))
+                 l = raw.get('label', 'None')
+                 if not l: l = "None"
+                 
+                 return res, gen, weight, models, raw, del_upd, t, d, k, r, l
+            
+            gallery.select(
+                fn=display_details_wrapper, 
+                inputs=[current_paths], 
+                outputs=[gr.Textbox(visible=False), d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label]
+            )
+            
+            # Save Action
+            save_btn.click(
+                fn=save_metadata_action,
+                inputs=[image_details, d_title, d_desc, d_keywords, d_rating, d_label],
+                outputs=[save_status, save_status] # Update label and visibility
+            )
             
             # Delete Action
             delete_btn.click(

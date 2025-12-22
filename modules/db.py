@@ -13,7 +13,7 @@ def get_db():
     return conn
 
 
-def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None):
+def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None):
     conn = get_db()
     c = conn.cursor()
     
@@ -49,6 +49,30 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None):
     if keyword_filter and keyword_filter.strip():
         conditions.append("keywords LIKE ?")
         params.append(f"%{keyword_filter.strip()}%")
+
+    # Score Filters
+    if min_score_general > 0:
+        conditions.append("score_general >= ?")
+        params.append(min_score_general)
+    
+    if min_score_aesthetic > 0:
+        conditions.append("score_aesthetic >= ?")
+        params.append(min_score_aesthetic)
+
+    if min_score_technical > 0:
+        conditions.append("score_technical >= ?")
+        params.append(min_score_technical)
+        
+    # Date Filter
+    if date_range:
+        start_date, end_date = date_range
+        print(f"DEBUG: Date Range: {start_date} to {end_date}")
+        if start_date:
+            conditions.append("date(created_at) >= date(?)")
+            params.append(start_date)
+        if end_date:
+            conditions.append("date(created_at) <= date(?)")
+            params.append(end_date)
             
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -58,7 +82,7 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None):
     conn.close()
     return count
 
-def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None):
+def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None):
     conn = get_db()
     c = conn.cursor()
     offset = (page - 1) * page_size
@@ -91,6 +115,29 @@ def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", ra
     if keyword_filter and keyword_filter.strip():
         conditions.append("keywords LIKE ?")
         params.append(f"%{keyword_filter.strip()}%")
+        
+    # Score Filters
+    if min_score_general > 0:
+        conditions.append("score_general >= ?")
+        params.append(min_score_general)
+    
+    if min_score_aesthetic > 0:
+        conditions.append("score_aesthetic >= ?")
+        params.append(min_score_aesthetic)
+
+    if min_score_technical > 0:
+        conditions.append("score_technical >= ?")
+        params.append(min_score_technical)
+
+    # Date Filter
+    if date_range:
+        start_date, end_date = date_range
+        if start_date:
+            conditions.append("date(created_at) >= date(?)")
+            params.append(start_date)
+        if end_date:
+            conditions.append("date(created_at) <= date(?)")
+            params.append(end_date)
             
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -102,6 +149,74 @@ def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", ra
     rows = c.fetchall()
     conn.close()
     return rows
+
+def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None):
+    """
+    Returns a list of file_paths matching the filters (No pagination).
+    """
+    conn = get_db()
+    c = conn.cursor()
+    
+    query = "SELECT file_path FROM images"
+    params = []
+    conditions = []
+    
+    if rating_filter:
+        placeholders = ','.join(['?'] * len(rating_filter))
+        conditions.append(f"rating IN ({placeholders})")
+        params.extend(rating_filter)
+        
+    if label_filter:
+        clean_labels = [l for l in label_filter if l != "None"]
+        has_none = "None" in label_filter
+        
+        lbl_conds = []
+        if clean_labels:
+            placeholders = ','.join(['?'] * len(clean_labels))
+            lbl_conds.append(f"label IN ({placeholders})")
+            params.extend(clean_labels)
+            
+        if has_none:
+            lbl_conds.append("(label IS NULL OR label = '')")
+            
+        if lbl_conds:
+            conditions.append(f"({' OR '.join(lbl_conds)})")
+            
+    if keyword_filter and keyword_filter.strip():
+        conditions.append("keywords LIKE ?")
+        params.append(f"%{keyword_filter.strip()}%")
+        
+    # Score Filters
+    if min_score_general > 0:
+        conditions.append("score_general >= ?")
+        params.append(min_score_general)
+    
+    if min_score_aesthetic > 0:
+        conditions.append("score_aesthetic >= ?")
+        params.append(min_score_aesthetic)
+
+    if min_score_technical > 0:
+        conditions.append("score_technical >= ?")
+        params.append(min_score_technical)
+
+    # Date Filter
+    if date_range:
+        start_date, end_date = date_range
+        print(f"DEBUG: Date Range: {start_date} to {end_date}")
+        if start_date:
+            conditions.append("date(created_at) >= date(?)")
+            params.append(start_date)
+        if end_date:
+            conditions.append("date(created_at) <= date(?)")
+            params.append(end_date)
+            
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    
+    c.execute(query, tuple(params))
+    rows = c.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
 
 def image_exists(file_path, current_version=None):
     conn = get_db()
@@ -646,6 +761,28 @@ def backup_database(max_backups=5):
     except Exception as e:
         print(f"Backup failed: {e}")
 
+def update_image_metadata(file_path, keywords, title, description, rating, label):
+    """
+    Updates the metadata fields for a given image path.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Also need to update scores_json if possible?
+        # For now, just update the columns.
+        
+        c.execute('''UPDATE images 
+                     SET keywords = ?, title = ?, description = ?, rating = ?, label = ?
+                     WHERE file_path = ?''',
+                  (keywords, title, description, rating, label, file_path))
+        conn.commit()
+        return True
+    except Exception as e:
+        logging.error(f"Failed to update metadata for {file_path}: {e}")
+        return False
+    finally:
+        conn.close()
+
 def get_incomplete_records():
     """
     Retrieves records that have missing scores or metadata.
@@ -661,22 +798,66 @@ def get_incomplete_records():
     score_checks = []
     models = ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']
     for m in models:
-        score_checks.append(f"(score_{m} <= 0 OR score_{m} IS NULL)")
+        score_checks.append(f"score_{m} IS NULL OR score_{m} <= 0")
         
-    scores_condition = " OR ".join(score_checks)
+    score_cond = " OR ".join(score_checks)
     
-    # Check metadata
-    meta_condition = "(rating <= 0 OR rating IS NULL) OR (label IS NULL OR label = '')"
-    
-    query = f"SELECT * FROM images WHERE {scores_condition} OR {meta_condition}"
+    query = f"""
+        SELECT * FROM images 
+        WHERE 
+            (score <= 0 OR score IS NULL) OR
+            (rating <= 0 OR rating IS NULL) OR
+            (label IS NULL OR label = '') OR
+            ({score_cond})
+    """
     
     c.execute(query)
     rows = c.fetchall()
     conn.close()
+    return rows
+
+def export_db_to_json(output_path):
+    """
+    Exports the entire images table to a JSON file.
+    """
+    import json
     
-    # Convert to list of dicts
-    results = []
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM images")
+    rows = c.fetchall()
+    conn.close()
+    
+    data = []
     for row in rows:
-        results.append(dict(row))
+        item = dict(row)
+        # Handle datetime serialization if necessary (e.g. created_at)
+        # SQLite returns strings for timestamps usually, but just in case
+        if 'created_at' in item and item['created_at']:
+            item['created_at'] = str(item['created_at'])
+            
+        # Parse nested JSON strings for cleaner output?
+        # scores_json is already a JSON string in DB. 
+        # If we want the export to be a clean JSON object, we should probably parse it back to dict.
+        # But for a raw backup, keeping it as string is safer. 
+        # Let's try to parse it to make the export more usable.
+        if 'scores_json' in item and isinstance(item['scores_json'], str):
+            try:
+                item['scores_json'] = json.loads(item['scores_json'])
+            except:
+                pass # Leave as string if fail
+                
+        if 'metadata' in item and isinstance(item['metadata'], str):
+            try:
+                item['metadata'] = json.loads(item['metadata'])
+            except:
+                pass
+                
+        data.append(item)
         
-    return results
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+        return True, f"Successfully exported {len(data)} records to {output_path}"
+    except Exception as e:
+        return False, f"Export failed: {e}"

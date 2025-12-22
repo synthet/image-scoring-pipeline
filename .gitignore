@@ -128,3 +128,5 @@ scoring_history.db
 
 backups/
 .venv_wsl/
+config.json
+test_export.json
