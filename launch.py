@@ -24,7 +24,10 @@ def main():
     # We run webui.py in a subprocess so this launcher stays clean
     # or we can import it. Subprocess is safer for restarts/updates if we ever add them.
     cmd = [sys.executable, "webui.py"]
-    subprocess.run(cmd)
+    try:
+        subprocess.run(cmd)
+    except KeyboardInterrupt:
+        print("\nKeyboard interruption... closing.")
 
 if __name__ == "__main__":
     main()

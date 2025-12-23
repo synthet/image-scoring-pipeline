@@ -5,8 +5,29 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.3.0] - 2025-12-22
+## [3.4.0] - 2025-12-23
 
+### Added
+- **Folder Gallery**: Added support for browsing images by specific folders in the Gallery tab.
+- **Folder Tree**: Added a Folder Tree view to easily select and filter images by directory.
+- **Progress Visualization**: Added real-time progress bars for Scoring, Tagging, and Clustering operations in the WebUI.
+- **Clustering Module**: Added `modules/clustering.py` to group similar images into stacks using MobileNetV2 features.
+- **Stacks Interface**: Added Stacks tab to view and manage clustered image groups.
+- **Folder Caching**: Implemented `folders` table in database to cache directory structures for faster tree view rendering.
+
+### Changed
+- **Launch Script**: Modified `launch.py` to gracefully handle `KeyboardInterrupt` (Ctrl+C).
+- **WebUI Layout**: Refactored WebUI to include new tabs for Stacks and Folder Tree.
+- **Database Schema**: Added `folders` and `stacks` tables; added `folder_id` and `stack_id` to `images` table.
+- **Scoring & Tagging**: Updated runners to report fine-grained progress (current/total items) to the UI.
+
+## [3.3.1] - 2025-12-23
+
+### Added
+- **UI State Persistence**: WebUI now restores the display status of running scoring and keywords inference tasks (logs, buttons) when the page is reloaded.
+- **Background Execution**: Scoring and Tagging runners now execute in background threads detached from the UI session.
+
+## [3.3.0] - 2025-12-22
 ### Added
 - **Metadata Editor**: Added interactive metadata editor to WebUI (Title, Description, Keyword, Rating, Color Label).
 - **Database Export**: Added "Export DB to JSON" feature to WebUI for full database backup.

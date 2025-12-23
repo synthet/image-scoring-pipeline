@@ -13,7 +13,7 @@ def get_db():
     return conn
 
 
-def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None):
+def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None):
     conn = get_db()
     c = conn.cursor()
     
@@ -74,6 +74,11 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
             conditions.append("date(created_at) <= date(?)")
             params.append(end_date)
             
+    if folder_path:
+        folder_id = get_or_create_folder(folder_path)
+        conditions.append("folder_id = ?")
+        params.append(folder_id)
+
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
         
@@ -82,7 +87,7 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
     conn.close()
     return count
 
-def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None):
+def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None):
     conn = get_db()
     c = conn.cursor()
     offset = (page - 1) * page_size
@@ -139,6 +144,12 @@ def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", ra
             conditions.append("date(created_at) <= date(?)")
             params.append(end_date)
             
+    
+    if folder_path:
+        folder_id = get_or_create_folder(folder_path)
+        conditions.append("folder_id = ?")
+        params.append(folder_id)
+
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     
@@ -150,7 +161,7 @@ def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", ra
     conn.close()
     return rows
 
-def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None):
+def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None):
     """
     Returns a list of file_paths matching the filters (No pagination).
     """
@@ -210,6 +221,11 @@ def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=Non
             conditions.append("date(created_at) <= date(?)")
             params.append(end_date)
             
+    if folder_path:
+        folder_id = get_or_create_folder(folder_path)
+        conditions.append("folder_id = ?")
+        params.append(folder_id)
+
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     
@@ -298,6 +314,41 @@ def init_db():
         
     if "scores_json" not in columns:
         c.execute("ALTER TABLE images ADD COLUMN scores_json TEXT")
+
+
+    # Migration for Stacks
+    if "stack_id" not in columns:
+        c.execute("ALTER TABLE images ADD COLUMN stack_id INTEGER")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_stack_id ON images(stack_id)")
+
+    # Migration for Folders
+    if "folder_id" not in columns:
+        c.execute("ALTER TABLE images ADD COLUMN folder_id INTEGER")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_folder_id ON images(folder_id)")
+
+    # Stacks table
+    c.execute('''CREATE TABLE IF NOT EXISTS stacks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        best_image_id INTEGER,
+        created_at TIMESTAMP,
+        FOREIGN KEY(best_image_id) REFERENCES images(id)
+    )''')
+    
+    # Folders table
+    c.execute('''CREATE TABLE IF NOT EXISTS folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT UNIQUE,
+        parent_id INTEGER,
+        created_at TIMESTAMP
+    )''')
+
+    # Cluster Progress table
+
+    c.execute('''CREATE TABLE IF NOT EXISTS cluster_progress (
+        folder_path TEXT PRIMARY KEY,
+        last_run TIMESTAMP
+    )''')
 
 
 
@@ -394,7 +445,13 @@ def update_image_path(image_hash, new_path):
             c.execute("INSERT OR REPLACE INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?)", 
                       (img_id, new_path, datetime.datetime.now()))
         
+
         conn.commit()
+        # Post-update folder fix
+        try:
+             update_image_folder_id(image_hash=image_hash) 
+        except: pass
+        
         return True
     except Exception as e:
         logging.error(f"Failed to update path for hash {image_hash}: {e}")
@@ -402,7 +459,46 @@ def update_image_path(image_hash, new_path):
     finally:
         conn.close()
 
+def update_image_folder_id(image_hash=None, image_id=None):
+    """
+    Helper to update folder_id for a single image.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        if image_hash:
+             c.execute("SELECT id, file_path FROM images WHERE image_hash = ?", (image_hash,))
+        elif image_id:
+             c.execute("SELECT id, file_path FROM images WHERE id = ?", (image_id,))
+        else:
+             return
+
+        row = c.fetchone()
+        if row:
+             img_id = row[0]
+             path = row[1]
+             if path:
+                 dirname = os.path.dirname(path)
+                 dirname = os.path.normpath(dirname)
+                 # This calls get_or_create_folder which opens its own connection. 
+                 # Should be fine if we are not holding a write lock on main conn.
+                 conn.close() # Close read lock
+                 
+                 fid = get_or_create_folder(dirname)
+                 
+                 conn = get_db()
+                 c = conn.cursor()
+                 c.execute("UPDATE images SET folder_id = ? WHERE id = ?", (fid, img_id))
+                 conn.commit()
+    except Exception as e:
+        print(f"Error updating folder_id: {e}")
+    finally:
+        # conn close handled
+        try: conn.close()
+        except: pass
+
 def register_image_path(image_id, path):
+
     """
     Registers a path for a given image ID.
     """
@@ -417,6 +513,8 @@ def register_image_path(image_id, path):
     finally:
         conn.close()
 
+
+
 def get_all_paths(image_id):
     conn = get_db()
     c = conn.cursor()
@@ -425,8 +523,224 @@ def get_all_paths(image_id):
     conn.close()
     return [row[0] for row in rows]
 
+def get_folder_by_id(folder_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT path FROM folders WHERE id = ?", (folder_id,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def get_or_create_folder(folder_path):
+    """
+    Gets folder ID from cache/DB, creating it if it doesn't exist.
+    Recursively creates parent folders to establish hierarchy.
+    """
+    # Normalize path
+    folder_path = os.path.normpath(folder_path)
+    
+    # Base case for recursion / root check
+    # On Windows, os.path.dirname("D:\\") is "D:\\". 
+    # Stop if parent is same as current or empty.
+    parent_path = os.path.dirname(folder_path)
+    if not parent_path or parent_path == folder_path:
+        # It's a root or top level?
+        # Just create/get it with no parent.
+        parent_id = None
+    else:
+        # Recursive call to get/create parent first
+        # We assume this won't be too deep (max 10-20 levels typically)
+        parent_id = get_or_create_folder(parent_path)
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT id, parent_id FROM folders WHERE path = ?", (folder_path,))
+        row = c.fetchone()
+        if row:
+            # Check if parent_id needs update (if it was created without parent before)
+            # Only update if we have a valid parent_id and it's missing in DB
+            curr_pid = row[1]
+            if parent_id and curr_pid != parent_id:
+                # Update parent linkage
+                c.execute("UPDATE folders SET parent_id = ? WHERE id = ?", (parent_id, row[0]))
+                conn.commit()
+            return row[0]
+        
+        c.execute("INSERT INTO folders (path, parent_id, created_at) VALUES (?, ?, ?)", 
+                  (folder_path, parent_id, datetime.datetime.now()))
+        conn.commit()
+        return c.lastrowid
+    except Exception as e:
+        # Race condition or error?
+        # Retry select
+        try:
+             c.execute("SELECT id FROM folders WHERE path = ?", (folder_path,))
+             row = c.fetchone()
+             if row: return row[0]
+        except: pass
+        
+        logging.error(f"Error getting/creating folder {folder_path}: {e}")
+        return None
+    finally:
+        conn.close()
+
+def rebuild_folder_cache():
+    """
+    Scans all images, populates folders table with full hierarchy, and updates images.folder_id.
+    """
+    print("Rebuilding folder cache with hierarchy...")
+    conn = get_db()
+    c = conn.cursor()
+    
+    # 1. Get all unique folder paths from images
+    c.execute("SELECT DISTINCT file_path FROM images")
+    rows = c.fetchall()
+    conn.close() # Close mainly to avoid long read block if we write later (though we re-open in loop: inefficient but safe)
+    
+    unique_dirs = set()
+    for row in rows:
+        if row[0]:
+            unique_dirs.add(os.path.dirname(row[0]))
+            
+    sorted_dirs = sorted(list(unique_dirs))
+    
+    # 2. Iterate and create folders (recursive logic in get_or_create_folder handles hierarchy)
+    # We use a separate cache map to avoid slamming DB for get_or_create if we ran this often,
+    # but get_or_create_folder handles logic.
+    # To optimize: maybe just call get_or_create_folder for each unique dir.
+    
+    print(f"Found {len(sorted_dirs)} unique image directories. Processing hierarchy...")
+    
+    folder_map = {} # path -> id
+    
+    for d in sorted_dirs:
+        # This will create d and all its parents
+        fid = get_or_create_folder(d)
+        if fid:
+            folder_map[d] = fid
+            
+    # 3. Update images folder_id
+    print("Updating image folder_ids...")
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Batch update? 
+    # doing one by one is slow for 100k images.
+    # Logic: update by folder path.
+    # "UPDATE images SET folder_id = ? WHERE file_path LIKE ?" (too risky with partial matches?)
+    # "UPDATE images SET folder_id = ? WHERE substr(file_path, 1, len(dir)) = dir ?" No.
+    # Best: Iterate unique dirs, and update all images in that dir.
+    # Since we know the dir path, we can do:
+    # UPDATE images SET folder_id = <fid> WHERE file_path LIKE <dir> || '%';
+    # AND verify dirname matches?
+    # Or just iterate images?
+    # Iterate images might be 100k updates.
+    # Iterate folders is 1k updates.
+    # Let's try folder based update.
+    
+    count = 0
+    for d, fid in folder_map.items():
+        # Ensure path ends with separator for like query to contain it
+        # BUT wait, file_path includes filename.
+        # "D:\Photos\Img.jpg" dirname is "D:\Photos"
+        # We want UPDATE images SET folder_id=? WHERE file_path logic.
+        # We can't express "dirname(file_path) == d" easily in SQL.
+        # BUT we can iterate images with NO folder_id or ALL images?
+        pass
+
+    # Fallback: Loop images again?
+    # Or rely on python.
+    # Let's simple-loop images. 
+    # To speed up: SELECT id, file_path, folder_id FROM images WHERE folder_id IS NULL OR folder_id = 0?
+    # Or force update all.
+    
+    c.execute("SELECT id, file_path FROM images")
+    img_rows = c.fetchall()
+    
+    batch = []
+    
+    for row in img_rows:
+        img_id = row[0]
+        path = row[1]
+        if not path: continue
+        
+        d = os.path.dirname(path)
+        # Normalize
+        d = os.path.normpath(d)
+        
+        fid = folder_map.get(d)
+        if fid:
+            batch.append((fid, img_id))
+            
+        if len(batch) >= 1000:
+            c.executemany("UPDATE images SET folder_id = ? WHERE id = ?", batch)
+            count += len(batch)
+            batch = []
+            
+    if batch:
+        c.executemany("UPDATE images SET folder_id = ? WHERE id = ?", batch)
+        count += len(batch)
+            
+    conn.commit()
+    conn.close()
+    
+    msg = f"Folder cache rebuild complete. Processed {len(sorted_dirs)} folders, updated {count} images."
+    print(msg)
+    return msg
+
+
+
+def get_all_folders():
+    """
+    Returns a sorted list of all unique folder paths from the folders table.
+    """
+    # Trigger rebuild if empty?
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT path FROM folders ORDER BY path")
+    rows = c.fetchall()
+    conn.close()
+    
+    if not rows:
+        # Fallback or auto-build?
+        # If DB is not empty but folders is, rebuild.
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM images")
+        count = c.fetchone()[0]
+        conn.close()
+        if count > 0:
+            rebuild_folder_cache()
+            return get_all_folders() # recurse once
+            
+    return [row['path'] for row in rows]
+
+def get_images_by_folder(folder_path):
+    """
+    Returns all images located immediately in the specified folder using folder_id.
+    """
+    # Normalize
+    folder_path = os.path.normpath(folder_path)
+    
+    # Get ID
+    folder_id = get_or_create_folder(folder_path) # retrieving id mainly
+    
+    if not folder_id:
+        return []
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM images WHERE folder_id = ? ORDER BY file_name", (folder_id,))
+    rows = c.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in rows]
 
 def create_job(input_path):
+
+
     conn = get_db()
     c = conn.cursor()
     c.execute("INSERT INTO jobs (input_path, status, created_at) VALUES (?, ?, ?)",
@@ -667,7 +981,16 @@ def upsert_image(job_id, result):
     if isinstance(metadata, dict):
         metadata = json.dumps(metadata)
 
+
     image_hash = result.get("image_hash", None)
+
+    # Resolve Folder ID
+    folder_id = None
+    if image_path:
+        try:
+             folder_id = get_or_create_folder(os.path.dirname(image_path))
+        except Exception as e:
+             logging.error(f"Error resolving folder for {image_path}: {e}")
 
     c.execute('''INSERT OR REPLACE INTO images 
                  (job_id, file_path, file_name, file_type, 
@@ -675,14 +998,14 @@ def upsert_image(job_id, result):
                   score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                   score_technical, score_aesthetic, score_general, model_version,
                   rating, label,
-                  keywords, title, description, metadata, scores_json, thumbnail_path, image_hash, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  keywords, title, description, metadata, scores_json, thumbnail_path, image_hash, folder_id, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
               (job_id, image_path, file_name, file_type, 
                score,
                score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                score_technical, score_aesthetic, score_general, model_version,
                rating, label,
-               keywords, title, description, metadata, json.dumps(result), thumbnail_path, image_hash, datetime.datetime.now()))
+               keywords, title, description, metadata, json.dumps(result), thumbnail_path, image_hash, folder_id, datetime.datetime.now()))
     
     # Get ID of inserted/updated record
     image_id = c.lastrowid
@@ -861,3 +1184,240 @@ def export_db_to_json(output_path):
         return True, f"Successfully exported {len(data)} records to {output_path}"
     except Exception as e:
         return False, f"Export failed: {e}"
+
+# --- Stack Management ---
+
+def clear_stacks():
+    """
+    Clears all stacks and resets stack_id in images.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("DELETE FROM stacks")
+        # Reset stack_id to NULL
+        c.execute("UPDATE images SET stack_id = NULL")
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Failed to clear stacks: {e}")
+    finally:
+        conn.close()
+
+def create_stack(name, best_image_id=None):
+    """
+    Creates a new stack.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    stack_id = None
+    try:
+        c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?)",
+                  (name, best_image_id, datetime.datetime.now()))
+        stack_id = c.lastrowid
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Failed to create stack: {e}")
+    finally:
+        conn.close()
+    return stack_id
+
+def update_image_stack_batch(updates):
+    """
+    Batch updates image stack_ids.
+    updates: list of (stack_id, image_id) tuples
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Failed to batch update image stacks: {e}")
+    finally:
+        conn.close()
+
+def get_stacks():
+    """
+    Returns all stacks joined with their best image info.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    # Join with images to get path of best image
+    query = '''
+        SELECT s.*, i.file_path as best_image_path, i.score_general as best_image_score,
+        (SELECT COUNT(*) FROM images WHERE stack_id = s.id) as image_count
+        FROM stacks s
+        LEFT JOIN images i ON s.best_image_id = i.id
+        ORDER BY s.id ASC
+    '''
+    c.execute(query)
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+def get_stacks_for_display(folder_path=None, sort_by="score_general", order="desc"):
+    """
+    Returns stacks with dynamic cover image based on sort criteria.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Resolve folder_id if path provided
+    folder_id = None
+    if folder_path:
+        folder_id = get_or_create_folder(folder_path)
+        if not folder_id:
+            conn.close()
+            return []
+
+    # Map sort_by to column
+    # If sort_by is invalid, default to score_general
+    valid_cols = ["created_at", "id", "score_general", "score_technical", "score_aesthetic", 
+                  "score_spaq", "score_ava", "score_koniq", "score_paq2piq", "score_liqe"]
+    if sort_by not in valid_cols:
+        sort_by = "score_general"
+        
+    agg_func = "MAX" if order.lower() == "desc" else "MIN"
+    
+    # Query:
+    # 1. Select Stack ID, Name, Image Count
+    # 2. Calculate aggregate value for sorting the STACKS list (e.g. Max score of any image in stack)
+    # 3. Subquery for cover image path based on the same sort criteria
+    
+    where_clause = ""
+    params = []
+    if folder_id:
+        # We only want stacks that contain images from this folder.
+        # Efficient way: JOIN images i ON s.id = i.stack_id WHERE i.folder_id = ?
+        where_clause = "WHERE i.folder_id = ?"
+        params.append(folder_id)
+        
+    query = f'''
+        SELECT 
+            s.id, 
+            s.name, 
+            COUNT(i.id) as image_count,
+            {agg_func}(i.{sort_by}) as sort_val,
+            (
+                SELECT file_path 
+                FROM images i2 
+                WHERE i2.stack_id = s.id 
+                ORDER BY i2.{sort_by} {order.upper()} 
+                LIMIT 1
+            ) as cover_path
+        FROM stacks s
+        JOIN images i ON s.id = i.stack_id
+        {where_clause}
+        GROUP BY s.id
+        ORDER BY sort_val {order.upper()}
+    '''
+    
+    c.execute(query, tuple(params))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+def get_images_in_stack(stack_id):
+    """
+    Returns all images in a stack.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    query = "SELECT * FROM images WHERE stack_id = ? ORDER BY score_general DESC"
+    c.execute(query, (stack_id,))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+def get_stack_count():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM stacks")
+    count = c.fetchone()[0]
+    conn.close()
+    return count
+
+def get_clustered_folders():
+    """
+    Returns a set of folders that have been clustered.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT folder_path FROM cluster_progress")
+        rows = c.fetchall()
+        return {row[0] for row in rows}
+    except Exception as e:
+        logging.error(f"Error reading cluster progress: {e}")
+        return set()
+    finally:
+        conn.close()
+
+def mark_folder_clustered(folder_path):
+    """
+    Marks a folder as successfully clustered.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("INSERT OR REPLACE INTO cluster_progress (folder_path, last_run) VALUES (?, ?)",
+                  (folder_path, datetime.datetime.now()))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Failed to mark folder as clustered: {e}")
+    finally:
+        conn.close()
+
+def clear_cluster_progress():
+    """
+    Clears cluster progress and stacks.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("DELETE FROM cluster_progress")
+        c.execute("DELETE FROM stacks")
+        c.execute("UPDATE images SET stack_id = NULL")
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Failed to clear cluster progress: {e}")
+    finally:
+        conn.close()
+
+def create_stacks_batch(stacks_data):
+    """
+    Creates multiple stacks and updates associations in a single transaction.
+    stacks_data: list of dicts { 'name': str, 'best_image_id': int, 'image_ids': [int] }
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        created_count = 0
+        timestamp = datetime.datetime.now()
+        
+        for data in stacks_data:
+            # Create Stack
+            c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?)",
+                      (data['name'], data['best_image_id'], timestamp))
+            stack_id = c.lastrowid
+            
+            # Update Images
+            image_ids = data['image_ids']
+            if image_ids:
+                # Batch update for this stack
+                # "UPDATE images SET stack_id = ? WHERE id = ?"
+                # We can use executemany if we flatten, but here we have varying IDs.
+                # "UPDATE images SET stack_id = ? WHERE id IN (...)" is better but sqlite limit.
+                # Let's use executemany with tuple list
+                updates = [(stack_id, img_id) for img_id in image_ids]
+                c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
+            
+            created_count += 1
+            
+        conn.commit()
+        return True, f"Created {created_count} stacks."
+    except Exception as e:
+        logging.error(f"Failed to batch create stacks: {e}")
+        return False, str(e)
+    finally:
+        conn.close()

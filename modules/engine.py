@@ -13,16 +13,24 @@ class BatchImageProcessor:
     Refactored Batch Processor using Threaded Pipeline.
     """
     def __init__(self, output_dir=None, skip_existing=False, write_json=False, 
-                 json_stdout=False, skip_predicate=None, scorer=None):
+                 json_stdout=False, skip_predicate=None, scorer=None, progress_callback=None):
         self.output_dir = output_dir
         self.skip_existing = skip_existing
         self.scorer = scorer
         self.logger = logging.getLogger(__name__)
         self.stop_event = threading.Event()
+        self.progress_callback = progress_callback
+        self.processed_count = 0
+        self.total_count = 0
         
     def log(self, msg, level="INFO"):
         lvl = getattr(logging, level.upper(), logging.INFO)
         self.logger.log(lvl, msg)
+
+    def _on_item_finished(self):
+        self.processed_count += 1
+        if self.progress_callback:
+            self.progress_callback(self.processed_count, self.total_count)
             
     def process_directory(self, input_dir, output_dir_unused, callback=None):
         """
@@ -47,6 +55,11 @@ class BatchImageProcessor:
 
         self.log(f"Found {len(files)} images to process.")
         
+        self.total_count = len(files)
+        self.processed_count = 0
+        if self.progress_callback:
+            self.progress_callback(0, self.total_count)
+        
         # 3. Setup Queues and Workers
         prep_queue = queue.Queue(maxsize=50)
         scoring_queue = queue.Queue(maxsize=10) # Keep small to avoid VRAM overload if buffering
@@ -64,7 +77,7 @@ class BatchImageProcessor:
             # If we want to yield to the UI generator, we strictly can't "return" from here
             # but the log_func passed from ScoringRunner is capturing this.
             
-        result_worker = pipeline.ResultWorker(result_queue, None, self.stop_event, scorer_instance=self.scorer, progress_callback=result_logger)
+        result_worker = pipeline.ResultWorker(result_queue, None, self.stop_event, scorer_instance=self.scorer, progress_callback=result_logger, item_finished_callback=self._on_item_finished)
         
         workers = [prep_worker, scoring_worker, result_worker]
         for w in workers:
@@ -139,6 +152,10 @@ class BatchImageProcessor:
             return
             
         self.log(f"Processing list of {len(jobs_list)} images...")
+        self.total_count = len(jobs_list)
+        self.processed_count = 0
+        if self.progress_callback:
+             self.progress_callback(0, self.total_count)
         
         # Setup Queues
         prep_queue = queue.Queue(maxsize=50)
@@ -158,7 +175,7 @@ class BatchImageProcessor:
              else:
                  self.log(msg)
                  
-        result_worker = pipeline.ResultWorker(result_queue, None, self.stop_event, scorer_instance=self.scorer, progress_callback=result_logger)
+        result_worker = pipeline.ResultWorker(result_queue, None, self.stop_event, scorer_instance=self.scorer, progress_callback=result_logger, item_finished_callback=self._on_item_finished)
         
         workers = [prep_worker, scoring_worker, result_worker]
         for w in workers:

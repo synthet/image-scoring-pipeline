@@ -323,9 +323,10 @@ class ResultWorker(PipelineWorker):
     Upserts to DB, cleans up, logs.
     Also handles writing metadata to NEF files (I/O bound).
     """
-    def __init__(self, input_queue, output_queue, stop_event, scorer_instance, progress_callback=None):
+    def __init__(self, input_queue, output_queue, stop_event, scorer_instance, progress_callback=None, item_finished_callback=None):
         super().__init__("ResultWorker", input_queue, output_queue, stop_event) # Output queue unused
         self.progress_callback = progress_callback # func(str) -> log
+        self.item_finished_callback = item_finished_callback # func() -> void
         self.scorer = scorer_instance
         
     def process(self, job: ImageJob):
@@ -392,7 +393,7 @@ class ResultWorker(PipelineWorker):
                 
                 score = job.result["summary"]["weighted_scores"].get("general", 0)
                 if self.progress_callback:
-                    self.progress_callback(f"Scored: {Path(job.image_path).name} - {score:.2f}")
+                    self.progress_callback(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} [INFO] [ResultWorker] Scored: {Path(job.image_path).name} - {score:.2f}")
             except Exception as e:
                 if self.progress_callback:
                     self.progress_callback(f"DB Error: {e}")
@@ -408,3 +409,6 @@ class ResultWorker(PipelineWorker):
                     if os.path.exists(p):
                         os.remove(p)
             except: pass
+        
+        if self.item_finished_callback:
+            self.item_finished_callback()

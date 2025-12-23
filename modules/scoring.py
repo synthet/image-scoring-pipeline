@@ -29,10 +29,42 @@ class ScoringRunner:
         # We keep a ref to the current processor to stop it
         self.current_processor = None
         
-    def run_batch(self, input_path, job_id, skip_existing=False):
+
+    def __init__(self):
+        # We hold the shared scorer here to persist it across runs
+        self.shared_scorer = None
+        # We keep a ref to the current processor to stop it
+        self.current_processor = None
+        
+        # State persistence
+        self.is_running = False
+        self.job_type = None # 'scoring' or 'fix_db'
+        self.log_history = []
+        self.status_message = "Idle"
+        self._thread = None
+        self.current_count = 0
+        self.total_count = 0
+        
+    def get_status(self):
         """
-        Generator that runs the batch process and yields log lines.
+        Returns (is_running, log_text, status_message, current, total)
         """
+        return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
+
+    def start_batch(self, input_path, job_id, skip_existing=False):
+        """
+        Starts batch processing in a background thread. Non-blocking.
+        """
+        if self.is_running:
+            return "Error: Already running."
+            
+        self.is_running = True
+        self.job_type = 'scoring'
+        self.log_history = []
+        self.status_message = "Starting..."
+        self.current_count = 0
+        self.total_count = 0
+        
         # Convert Windows path to WSL path if running in WSL (legacy check)
         if ":" in input_path and input_path[1] == ":":
             drive = input_path[0].lower()
@@ -42,41 +74,71 @@ class ScoringRunner:
             if os.path.exists("/mnt/"): 
                  if os.path.exists(wsl_path):
                      input_path = wsl_path
-
+                     
         if not os.path.exists(input_path):
-            yield f"Error: Path not found: {input_path}"
-            return
+            self.log_history.append(f"Error: Path not found: {input_path}")
+            self.is_running = False
+            self.status_message = "Failed (Path not found)"
+            return "Path not found"
 
-        yield f"Starting batch processing..."
-        yield f"Input: {input_path}"
-        yield "-" * 20
+        def target():
+            self._run_batch_internal(input_path, job_id, skip_existing)
+            self.is_running = False
+            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+
+        self._thread = threading.Thread(target=target)
+        self._thread.start()
+        return "Started"
+
+    def _run_batch_internal(self, input_path, job_id, skip_existing):
+        """
+        Internal synchronous runner.
+        """
+        db.update_job_status(job_id, "running")
+        
+        def log(msg):
+            self.log_history.append(msg)
+            # print(msg, flush=True) # Optional debugging
+            
+        log(f"Starting batch processing...")
+        log(f"Input: {input_path}")
+        log("-" * 20)
+        self.status_message = "Running..."
         
         # Checking/Loading Models
         if self.shared_scorer is None:
-            yield "Initializing models first (this happens once)..."
+            log("Initializing models first (this happens once)...")
             try:
                 new_scorer = MultiModelMUSIQ()
                 
                 # Load models
                 musiq_models = ['spaq', 'ava', 'koniq', 'paq2piq']
                 for model_name in musiq_models:
-                    yield f"Loading model: {model_name.upper()}..."
+                    log(f"Loading model: {model_name.upper()}...")
                     success = new_scorer.load_model(model_name)
                     if not success:
-                         yield f"Warning: Failed to load {model_name}"
+                         log(f"Warning: Failed to load {model_name}")
                 
                 self.shared_scorer = new_scorer
-                yield "Models initialized successfully."
+                log("Models initialized successfully.")
                 
             except Exception as e:
-                yield f"Error loading models: {str(e)}"
+                msg = f"Error loading models: {str(e)}"
+                log(msg)
+                self.status_message = "Error loading models"
+                db.update_job_status(job_id, "failed", msg)
                 return
 
+        def on_progress(cur, tot):
+            self.current_count = cur
+            self.total_count = tot
+            
         # Initialize processor
         processor = BatchImageProcessor(
             output_dir=input_path,
             skip_existing=skip_existing,
-            scorer=self.shared_scorer
+            scorer=self.shared_scorer,
+            progress_callback=on_progress
         )
         self.current_processor = processor
         
@@ -84,81 +146,94 @@ class ScoringRunner:
         processor.current_job_id = job_id
         
         # Setup log capture
-        import queue
-        log_queue = queue.Queue()
-        
+        # We hook directly to self.log_history via wrapper
         def log_capture(msg):
-            log_queue.put(msg)
-            print(msg, flush=True) # Still print to stdout for debugging
+            log(msg)
             
         processor.log_func = log_capture
         
         # Database Backup before starting
-        yield "Creating database backup..."
+        log("Creating database backup...")
         db.backup_database()
         
-        # Run processing in background thread so we can yield logs
-        def target():
-            try:
-                # process_directory now blocks until all workers are done
-                processor.process_directory(input_path, input_path)
-                log_queue.put(None) # Signal done
-            except Exception as e:
-                log_queue.put(f"Error: {e}")
-                log_queue.put(None)
-                
-        t = threading.Thread(target=target)
-        t.start()
-        
-        # Yield from queue
-        while True:
-            try:
-                line = log_queue.get(timeout=0.1)
-                if line is None:
-                    break
-                yield line
-            except queue.Empty:
-                if not t.is_alive():
-                    break
-                continue
-                
-        t.join()
-        
-        # Cleanup
-        self.current_processor = None
-        yield "Processing finished."
+        try:
+            # process_directory now blocks until all workers are done
+            processor.process_directory(input_path, input_path)
+            
+            # Cleanup
+            self.current_processor = None
+            log("Processing finished.")
+            db.update_job_status(job_id, "completed", "\n".join(self.log_history))
+            
+        except Exception as e:
+            log(f"Error: {e}")
+            self.status_message = "Error in processing"
+            db.update_job_status(job_id, "failed", "\n".join(self.log_history))
         
         # Backup after
         db.backup_database()
 
+
     def stop(self):
         if self.current_processor:
             self.current_processor.stop_event.set()
+            self.log_history.append("Stop signal sent...")
 
-    def fix_db(self, job_id):
+    def start_fix_db(self, job_id):
         """
-        Scans DB for incomplete records and re-runs partial scoring.
+        Starts DB fix in background thread.
         """
+        if self.is_running:
+            return "Error: Already running."
+            
+        self.is_running = True
+        self.job_type = 'fix_db'
+        self.log_history = []
+        self.status_message = "Starting Fix DB..."
+        
+        def target():
+            self._fix_db_internal(job_id)
+            self.is_running = False
+            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            
+        self._thread = threading.Thread(target=target)
+        self._thread.start()
+        return "Started"
+
+    def _fix_db_internal(self, job_id):
+        """
+        Internal synchronous fix db runner.
+        """
+        db.update_job_status(job_id, "running")
+        
+        def log(msg):
+            self.log_history.append(msg)
+            
         records = db.get_incomplete_records()
         if not records:
-            yield "No incomplete records found."
+            log("No incomplete records found.")
+            db.update_job_status(job_id, "completed", "No incomplete records.")
             return
             
-        yield f"Found {len(records)} incomplete records requiring fix."
+        log(f"Found {len(records)} incomplete records requiring fix.")
+        self.status_message = "Fixing..."
         
         # Checking/Loading Models (Same as run_batch)
         if self.shared_scorer is None:
-            yield "Initializing models..."
+            log("Initializing models...")
             try:
                 new_scorer = MultiModelMUSIQ()
                 musiq_models = ['spaq', 'ava', 'koniq', 'paq2piq']
                 for model_name in musiq_models:
                     success = new_scorer.load_model(model_name)
                     if not success:
-                         yield f"Warning: Failed to load {model_name}"
+                         log(f"Warning: Failed to load {model_name}")
                 self.shared_scorer = new_scorer
             except Exception as e:
-                yield f"Error loading models: {str(e)}"
+                msg = f"Error loading models: {str(e)}"
+                log(msg)
+                self.status_message = "Error loading models"
+                db.update_job_status(job_id, "failed", msg)
                 return
 
         # Create Jobs
@@ -166,82 +241,66 @@ class ScoringRunner:
         for row in records:
              file_path = row['file_path']
              if not os.path.exists(file_path):
-                 yield f"Skipping missing file: {file_path}"
+                 log(f"Skipping missing file: {file_path}")
                  continue
                  
              job = pipeline.ImageJob(
                  image_path=file_path,
                  job_id=job_id,
-                 skip_existing=False # We want to verify/backfill
+                 skip_existing=False 
              )
              
-             # Pre-fill external scores to avoid re-running valid models
+             # Pre-fill external scores
              models = ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']
              for m in models:
                  val = row.get(f'score_{m}')
                  if val and val > 0:
                      job.external_scores[m] = {
                          "score": val,
-                         "normalized_score": val, # Assuming stored score is normalized or close enough for reuse logic
+                         "normalized_score": val, 
                          "status": "success"
                      }
              
-             # If hash exists, use it
              if row.get('image_hash'):
                  job.external_scores['image_hash'] = row.get('image_hash')
                  
              jobs.append(job)
              
         if not jobs:
-            yield "No valid files found to process."
+            log("No valid files found to process.")
+            db.update_job_status(job_id, "completed", "No valid files.")
             return
             
-        yield f"Queueing {len(jobs)} jobs for processing..."
+        log(f"Queueing {len(jobs)} jobs for processing...")
         
+        def on_progress(cur, tot):
+            self.current_count = cur
+            self.total_count = tot
+
         # Initialize processor
         processor = BatchImageProcessor(
             output_dir=None, # In-place update
-            scorer=self.shared_scorer
+            scorer=self.shared_scorer,
+            progress_callback=on_progress
         )
         self.current_processor = processor
         processor.current_job_id = job_id
         
-        # Setup log capture
-        import queue
-        log_queue = queue.Queue()
-        
         def log_capture(msg):
-            log_queue.put(msg)
-            print(msg, flush=True) 
-            
+            log(msg)
         processor.log_func = log_capture
         
-        yield "Creating database backup..."
+        log("Creating database backup...")
         db.backup_database()
         
-        # Run in thread
-        def target():
-            try:
-                processor.process_list(jobs, job_id_override=job_id)
-                log_queue.put(None)
-            except Exception as e:
-                log_queue.put(f"Error: {e}")
-                log_queue.put(None)
-                
-        t = threading.Thread(target=target)
-        t.start()
-        
-        while True:
-            try:
-                line = log_queue.get(timeout=0.1)
-                if line is None:
-                    break
-                yield line
-            except queue.Empty:
-                if not t.is_alive():
-                    break
-                continue
-                
-        t.join()
-        self.current_processor = None
-        yield "DB Fix finished."
+        try:
+            processor.process_list(jobs, job_id_override=job_id)
+            self.current_processor = None
+            log("DB Fix finished.")
+            db.update_job_status(job_id, "completed", "\n".join(self.log_history))
+            
+        except Exception as e:
+            log(f"Error: {e}")
+            self.status_message = "Error in processing"
+            db.update_job_status(job_id, "failed", "\n".join(self.log_history))
+
