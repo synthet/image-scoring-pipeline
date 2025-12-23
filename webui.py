@@ -7,7 +7,7 @@ import time
 import math
 import os
 import json
-from modules import scoring, db, tagging, config, clustering, thumbnails
+from modules import scoring, db, tagging, config, clustering, thumbnails, ui_tree
 
 # Initialize DB on load
 # Initialize DB on load
@@ -240,9 +240,13 @@ def open_folder_in_gallery(folder, sort_by, sort_order, rating_filter, label_fil
        [Tabs, current_folder_state, reset_btn_update] + [page, gallery, label, paths, details...]
     """
     if not folder:
-        # Do nothing or just switch?
-        return gr.Tabs(selected="Gallery"), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+        # If no folder provided, treat as "Reset / View All"
+        print("DEBUG: No folder provided, resetting filter.")
+        gal_outs = update_gallery(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None)
+        return gr.Tabs(selected="Gallery"), None, gr.update(visible=False), 1, *gal_outs
         
+    print(f"DEBUG: open_folder_in_gallery called with folder='{folder}'")
+    
     # Switch to Gallery Tab
     # Update folder state
     # Show Reset Button
@@ -280,13 +284,14 @@ def open_stack_folder_in_gallery(folder, sort_by, sort_order, rating_filter, lab
 def open_stack_folder_in_tree(folder):
     """Switches from Stacks to Tree View and selects folder."""
     if not folder:
-         return gr.Tabs(selected="Folder Tree"), gr.update()
+         return gr.Tabs(selected="Folder Tree"), gr.update(), gr.update()
          
     # We might need to refresh tree choices if the folder isn't there, but for now just try setting it.
     # The tree choices update happens on load or refresh click. 
     # If the folder exists in DB, it should be in the list if refreshed.
     
-    return gr.Tabs(selected="Folder Tree"), folder
+    html = ui_tree.get_tree_html(folder)
+    return gr.Tabs(selected="Folder Tree"), folder, html
 
 def display_details(evt: gr.SelectData, raw_paths):
     print(f"DEBUG: display_details called. Index: {evt.index if evt else 'None'}, Paths Len: {len(raw_paths) if raw_paths else 0}")
@@ -409,7 +414,7 @@ def delete_nef(details):
     Deletes the NEF file associated with the image.
     """
     if not details:
-        return "No image selected", gr.update(visible=False)
+        return gr.update(value="No image selected", visible=True), gr.update(visible=False)
     
     try:
         # Resolve 'details' if it's a string (though it should be dict from State?)
@@ -464,12 +469,12 @@ def delete_nef(details):
             deleted_files.append("DB")
             
         if deleted_files:
-            return f"Deleted: {', '.join(deleted_files)}", gr.update(visible=False)
+            return gr.update(value=f"Deleted: {', '.join(deleted_files)}", visible=True), gr.update(visible=False)
         else:
-            return f"NEF file not found: {nef_path}", gr.update(visible=False)
+            return gr.update(value=f"NEF file not found: {nef_path}", visible=True), gr.update(visible=False)
             
     except Exception as e:
-        return f"Error deleting: {e}", gr.update(visible=True)
+        return gr.update(value=f"Error deleting: {e}", visible=True), gr.update(visible=True)
 
 
 
@@ -650,6 +655,17 @@ def view_full_res_action(details):
         print(f"Error getting preview: {e}")
         return None, gr.update(visible=False)
 
+def open_modal_view(details):
+    """Opens the custom full-screen modal."""
+    path, _ = view_full_res_action(details)
+    if path:
+        return gr.update(visible=True), path
+    return gr.update(visible=False), None
+
+def close_modal_view():
+    """Closes the custom full-screen modal."""
+    return gr.update(visible=False), None
+
 
 def get_tree_choices():
     # 1. Get real folders from DB
@@ -703,8 +719,7 @@ def update_tree_gallery(folder):
 
 def refresh_tree_wrapper():
     msg = db.rebuild_folder_cache()
-    choices = get_tree_choices()
-    return gr.update(choices=choices), msg
+    return ui_tree.get_tree_html(), msg
 
 
 # --- UI Definition ---
@@ -719,7 +734,39 @@ custom_css = """
     max-height: 90vh !important;
     margin: auto;
 }
-/* Ensure grid thumbnails still look okay if needed, though scale-down is usually fine */
+.full-res-modal {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background-color: rgba(0, 0, 0, 0.95) !important;
+    z-index: 9999 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+.modal-close-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 30px !important;
+    z-index: 10000 !important;
+}
+.modal-image-container {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 95% !important;
+    height: 90% !important;
+    border: none !important;
+    background-color: transparent !important;
+}
+.modal-image-container img {
+    max-height: 90vh !important;
+    max-width: 95vw !important;
+    object-fit: contain !important;
+}
 """
 
 with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
@@ -732,6 +779,17 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
     
     # Polling Timer for status updates
     status_timer = gr.Timer(value=1.0)
+    
+    # Custom Full Screen Modal
+    with gr.Group(visible=False, elem_classes=["full-res-modal"]) as full_res_modal:
+        modal_close_btn = gr.Button("❌ Close", variant="secondary", elem_classes=["modal-close-btn"])
+        modal_image = gr.Image(show_label=False, interactive=False, type="filepath", elem_classes=["modal-image-container"])
+        
+        modal_close_btn.click(
+            fn=close_modal_view,
+            inputs=[],
+            outputs=[full_res_modal, modal_image]
+        )
     
     with gr.Tabs() as main_tabs:
         # TAB 1: RUN SCORING
@@ -848,7 +906,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                 page_label = gr.Button(value="Page 1", interactive=False)
                 next_btn = gr.Button("Next")
             
-            gallery = gr.Gallery(label="Scored Images", columns=5, height="auto", allow_preview=True)
+            gallery = gr.Gallery(label="Scored Images", columns=5, height="auto", allow_preview=False)
             
             with gr.Row():
                 with gr.Column():
@@ -875,7 +933,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                         image_details = gr.JSON(label="Image Details")
                         
                     delete_btn = gr.Button("Delete Original NEF", variant="stop", visible=False)
-                    delete_status = gr.Textbox(label="Deletion Status", interactive=False, visible=True)
+                    delete_status = gr.Textbox(label="Deletion Status", interactive=False, visible=False)
                     
                     with gr.Row():
                         view_full_btn = gr.Button("View Full Resolution", variant="secondary")
@@ -954,9 +1012,9 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             
             # Full Res View Event
             view_full_btn.click(
-                fn=view_full_res_action,
+                fn=open_modal_view,
                 inputs=[image_details],
-                outputs=[full_res_image, full_res_image]
+                outputs=[full_res_modal, modal_image]
             )
             f_min_tech.release(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
             f_date_start.submit(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
@@ -978,12 +1036,19 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                  l = raw.get('label', 'None')
                  if not l: l = "None"
                  
-                 return res, gen, weight, models, raw, del_upd, t, d, k, r, l
+                 # Reset delete status
+                 del_status_upd = gr.update(value="", visible=False)
+                 
+                 return res, gen, weight, models, raw, del_upd, t, d, k, r, l, del_status_upd
             
             gallery.select(
                 fn=display_details_wrapper, 
                 inputs=[current_paths], 
-                outputs=[gr.Textbox(visible=False), d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label]
+                outputs=[gr.Textbox(visible=False), d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label, delete_status]
+            ).then(
+                fn=open_modal_view,
+                inputs=[image_details],
+                outputs=[full_res_modal, modal_image]
             )
             
             # Save Action
@@ -1010,12 +1075,11 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                         t_open_gallery_btn = gr.Button("Open in Gallery", variant="primary")
                         t_open_stacks_btn = gr.Button("Open in Stacks", variant="secondary")
                         t_open_keywords_btn = gr.Button("Open in Keywords", variant="secondary")
-                    t_folder_list = gr.Dropdown(
-                        label="Select Folder", 
-                        choices=[], 
-                        interactive=True,
-                        allow_custom_value=False
-                    )
+                    
+                    # Tree View Replacement
+                    t_tree_view = gr.HTML(label="Folder Tree Structure")
+                    t_selected_path = gr.Textbox(elem_id="folder_tree_selection", label="Selected Folder", interactive=True)
+                    
                     t_status = gr.Label(label="Status")
                 
                 with gr.Column(scale=3):
@@ -1023,43 +1087,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             
             # Events
 
-            t_refresh_btn.click(
-                fn=refresh_tree_wrapper,
-                inputs=[],
-                outputs=[t_folder_list, t_status]
-            )
 
-            t_open_gallery_btn.click(
-                fn=open_folder_in_gallery,
-                inputs=[t_folder_list, *filter_inputs[:-1]],
-                outputs=[main_tabs, current_folder_state, reset_folder_btn, current_page, gallery, page_label, current_paths, *detail_outputs]
-            )
-
-            t_open_stacks_btn.click(
-                fn=open_folder_in_stacks,
-                inputs=[t_folder_list],
-                outputs=[main_tabs, c_input_dir]
-            )
-            
-            t_open_keywords_btn.click(
-                fn=open_folder_in_keywords,
-                inputs=[t_folder_list],
-                outputs=[main_tabs, k_input_dir]
-            )
-
-            
-            t_folder_list.change(
-                fn=update_tree_gallery,
-                inputs=[t_folder_list],
-                outputs=[t_gallery, t_status]
-            )
-            
-            # Load tree initially
-            demo.load(
-                fn=lambda: gr.update(choices=get_tree_choices()),
-                inputs=[],
-                outputs=[t_folder_list]
-            )
 
         # TAB 4: CLUSTERS
 
@@ -1150,8 +1178,47 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             c_open_tree_btn.click(
                 fn=open_stack_folder_in_tree,
                 inputs=[c_input_dir],
-                outputs=[main_tabs, t_folder_list]
+                outputs=[main_tabs, t_selected_path, t_tree_view]
             )
+
+    # Folder Tree Events (Moved here to ensure all referenced components like c_input_dir are defined)
+    t_refresh_btn.click(
+        fn=refresh_tree_wrapper,
+        inputs=[],
+        outputs=[t_tree_view, t_status]
+    )
+
+    t_open_gallery_btn.click(
+        fn=open_folder_in_gallery,
+        inputs=[t_selected_path, *filter_inputs[:-1]],
+        outputs=[main_tabs, current_folder_state, reset_folder_btn, current_page, gallery, page_label, current_paths, *detail_outputs]
+    )
+
+    t_open_stacks_btn.click(
+        fn=open_folder_in_stacks,
+        inputs=[t_selected_path],
+        outputs=[main_tabs, c_input_dir]
+    )
+    
+    t_open_keywords_btn.click(
+        fn=open_folder_in_keywords,
+        inputs=[t_selected_path],
+        outputs=[main_tabs, k_input_dir]
+    )
+
+    
+    t_selected_path.change(
+        fn=update_tree_gallery,
+        inputs=[t_selected_path],
+        outputs=[t_gallery, t_status]
+    )
+    
+    # Load tree initially
+    demo.load(
+        fn=ui_tree.get_tree_html,
+        inputs=[],
+        outputs=[t_tree_view]
+    )
 
     # Monitor Loop
     status_timer.tick(

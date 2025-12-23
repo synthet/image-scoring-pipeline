@@ -5,6 +5,21 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- 'Deletion Status' is now hidden by default and only appears after a deletion action is completed.
+- 'Deletion Status' is automatically hidden when a new image is selected in the gallery.
+
+## [3.4.1] - 2025-12-23
+
+### Fixed
+- **Full Screen Image View**: Fixed issue where the gallery expanded view displayed a low-resolution thumbnail. Now, clicking a gallery image opens a custom full-screen modal showing the high-resolution preview (generated from NEF if needed).
+
+### Added
+- **Interactive Folder Tree**: Replaced the static dropdown with a fully interactive HTML-based folder tree. Supports expanding/collapsing folders and filtering the gallery by clicking on folder names.
+- **Navigation Buttons**: Fixed issue where "Open in Gallery" buttons would do nothing if no folder path was explicitly provided. Now defaults to "View All" (reset filter) behavior.
+
 ## [3.4.0] - 2025-12-23
 
 ### Added
