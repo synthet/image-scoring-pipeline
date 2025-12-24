@@ -263,6 +263,7 @@ class TaggingRunner:
                 
             if not os.path.exists(path):
                 log(f"Skipping missing file: {path}")
+                self.current_count += 1
                 continue
                 
             # Process
@@ -313,7 +314,7 @@ class TaggingRunner:
                     conn.close()
                     log(f"  -> Tags: {tags_str}")
                     processed_count += 1
-                    self.current_count = processed_count
+                    self.current_count += 1
                     
                     # Write Metadata
                     if self.write_metadata(path, tags, title, caption):
@@ -326,6 +327,7 @@ class TaggingRunner:
                     self.current_count += 1
             except Exception as e:
                 log(f"Request failed: {e}")
+                self.current_count += 1
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")
 

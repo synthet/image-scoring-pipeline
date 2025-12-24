@@ -1,6 +1,7 @@
 import hashlib
 import os
 import platform
+import re
 
 def convert_path_to_local(path):
     """
@@ -18,7 +19,29 @@ def convert_path_to_local(path):
                 drive = parts[2].upper()
                 rest = "/".join(parts[3:])
                 return f"{drive}:/{rest}"
+    elif system == "Linux":
+         # Handle Windows paths on WSL
+         # D:\Foo -> /mnt/d/Foo
+         # Check for D:\ or D:/
+         match = re.match(r'^([a-zA-Z]):[\\\/](.*)', path)
+         if match:
+             drive = match.group(1).lower()
+             rest = match.group(2).replace('\\', '/')
+             return f"/mnt/{drive}/{rest}"
     
+    return path
+
+def convert_path_to_wsl(path):
+    """
+    Converts a Windows path to WSL format.
+    D:/Photos/... -> /mnt/d/Photos/...
+    """
+    # Check for D:\ or D:/
+    match = re.match(r'^([a-zA-Z]):[\\\/](.*)', path)
+    if match:
+        drive = match.group(1).lower()
+        rest = match.group(2).replace('\\', '/')
+        return f"/mnt/{drive}/{rest}"
     return path
 
 def compute_file_hash(file_path, algorithm='sha256', chunk_size=8192):

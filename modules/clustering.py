@@ -223,6 +223,10 @@ class ClusteringEngine:
             folder_stacks = 0
             
             for b_idx, batch in enumerate(time_batches):
+                # Calculate overall progress for this folder
+                folder_progress = processed_count + (len(rows) * (b_idx / len(time_batches)))
+                yield f"Processing folder: {folder} - Batch {b_idx+1}/{len(time_batches)}", folder_progress, len(images_rows)
+
                 if len(batch) < 2:
                     continue
                     

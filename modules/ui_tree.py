@@ -1,6 +1,6 @@
 
 import os
-from modules import db
+from modules import db, utils
 
 def build_tree_dict(paths):
     # Sort paths
@@ -50,43 +50,24 @@ def tree_to_html(nodes, selected_path=None):
 
 def get_tree_html(selected_path=None):
     raw_folders = db.get_all_folders()
-    if not raw_folders: return "<div>No folders found in DB.</div>"
     
-    roots = build_tree_dict(raw_folders)
+    if not raw_folders:
+        return """<div style="padding: 20px; text-align: center; color: #888;">
+            <p>📁 No folder cache found.</p>
+            <p style="font-size: 0.9em;">Click <strong>Refresh Tree Structure</strong> to build the folder tree.</p>
+        </div>"""
     
-    # Prepend JS and Styles
-    # We add a hidden textarea styler here to ensure it's hidden if Gradio doesn't hide it well
-    header = """
-    <script>
-    function selectFolder(e, path) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Clear selection style
-        var all = document.querySelectorAll('.tree-content');
-        for (var i=0; i<all.length; i++) {
-            all[i].style.backgroundColor = '';
-            all[i].style.color = '';
-        }
-        
-        // Set new style
-        e.target.style.backgroundColor = '#2196f3';
-        e.target.style.color = 'white';
-        
-        // Update hidden input
-        var ta = document.querySelector('#folder_tree_selection textarea');
-        if (ta) {
-            ta.value = path;
-            ta.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    }
-    </script>
-    <style>
-    .tree-content { cursor: pointer; padding: 2px 6px; border-radius: 4px; display: inline-block; user-select: none; }
-    .tree-content:hover { background-color: #e0e0e0; }
-    summary { outline: none; cursor: pointer; }
-    #folder_tree_selection { display: none; } 
-    </style>
-    """
+    # Convert paths to local environment format
+    # This handles Windows paths (D:\...) when running in WSL and vice versa
+    folders = []
+    for p in raw_folders:
+        local_p = utils.convert_path_to_local(p)
+        if local_p:
+            folders.append(local_p)
+            
+    # Remove duplicates after conversion
+    folders = list(set(folders))
     
-    return header + tree_to_html(roots, selected_path)
+    roots = build_tree_dict(folders)
+    
+    return tree_to_html(roots, selected_path)

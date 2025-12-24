@@ -290,7 +290,6 @@ def init_db():
         file_name TEXT,
         file_type TEXT,
         score REAL,
-        score REAL,
         keywords TEXT,
         title TEXT,
         description TEXT,
@@ -320,6 +319,9 @@ def init_db():
     if "stack_id" not in columns:
         c.execute("ALTER TABLE images ADD COLUMN stack_id INTEGER")
         c.execute("CREATE INDEX IF NOT EXISTS idx_stack_id ON images(stack_id)")
+    
+    # Composite index for efficient cover image lookup in stacks (stack_id + score for ordering)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_stack_score_general ON images(stack_id, score_general DESC) WHERE stack_id IS NOT NULL")
 
     # Migration for Folders
     if "folder_id" not in columns:
@@ -695,26 +697,14 @@ def rebuild_folder_cache():
 def get_all_folders():
     """
     Returns a sorted list of all unique folder paths from the folders table.
+    Does NOT auto-rebuild to avoid blocking the UI - use rebuild_folder_cache() explicitly.
     """
-    # Trigger rebuild if empty?
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT path FROM folders ORDER BY path")
     rows = c.fetchall()
     conn.close()
     
-    if not rows:
-        # Fallback or auto-build?
-        # If DB is not empty but folders is, rebuild.
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM images")
-        count = c.fetchone()[0]
-        conn.close()
-        if count > 0:
-            rebuild_folder_cache()
-            return get_all_folders() # recurse once
-            
     return [row['path'] for row in rows]
 
 def get_images_by_folder(folder_path):
@@ -1258,6 +1248,7 @@ def get_stacks():
 def get_stacks_for_display(folder_path=None, sort_by="score_general", order="desc"):
     """
     Returns stacks with dynamic cover image based on sort criteria.
+    Uses CTE with ROW_NUMBER() instead of correlated subquery for better performance.
     """
     conn = get_db()
     c = conn.cursor()
@@ -1278,38 +1269,38 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
         sort_by = "score_general"
         
     agg_func = "MAX" if order.lower() == "desc" else "MIN"
+    order_dir = order.upper()
     
-    # Query:
-    # 1. Select Stack ID, Name, Image Count
-    # 2. Calculate aggregate value for sorting the STACKS list (e.g. Max score of any image in stack)
-    # 3. Subquery for cover image path based on the same sort criteria
+    # Use CTE with ROW_NUMBER() to compute cover images in a single pass
+    # This avoids the N+1 correlated subquery problem
     
     where_clause = ""
     params = []
     if folder_id:
-        # We only want stacks that contain images from this folder.
-        # Efficient way: JOIN images i ON s.id = i.stack_id WHERE i.folder_id = ?
         where_clause = "WHERE i.folder_id = ?"
         params.append(folder_id)
         
     query = f'''
+        WITH ranked_covers AS (
+            SELECT 
+                stack_id,
+                COALESCE(NULLIF(thumbnail_path, ''), file_path) as cover_path,
+                ROW_NUMBER() OVER (PARTITION BY stack_id ORDER BY {sort_by} {order_dir}) as rn
+            FROM images
+            WHERE stack_id IS NOT NULL
+        )
         SELECT 
             s.id, 
             s.name, 
             COUNT(i.id) as image_count,
             {agg_func}(i.{sort_by}) as sort_val,
-            (
-                SELECT file_path 
-                FROM images i2 
-                WHERE i2.stack_id = s.id 
-                ORDER BY i2.{sort_by} {order.upper()} 
-                LIMIT 1
-            ) as cover_path
+            rc.cover_path
         FROM stacks s
         JOIN images i ON s.id = i.stack_id
+        LEFT JOIN ranked_covers rc ON s.id = rc.stack_id AND rc.rn = 1
         {where_clause}
         GROUP BY s.id
-        ORDER BY sort_val {order.upper()}
+        ORDER BY sort_val {order_dir}
     '''
     
     c.execute(query, tuple(params))

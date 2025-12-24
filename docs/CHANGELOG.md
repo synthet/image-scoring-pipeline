@@ -7,9 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] - 2025-12-24
+
+### Added
+- **MCP Server Integration**: Added Model Context Protocol server for Cursor IDE debugging tools.
+  - Query and analyze the SQLite database remotely
+  - Monitor scoring/tagging job progress
+  - Read debug logs from the IDE
+  - Manage configuration via MCP tools
+  - New module: `modules/mcp_server.py`
+  - Documentation: `docs/technical/MCP_DEBUGGING_TOOLS.md`
+  - Launcher scripts: `scripts/batch/run_mcp_server.bat`, `scripts/powershell/Run-MCPServer.ps1`
+
 ### Changed
 - 'Deletion Status' is now hidden by default and only appears after a deletion action is completed.
 - 'Deletion Status' is automatically hidden when a new image is selected in the gallery.
+- Updated documentation and agent workflows for improved maintainability.
+
+## [3.4.2] - 2025-12-23
+
+### Fixed
+- **Tree View Selection**: Fixed `ReferenceError: selectFolder is not defined` when clicking on folders in the tree view by exposing the function to the global scope.
+- **Path Conversion**: Added logic to respect Windows/WSL path conversions in the tree view interaction. The tree now handles displaying and selecting folders correctly regardless of whether the backend is running in WSL or Windows.
+- **Result Worker**: Fixed `NameError: name 'datetime' is not defined` in `modules/pipeline.py` preventing success logging.
 
 ## [3.4.1] - 2025-12-23
 

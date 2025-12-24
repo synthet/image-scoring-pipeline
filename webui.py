@@ -5,11 +5,21 @@ import gradio as gr
 import threading
 import time
 import math
-import os
 import json
-from modules import scoring, db, tagging, config, clustering, thumbnails, ui_tree
+import platform
+from modules import scoring, db, tagging, config, clustering, thumbnails, ui_tree, utils
 
-# Initialize DB on load
+# Cache platform check at module load (not per-request)
+IS_WINDOWS = platform.system() == "Windows"
+
+# MCP Server Integration (optional - for Cursor debugging)
+MCP_ENABLED = os.environ.get('ENABLE_MCP_SERVER', '0') == '1'
+try:
+    from modules import mcp_server
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+
 # Initialize DB on load
 db.init_db()
 
@@ -19,6 +29,11 @@ app_config = config.load_config()
 runner = scoring.ScoringRunner()
 tagging_runner = tagging.TaggingRunner()
 cluster_engine = clustering.ClusteringEngine()
+
+# Initialize MCP server if enabled
+if MCP_AVAILABLE and MCP_ENABLED:
+    mcp_server.set_runners(runner, tagging_runner)
+    print("MCP Server: Runners registered for debugging access")
 
 
 def run_scoring_wrapper(input_path, force_rescore):
@@ -56,20 +71,57 @@ def monitor_status():
     # Scoring Status
     s_running, s_log, s_status_msg, s_cur, s_tot = runner.get_status()
     
-    s_prog_html = ""
+    # Determine status icon and color
+    if s_running:
+        status_icon = "⚡"
+        status_color = "#58a6ff"
+        badge_bg = "rgba(88, 166, 255, 0.15)"
+    elif "Error" in s_status_msg or "Failed" in s_status_msg:
+        status_icon = "❌"
+        status_color = "#f85149"
+        badge_bg = "rgba(248, 81, 73, 0.15)"
+    elif "Done" in s_status_msg or "Complete" in s_status_msg:
+        status_icon = "✅"
+        status_color = "#3fb950"
+        badge_bg = "rgba(63, 185, 80, 0.15)"
+    else:
+        status_icon = "⏸️"
+        status_color = "#8b949e"
+        badge_bg = "rgba(139, 148, 158, 0.15)"
+    
+    # Build modern status HTML
+    s_status_html = f"""
+    <div style="padding: 20px; background: linear-gradient(135deg, #161b22 0%, #0d1117 100%); border-radius: 12px; border: 1px solid #30363d;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+            <span style="font-size: 1.5rem;">{status_icon}</span>
+            <div>
+                <div style="font-size: 1.1rem; font-weight: 600; color: #e6edf3;">{s_status_msg}</div>
+                <div style="font-size: 0.8rem; color: #8b949e;">Image Scoring Engine</div>
+            </div>
+        </div>
+    """
+    
     if s_tot > 0:
         pct = (s_cur / s_tot) * 100
-        s_prog_html = f"""
-        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-            <span>Processing: {s_cur}/{s_tot}</span>
-            <span>{pct:.1f}%</span>
+        s_status_html += f"""
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; color: #8b949e; font-size: 0.9rem;">
+            <span>Progress: {s_cur} / {s_tot} images</span>
+            <span style="color: {status_color}; font-weight: 600;">{pct:.1f}%</span>
         </div>
-        <div style="width: 100%; background-color: #e0e0e0; border-radius: 4px; height: 20px;">
-            <div style="width: {pct}%; background-color: #4caf50; height: 20px; border-radius: 4px; transition: width 0.5s;"></div>
+        <div style="width: 100%; background-color: #21262d; border-radius: 8px; height: 10px; overflow: hidden;">
+            <div style="width: {pct}%; background: linear-gradient(90deg, #58a6ff 0%, #a371f7 100%); height: 10px; border-radius: 8px; transition: width 0.3s ease;"></div>
         </div>
         """
     elif s_running:
-         s_prog_html = "Scanning..."
+        s_status_html += f"""
+        <div style="display: flex; align-items: center; gap: 8px; color: #8b949e;">
+            <div style="width: 8px; height: 8px; background: {status_color}; border-radius: 50%; animation: pulse 1.5s infinite;"></div>
+            <span>Initializing...</span>
+        </div>
+        <style>@keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.4; }} }}</style>
+        """
+    
+    s_status_html += "</div>"
     
     s_run_up = gr.update(interactive=not s_running)
     s_stop_up = gr.update(interactive=s_running)
@@ -78,27 +130,59 @@ def monitor_status():
     # Tagging Status
     t_running, t_log, t_status_msg, t_cur, t_tot = tagging_runner.get_status()
     
-    t_prog_html = ""
+    # Determine tagging status icon and color
+    if t_running:
+        t_status_icon = "🏷️"
+        t_status_color = "#a371f7"
+    elif "Error" in t_status_msg or "Failed" in t_status_msg:
+        t_status_icon = "❌"
+        t_status_color = "#f85149"
+    elif "Done" in t_status_msg or "Complete" in t_status_msg:
+        t_status_icon = "✅"
+        t_status_color = "#3fb950"
+    else:
+        t_status_icon = "⏸️"
+        t_status_color = "#8b949e"
+    
+    # Build modern tagging status HTML
+    t_status_html = f"""
+    <div style="padding: 20px; background: linear-gradient(135deg, #161b22 0%, #0d1117 100%); border-radius: 12px; border: 1px solid #30363d;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+            <span style="font-size: 1.5rem;">{t_status_icon}</span>
+            <div>
+                <div style="font-size: 1.1rem; font-weight: 600; color: #e6edf3;">{t_status_msg}</div>
+                <div style="font-size: 0.8rem; color: #8b949e;">Keyword Extraction Engine</div>
+            </div>
+        </div>
+    """
+    
     if t_tot > 0:
         pct = (t_cur / t_tot) * 100
-        t_prog_html = f"""
-        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-            <span>Processing: {t_cur}/{t_tot}</span>
-            <span>{pct:.1f}%</span>
+        t_status_html += f"""
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; color: #8b949e; font-size: 0.9rem;">
+            <span>Progress: {t_cur} / {t_tot} images</span>
+            <span style="color: {t_status_color}; font-weight: 600;">{pct:.1f}%</span>
         </div>
-        <div style="width: 100%; background-color: #e0e0e0; border-radius: 4px; height: 20px;">
-            <div style="width: {pct}%; background-color: #2196f3; height: 20px; border-radius: 4px; transition: width 0.5s;"></div>
+        <div style="width: 100%; background-color: #21262d; border-radius: 8px; height: 10px; overflow: hidden;">
+            <div style="width: {pct}%; background: linear-gradient(90deg, #a371f7 0%, #f778ba 100%); height: 10px; border-radius: 8px; transition: width 0.3s ease;"></div>
         </div>
         """
     elif t_running:
-        t_prog_html = "Scanning..."
+        t_status_html += f"""
+        <div style="display: flex; align-items: center; gap: 8px; color: #8b949e;">
+            <div style="width: 8px; height: 8px; background: {t_status_color}; border-radius: 50%; animation: pulse 1.5s infinite;"></div>
+            <span>Scanning images...</span>
+        </div>
+        """
+        
+    t_status_html += "</div>"
     
     t_run_up = gr.update(interactive=not t_running)
     t_stop_up = gr.update(interactive=t_running)
     
     return [
-        s_log, s_status_msg, s_run_up, s_stop_up, s_fix_up, s_prog_html,
-        t_log, t_status_msg, t_run_up, t_stop_up, t_prog_html
+        s_log, s_status_html, s_run_up, s_stop_up, s_fix_up,
+        t_log, t_status_html, t_run_up, t_stop_up
     ]
 
 def run_tagging_wrapper(input_path, custom_keywords, overwrite, generate_captions):
@@ -124,12 +208,6 @@ def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, key
     """Fetch images for gallery with pagination."""
     date_range = (start_date, end_date) if (start_date or end_date) else None
     
-    
-    if folder and os.path.exists(folder):
-        # Only fetch images from this specific folder (recursive? current requirement seems flat or specific folder from tree)
-        # DB `get_images_by_folder` is flat. `get_images_paginated` now supports folder path.
-        pass
-
     rows = db.get_images_paginated(
         page, PAGE_SIZE, sort_by, sort_order, 
         rating_filter, label_filter, keyword_filter, 
@@ -159,15 +237,15 @@ def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, key
         
         thumb_path = row['thumbnail_path'] if 'thumbnail_path' in row.keys() else None
         
-        image_path = file_path
-        if thumb_path and os.path.exists(thumb_path):
-            image_path = thumb_path
+        # OPTIMIZATION: Use thumbnail if available, skip expensive os.path.exists() check
+        # Trust DB paths - they were validated when stored
+        image_path = thumb_path if thumb_path else file_path
             
         # Ensure absolute path for Gradio
         image_path = os.path.abspath(image_path)
         
         # Format path for display (showing parent directory)
-        folder = os.path.dirname(file_path)
+        display_folder = os.path.dirname(file_path)
         
         # Dynamic Label Generation based on Sort Criteria
         if sort_by == "created_at":
@@ -208,7 +286,7 @@ def update_gallery(page, sort_by, sort_order, rating_filter, label_filter, keywo
     # Return: images, label, raw_paths, *details_cleared*
     # Details cleared must match detail_outputs list:
     # d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label
-    return images, label, raw_paths, {}, {}, {}, {}, gr.update(visible=False), "", "", "", "0", "None"
+    return images, label, raw_paths, {}, {}, {}, {}, gr.update(visible=False), "", "", [], "0", "None"
 
 def next_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None):
     _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
@@ -224,58 +302,67 @@ def first_page(sort_by, sort_order, rating_filter, label_filter, keyword_filter,
 
 def reset_folder_filter(sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
     """Resets folder filter and goes to first page."""
-    # Return (update_button_visibility), (current_folder_state=None), *update_gallery outputs
-    
-    # 1. Hide reset button
-    # 2. Set state to None
-    # 3. Refresh gallery
+    # Returns: folder_context_group, folder_display, current_folder_state, page, *gallery_outputs
     
     gal_outs = update_gallery(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, None)
     
-    return gr.update(visible=False), None, 1, *gal_outs
+    # 1. Hide folder context group
+    # 2. Clear folder display
+    # 3. Set state to None
+    # 4. Reset page to 1
+    # 5. Gallery outputs
+    
+    return gr.update(visible=False), "", None, 1, *gal_outs
 
 def open_folder_in_gallery(folder, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
     """Switches to gallery tab and filters by folder.
        Returns: 
-       [Tabs, current_folder_state, reset_btn_update] + [page, gallery, label, paths, details...]
+       [Tabs, current_folder_state, folder_context_group, folder_display, reset_btn_update] + [page, gallery, label, paths, details...]
     """
     if not folder:
         # If no folder provided, treat as "Reset / View All"
         print("DEBUG: No folder provided, resetting filter.")
         gal_outs = update_gallery(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None)
-        return gr.Tabs(selected="Gallery"), None, gr.update(visible=False), 1, *gal_outs
+        return gr.update(selected="gallery"), None, gr.update(visible=False), "", 1, *gal_outs
         
     print(f"DEBUG: open_folder_in_gallery called with folder='{folder}'")
     
-    # Switch to Gallery Tab
-    # Update folder state
-    # Show Reset Button
-    # Refresh Gallery with new folder
+    # Create a nice folder display HTML
+    folder_name = os.path.basename(folder)
+    parent_path = os.path.dirname(folder)
+    folder_html = f"""
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 1.5rem;">📁</span>
+        <div>
+            <div style="font-size: 1.1rem; font-weight: 600; color: #e6edf3;">{folder_name}</div>
+            <div style="font-size: 0.8rem; color: #8b949e;">{parent_path}</div>
+        </div>
+    </div>
+    """
     
     gal_outs = update_gallery(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
     
     # Return:
     # 1. Tabs Update (switch to "Gallery")
     # 2. current_folder state (set to folder)
-    # 3. reset_btn (visible=True, value=f"Reset Folder: {os.path.basename(folder)}")
-    # 4. page (1)
-    # 5. *gal_outs
+    # 3. folder_context_group (visible=True)
+    # 4. folder_display HTML
+    # 5. page (1)
+    # 6. *gal_outs
     
-    return gr.Tabs(selected="Gallery"), folder, gr.update(visible=True, value=f"Reset Folder ({os.path.basename(folder)})"), 1, *gal_outs
+    return gr.update(selected="gallery"), folder, gr.update(visible=True), folder_html, 1, *gal_outs
 
 def open_folder_in_stacks(folder):
     """Switches to Stacks tab and sets input folder."""
     if not folder:
-        return gr.Tabs(selected="Stacks"), gr.update()
-    
-    return gr.Tabs(selected="Stacks"), folder
+        return gr.update(selected="stacks"), gr.update()
+    return gr.update(selected="stacks"), folder
 
 def open_folder_in_keywords(folder):
     """Switches to Keywords tab and sets input folder."""
     if not folder:
-        return gr.Tabs(selected="Keywords"), gr.update()
-    
-    return gr.Tabs(selected="Keywords"), folder
+        return gr.update(selected="keywords"), gr.update()
+    return gr.update(selected="keywords"), folder
 
 def open_stack_folder_in_gallery(folder, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
     """Switches from Stacks to Gallery with folder filter."""
@@ -284,14 +371,14 @@ def open_stack_folder_in_gallery(folder, sort_by, sort_order, rating_filter, lab
 def open_stack_folder_in_tree(folder):
     """Switches from Stacks to Tree View and selects folder."""
     if not folder:
-         return gr.Tabs(selected="Folder Tree"), gr.update(), gr.update()
+         return gr.update(selected="folder_tree"), gr.update(), gr.update()
          
     # We might need to refresh tree choices if the folder isn't there, but for now just try setting it.
     # The tree choices update happens on load or refresh click. 
     # If the folder exists in DB, it should be in the list if refreshed.
     
     html = ui_tree.get_tree_html(folder)
-    return gr.Tabs(selected="Folder Tree"), folder, html
+    return gr.update(selected="folder_tree"), folder, html
 
 def display_details(evt: gr.SelectData, raw_paths):
     print(f"DEBUG: display_details called. Index: {evt.index if evt else 'None'}, Paths Len: {len(raw_paths) if raw_paths else 0}")
@@ -478,6 +565,51 @@ def delete_nef(details):
 
 
 
+# Color palette for keyword tags - distinct, vibrant colors
+KEYWORD_COLORS = [
+    "#3b82f6",  # blue
+    "#10b981",  # emerald
+    "#f59e0b",  # amber
+    "#ef4444",  # red
+    "#8b5cf6",  # violet
+    "#ec4899",  # pink
+    "#06b6d4",  # cyan
+    "#84cc16",  # lime
+    "#f97316",  # orange
+    "#6366f1",  # indigo
+    "#14b8a6",  # teal
+    "#a855f7",  # purple
+]
+
+# Generate color_map for HighlightedText (category names map to background colors)
+KEYWORD_COLOR_MAP = {f"c{i}": color for i, color in enumerate(KEYWORD_COLORS)}
+
+
+def keywords_to_highlighted(keywords_str):
+    """
+    Converts a comma-separated keywords string to HighlightedText format.
+    Returns list of (keyword, category) tuples with rotating color categories.
+    """
+    if not keywords_str:
+        return []
+    keywords_list = [k.strip() for k in keywords_str.split(',') if k.strip()]
+    # Assign rotating color categories for unique backgrounds
+    return [(kw, f"c{i % len(KEYWORD_COLORS)}") for i, kw in enumerate(keywords_list)]
+
+
+def highlighted_to_keywords(highlighted_data):
+    """
+    Converts HighlightedText format back to comma-separated string.
+    Accepts list of (text, category) tuples.
+    """
+    if not highlighted_data:
+        return ""
+    if isinstance(highlighted_data, str):
+        return highlighted_data  # Already a string (fallback)
+    # Extract just the text from each tuple
+    return ",".join([item[0].strip() for item in highlighted_data if item[0].strip()])
+
+
 def save_metadata_action(details, title, desc, keywords, rating, label):
     """
     Saves metadata to DB and File.
@@ -489,8 +621,9 @@ def save_metadata_action(details, title, desc, keywords, rating, label):
     if not file_path:
          return "Error: Invalid image record.", gr.update(visible=True)
          
-    # Parse Keywords
-    kw_list = [k.strip() for k in keywords.split(',') if k.strip()]
+    # Parse Keywords - handle both HighlightedText format and string
+    keywords_str = highlighted_to_keywords(keywords) if isinstance(keywords, list) else keywords
+    kw_list = [k.strip() for k in keywords_str.split(',') if k.strip()]
     
     # 1. Update DB
     try:
@@ -498,7 +631,7 @@ def save_metadata_action(details, title, desc, keywords, rating, label):
         r_val = int(rating) if rating else 0
         l_val = label if label != "None" else ""
         
-        success = db.update_image_metadata(file_path, keywords, title, desc, r_val, l_val)
+        success = db.update_image_metadata(file_path, keywords_str, title, desc, r_val, l_val)
         if not success:
              return "Failed to update database.", gr.update(visible=True)
              
@@ -535,11 +668,12 @@ def get_stack_gallery_data():
     
     for row in stacks:
         # Gallery format: (path, label)
-        # Handle path
+        # OPTIMIZATION: Skip existence checks - trust DB paths
         p = row['best_image_path']
         label = f"{row['name']} ({row['image_count']} imgs)"
-        if p and os.path.exists(p):
-            results.append((p, label))
+        if p:
+            local_p = utils.convert_path_to_local(p)
+            results.append((local_p, label))
             stack_ids.append(row['id'])
             
     return results, stack_ids
@@ -547,6 +681,9 @@ def get_stack_gallery_data():
 def run_clustering_wrapper(input_path, threshold, gap, force, progress=gr.Progress()):
     log = ""
     try:
+        # Save Config
+        config.save_config_value('stacks_input_path', input_path)
+        
         # Default gap 120s if None
         if gap is None: gap = 120
         
@@ -591,9 +728,11 @@ def refresh_stacks_wrapper(input_path, sort_by, sort_order):
         
         label = f"{name} ({count} items)"
         
-        # Ensure absolute path
-        if cover and os.path.exists(cover):
-            results.append((cover, label))
+        # Convert path for WSL/Windows compatibility
+        # Skip os.path.exists() check - it's slow and Gradio handles missing images gracefully
+        if cover:
+            local_cover = utils.convert_path_to_local(cover)
+            results.append((local_cover, label))
             stack_ids.append(s_id)
             
     return results, stack_ids
@@ -625,10 +764,20 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
     gallery_imgs = []
     for row in images:
         p = row['file_path']
-        s = row['score_general']
-        l = f"Gen: {s:.2f}"
-        gallery_imgs.append((p, l))
+        if not p:
+            continue
         
+        # OPTIMIZATION: Use thumbnail if available, skip existence checks
+        # Trust DB paths - they were validated when stored
+        thumb = row['thumbnail_path']  # sqlite3.Row uses bracket notation, not .get()
+        if thumb:
+            p = utils.convert_path_to_local(thumb)
+        else:
+            p = utils.convert_path_to_local(p)
+            
+        s = row['score_general']
+        label = f"Gen: {s:.2f}" if s is not None else "Gen: N/A"
+        gallery_imgs.append((p, label))
 
     return gallery_imgs
 
@@ -707,15 +856,58 @@ def update_tree_gallery(folder):
     if not folder: 
         return [], "No folder selected."
     
-    rows = db.get_images_by_folder(folder)
+    # Convert Windows path to WSL format for DB query
+    # DB stores paths in WSL format (/mnt/d/...)
+    wsl_folder = utils.convert_path_to_wsl(folder)
+    rows = db.get_images_by_folder(wsl_folder)
+    
+    total_count = len(rows)
+    
+    # OPTIMIZATION: Limit to PAGE_SIZE to avoid slow Gradio rendering
+    # Folder Tree is for quick preview; use "Open in Gallery" for full browsing
+    rows = rows[:PAGE_SIZE]
+    
     results = []
     for row in rows:
         p = row['file_path']
         label = row['file_name']
-        results.append((p, label))
         
+        # OPTIMIZATION: Prioritize thumbnails, skip expensive existence checks
+        # Trust DB paths - they were valid when stored
+        thumb_path = row.get('thumbnail_path')
+        
+        if thumb_path:
+            # Use thumbnail (fast path - no existence check)
+            if IS_WINDOWS and thumb_path.startswith("/mnt/"):
+                # Convert WSL path to Windows
+                parts = thumb_path.split('/')
+                if len(parts) > 2 and len(parts[2]) == 1:
+                    drive = parts[2].upper()
+                    rest = "/".join(parts[3:])
+                    p = f"{drive}:/{rest}"
+                else:
+                    p = thumb_path
+            else:
+                p = thumb_path
+        else:
+            # No thumbnail - convert original path
+            if IS_WINDOWS and p.startswith("/mnt/"):
+                parts = p.split('/')
+                if len(parts) > 2 and len(parts[2]) == 1:
+                    drive = parts[2].upper()
+                    rest = "/".join(parts[3:])
+                    p = f"{drive}:/{rest}"
+        
+        results.append((p, label))
 
-    return results, f"Found {len(results)} images in {os.path.basename(folder)}"
+    # Show count with note if truncated
+    folder_name = os.path.basename(folder)
+    if total_count > PAGE_SIZE:
+        status = f"Showing {len(results)} of {total_count} images in {folder_name} (use 'Open in Gallery' for full view)"
+    else:
+        status = f"Found {total_count} images in {folder_name}"
+    
+    return results, status
 
 def refresh_tree_wrapper():
     msg = db.rebuild_folder_cache()
@@ -724,16 +916,725 @@ def refresh_tree_wrapper():
 
 # --- UI Definition ---
 
-# Custom CSS to prevent upscaling of images in preview/gallery
+# Tree View Start Script + Gallery Close Button
+tree_js = """
+<script>
+window.selectFolder = function(e, path) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Clear selection style
+    var all = document.querySelectorAll('.tree-content');
+    for (var i=0; i<all.length; i++) {
+        all[i].style.backgroundColor = '';
+        all[i].style.color = '';
+    }
+    
+    // Set new style
+    e.target.style.backgroundColor = '#2196f3';
+    e.target.style.color = 'white';
+    
+    // Update hidden input
+    var ta = document.querySelector('#folder_tree_selection textarea');
+    if (ta) {
+        var descriptor = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value");
+        descriptor.set.call(ta, path);
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
+
+// Gallery lightbox close button handler
+function initGalleryCloseButton() {
+    let closeBtn = null;
+    
+    function createCloseButton() {
+        if (closeBtn && document.body.contains(closeBtn)) return closeBtn;
+        
+        closeBtn = document.createElement('button');
+        closeBtn.id = 'gallery-close-btn';
+        closeBtn.innerHTML = '✕ Back to Grid';
+        closeBtn.style.cssText = `
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            z-index: 99999;
+            background: linear-gradient(135deg, #f85149 0%, #da3633 100%);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(248, 81, 73, 0.5);
+            border: 2px solid rgba(255,255,255,0.2);
+            transition: all 0.2s ease;
+            font-family: system-ui, -apple-system, sans-serif;
+            letter-spacing: 0.5px;
+        `;
+        closeBtn.onmouseenter = function() {
+            this.style.transform = 'scale(1.08)';
+            this.style.boxShadow = '0 6px 25px rgba(248, 81, 73, 0.7)';
+        };
+        closeBtn.onmouseleave = function() {
+            this.style.transform = 'scale(1)';
+            this.style.boxShadow = '0 4px 20px rgba(248, 81, 73, 0.5)';
+        };
+        closeBtn.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            closePreview();
+        };
+        return closeBtn;
+    }
+    
+    function closePreview() {
+        // Method 1: Find and click the grid/thumbnail view
+        const gridButtons = document.querySelectorAll('.gallery button, .gallery .thumbnail, .gallery [class*="grid"]');
+        
+        // Method 2: Simulate Escape key
+        document.dispatchEvent(new KeyboardEvent('keydown', { 
+            key: 'Escape', 
+            code: 'Escape', 
+            keyCode: 27, 
+            which: 27, 
+            bubbles: true,
+            cancelable: true
+        }));
+        
+        // Method 3: Find preview container and trigger close
+        const previewBtn = document.querySelector('.gallery button.preview');
+        if (previewBtn) {
+            // Try to find a close mechanism
+            const svgIcons = previewBtn.querySelectorAll('svg');
+            svgIcons.forEach(svg => {
+                if (svg.closest('button')) {
+                    svg.closest('button').click();
+                }
+            });
+        }
+        
+        // Method 4: Click on the preview backdrop area
+        setTimeout(() => {
+            const preview = document.querySelector('.gallery .preview, .gallery button.preview');
+            if (preview) {
+                // Dispatch escape again
+                preview.dispatchEvent(new KeyboardEvent('keydown', { 
+                    key: 'Escape', 
+                    bubbles: true 
+                }));
+            }
+            removeCloseButton();
+        }, 100);
+    }
+    
+    function removeCloseButton() {
+        const btn = document.getElementById('gallery-close-btn');
+        if (btn) btn.remove();
+        closeBtn = null;
+    }
+    
+    function checkForPreviewMode() {
+        // Check if gallery is in preview/lightbox mode
+        const previewActive = document.querySelector('.gallery button.preview');
+        const hasLargeImage = document.querySelector('.gallery .preview img, .gallery button.preview img');
+        const thumbnailStrip = document.querySelector('.gallery .thumbnails, .gallery [class*="thumbnail"]');
+        
+        // If preview mode detected (large image with thumbnail strip)
+        if (previewActive || (hasLargeImage && thumbnailStrip)) {
+            if (!document.getElementById('gallery-close-btn')) {
+                const btn = createCloseButton();
+                document.body.appendChild(btn);
+            }
+        } else {
+            removeCloseButton();
+        }
+    }
+    
+    // Watch for DOM changes
+    const observer = new MutationObserver(function(mutations) {
+        checkForPreviewMode();
+    });
+    
+    observer.observe(document.body, { 
+        childList: true, 
+        subtree: true, 
+        attributes: true,
+        attributeFilter: ['class', 'style']
+    });
+    
+    // Also check periodically for edge cases
+    setInterval(checkForPreviewMode, 500);
+    
+    // Initial check
+    setTimeout(checkForPreviewMode, 1000);
+}
+
+// Handle Escape key globally
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const btn = document.getElementById('gallery-close-btn');
+        if (btn) btn.remove();
+    }
+});
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initGalleryCloseButton);
+} else {
+    initGalleryCloseButton();
+}
+</script>
+"""
+
+# Custom CSS for modern dark UI
 custom_css = """
-.preview img, .lightbox img, .modal img {
-    object-fit: scale-down !important;
+/* ========== ROOT THEME VARIABLES ========== */
+:root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --bg-elevated: #30363d;
+    --border-color: #30363d;
+    --border-subtle: #21262d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #6e7681;
+    --accent-primary: #58a6ff;
+    --accent-success: #3fb950;
+    --accent-warning: #d29922;
+    --accent-danger: #f85149;
+    --accent-purple: #a371f7;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --transition-fast: 150ms ease;
+    --transition-normal: 250ms ease;
+}
+
+/* ========== GLOBAL STYLES ========== */
+.gradio-container {
+    background: linear-gradient(135deg, var(--bg-primary) 0%, #0a0d12 100%) !important;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+.dark {
+    --block-background-fill: var(--bg-secondary) !important;
+    --block-border-color: var(--border-color) !important;
+    --body-background-fill: var(--bg-primary) !important;
+    --button-primary-background-fill: var(--accent-primary) !important;
+    --button-primary-background-fill-hover: #4895ef !important;
+    --input-background-fill: var(--bg-tertiary) !important;
+}
+
+/* ========== HEADER ========== */
+h1 {
+    font-size: 1.75rem !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.5px !important;
+    color: var(--text-primary) !important;
+    margin-bottom: 1rem !important;
+}
+
+/* ========== TABS ========== */
+.tab-nav {
+    background: var(--bg-secondary) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 4px !important;
+    gap: 4px !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+.tab-nav button {
+    background: transparent !important;
+    border: none !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-secondary) !important;
+    font-weight: 500 !important;
+    padding: 10px 20px !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.tab-nav button:hover {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+.tab-nav button.selected {
+    background: var(--accent-primary) !important;
+    color: white !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+/* ========== TREE VIEW ========== */
+.tree-content { 
+    cursor: pointer; 
+    padding: 6px 12px; 
+    border-radius: var(--radius-sm); 
+    display: inline-block; 
+    user-select: none; 
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+}
+
+.tree-content:hover { 
+    background-color: var(--bg-tertiary); 
+    color: var(--text-primary);
+}
+
+summary { outline: none; cursor: pointer; }
+#folder_tree_selection { display: none; } 
+
+/* ========== GALLERY HEADER ========== */
+.gallery-header {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 16px 20px !important;
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    margin-bottom: 16px !important;
+}
+
+.folder-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 8px 16px !important;
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-purple) 100%) !important;
+    border-radius: 20px !important;
+    color: white !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.folder-badge::before {
+    content: "📁";
+    font-size: 1rem;
+}
+
+/* ========== BUTTONS ========== */
+.primary-btn {
+    background: linear-gradient(135deg, var(--accent-primary) 0%, #4895ef 100%) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 600 !important;
+    padding: 10px 24px !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-sm) !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.primary-btn:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: var(--shadow-md) !important;
+}
+
+.secondary-btn {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+    font-weight: 500 !important;
+    padding: 10px 20px !important;
+    border-radius: var(--radius-md) !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.secondary-btn:hover {
+    background: var(--bg-elevated) !important;
+    border-color: var(--accent-primary) !important;
+}
+
+.danger-btn {
+    background: linear-gradient(135deg, var(--accent-danger) 0%, #da3633 100%) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 600 !important;
+}
+
+/* ========== GALLERY GRID ========== */
+.gallery-container {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 16px !important;
+}
+
+/* Reset Gradio gallery wrapper positioning in preview mode */
+.gallery-container .wrap,
+.gallery-container > div {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Ensure the gallery block fills properly */
+.block.gallery-container {
+    padding: 0 !important;
+}
+
+.gallery .gallery-item {
+    border-radius: var(--radius-md) !important;
+    overflow: hidden !important;
+    transition: all var(--transition-normal) !important;
+    border: 2px solid transparent !important;
+}
+
+.gallery .gallery-item:hover {
+    transform: scale(1.02) !important;
+    border-color: var(--accent-primary) !important;
+    box-shadow: var(--shadow-md) !important;
+}
+
+.gallery .gallery-item.selected {
+    border-color: var(--accent-success) !important;
+    box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.3) !important;
+}
+
+/* ========== DETAILS PANEL ========== */
+.details-panel {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 20px !important;
+}
+
+.score-card {
+    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 16px !important;
+    text-align: center !important;
+}
+
+.score-value {
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+    color: var(--accent-primary) !important;
+}
+
+.score-label {
+    font-size: 0.85rem !important;
+    color: var(--text-secondary) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+}
+
+/* ========== INPUTS ========== */
+.input-container input,
+.input-container textarea {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-primary) !important;
+    padding: 12px 16px !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.input-container input:focus,
+.input-container textarea:focus {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2) !important;
+    outline: none !important;
+}
+
+/* ========== DROPDOWNS ========== */
+.dropdown-container {
+    position: relative !important;
+}
+
+select, .svelte-dropdown {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-primary) !important;
+    padding: 10px 14px !important;
+}
+
+/* ========== ACCORDION ========== */
+.accordion {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    overflow: hidden !important;
+}
+
+.accordion > .label-wrap {
+    background: var(--bg-tertiary) !important;
+    padding: 14px 20px !important;
+    font-weight: 600 !important;
+    color: var(--text-primary) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+/* ========== PAGINATION ========== */
+.pagination-container {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    padding: 16px !important;
+}
+
+.page-btn {
+    min-width: 100px !important;
+    padding: 10px 20px !important;
+}
+
+.page-indicator {
+    background: var(--bg-tertiary) !important;
+    padding: 10px 24px !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-secondary) !important;
+    font-weight: 500 !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+/* ========== MODAL & LIGHTBOX ========== */
+/* Only target the main preview image, not thumbnails */
+.preview .media-button img, 
+.lightbox img, 
+.modal img {
+    object-fit: contain !important;
     width: auto !important;
     height: auto !important;
     max-width: 100% !important;
-    max-height: 90vh !important;
+    max-height: calc(100% - 80px) !important;
     margin: auto;
 }
+
+/* Ensure thumbnail images display properly */
+.gallery .thumbnails img,
+.gallery .thumbnail-item img,
+.thumbnails img,
+.thumbnail-item img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+/* Gradio Gallery Lightbox/Preview Mode Styling */
+.gallery .preview,
+.gallery button.preview {
+    position: relative !important;
+    width: 100% !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* Gallery container should clip images but not buttons (buttons are fixed positioned) */
+.gallery-container {
+    overflow: hidden !important;
+    padding: 0 !important;
+}
+
+/* The media-button contains the preview image - make it fill the container */
+.gallery button.preview .media-button,
+.gallery .preview .media-button {
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    position: relative !important;
+    box-sizing: border-box !important;
+}
+
+.gallery button.preview .media-button img,
+.gallery .preview .media-button img {
+    object-fit: contain !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    display: block !important;
+    margin: 0 auto !important;
+}
+
+/* Override hide-top-corner to show controls - be more specific */
+/* Since icon-button-wrapper is position:fixed, parent overflow doesn't affect it */
+.gallery .hide-top-corner,
+.gallery .top-panel,
+.gallery .top-panel.hide-top-corner,
+.gallery .icon-button-wrapper.hide-top-corner,
+.gallery .icon-button-wrapper.top-panel.hide-top-corner {
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: flex !important;
+    clip: auto !important;
+    clip-path: none !important;
+}
+
+/* Style the built-in gallery controls (download, fullscreen, close) */
+/* position:fixed removes element from document flow - parent overflow doesn't affect it */
+.gallery .icon-buttons,
+.gallery .icon-button-wrapper,
+.gallery .icon-button-wrapper.top-panel {
+    position: fixed !important;
+    top: 15px !important;
+    right: 180px !important;
+    z-index: 99998 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    width: auto !important;
+    max-width: none !important;
+    transform: none !important;
+}
+
+.gallery .icon-buttons button,
+.gallery .icon-button-wrapper button {
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 10px 14px !important;
+    color: var(--text-primary) !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: inline-flex !important;
+    min-width: auto !important;
+    flex-shrink: 0 !important;
+}
+
+.gallery .icon-buttons button:hover,
+.gallery .icon-button-wrapper button:hover {
+    background: var(--accent-primary) !important;
+    border-color: var(--accent-primary) !important;
+}
+
+/* Navigation hint text at bottom of preview */
+.gallery button.preview::after {
+    content: "Press ESC or click '✕ Back to Grid' to return" !important;
+    position: fixed !important;
+    bottom: 80px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 99990 !important;
+    background: rgba(0, 0, 0, 0.85) !important;
+    color: #a0a0a0 !important;
+    padding: 12px 24px !important;
+    border-radius: 25px !important;
+    font-size: 13px !important;
+    pointer-events: none !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+/* Thumbnail strip styling */
+.gallery .thumbnails {
+    background: rgba(0, 0, 0, 0.9) !important;
+    padding: 12px !important;
+    border-radius: var(--radius-lg) !important;
+    margin: 16px auto 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+}
+
+.gallery .thumbnails button,
+.gallery .thumbnail-item {
+    border-radius: var(--radius-sm) !important;
+    border: 2px solid transparent !important;
+    transition: all 0.2s ease !important;
+    overflow: visible !important;
+    background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+}
+
+.gallery .thumbnails button:hover,
+.gallery .thumbnail-item:hover {
+    border-color: var(--accent-primary) !important;
+}
+
+.gallery .thumbnails button.selected,
+.gallery .thumbnail-item.selected {
+    border-color: var(--accent-warning) !important;
+    box-shadow: 0 0 0 2px rgba(210, 153, 34, 0.3) !important;
+}
+
+/* Ensure thumbnail images are visible */
+.gallery .thumbnails button img,
+.gallery .thumbnail-item img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Ensure the preview backdrop is clickable to close */
+.gallery .preview > div:first-child {
+    cursor: pointer !important;
+}
+
+/* Preview content divs should contain images properly and be centered */
+/* Exclude icon-button-wrapper and thumbnails from these styles */
+.gallery button.preview > div:not(.icon-button-wrapper):not(.thumbnails),
+.gallery .preview > div:not(.icon-button-wrapper):not(.thumbnails) {
+    overflow: hidden !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* Svelte gallery specific overrides */
+.svelte-ao1xvt.preview,
+button.preview.svelte-ao1xvt {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    left: 0 !important;
+}
+
+.svelte-ao1xvt.media-button,
+button.media-button.svelte-ao1xvt {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    left: 0 !important;
+}
+
+/* Specifically target the close button in gallery preview */
+.gallery button.preview .icon-button-wrapper button,
+.gallery .preview .icon-button-wrapper button,
+.gallery [class*="close"],
+.gallery button[aria-label*="close"],
+.gallery button[aria-label*="Close"] {
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: inline-flex !important;
+    pointer-events: auto !important;
+}
+
 .full-res-modal {
     position: fixed !important;
     top: 0 !important;
@@ -746,13 +1647,20 @@ custom_css = """
     flex-direction: column !important;
     align-items: center !important;
     justify-content: center !important;
+    backdrop-filter: blur(10px) !important;
 }
+
 .modal-close-btn {
     position: absolute !important;
     top: 20px !important;
     right: 30px !important;
     z-index: 10000 !important;
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 10px 20px !important;
 }
+
 .modal-image-container {
     display: flex !important;
     justify-content: center !important;
@@ -762,14 +1670,196 @@ custom_css = """
     border: none !important;
     background-color: transparent !important;
 }
+
 .modal-image-container img {
     max-height: 90vh !important;
     max-width: 95vw !important;
     object-fit: contain !important;
+    border-radius: var(--radius-lg) !important;
+}
+
+/* ========== STATUS INDICATORS ========== */
+.status-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 6px 12px !important;
+    border-radius: 20px !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+}
+
+.status-badge.success {
+    background: rgba(63, 185, 80, 0.15) !important;
+    color: var(--accent-success) !important;
+    border: 1px solid rgba(63, 185, 80, 0.3) !important;
+}
+
+.status-badge.warning {
+    background: rgba(210, 153, 34, 0.15) !important;
+    color: var(--accent-warning) !important;
+    border: 1px solid rgba(210, 153, 34, 0.3) !important;
+}
+
+/* ========== PROGRESS BAR ========== */
+.progress-container {
+    background: var(--bg-tertiary) !important;
+    border-radius: var(--radius-md) !important;
+    height: 8px !important;
+    overflow: hidden !important;
+}
+
+.progress-bar {
+    height: 100% !important;
+    background: linear-gradient(90deg, var(--accent-primary) 0%, var(--accent-purple) 100%) !important;
+    border-radius: var(--radius-md) !important;
+    transition: width var(--transition-normal) !important;
+}
+
+/* ========== LABELS ========== */
+.label {
+    color: var(--text-secondary) !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    margin-bottom: 6px !important;
+}
+
+/* ========== CARDS ========== */
+.card {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 20px !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.card:hover {
+    border-color: var(--accent-primary) !important;
+    box-shadow: var(--shadow-md) !important;
+}
+
+/* ========== EMPTY STATE ========== */
+.empty-state {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 60px 20px !important;
+    color: var(--text-muted) !important;
+}
+
+.empty-state-icon {
+    font-size: 3rem !important;
+    margin-bottom: 16px !important;
+    opacity: 0.5 !important;
+}
+
+/* ========== SCROLLBAR ========== */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-elevated);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* ========== ANIMATION ========== */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+    animation: fadeIn var(--transition-normal) ease-out !important;
+}
+
+/* ========== FILTER CHIPS ========== */
+.filter-chip {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 6px 14px !important;
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 20px !important;
+    font-size: 0.85rem !important;
+    color: var(--text-secondary) !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.filter-chip:hover {
+    border-color: var(--accent-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+.filter-chip.active {
+    background: var(--accent-primary) !important;
+    border-color: var(--accent-primary) !important;
+    color: white !important;
+}
+
+/* ========== FOLDER CONTEXT BAR ========== */
+.folder-context-bar {
+    background: linear-gradient(135deg, rgba(88, 166, 255, 0.1) 0%, rgba(163, 113, 247, 0.1) 100%) !important;
+    border: 1px solid rgba(88, 166, 255, 0.3) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 16px 24px !important;
+    margin-bottom: 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+}
+
+.folder-path-display {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    color: var(--text-primary) !important;
+    font-weight: 500 !important;
+}
+
+.folder-icon {
+    font-size: 1.5rem !important;
+}
+
+/* ========== HIGHLIGHTED TEXT (KEYWORDS) ========== */
+/* Hide category labels (C0, C1, etc.) */
+[data-testid="highlighted-text"] .label {
+    display: none !important;
+}
+
+/* Hide close/cross button */
+[data-testid="highlighted-text"] .label-clear-button {
+    display: none !important;
+}
+
+/* White text for keyword tags */
+[data-testid="highlighted-text"] .textspan {
+    color: white !important;
+    font-weight: 500 !important;
+    padding: 4px 12px !important;
+    border-radius: 6px !important;
+    margin: 2px !important;
+}
+
+[data-testid="highlighted-text"] .text {
+    color: white !important;
 }
 """
 
-with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
+with gr.Blocks(title="Image Scoring WebUI") as demo:
     gr.Markdown("# Image Scoring WebUI")
     
     # State
@@ -793,29 +1883,47 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
     
     with gr.Tabs() as main_tabs:
         # TAB 1: RUN SCORING
-        with gr.TabItem("Scoring"):
+        with gr.TabItem("Scoring", id="scoring"):
+            gr.Markdown("### 🎯 Image Quality Scoring")
             with gr.Row():
-                with gr.Column(scale=1):
-                    input_dir = gr.Textbox(
-                        label="Input Folder Path", 
-                        placeholder="D:\\Photos\\...",
-                        value=app_config.get('scoring_input_path', '')
-                    )
-                    force_checkbox = gr.Checkbox(label="Force Re-score (Overwrite existing)", value=False)
+                with gr.Column(scale=1, min_width=350):
+                    with gr.Group():
+                        input_dir = gr.Textbox(
+                            label="📁 Input Folder Path", 
+                            placeholder="D:\\Photos\\2024\\...",
+                            value=app_config.get('scoring_input_path', ''),
+                            info="Select folder containing images to score"
+                        )
+                        force_checkbox = gr.Checkbox(
+                            label="🔄 Force Re-score", 
+                            value=False,
+                            info="Overwrite existing scores in database"
+                        )
+                    
                     with gr.Row():
-                        run_btn = gr.Button("Start Scoring", variant="primary")
-                        stop_btn = gr.Button("Stop Scoring", variant="stop", interactive=False)
-                    fix_btn = gr.Button("Fix DB (Re-run missing)", variant="secondary")
+                        run_btn = gr.Button("▶️ Start Scoring", variant="primary", size="lg")
+                        stop_btn = gr.Button("⏹️ Stop", variant="stop", interactive=False, size="lg")
+                    
+                    fix_btn = gr.Button("🔧 Fix Database (Re-run missing)", variant="secondary", size="sm")
                 
                 with gr.Column(scale=2):
-                    status_label = gr.Label(value="Ready", label="Status")
-                    s_progress = gr.HTML(label="Progress")
-                    log_output = gr.Textbox(label="Console Output", lines=20, interactive=False)
+                    # Status Card
+                    s_status_html = gr.HTML(label="Status")
+                    
+                    # Console Output
+                    with gr.Accordion("📋 Console Output", open=True):
+                        log_output = gr.Textbox(
+                            label="", 
+                            lines=15, 
+                            interactive=False,
+                            show_label=False,
+                            placeholder="Waiting for scoring job to start..."
+                        )
             
             run_btn.click(
                 fn=run_scoring_wrapper,
                 inputs=[input_dir, force_checkbox],
-                outputs=[log_output, status_label, run_btn, stop_btn, fix_btn]
+                outputs=[log_output, s_status_html, run_btn, stop_btn, fix_btn]
             )
             
             stop_btn.click(
@@ -827,35 +1935,53 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             fix_btn.click(
                 fn=run_fix_db_wrapper,
                 inputs=[],
-                outputs=[log_output, status_label, run_btn, stop_btn, fix_btn]
+                outputs=[log_output, s_status_html, run_btn, stop_btn, fix_btn]
             )
 
         # TAB 2: KEYWORDS
-        with gr.TabItem("Keywords"):
+        with gr.TabItem("Keywords", id="keywords"):
+            gr.Markdown("### 🏷️ AI Keyword Extraction")
             with gr.Row():
-                with gr.Column(scale=1):
-                    k_input_dir = gr.Textbox(
-                        label="Input Folder Path", 
-                        placeholder="D:\\Photos\\... (Leave empty to process all DB images matching folder)",
-                        value=app_config.get('tagging_input_path', '')
-                    )
-                    k_custom = gr.Textbox(label="Custom Keywords (comma separated)", placeholder="e.g. vintage, cinematic, rainy")
+                with gr.Column(scale=1, min_width=350):
+                    with gr.Group():
+                        k_input_dir = gr.Textbox(
+                            label="📁 Input Folder Path", 
+                            placeholder="D:\\Photos\\... (Leave empty for all)",
+                            value=app_config.get('tagging_input_path', ''),
+                            info="Process images from this folder"
+                        )
+                        k_custom = gr.Textbox(
+                            label="✨ Custom Keywords", 
+                            placeholder="vintage, cinematic, rainy...",
+                            info="Additional keywords to detect (comma separated)"
+                        )
+                    
                     with gr.Row():
-                        k_overwrite = gr.Checkbox(label="Overwrite existing keywords", value=False)
-                        k_captions = gr.Checkbox(label="Generate Title & Description (Attributes)", value=False)
+                        k_overwrite = gr.Checkbox(label="🔄 Overwrite existing", value=False)
+                        k_captions = gr.Checkbox(label="📝 Generate captions", value=False)
+                    
                     with gr.Row():
-                        k_run_btn = gr.Button("Generate Keywords", variant="primary")
-                        k_stop_btn = gr.Button("Stop", variant="stop", interactive=False)
+                        k_run_btn = gr.Button("▶️ Generate Keywords", variant="primary", size="lg")
+                        k_stop_btn = gr.Button("⏹️ Stop", variant="stop", interactive=False, size="lg")
                 
                 with gr.Column(scale=2):
-                    k_status_label = gr.Label(value="Ready", label="Status")
-                    k_progress = gr.HTML(label="Progress")
-                    k_log_output = gr.Textbox(label="Console Output", lines=20, interactive=False)
+                    # Status Card
+                    k_status_html = gr.HTML(label="Status")
+                    
+                    # Console Output
+                    with gr.Accordion("📋 Console Output", open=True):
+                        k_log_output = gr.Textbox(
+                            label="", 
+                            lines=15, 
+                            interactive=False,
+                            show_label=False,
+                            placeholder="Waiting for keyword extraction to start..."
+                        )
             
             k_run_btn.click(
                 fn=run_tagging_wrapper,
                 inputs=[k_input_dir, k_custom, k_overwrite, k_captions],
-                outputs=[k_log_output, k_status_label, k_run_btn, k_stop_btn]
+                outputs=[k_log_output, k_status_html, k_run_btn, k_stop_btn]
             )
             
             k_stop_btn.click(
@@ -865,80 +1991,141 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             )
 
         # TAB 3: GALLERY
-        with gr.TabItem("Gallery"):
-            with gr.Row():
-                refresh_btn = gr.Button("Refresh / First Page")
-                reset_folder_btn = gr.Button("Reset Folder", visible=False, variant="secondary")
-                sort_dropdown = gr.Dropdown(
-                    choices=["created_at", "id", "score_general", "score_technical", "score_aesthetic", "score_spaq", "score_ava", "score_koniq", "score_paq2piq", "score_liqe"], 
-                    value="created_at", 
-                    label="Sort By"
-                )
-                order_dropdown = gr.Dropdown(choices=["desc", "asc"], value="desc", label="Order")
-            
-            with gr.Accordion("Filters", open=False):
+        with gr.TabItem("Gallery", id="gallery"):
+            # Folder Context Bar (visible when folder is selected)
+            with gr.Group(visible=False, elem_classes=["folder-context-bar"]) as folder_context_group:
                 with gr.Row():
-                    filter_rating = gr.CheckboxGroup(
-                        choices=["1", "2", "3", "4", "5"], 
-                        label="Filter by Rating"
-                    )
-                    filter_label = gr.CheckboxGroup(
-                        choices=["Red", "Yellow", "Green", "Blue", "Purple", "None"], 
-                        label="Filter by Color Label"
-                    )
-                
-                with gr.Group():
-                    gr.Markdown("### Advanced Filters")
+                    with gr.Column(scale=4):
+                        folder_display = gr.HTML(value="")
+                    with gr.Column(scale=1, min_width=150):
+                        reset_folder_btn = gr.Button("✕ Clear Filter", variant="secondary", size="sm")
+            
+            # Main Controls Row
+            with gr.Row(elem_classes=["gallery-header"]):
+                with gr.Column(scale=1, min_width=200):
+                    refresh_btn = gr.Button("🔄 Refresh", variant="primary", size="lg")
+                with gr.Column(scale=2):
                     with gr.Row():
-                        f_min_gen = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min General Score")
-                        f_min_aes = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Aesthetic Score")
-                        f_min_tech = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Technical Score")
-                    with gr.Row():
-                        f_date_start = gr.Textbox(label="Start Date (YYYY-MM-DD)", placeholder="2024-01-01")
-                        f_date_end = gr.Textbox(label="End Date (YYYY-MM-DD)", placeholder="2025-12-31")
-                        
-                filter_keyword = gr.Textbox(label="Filter by Keyword", placeholder="Search tags...")
+                        sort_dropdown = gr.Dropdown(
+                            choices=[
+                                ("📅 Date Added", "created_at"),
+                                ("🆔 ID", "id"),
+                                ("⭐ General Score", "score_general"),
+                                ("🔧 Technical Score", "score_technical"),
+                                ("🎨 Aesthetic Score", "score_aesthetic"),
+                                ("📊 SPAQ", "score_spaq"),
+                                ("🏆 AVA", "score_ava"),
+                                ("📈 KonIQ", "score_koniq"),
+                                ("📉 PaQ2PiQ", "score_paq2piq"),
+                                ("🎯 LIQE", "score_liqe")
+                            ], 
+                            value="score_general", 
+                            label="Sort By",
+                            container=False
+                        )
+                        order_dropdown = gr.Dropdown(
+                            choices=[("↓ Highest First", "desc"), ("↑ Lowest First", "asc")], 
+                            value="desc", 
+                            label="Order",
+                            container=False
+                        )
+            
+            # Filters Section
+            with gr.Accordion("🔍 Filters & Search", open=False, elem_classes=["accordion"]):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        filter_rating = gr.CheckboxGroup(
+                            choices=[
+                                ("⭐", "1"), ("⭐⭐", "2"), ("⭐⭐⭐", "3"), 
+                                ("⭐⭐⭐⭐", "4"), ("⭐⭐⭐⭐⭐", "5")
+                            ], 
+                            label="Rating Filter"
+                        )
+                    with gr.Column(scale=1):
+                        filter_label = gr.CheckboxGroup(
+                            choices=[
+                                ("🔴 Red", "Red"), ("🟡 Yellow", "Yellow"), ("🟢 Green", "Green"), 
+                                ("🔵 Blue", "Blue"), ("🟣 Purple", "Purple"), ("⚪ None", "None")
+                            ], 
+                            label="Color Label"
+                        )
                 
+                with gr.Row():
+                    f_min_gen = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min General", info="0.0 - 1.0")
+                    f_min_aes = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Aesthetic", info="0.0 - 1.0")
+                    f_min_tech = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Technical", info="0.0 - 1.0")
+                
+                with gr.Row():
+                    f_date_start = gr.Textbox(label="From Date", placeholder="YYYY-MM-DD", scale=1)
+                    f_date_end = gr.Textbox(label="To Date", placeholder="YYYY-MM-DD", scale=1)
+                    filter_keyword = gr.Textbox(label="Keyword Search", placeholder="Search tags...", scale=2)
 
+            # Pagination
+            with gr.Row(elem_classes=["pagination-container"]):
+                prev_btn = gr.Button("← Previous", size="sm", elem_classes=["page-btn"])
+                page_label = gr.Button(value="Page 1 of 1", interactive=False, elem_classes=["page-indicator"])
+                next_btn = gr.Button("Next →", size="sm", elem_classes=["page-btn"])
             
+            # Main Content Area - Gallery + Details Side Panel
             with gr.Row():
-                prev_btn = gr.Button("Previous")
-                page_label = gr.Button(value="Page 1", interactive=False)
-                next_btn = gr.Button("Next")
-            
-            gallery = gr.Gallery(label="Scored Images", columns=5, height="auto", allow_preview=False)
-            
-            with gr.Row():
-                with gr.Column():
+                # Gallery Section (wider)
+                with gr.Column(scale=3):
+                    gallery = gr.Gallery(
+                        label="📸 Image Gallery", 
+                        columns=5, 
+                        height=600,
+                        object_fit="cover",
+                        allow_preview=True,
+                        show_share_button=False,
+                        elem_classes=["gallery-container"]
+                    )
+                
+                # Details Side Panel (narrower)
+                with gr.Column(scale=1, min_width=320, elem_classes=["details-panel"]):
+                    # Score Overview
                     with gr.Group():
-                        # selected_info = gr.Markdown("Select an image to view details.")
+                        gr.Markdown("### 📊 Quality Scores")
+                        d_score_gen = gr.Label(label="General", num_top_classes=1, elem_classes=["score-card"])
                         with gr.Row():
-                             d_score_gen = gr.Label(label="General Score", num_top_classes=1)
-                             d_score_weighted = gr.Label(label="Weighted Scores", num_top_classes=2)
-                        d_score_models = gr.Label(label="Model Scores", num_top_classes=5)
-                        
+                            d_score_weighted = gr.Label(label="Weighted", num_top_classes=2, scale=1)
+                        d_score_models = gr.Label(label="Models", num_top_classes=5)
+                    
+                    # Metadata Editor
+                    with gr.Accordion("✏️ Edit Metadata", open=True):
+                        d_title = gr.Textbox(label="Title", placeholder="Enter title...", lines=1)
+                        d_desc = gr.Textbox(label="Description", placeholder="Enter description...", lines=2)
+                        d_keywords = gr.HighlightedText(
+                            label="Keywords",
+                            combine_adjacent=False,
+                            show_legend=False,
+                            interactive=True,
+                            color_map=KEYWORD_COLOR_MAP
+                        )
+                        with gr.Row():
+                            d_rating = gr.Dropdown(
+                                choices=[("Not Rated", "0"), ("★", "1"), ("★★", "2"), ("★★★", "3"), ("★★★★", "4"), ("★★★★★", "5")], 
+                                label="Rating",
+                                value="0"
+                            )
+                            d_label = gr.Dropdown(
+                                choices=[("None", "None"), ("🔴 Red", "Red"), ("🟡 Yellow", "Yellow"), ("🟢 Green", "Green"), ("🔵 Blue", "Blue"), ("🟣 Purple", "Purple")], 
+                                label="Label",
+                                value="None"
+                            )
+                        save_btn = gr.Button("💾 Save Changes", variant="primary", size="lg")
+                        save_status = gr.Label(label="Status", visible=False)
+                    
+                    # Actions
                     with gr.Group():
-                        gr.Markdown("### Metadata Editor")
-                        d_title = gr.Textbox(label="Title", interactive=True)
-                        d_desc = gr.Textbox(label="Description", interactive=True)
-                        d_keywords = gr.Textbox(label="Keywords (comma separated)", interactive=True)
-                        with gr.Row():
-                             d_rating = gr.Dropdown(choices=["0", "1", "2", "3", "4", "5"], label="Rating", interactive=True)
-                             d_label = gr.Dropdown(choices=["None", "Red", "Yellow", "Green", "Blue", "Purple"], label="Color Label", interactive=True)
-                        
-                        save_btn = gr.Button("Save Metadata", variant="primary")
-                        save_status = gr.Label(label="Save Status", visible=False)
+                        view_full_btn = gr.Button("🔍 View Full Resolution", variant="secondary", size="sm")
+                        delete_btn = gr.Button("🗑️ Delete NEF File", variant="stop", visible=False, size="sm")
+                        delete_status = gr.Textbox(label="Status", interactive=False, visible=False)
                     
-                    with gr.Accordion("Raw Data", open=False):
-                        image_details = gr.JSON(label="Image Details")
-                        
-                    delete_btn = gr.Button("Delete Original NEF", variant="stop", visible=False)
-                    delete_status = gr.Textbox(label="Deletion Status", interactive=False, visible=False)
+                    # Raw Data (hidden by default)
+                    with gr.Accordion("📋 Raw JSON Data", open=False):
+                        image_details = gr.JSON(label="Full Details")
                     
-                    with gr.Row():
-                        view_full_btn = gr.Button("View Full Resolution", variant="secondary")
-                    
-                    full_res_image = gr.Image(label="Full Resolution Preview", visible=False, interactive=False, type="filepath")
+                    full_res_image = gr.Image(label="Preview", visible=False, interactive=False, type="filepath")
 
             # Events
             
@@ -982,7 +2169,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             reset_folder_btn.click(
                 fn=reset_folder_filter,
                 inputs=[*filter_inputs[:-1]], # Exclude current_folder_state from inputs, we force plain None
-                outputs=[reset_folder_btn, current_folder_state, current_page, gallery, page_label, current_paths, *detail_outputs]
+                outputs=[folder_context_group, folder_display, current_folder_state, current_page, gallery, page_label, current_paths, *detail_outputs]
             )
             
             prev_btn.click(
@@ -1031,7 +2218,8 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                  # Extract form data from 'raw' (details dict)
                  t = raw.get('title', '')
                  d = raw.get('description', '')
-                 k = raw.get('keywords', '')
+                 # Convert keywords to HighlightedText format
+                 k = keywords_to_highlighted(raw.get('keywords', ''))
                  r = str(raw.get('rating', 0))
                  l = raw.get('label', 'None')
                  if not l: l = "None"
@@ -1045,10 +2233,6 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                 fn=display_details_wrapper, 
                 inputs=[current_paths], 
                 outputs=[gr.Textbox(visible=False), d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label, delete_status]
-            ).then(
-                fn=open_modal_view,
-                inputs=[image_details],
-                outputs=[full_res_modal, modal_image]
             )
             
             # Save Action
@@ -1067,7 +2251,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
 
 
         # TAB: FOLDER TREE
-        with gr.TabItem("Folder Tree"):
+        with gr.TabItem("Folder Tree", id="folder_tree"):
             with gr.Row():
                 with gr.Column(scale=1):
                     t_refresh_btn = gr.Button("Refresh Tree Structure")
@@ -1091,13 +2275,13 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
 
         # TAB 4: CLUSTERS
 
-        with gr.TabItem("Stacks"):
+        with gr.TabItem("Stacks", id="stacks"):
             with gr.Row():
                 with gr.Column(scale=1):
                     c_input_dir = gr.Textbox(
                         label="Input Folder Path", 
                         placeholder="D:\\Photos\\... (Leave empty for all)",
-                        value=""
+                        value=app_config.get('stacks_input_path', '')
                     )
                     c_threshold = gr.Slider(0.01, 1.0, value=0.15, label="Similarity Threshold")
                     c_gap = gr.Number(value=120, label="Time Split Gap (seconds)")
@@ -1112,7 +2296,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
                         label="Sort Stacks By"
                     )
                     c_order = gr.Dropdown(choices=["desc", "asc"], value="desc", label="Order")
-                    c_refresh_btn = gr.Button("Refresh Stacks (View Only)", variant="secondary")
+                    c_refresh_btn = gr.Button("Refresh Stacks", variant="secondary")
                     
                     with gr.Row():
                          c_open_gallery_btn = gr.Button("Open Folder in Gallery")
@@ -1172,7 +2356,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
             c_open_gallery_btn.click(
                 fn=open_stack_folder_in_gallery,
                 inputs=[c_input_dir, *filter_inputs[:-1]],
-                outputs=[main_tabs, current_folder_state, reset_folder_btn, current_page, gallery, page_label, current_paths, *detail_outputs]
+                outputs=[main_tabs, current_folder_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths, *detail_outputs]
             )
             
             c_open_tree_btn.click(
@@ -1191,7 +2375,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
     t_open_gallery_btn.click(
         fn=open_folder_in_gallery,
         inputs=[t_selected_path, *filter_inputs[:-1]],
-        outputs=[main_tabs, current_folder_state, reset_folder_btn, current_page, gallery, page_label, current_paths, *detail_outputs]
+        outputs=[main_tabs, current_folder_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths, *detail_outputs]
     )
 
     t_open_stacks_btn.click(
@@ -1224,7 +2408,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css) as demo:
     status_timer.tick(
         fn=monitor_status,
         inputs=[],
-        outputs=[log_output, status_label, run_btn, stop_btn, fix_btn, s_progress, k_log_output, k_status_label, k_run_btn, k_stop_btn, k_progress]
+        outputs=[log_output, s_status_html, run_btn, stop_btn, fix_btn, k_log_output, k_status_html, k_run_btn, k_stop_btn]
     )
 
 
@@ -1233,4 +2417,11 @@ if __name__ == "__main__":
     allowed_paths.append("D:/") 
     allowed_paths.append("/mnt/") 
     
-    demo.queue().launch(inbrowser=True, allowed_paths=allowed_paths)
+    # Start MCP server in background if enabled
+    if MCP_AVAILABLE and MCP_ENABLED:
+        print("Starting MCP debugging server in background...")
+        mcp_server.start_mcp_server_background()
+    elif MCP_ENABLED and not MCP_AVAILABLE:
+        print("Warning: MCP server requested but 'mcp' package not installed. Run: pip install mcp")
+    
+    demo.queue().launch(inbrowser=False, allowed_paths=allowed_paths, css=custom_css, head=tree_js)

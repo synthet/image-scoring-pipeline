@@ -21,3 +21,6 @@ rawpy
 imageio
 gradio>=5.0,<6.0
 scikit-learn
+
+# MCP Server (optional - for Cursor debugging integration)
+mcp>=1.0.0
