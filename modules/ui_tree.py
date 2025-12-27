@@ -52,9 +52,11 @@ def get_tree_html(selected_path=None):
     raw_folders = db.get_all_folders()
     
     if not raw_folders:
-        return """<div style="padding: 20px; text-align: center; color: #888;">
-            <p>📁 No folder cache found.</p>
-            <p style="font-size: 0.9em;">Click <strong>Refresh Tree Structure</strong> to build the folder tree.</p>
+        return """<div class="tree-scroll-container" style="height: 480px; display: flex; align-items: center; justify-content: center; background: #161b22; border-radius: 8px;">
+            <div style="text-align: center; color: #888;">
+                <p>📁 No folder cache found.</p>
+                <p style="font-size: 0.9em;">Click <strong>Refresh Tree Structure</strong> to build the folder tree.</p>
+            </div>
         </div>"""
     
     # Convert paths to local environment format
@@ -70,4 +72,8 @@ def get_tree_html(selected_path=None):
     
     roots = build_tree_dict(folders)
     
-    return tree_to_html(roots, selected_path)
+    # Wrap in scrollable container
+    tree_content = tree_to_html(roots, selected_path)
+    return f'''<div class="tree-scroll-container" style="height: 480px; overflow-y: auto; overflow-x: auto; background: #161b22; border-radius: 8px; padding: 12px;">
+        {tree_content}
+    </div>'''

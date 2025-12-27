@@ -1,6 +1,11 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logging (1=INFO, 2=WARN, 3=ERROR)
 
+import warnings
+# Suppress Gradio 6.0 deprecation warnings for css/head parameters (will migrate when 6.0 is released)
+warnings.filterwarnings("ignore", message="The 'css' parameter in the Blocks constructor")
+warnings.filterwarnings("ignore", message="The 'head' parameter in the Blocks constructor")
+
 import gradio as gr
 import threading
 import time
@@ -299,6 +304,10 @@ def prev_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_fi
 
 def first_page(sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None):
      return 1, *update_gallery(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
+
+def last_page(sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None):
+    _, _, total_pages, _ = get_gallery_data(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
+    return total_pages, *update_gallery(total_pages, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
 
 def reset_folder_filter(sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date):
     """Resets folder filter and goes to first page."""
@@ -762,10 +771,23 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
 
     # Prepare gallery format
     gallery_imgs = []
+    
+    # Map sort_by to score column and display name
+    score_map = {
+        'score_general': ('score_general', 'Gen'),
+        'score_technical': ('score_technical', 'Tech'),
+        'score_aesthetic': ('score_aesthetic', 'Aes'),
+        'created_at': ('score_general', 'Gen'),  # fallback to general for date sort
+    }
+    score_col, score_label = score_map.get(sort_by, ('score_general', 'Gen'))
+    
     for row in images:
-        p = row['file_path']
-        if not p:
+        file_path = row['file_path']
+        if not file_path:
             continue
+        
+        # Get file name from original path
+        file_name = os.path.basename(file_path)
         
         # OPTIMIZATION: Use thumbnail if available, skip existence checks
         # Trust DB paths - they were validated when stored
@@ -773,10 +795,14 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
         if thumb:
             p = utils.convert_path_to_local(thumb)
         else:
-            p = utils.convert_path_to_local(p)
-            
-        s = row['score_general']
-        label = f"Gen: {s:.2f}" if s is not None else "Gen: N/A"
+            p = utils.convert_path_to_local(file_path)
+        
+        # Get the selected score
+        score = row[score_col] if score_col in row.keys() else None
+        score_str = f"{score:.2f}" if score is not None else "N/A"
+        
+        # Label format: filename + selected score
+        label = f"{file_name}\n{score_label}: {score_str}"
         gallery_imgs.append((p, label))
 
     return gallery_imgs
@@ -1129,13 +1155,36 @@ custom_css = """
     --input-background-fill: var(--bg-tertiary) !important;
 }
 
+/* ========== COMPACT LAYOUT ========== */
+/* Reduce vertical gaps between rows and blocks */
+.contain > .column > .row,
+.contain > .column > .block,
+.contain > .column > .form {
+    margin-bottom: 8px !important;
+}
+
+.contain > .column > .accordion {
+    margin-bottom: 8px !important;
+}
+
+/* Reduce padding on blocks */
+.block {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+}
+
+/* Compact rows */
+.row {
+    gap: 8px !important;
+}
+
 /* ========== HEADER ========== */
 h1 {
     font-size: 1.75rem !important;
     font-weight: 600 !important;
     letter-spacing: -0.5px !important;
     color: var(--text-primary) !important;
-    margin-bottom: 1rem !important;
+    margin-bottom: 0.5rem !important;
 }
 
 /* ========== TABS ========== */
@@ -1360,11 +1409,12 @@ select, .svelte-dropdown {
     border: 1px solid var(--border-color) !important;
     border-radius: var(--radius-lg) !important;
     overflow: hidden !important;
+    margin-bottom: 4px !important;
 }
 
 .accordion > .label-wrap {
     background: var(--bg-tertiary) !important;
-    padding: 14px 20px !important;
+    padding: 10px 16px !important;
     font-weight: 600 !important;
     color: var(--text-primary) !important;
     border-bottom: 1px solid var(--border-color) !important;
@@ -1375,22 +1425,31 @@ select, .svelte-dropdown {
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 8px !important;
-    padding: 16px !important;
+    gap: 4px !important;
+    padding: 6px 12px !important;
+    margin: 0 !important;
 }
 
 .page-btn {
-    min-width: 100px !important;
-    padding: 10px 20px !important;
+    min-width: 40px !important;
+    padding: 8px 12px !important;
+    font-size: 1rem !important;
+}
+
+.page-btn:hover {
+    background: var(--accent-primary) !important;
+    color: white !important;
 }
 
 .page-indicator {
     background: var(--bg-tertiary) !important;
-    padding: 10px 24px !important;
+    padding: 8px 20px !important;
     border-radius: var(--radius-md) !important;
-    color: var(--text-secondary) !important;
+    color: var(--text-primary) !important;
     font-weight: 500 !important;
     border: 1px solid var(--border-color) !important;
+    min-width: 120px !important;
+    text-align: center !important;
 }
 
 /* ========== MODAL & LIGHTBOX ========== */
@@ -1834,6 +1893,43 @@ button.media-button.svelte-ao1xvt {
     font-size: 1.5rem !important;
 }
 
+/* ========== FOLDER TREE CONTAINER ========== */
+.folder-tree-container {
+    max-height: 550px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 12px !important;
+}
+
+/* Folder Tree Status Label - smaller font */
+.tree-status-label .output-class {
+    font-size: 0.9rem !important;
+    font-weight: 400 !important;
+    color: var(--text-secondary) !important;
+    padding: 8px 12px !important;
+}
+
+.folder-tree-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.folder-tree-container::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+.folder-tree-container::-webkit-scrollbar-thumb {
+    background: var(--bg-elevated);
+    border-radius: 4px;
+}
+
+.folder-tree-container::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-primary);
+}
+
 /* ========== HIGHLIGHTED TEXT (KEYWORDS) ========== */
 /* Hide category labels (C0, C1, etc.) */
 [data-testid="highlighted-text"] .label {
@@ -1859,7 +1955,7 @@ button.media-button.svelte-ao1xvt {
 }
 """
 
-with gr.Blocks(title="Image Scoring WebUI") as demo:
+with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as demo:
     gr.Markdown("# Image Scoring WebUI")
     
     # State
@@ -1957,12 +2053,10 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
                         )
                     
                     with gr.Row():
-                        k_overwrite = gr.Checkbox(label="🔄 Overwrite existing", value=False)
-                        k_captions = gr.Checkbox(label="📝 Generate captions", value=False)
-                    
-                    with gr.Row():
-                        k_run_btn = gr.Button("▶️ Generate Keywords", variant="primary", size="lg")
-                        k_stop_btn = gr.Button("⏹️ Stop", variant="stop", interactive=False, size="lg")
+                        k_overwrite = gr.Checkbox(label="Overwrite", value=False)
+                        k_captions = gr.Checkbox(label="Captions", value=False)
+                        k_run_btn = gr.Button("▶ Generate", variant="primary")
+                        k_stop_btn = gr.Button("⏹ Stop", variant="stop", interactive=False)
                 
                 with gr.Column(scale=2):
                     # Status Card
@@ -2062,9 +2156,11 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
 
             # Pagination
             with gr.Row(elem_classes=["pagination-container"]):
-                prev_btn = gr.Button("← Previous", size="sm", elem_classes=["page-btn"])
-                page_label = gr.Button(value="Page 1 of 1", interactive=False, elem_classes=["page-indicator"])
-                next_btn = gr.Button("Next →", size="sm", elem_classes=["page-btn"])
+                first_btn = gr.Button("⏮", size="sm", elem_classes=["page-btn"], scale=0, min_width=45)
+                prev_btn = gr.Button("◀", size="sm", elem_classes=["page-btn"], scale=0, min_width=45)
+                page_label = gr.Button(value="Page 1 of 1", interactive=False, elem_classes=["page-indicator"], scale=1)
+                next_btn = gr.Button("▶", size="sm", elem_classes=["page-btn"], scale=0, min_width=45)
+                last_btn = gr.Button("⏭", size="sm", elem_classes=["page-btn"], scale=0, min_width=45)
             
             # Main Content Area - Gallery + Details Side Panel
             with gr.Row():
@@ -2091,7 +2187,7 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
                         d_score_models = gr.Label(label="Models", num_top_classes=5)
                     
                     # Metadata Editor
-                    with gr.Accordion("✏️ Edit Metadata", open=True):
+                    with gr.Accordion("✏️ Edit Metadata", open=False):
                         d_title = gr.Textbox(label="Title", placeholder="Enter title...", lines=1)
                         d_desc = gr.Textbox(label="Description", placeholder="Enter description...", lines=2)
                         d_keywords = gr.HighlightedText(
@@ -2172,6 +2268,12 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
                 outputs=[folder_context_group, folder_display, current_folder_state, current_page, gallery, page_label, current_paths, *detail_outputs]
             )
             
+            first_btn.click(
+                fn=first_page,
+                inputs=filter_inputs,
+                outputs=[current_page, gallery, page_label, current_paths, *detail_outputs]
+            )
+            
             prev_btn.click(
                 fn=prev_page,
                 inputs=[current_page, *filter_inputs],
@@ -2181,6 +2283,12 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
             next_btn.click(
                 fn=next_page,
                 inputs=[current_page, *filter_inputs],
+                outputs=[current_page, gallery, page_label, current_paths, *detail_outputs]
+            )
+            
+            last_btn.click(
+                fn=last_page,
+                inputs=filter_inputs,
                 outputs=[current_page, gallery, page_label, current_paths, *detail_outputs]
             )
             
@@ -2252,22 +2360,43 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
 
         # TAB: FOLDER TREE
         with gr.TabItem("Folder Tree", id="folder_tree"):
+            # Row 1: Action Bar
             with gr.Row():
+                t_refresh_btn = gr.Button("🔄 Refresh", size="sm", scale=0, min_width=100)
+                t_open_gallery_btn = gr.Button("📸 Open in Gallery", variant="primary", size="sm", scale=1)
+                t_open_stacks_btn = gr.Button("📚 Open in Stacks", variant="secondary", size="sm", scale=1)
+                t_open_keywords_btn = gr.Button("🏷️ Open in Keywords", variant="secondary", size="sm", scale=1)
+            
+            # Row 2: Main Content - Tree | Gallery (equal width)
+            with gr.Row(equal_height=True):
+                # Left: Tree View
                 with gr.Column(scale=1):
-                    t_refresh_btn = gr.Button("Refresh Tree Structure")
-                    with gr.Row():
-                        t_open_gallery_btn = gr.Button("Open in Gallery", variant="primary")
-                        t_open_stacks_btn = gr.Button("Open in Stacks", variant="secondary")
-                        t_open_keywords_btn = gr.Button("Open in Keywords", variant="secondary")
-                    
-                    # Tree View Replacement
-                    t_tree_view = gr.HTML(label="Folder Tree Structure")
-                    t_selected_path = gr.Textbox(elem_id="folder_tree_selection", label="Selected Folder", interactive=True)
-                    
-                    t_status = gr.Label(label="Status")
+                    t_tree_view = gr.HTML(
+                        label="📁 Folder Tree",
+                        elem_classes=["folder-tree-container"]
+                    )
                 
-                with gr.Column(scale=3):
-                    t_gallery = gr.Gallery(label="Folder Images", columns=6, height="auto", allow_preview=True)
+                # Right: Gallery Preview
+                with gr.Column(scale=1):
+                    t_gallery = gr.Gallery(
+                        label="Folder Images", 
+                        columns=4, 
+                        height=500,
+                        object_fit="cover",
+                        allow_preview=True,
+                        show_share_button=False
+                    )
+            
+            # Divider
+            gr.Markdown("---")
+            
+            # Row 3: Status Bar (full width)
+            t_selected_path = gr.Textbox(
+                elem_id="folder_tree_selection", 
+                label="Selected Folder", 
+                interactive=True
+            )
+            t_status = gr.Label(label="Status", elem_classes=["tree-status-label"])
             
             # Events
 
@@ -2276,8 +2405,10 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
         # TAB 4: CLUSTERS
 
         with gr.TabItem("Stacks", id="stacks"):
+            # Row 1: Controls split into two columns
             with gr.Row():
-                with gr.Column(scale=1):
+                # Left column: Input controls
+                with gr.Column(scale=1, min_width=300):
                     c_input_dir = gr.Textbox(
                         label="Input Folder Path", 
                         placeholder="D:\\Photos\\... (Leave empty for all)",
@@ -2285,38 +2416,49 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
                     )
                     c_threshold = gr.Slider(0.01, 1.0, value=0.15, label="Similarity Threshold")
                     c_gap = gr.Number(value=120, label="Time Split Gap (seconds)")
-                    c_force_rescan = gr.Checkbox(label="Force Rescan", value=False)
-                    
-                    c_run_btn = gr.Button("Group into Stacks", variant="primary")
-                    
-                    gr.Markdown("---")
-                    c_sort = gr.Dropdown(
-                        choices=["created_at", "score_general", "score_technical", "score_aesthetic"], 
-                        value="score_general", 
-                        label="Sort Stacks By"
-                    )
-                    c_order = gr.Dropdown(choices=["desc", "asc"], value="desc", label="Order")
-                    c_refresh_btn = gr.Button("Refresh Stacks", variant="secondary")
-                    
                     with gr.Row():
-                         c_open_gallery_btn = gr.Button("Open Folder in Gallery")
-                         c_open_tree_btn = gr.Button("Open in Tree View")
-
-                    # REQUEST: Remove Status, add Console Output
-                    # c_status = gr.Label(label="Status") 
-                    c_log = gr.Textbox(label="Console Output", lines=10, interactive=False)
+                        c_force_rescan = gr.Checkbox(label="Force Rescan", value=False, scale=1)
+                        c_run_btn = gr.Button("▶ Group", variant="primary", scale=1)
+                        c_refresh_btn = gr.Button("🔄", variant="secondary", scale=0, min_width=50)
                 
-                with gr.Column(scale=3):
-                    # Stack Browser
-                    gr.Markdown("### Stacks Gallery")
-                    stack_gallery = gr.Gallery(label="Stacks", columns=5, height="auto", allow_preview=False)
-                    stack_ids_state = gr.State([])
-
+                # Right column: Sort controls + Console output
+                with gr.Column(scale=1, min_width=300):
+                    with gr.Row():
+                        c_sort = gr.Dropdown(
+                            choices=["created_at", "score_general", "score_technical", "score_aesthetic"], 
+                            value="score_general", 
+                            label="Sort By",
+                            scale=2
+                        )
+                        c_order = gr.Dropdown(choices=["desc", "asc"], value="desc", label="Order", scale=1)
+                    with gr.Accordion("📋 Console Output", open=False):
+                        c_log = gr.Textbox(label="", lines=6, interactive=False, show_copy_button=True)
+            
+            # Divider
             gr.Markdown("---")
             
-            # Stack Content Area
-            gr.Markdown("### Stack Contents")
-            c_all_gallery = gr.Gallery(label="Stack Images", columns=6, allow_preview=True)
+            # Row 2: Stacks Gallery (full width)
+            gr.Markdown("### 📚 Stacks Gallery")
+            stack_gallery = gr.Gallery(
+                label="Stacks", 
+                columns=8, 
+                height=180,
+                object_fit="cover",
+                allow_preview=False,
+                show_share_button=False
+            )
+            stack_ids_state = gr.State([])
+
+            # Row 3: Stack Contents (full width)
+            gr.Markdown("### 🖼️ Stack Contents")
+            c_all_gallery = gr.Gallery(
+                label="Stack Images", 
+                columns=6, 
+                height=400,
+                object_fit="cover",
+                allow_preview=True,
+                show_share_button=False
+            )
             
             # Events
             c_run_btn.click(
@@ -2351,18 +2493,6 @@ with gr.Blocks(title="Image Scoring WebUI") as demo:
                 fn=select_stack,
                 inputs=[stack_ids_state, c_sort, c_order],
                 outputs=[c_all_gallery]
-            )
-            
-            c_open_gallery_btn.click(
-                fn=open_stack_folder_in_gallery,
-                inputs=[c_input_dir, *filter_inputs[:-1]],
-                outputs=[main_tabs, current_folder_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths, *detail_outputs]
-            )
-            
-            c_open_tree_btn.click(
-                fn=open_stack_folder_in_tree,
-                inputs=[c_input_dir],
-                outputs=[main_tabs, t_selected_path, t_tree_view]
             )
 
     # Folder Tree Events (Moved here to ensure all referenced components like c_input_dir are defined)
@@ -2424,4 +2554,4 @@ if __name__ == "__main__":
     elif MCP_ENABLED and not MCP_AVAILABLE:
         print("Warning: MCP server requested but 'mcp' package not installed. Run: pip install mcp")
     
-    demo.queue().launch(inbrowser=False, allowed_paths=allowed_paths, css=custom_css, head=tree_js)
+    demo.queue().launch(inbrowser=False, allowed_paths=allowed_paths)

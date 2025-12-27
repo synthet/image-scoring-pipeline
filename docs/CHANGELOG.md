@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.1] - 2025-12-26
+
+### Fixed
+- **Scoring Fix DB**: Fixed `AttributeError: 'sqlite3.Row' object has no attribute 'get'` in `modules/scoring.py`. Changed to direct dictionary access with try/except for `KeyError` and `IndexError` when reading row values.
+
 ## [3.5.0] - 2025-12-24
 
 ### Added

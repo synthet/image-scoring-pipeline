@@ -253,16 +253,23 @@ class ScoringRunner:
              # Pre-fill external scores
              models = ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']
              for m in models:
-                 val = row.get(f'score_{m}')
-                 if val and val > 0:
-                     job.external_scores[m] = {
-                         "score": val,
-                         "normalized_score": val, 
-                         "status": "success"
-                     }
+                 key = f'score_{m}'
+                 try:
+                     val = row[key]
+                     if val is not None and val > 0:
+                         job.external_scores[m] = {
+                             "score": val,
+                             "normalized_score": val, 
+                             "status": "success"
+                         }
+                 except (KeyError, IndexError):
+                     pass
              
-             if row.get('image_hash'):
-                 job.external_scores['image_hash'] = row.get('image_hash')
+             try:
+                 if row['image_hash']:
+                     job.external_scores['image_hash'] = row['image_hash']
+             except (KeyError, IndexError):
+                 pass
                  
              jobs.append(job)
              
