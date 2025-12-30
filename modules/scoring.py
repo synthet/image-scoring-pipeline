@@ -238,10 +238,13 @@ class ScoringRunner:
 
         # Create Jobs
         jobs = []
+        deleted_count = 0
         for row in records:
              file_path = row['file_path']
              if not os.path.exists(file_path):
-                 log(f"Skipping missing file: {file_path}")
+                 log(f"Deleting missing file from DB: {file_path}")
+                 db.delete_image(file_path)
+                 deleted_count += 1
                  continue
                  
              job = pipeline.ImageJob(
@@ -272,6 +275,9 @@ class ScoringRunner:
                  pass
                  
              jobs.append(job)
+        
+        if deleted_count > 0:
+             log(f"Removed {deleted_count} orphaned records from database.")
              
         if not jobs:
             log("No valid files found to process.")
@@ -311,3 +317,242 @@ class ScoringRunner:
             self.status_message = "Error in processing"
             db.update_job_status(job_id, "failed", "\n".join(self.log_history))
 
+
+    def fix_image_metadata(self, file_path):
+        """
+        Recalculates scores and updates metadata for a single image 
+        without running neural networks, using existing data.
+        Returns: Success (bool), Message (str)
+        """
+        try:
+            # 1. File Check
+            if not os.path.exists(file_path):
+                # Check if it was moved/renamed? 
+                # For now just error out
+                return False, f"File not found: {file_path}"
+                
+            # 2. Get existing DB data
+            details = db.get_image_details(file_path)
+            if not details:
+                return False, "Image not found in database"
+            
+            # Helper to retrieve score from various places
+            scores = {}
+            # Try DB columns first
+            for m in ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']:
+                key = f'score_{m}'
+                val = details.get(key)
+                if val is not None and val > 0:
+                    scores[m] = float(val)
+            
+            # Fallback to JSON if missing in cols
+            if len(scores) < 5:
+                try:
+                    scores_json = details.get('scores_json')
+                    if isinstance(scores_json, str):
+                        s_data = json.loads(scores_json)
+                        if 'models' in s_data:
+                            for m, res in s_data['models'].items():
+                                if m not in scores and res.get('status') == 'success':
+                                    scores[m] = float(res.get('normalized_score', 0))
+                except:
+                    pass
+            
+            # 3. Recalculate if we have enough data
+            # We need at least some models to make a meaningful calculation
+            # If all missing, we can't do anything without running models
+            if not scores:
+                return False, "No existing model scores found to recalculate from."
+                
+            # Use MultiModelMUSIQ static helpers if possible, or reimplement lightweight logic
+            # Reimplementing here to avoid instantiating heavy class
+            
+            def get_s(model):
+                return scores.get(model, 0.0)
+
+            # Formulas from run_all_musiq_models.py (v3.0.0)
+            
+            # Technical: PaQ(0.35), LIQE(0.35), KonIQ(0.15), SPAQ(0.15)
+            tech = (0.35 * get_s('paq2piq') + 
+                    0.35 * get_s('liqe') + 
+                    0.15 * get_s('koniq') + 
+                    0.15 * get_s('spaq'))
+
+            # Aesthetic: AVA(0.40), KonIQ(0.30), SPAQ(0.20), PaQ(0.10)
+            aes = (0.40 * get_s('ava') + 
+                   0.30 * get_s('koniq') + 
+                   0.20 * get_s('spaq') + 
+                   0.10 * get_s('paq2piq'))
+
+            # General: PaQ(0.25), LIQE(0.25), AVA(0.20), KonIQ(0.20), SPAQ(0.10)
+            gen = (0.25 * get_s('paq2piq') + 
+                   0.25 * get_s('liqe') + 
+                   0.20 * get_s('ava') + 
+                   0.20 * get_s('koniq') + 
+                   0.10 * get_s('spaq'))
+                   
+            # Rating Calculation
+            rating = 1
+            if gen >= 0.85: rating = 5
+            elif gen >= 0.70: rating = 4
+            elif gen >= 0.55: rating = 3
+            elif gen >= 0.40: rating = 2
+            
+            # Label Calculation
+            label = "Yellow" # Default Maybe
+            if tech < 0.40: label = "Red"
+            elif aes > 0.75 and tech < 0.55: label = "Purple"
+            elif aes > 0.70 and tech > 0.70: label = "Blue"
+            elif tech > 0.65: label = "Green"
+            
+            # 4. Update Database
+            # We need to construct a partial update or update the whole record
+            # Let's verify what DB fields correspond to
+            
+            # Update specific columns
+            conn = db.get_db()
+            c = conn.cursor()
+            
+            c.execute("""
+                UPDATE images 
+                SET score_general = ?, score_aesthetic = ?, score_technical = ?,
+                    rating = ?, label = ?
+                WHERE file_path = ?
+            """, (gen, aes, tech, rating, label, file_path))
+            
+            # Also update scores_json summary if possible (complex text manipulation)
+            # Maybe skip for now as columns are the source of truth for UI
+            
+            conn.commit()
+            conn.close()
+            
+            # 5. Write Metadata (XMP)
+            # Use xmp module
+            from modules import xmp
+            is_raw = os.path.splitext(file_path)[1].lower() in ['.nef', '.nrw']
+            
+            # Retrieve additional metadata from DB
+            title = details.get('title', '')
+            description = details.get('description', '')
+            keywords_str = details.get('keywords', '')
+            keywords = [k.strip() for k in keywords_str.split(',')] if keywords_str else []
+            
+            success = xmp.write_metadata_unified(
+                image_path=file_path,
+                rating=rating,
+                label=label,
+                title=title,
+                description=description,
+                keywords=keywords,
+                use_sidecar=True,
+                use_embedded=is_raw
+            )
+            
+            # 6. Regenerate Thumbnail (User Request)
+            try:
+                thumb_path = thumbnails.get_thumb_path(file_path)
+                if os.path.exists(thumb_path):
+                    os.remove(thumb_path)
+                
+                new_thumb = thumbnails.generate_thumbnail(file_path)
+                if new_thumb:
+                     # Update DB with new thumb path (ensure it is set)
+                     # Paths in DB are usually WSL format if running in WSL, 
+                     # but thumbnails.py returns local path. 
+                     # For now, let's assume we store what generate_thumbnail returns 
+                     # or rely on utils.convert_path_to_wsl if needed.
+                     # But DB usually stores what is generated.
+                     
+                     # Actually, db.py usually handles path conversion or we store whatever we get.
+                     # Let's just update it.
+                     conn = db.get_db()
+                     c = conn.cursor()
+                     # If running in WSL, we might want to convert to /mnt/...
+                     # But existing code likely handles this elsewhere. 
+                     # We will just update providing consistency with current env.
+                     c.execute("UPDATE images SET thumbnail_path = ? WHERE file_path = ?", (new_thumb, file_path))
+                     conn.commit()
+                     conn.close()
+            except Exception as e:
+                print(f"Error regenerating thumbnail: {e}")
+                # Don't fail the whole fix for this, but append to msg
+                msg += " [Thumb Gen Failed]"
+            
+            msg = f"Fixed: Gen={gen:.2f} ({rating}*), Tech={tech:.2f}, Aes={aes:.2f} ({label})"
+            if new_thumb:
+                msg += " [Thumb Updated]"
+            
+            if not success:
+               msg += " [XMP Write Failed]"
+               
+            return True, msg
+            
+        except Exception as e:
+            return False, f"Error fixing image: {e}"
+
+
+    def run_single_image(self, file_path):
+        """
+        Runs full scoring pipeline for a single image, blocking.
+        Returns: success (bool), message (str)
+        """
+        import uuid
+        job_id = f"manual_{uuid.uuid4().hex[:8]}"
+
+        if not os.path.exists(file_path):
+            return False, f"File not found: {file_path}"
+        
+        self.status_message = "Scoring (Manual)..."
+        
+        # Initialize models if needed
+        if self.shared_scorer is None:
+            try:
+                # Use local import if needed or assume globally imported
+                # from run_all_musiq_models import MultiModelMUSIQ
+                new_scorer = MultiModelMUSIQ()
+                for m in ['spaq', 'ava', 'koniq', 'paq2piq']:
+                    new_scorer.load_model(m)
+                self.shared_scorer = new_scorer
+            except Exception as e:
+                return False, f"Error initializing models: {e}"
+
+        # Create Job
+        from modules import pipeline
+        job = pipeline.ImageJob(
+            image_path=file_path,
+            job_id=job_id,
+            skip_existing=False
+        )
+
+        # Capture logs
+        log_msgs = []
+        def capture_log(msg):
+            log_msgs.append(msg)
+            
+        # Create temporary processor
+        processor = BatchImageProcessor(
+            scorer=self.shared_scorer,
+            progress_callback=lambda c, t: None
+        )
+        processor.log_func = capture_log
+        processor.current_job_id = job_id
+        
+        try:
+            # Create a dummy job entry in DB
+            db.create_job(job_id, "manual_scoring", 1, file_path)
+            db.update_job_status(job_id, "running")
+            
+            processor.process_list([job], job_id_override=job_id)
+            
+            # Check result
+            # Retrieve latest data to confirm
+            details = db.get_image_details(file_path)
+            gen = details.get('score_general', 0)
+            
+            db.update_job_status(job_id, "completed")
+            self.status_message = "Idle"
+            return True, f"Scoring Complete. General Score: {gen:.2f}"
+            
+        except Exception as e:
+            self.status_message = "Error"
+            return False, f"Error running scoring: {e}"

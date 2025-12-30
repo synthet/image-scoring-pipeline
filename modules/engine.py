@@ -5,7 +5,7 @@ import time
 import threading
 import logging
 from datetime import datetime
-from modules import pipeline, db
+from modules import pipeline, db, config
 from scripts.python.run_all_musiq_models import MultiModelMUSIQ
 
 class BatchImageProcessor:
@@ -61,9 +61,15 @@ class BatchImageProcessor:
             self.progress_callback(0, self.total_count)
         
         # 3. Setup Queues and Workers
-        prep_queue = queue.Queue(maxsize=50)
-        scoring_queue = queue.Queue(maxsize=10) # Keep small to avoid VRAM overload if buffering
-        result_queue = queue.Queue(maxsize=50) # Just for sync
+        # Load queue sizes from config
+        processing_config = config.get_config_section('processing')
+        prep_queue_size = processing_config.get('prep_queue_size', 50)
+        scoring_queue_size = processing_config.get('scoring_queue_size', 10)
+        result_queue_size = processing_config.get('result_queue_size', 50)
+        
+        prep_queue = queue.Queue(maxsize=int(prep_queue_size))
+        scoring_queue = queue.Queue(maxsize=int(scoring_queue_size)) # Keep small to avoid VRAM overload if buffering
+        result_queue = queue.Queue(maxsize=int(result_queue_size)) # Just for sync
         
         self.stop_event.clear()
         
@@ -158,9 +164,15 @@ class BatchImageProcessor:
              self.progress_callback(0, self.total_count)
         
         # Setup Queues
-        prep_queue = queue.Queue(maxsize=50)
-        scoring_queue = queue.Queue(maxsize=10)
-        result_queue = queue.Queue(maxsize=50)
+        # Load queue sizes from config
+        processing_config = config.get_config_section('processing')
+        prep_queue_size = processing_config.get('prep_queue_size', 50)
+        scoring_queue_size = processing_config.get('scoring_queue_size', 10)
+        result_queue_size = processing_config.get('result_queue_size', 50)
+        
+        prep_queue = queue.Queue(maxsize=int(prep_queue_size))
+        scoring_queue = queue.Queue(maxsize=int(scoring_queue_size))
+        result_queue = queue.Queue(maxsize=int(result_queue_size))
         
         self.stop_event.clear()
         

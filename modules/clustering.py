@@ -13,10 +13,58 @@ from PIL import Image
 # Suppress TF logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+# Default cache directory for persisted feature vectors
+DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'thumbnails', 'feature_cache')
+
+
 class ClusteringEngine:
-    def __init__(self):
+    def __init__(self, cache_dir=None):
         self.model = None
-        self.feature_cache = {} # Simple in-memory cache for now. TODO: Persist?
+        self.feature_cache = {}  # In-memory cache (hash -> feature vector)
+        self.cache_dir = cache_dir or DEFAULT_CACHE_DIR
+        self._ensure_cache_dir()
+        self._load_cache()
+
+    def _ensure_cache_dir(self):
+        """Create cache directory if it doesn't exist."""
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir, exist_ok=True)
+            logging.info(f"Created feature cache directory: {self.cache_dir}")
+
+    def _get_cache_file(self):
+        """Returns path to the cache file."""
+        return os.path.join(self.cache_dir, 'feature_cache.npz')
+
+    def _load_cache(self):
+        """Load persisted feature cache from disk."""
+        cache_file = self._get_cache_file()
+        if os.path.exists(cache_file):
+            try:
+                data = np.load(cache_file, allow_pickle=True)
+                # Load the cache dict from the npz file
+                if 'cache' in data:
+                    self.feature_cache = data['cache'].item()
+                    logging.info(f"Loaded {len(self.feature_cache)} cached feature vectors from disk.")
+                data.close()
+            except Exception as e:
+                logging.warning(f"Failed to load feature cache: {e}")
+                self.feature_cache = {}
+
+    def _save_cache(self):
+        """Persist feature cache to disk."""
+        cache_file = self._get_cache_file()
+        try:
+            np.savez_compressed(cache_file, cache=self.feature_cache)
+            logging.debug(f"Saved {len(self.feature_cache)} feature vectors to cache.")
+        except Exception as e:
+            logging.error(f"Failed to save feature cache: {e}")
+
+    def _get_image_hash(self, file_path):
+        """Get image hash from database for cache key."""
+        details = db.get_image_details(file_path)
+        if details and details.get('image_hash'):
+            return details['image_hash']
+        return None
 
     def load_model(self):
         if self.model is None:
@@ -27,47 +75,102 @@ class ClusteringEngine:
     def extract_features(self, image_paths):
         """
         Extract features for a list of image paths.
+        Uses persisted cache when available.
         Returns numpy array of features.
         """
         self.load_model()
         
         features_list = []
-        valid_indices = [] # Track which images were successfully processed
+        valid_indices = []  # Track which images were successfully processed
         
-        batch_images = []
-        batch_paths = []
-        batch_size = 32
+        # Separate cached vs uncached images
+        uncached_paths = []
+        uncached_indices = []
+        path_to_hash = {}
         
         for i, path in enumerate(image_paths):
             if not os.path.exists(path):
                 continue
-                
-            try:
-                # Load image, resize to 224x224
-                # Use PIL to handle potential issues before Keras
-                img = keras_image.load_img(path, target_size=(224, 224))
-                x = keras_image.img_to_array(img)
-                x = preprocess_input(x)
-                batch_images.append(x)
-                batch_paths.append(path)
-                valid_indices.append(i)
-                
-                if len(batch_images) >= batch_size:
-                    batch_arr = np.array(batch_images)
-                    preds = self.model.predict(batch_arr, verbose=0)
-                    features_list.extend(preds)
-                    batch_images = []
-                    batch_paths = []
-                    
-            except Exception as e:
-                logging.error(f"Error extracting features for {path}: {e}")
-                
-        # Process remaining
-        if batch_images:
-            batch_arr = np.array(batch_images)
-            preds = self.model.predict(batch_arr, verbose=0)
-            features_list.extend(preds)
             
+            # Get hash for cache lookup
+            img_hash = self._get_image_hash(path)
+            path_to_hash[path] = img_hash
+            
+            if img_hash and img_hash in self.feature_cache:
+                # Use cached feature
+                features_list.append(self.feature_cache[img_hash])
+                valid_indices.append(i)
+            else:
+                # Need to extract
+                uncached_paths.append(path)
+                uncached_indices.append(i)
+        
+        # Process uncached images in batches
+        if uncached_paths:
+            batch_images = []
+            batch_paths = []
+            batch_indices = []
+            # Load batch size from config
+            from modules import config
+            processing_config = config.get_config_section('processing')
+            batch_size = processing_config.get('clustering_batch_size', 32)
+            new_features = []
+            
+            for idx, path in zip(uncached_indices, uncached_paths):
+                try:
+                    # Load image, resize to 224x224
+                    img = keras_image.load_img(path, target_size=(224, 224))
+                    x = keras_image.img_to_array(img)
+                    x = preprocess_input(x)
+                    batch_images.append(x)
+                    batch_paths.append(path)
+                    batch_indices.append(idx)
+                    
+                    if len(batch_images) >= batch_size:
+                        batch_arr = np.array(batch_images)
+                        preds = self.model.predict(batch_arr, verbose=0)
+                        
+                        # Cache and collect results
+                        for j, (p, feat) in enumerate(zip(batch_paths, preds)):
+                            h = path_to_hash.get(p)
+                            if h:
+                                self.feature_cache[h] = feat
+                            new_features.append((batch_indices[j], feat))
+                        
+                        batch_images = []
+                        batch_paths = []
+                        batch_indices = []
+                        
+                except Exception as e:
+                    logging.error(f"Error extracting features for {path}: {e}")
+            
+            # Process remaining batch
+            if batch_images:
+                batch_arr = np.array(batch_images)
+                preds = self.model.predict(batch_arr, verbose=0)
+                
+                for j, (p, feat) in enumerate(zip(batch_paths, preds)):
+                    h = path_to_hash.get(p)
+                    if h:
+                        self.feature_cache[h] = feat
+                    new_features.append((batch_indices[j], feat))
+            
+            # Add new features to results in original index order
+            for orig_idx, feat in new_features:
+                features_list.append(feat)
+                valid_indices.append(orig_idx)
+            
+            # Persist cache to disk after extraction
+            if new_features:
+                self._save_cache()
+                logging.info(f"Cached {len(new_features)} new feature vectors. Total cache size: {len(self.feature_cache)}")
+        
+        # Sort by original index to maintain order consistency
+        if features_list:
+            sorted_pairs = sorted(zip(valid_indices, features_list), key=lambda x: x[0])
+            valid_indices = [p[0] for p in sorted_pairs]
+            features_list = [p[1] for p in sorted_pairs]
+        
         return np.array(features_list), valid_indices
 
     def _get_image_time(self, row):
@@ -98,7 +201,7 @@ class ClusteringEngine:
             
         return 0.0
 
-    def cluster_images(self, distance_threshold=0.3, time_gap_seconds=120, force_rescan=False, target_folder=None):
+    def cluster_images(self, distance_threshold=None, time_gap_seconds=None, force_rescan=None, target_folder=None):
         """
         Main function to load images from DB, cluster them, and update DB.
         Enforces: 1. Folder Isolation 2. Time Gap Splitting 3. Persistence
@@ -106,6 +209,18 @@ class ClusteringEngine:
         import datetime
         import json
         from itertools import groupby
+        from modules import config
+        
+        # Load defaults from config if not provided
+        if distance_threshold is None:
+            clustering_config = config.get_config_section('clustering')
+            distance_threshold = clustering_config.get('default_threshold', 0.15)
+        if time_gap_seconds is None:
+            clustering_config = config.get_config_section('clustering')
+            time_gap_seconds = clustering_config.get('default_time_gap', 120)
+        if force_rescan is None:
+            clustering_config = config.get_config_section('clustering')
+            force_rescan = clustering_config.get('force_rescan_default', False)
         
         logging.info("Fetching images for clustering...")
         
@@ -141,23 +256,19 @@ class ClusteringEngine:
         # Get processed folders
         processed_folders = db.get_clustered_folders()
         if force_rescan:
-             # If target folder, only clear for that folder?
-             # db.clear_cluster_progress() clears EVERYTHING.
-             # We might need a targeted clear.
-             # For now, if targeting one folder, maybe we just re-process it and overwrite?
-             # The db.create_stacks_batch inserts new stacks. It doesn't delete old ones for the images.
-             # We should probably clear stacks for the target folder if forcing.
-             if target_folder:
-                 # TODO: Add db.clear_stacks_in_folder?
-                 # For now, let's just warn or handle it.
-                 # Actually, db.clear_cluster_progress() is too aggressive for single folder.
-                 # Let's rely on logic or just clear all if user really wants 'Force Rescan' (which implies global usually).
-                 # But for single folder flow, 'Force' might mean 'Re-cluster THIS folder'.
-                 pass
-             else:
-                 db.clear_cluster_progress()
-                 processed_folders = set()
-                 yield "Force Rescan: Cleared previous progress.", 0, len(images_rows)
+            if target_folder:
+                # Clear stacks only for the target folder (targeted re-clustering)
+                success, msg = db.clear_stacks_in_folder(target_folder)
+                if success:
+                    processed_folders.discard(os.path.normpath(target_folder))
+                    yield f"Force Rescan: {msg}", 0, len(images_rows)
+                else:
+                    yield f"Warning: {msg}", 0, len(images_rows)
+            else:
+                # Global force rescan - clear everything
+                db.clear_cluster_progress()
+                processed_folders = set()
+                yield "Force Rescan: Cleared previous progress.", 0, len(images_rows)
         
         total_clusters = db.get_stack_count() 
         processed_count = 0

@@ -12,7 +12,8 @@ import time
 import math
 import json
 import platform
-from modules import scoring, db, tagging, config, clustering, thumbnails, ui_tree, utils
+from pathlib import Path
+from modules import scoring, db, tagging, config, clustering, thumbnails, ui_tree, utils, culling
 
 # Cache platform check at module load (not per-request)
 IS_WINDOWS = platform.system() == "Windows"
@@ -206,8 +207,8 @@ def run_tagging_wrapper(input_path, custom_keywords, overwrite, generate_caption
     
     return msg, "Starting...", gr.update(interactive=False), gr.update(interactive=True)
 
-# Pagination State
-PAGE_SIZE = 50
+# Pagination State - Load from config
+PAGE_SIZE = app_config.get('ui', {}).get('gallery_page_size', 50)
 
 def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None):
     """Fetch images for gallery with pagination."""
@@ -231,6 +232,10 @@ def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, key
         folder_path=folder
     )
     total_pages = math.ceil(total_count / PAGE_SIZE) if total_count > 0 else 1
+    
+    # Pre-fetch stack contexts for all images in batch (efficient single query)
+    image_ids = [row['id'] for row in rows if 'id' in row.keys()]
+    stack_contexts = db.get_stack_contexts_batch(image_ids) if image_ids else {}
     
     results = []
     raw_paths = []
@@ -282,6 +287,16 @@ def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, key
         else:
              # Fallback (shouldn't happen with current dropdown)
              label = row['file_name']
+        
+        # Add stack badge if image is part of a stack
+        image_id = row['id'] if 'id' in row.keys() else None
+        if image_id and image_id in stack_contexts:
+            ctx = stack_contexts[image_id]
+            if ctx['is_best']:
+                label = f"📚⭐ {label} (Best of {ctx['stack_size']})"
+            else:
+                label = f"📚 {label} ({ctx['stack_size']} in stack)"
+        
         results.append((image_path, label))
         
     return results, f"Page {page} of {total_pages}", total_pages, raw_paths
@@ -290,8 +305,7 @@ def update_gallery(page, sort_by, sort_order, rating_filter, label_filter, keywo
     images, label, _, raw_paths = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
     # Return: images, label, raw_paths, *details_cleared*
     # Details cleared must match detail_outputs list:
-    # d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label
-    return images, label, raw_paths, {}, {}, {}, {}, gr.update(visible=False), "", "", [], "0", "None"
+    return images, label, raw_paths, {}, {}, {}, {}, gr.update(visible=False), "", "", [], "0", "None", '<div style="display: none;"></div>', gr.update(visible=False), "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
 
 def next_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None):
     _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
@@ -389,14 +403,87 @@ def open_stack_folder_in_tree(folder):
     html = ui_tree.get_tree_html(folder)
     return gr.update(selected="folder_tree"), folder, html
 
+def open_stack_in_gallery(stack_id, sort_by, sort_order):
+    """Switches to Gallery tab and displays only images from the selected stack."""
+    if not stack_id:
+        # Just switch to gallery without changing content if no stack selected
+        return gr.update(selected="gallery"), None, gr.update(visible=False), "", 1, [], "", [], {}, {}, {}, {}, gr.update(visible=False), "", "", [], "0", "None", '<div style="display: none;"></div>', gr.update(visible=False), "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+
+    # Get images
+    images = db.get_images_in_stack(stack_id)
+    
+    # Sort locally to match Stacks view
+    if sort_by and sort_by != "created_at":
+         try:
+             reverse = (sort_order == "desc")
+             images.sort(key=lambda x: x[sort_by] if x[sort_by] is not None else (0 if reverse else 999), reverse=reverse)
+         except:
+             pass
+    
+    # Format for gallery
+    gallery_imgs = []
+    raw_paths = []
+    
+    # Map sort_by to score column
+    score_map = {
+        'score_general': ('score_general', 'Gen'),
+        'score_technical': ('score_technical', 'Tech'),
+        'score_aesthetic': ('score_aesthetic', 'Aes'),
+        'created_at': ('score_general', 'Gen'), 
+    }
+    score_col, score_label = score_map.get(sort_by, ('score_general', 'Gen'))
+
+    for row in images:
+        file_path = row['file_path']
+        if not file_path: continue
+        
+        raw_paths.append(file_path)
+        file_name = os.path.basename(file_path)
+        
+        thumb = row['thumbnail_path']
+        if thumb:
+            p = utils.convert_path_to_local(thumb)
+        else:
+            p = utils.convert_path_to_local(file_path)
+            
+        score = row[score_col] if score_col in row.keys() else None
+        score_str = f"{score:.2f}" if score is not None else "N/A"
+        label = f"{file_name}\n{score_label}: {score_str}"
+        gallery_imgs.append((p, label))
+        
+    # Context HTML
+    stack_html = f"""
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 1.5rem;">📚</span>
+        <div>
+            <div style="font-size: 1.1rem; font-weight: 600; color: #e6edf3;">Stack Viewer</div>
+            <div style="font-size: 0.8rem; color: #8b949e;">stack #{stack_id} • {len(images)} images</div>
+        </div>
+    </div>
+    """
+    
+    # Return matched to open_folder_in_gallery outputs:
+    # [Tabs, current_folder_state, folder_context_group, folder_display, page, gallery, label, paths, *detail_outputs]
+    return (
+        gr.update(selected="gallery"), 
+        None, 
+        gr.update(visible=True), 
+        stack_html, 
+        1, 
+        gallery_imgs, 
+        f"Stack ({len(images)})", 
+        raw_paths,
+        {}, {}, {}, {}, gr.update(visible=False), "", "", [], "0", "None", '<div style="display: none;"></div>', gr.update(visible=False), "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+    )
+
 def display_details(evt: gr.SelectData, raw_paths):
     print(f"DEBUG: display_details called. Index: {evt.index if evt else 'None'}, Paths Len: {len(raw_paths) if raw_paths else 0}")
     if evt is None:
-        return "", {}, {}, {}, {}, gr.update(visible=False)
+        return "", {}, {}, {}, {}, gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
     index = evt.index
     if index is None or not raw_paths or index >= len(raw_paths):
         print("DEBUG: Index out of bounds or no paths.")
-        return "", {}, {}, {}, {}, gr.update(visible=False)
+        return "", {}, {}, {}, {}, gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
     
     file_path = raw_paths[index]
     details = db.get_image_details(file_path)
@@ -494,16 +581,167 @@ def display_details(evt: gr.SelectData, raw_paths):
         "Aesthetic": aes
     }
     
-    # 4. Model Scores
-    models_label = {
-        "SPAQ": details.get('score_spaq', 0),
-        "AVA": details.get('score_ava', 0),
-        "KonIQ": details.get('score_koniq', 0),
-        "PaQ2PiQ": details.get('score_paq2piq', 0),
-        "LIQE": details.get('score_liqe', 0)
+    # 4. Model Scores (with timing if available)
+    models_label = {}
+    scores_data = details.get('scores_json', {})
+    if isinstance(scores_data, str):
+        try:
+            scores_data = json.loads(scores_data)
+        except:
+            scores_data = {}
+    
+    # Extract model results and timing
+    models_dict = scores_data.get('models', {}) if isinstance(scores_data, dict) else {}
+    performance = scores_data.get('summary', {}).get('performance', {}) if isinstance(scores_data, dict) else {}
+    model_times = performance.get('model_times', {}) if isinstance(performance, dict) else {}
+    
+    # Build models label with scores and timing
+    # Build models label with scores and timing
+    model_scores_map = {
+        'spaq': ('SPAQ', details.get('score_spaq', 0)),
+        'ava': ('AVA', details.get('score_ava', 0)),
+        'koniq': ('KonIQ', details.get('score_koniq', 0)),
+        'paq2piq': ('PaQ2PiQ', details.get('score_paq2piq', 0)),
+        'liqe': ('LIQE', details.get('score_liqe', 0))
     }
     
-    return res_info, gen_label, weighted_label, models_label, details, gr.update(visible=show_delete)
+    for model_key, (model_name, score) in model_scores_map.items():
+        if score and score > 0:
+            # Add timing if available
+            if model_key in model_times:
+                time_str = f"{model_times[model_key]:.3f}s"
+                models_label[f"{model_name} ({time_str})"] = score
+            else:
+                models_label[model_name] = score
+    
+    # Show Fix button if we have a valid file path
+    show_fix = bool(file_path and os.path.exists(file_path))
+    
+    return res_info, gen_label, weighted_label, models_label, details, gr.update(visible=show_delete), gr.update(visible=show_fix), gr.update(visible=show_fix), gr.update(visible=show_fix)
+
+
+def fix_image_wrapper(details):
+    """Wrapper for fix_image_metadata."""
+    if not details or not isinstance(details, dict):
+        return gr.update(visible=True), "❌ No image selected"
+        
+    file_path = details.get('file_path')
+    if not file_path:
+        return gr.update(visible=True), "❌ Invalid image data"
+        
+    success, msg = scoring_runner.fix_image_metadata(file_path)
+    
+    if success:
+        return gr.update(visible=True), f"✅ {msg}"
+    else:
+        return gr.update(visible=True), f"❌ {msg}"
+
+def rerun_scoring_wrapper(details):
+    """Wrapper for run_single_image in scoring."""
+    if not details or not isinstance(details, dict):
+        return gr.update(visible=True), "❌ No image selected"
+    file_path = details.get('file_path')
+    if not file_path:
+        return gr.update(visible=True), "❌ Invalid image data"
+    
+    success, msg = scoring_runner.run_single_image(file_path)
+    if success:
+        return gr.update(visible=True), f"✅ {msg}"
+    else:
+        return gr.update(visible=True), f"❌ {msg}"
+
+def rerun_keywords_wrapper(details):
+    """Wrapper for run_single_image in tagging."""
+    if not details or not isinstance(details, dict):
+        return gr.update(visible=True), "❌ No image selected"
+    file_path = details.get('file_path')
+    if not file_path:
+        return gr.update(visible=True), "❌ Invalid image data"
+        
+    success, msg = tagging_runner.run_single_image(file_path)
+    if success:
+        return gr.update(visible=True), f"✅ {msg}"
+    else:
+        return gr.update(visible=True), f"❌ {msg}"
+    
+
+
+def export_database(export_format, cols_basic, cols_scores, cols_metadata, cols_other,
+                    filter_rating, filter_label, filter_keyword, filter_folder,
+                    filter_min_gen, filter_min_aes, filter_min_tech,
+                    filter_date_start, filter_date_end):
+    """
+    Exports the database to the specified format with optional column selection and filtering.
+    Returns status message.
+    """
+    import datetime
+    
+    # Combine selected columns
+    selected_columns = []
+    if cols_basic:
+        selected_columns.extend(cols_basic)
+    if cols_scores:
+        selected_columns.extend(cols_scores)
+    if cols_metadata:
+        selected_columns.extend(cols_metadata)
+    if cols_other:
+        selected_columns.extend(cols_other)
+    
+    # Use None if no columns selected (will use defaults)
+    columns = selected_columns if selected_columns else None
+    
+    # Process filters
+    rating_filter = None
+    if filter_rating:
+        # Convert "Unrated" to 0, others to int
+        rating_filter = [0 if r == "Unrated" else int(r) for r in filter_rating]
+    
+    label_filter = filter_label if filter_label else None
+    
+    keyword_filter = filter_keyword.strip() if filter_keyword and filter_keyword.strip() else None
+    
+    folder_path = filter_folder.strip() if filter_folder and filter_folder.strip() else None
+    
+    date_range = None
+    if filter_date_start or filter_date_end:
+        date_range = (filter_date_start if filter_date_start else None,
+                     filter_date_end if filter_date_end else None)
+    
+    # Generate output filename with timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = os.path.join(os.path.dirname(__file__), "output")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    if export_format == "json":
+        # JSON export doesn't support filtering yet (could add later)
+        output_path = os.path.join(output_dir, f"export_{timestamp}.json")
+        success, msg = db.export_db_to_json(output_path)
+    elif export_format == "csv":
+        output_path = os.path.join(output_dir, f"export_{timestamp}.csv")
+        success, msg = db.export_db_to_csv(
+            output_path, columns=columns,
+            rating_filter=rating_filter, label_filter=label_filter,
+            keyword_filter=keyword_filter, folder_path=folder_path,
+            min_score_general=filter_min_gen, min_score_aesthetic=filter_min_aes,
+            min_score_technical=filter_min_tech, date_range=date_range
+        )
+    elif export_format == "xlsx":
+        output_path = os.path.join(output_dir, f"export_{timestamp}.xlsx")
+        success, msg = db.export_db_to_excel(
+            output_path, columns=columns,
+            rating_filter=rating_filter, label_filter=label_filter,
+            keyword_filter=keyword_filter, folder_path=folder_path,
+            min_score_general=filter_min_gen, min_score_aesthetic=filter_min_aes,
+            min_score_technical=filter_min_tech, date_range=date_range
+        )
+    else:
+        return gr.update(value=f"Unknown format: {export_format}", visible=True)
+    
+    if success:
+        return gr.update(value=f"✅ {msg}", visible=True)
+    else:
+        return gr.update(value=f"❌ {msg}", visible=True)
+
 
 def delete_nef(details):
     """
@@ -747,12 +985,13 @@ def refresh_stacks_wrapper(input_path, sort_by, sort_order):
     return results, stack_ids
 
 def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
+    """Returns (gallery_images, content_paths, selected_stack_id)"""
     if evt is None or not stack_ids_state:
-        return [] # Return single list for gallery
+        return [], [], None  # Return gallery, paths, stack_id
         
     index = evt.index
     if index >= len(stack_ids_state):
-        return []
+        return [], [], None
         
     stack_id = stack_ids_state[index]
     
@@ -771,6 +1010,7 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
 
     # Prepare gallery format
     gallery_imgs = []
+    content_paths = []  # Store original DB paths for selection tracking
     
     # Map sort_by to score column and display name
     score_map = {
@@ -785,6 +1025,8 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
         file_path = row['file_path']
         if not file_path:
             continue
+        
+        content_paths.append(file_path)  # Track original DB path
         
         # Get file name from original path
         file_name = os.path.basename(file_path)
@@ -805,41 +1047,510 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
         label = f"{file_name}\n{score_label}: {score_str}"
         gallery_imgs.append((p, label))
 
-    return gallery_imgs
+    return gallery_imgs, content_paths, stack_id
 
 
-def view_full_res_action(details):
+# --- Stack Management Handlers ---
+
+def create_stack_from_selection(selected_indices, content_paths, input_path, sort_by, sort_order):
     """
-    Generates and returns the full resolution preview for the selected image.
+    Creates a new stack from selected images in the content gallery.
+    Returns updated (stacks_gallery, stack_ids, content_gallery, content_paths, status_msg).
     """
-    if not details or not isinstance(details, dict):
-         return None, gr.update(visible=False)
-         
-    file_path = details.get('file_path')
-    if not file_path:
-         return None, gr.update(visible=False)
-         
-    try:
-        # returns path to preview
-        preview_path = thumbnails.generate_preview(file_path)
-        if preview_path and os.path.exists(preview_path):
-             return preview_path, gr.update(visible=True)
-        else:
-             return None, gr.update(visible=False)
-    except Exception as e:
-        print(f"Error getting preview: {e}")
-        return None, gr.update(visible=False)
+    if not selected_indices or not content_paths:
+        return gr.update(), gr.update(), gr.update(), gr.update(), "No images selected"
+    
+    # Convert indices to paths, then to image IDs
+    selected_paths = [content_paths[i] for i in selected_indices if i < len(content_paths)]
+    if len(selected_paths) < 2:
+        return gr.update(), gr.update(), gr.update(), gr.update(), "Select at least 2 images to create a stack"
+    
+    image_ids = db.get_image_ids_by_paths(selected_paths)
+    if len(image_ids) < 2:
+        return gr.update(), gr.update(), gr.update(), gr.update(), "Could not find selected images in database"
+    
+    success, result = db.create_stack_from_images(image_ids)
+    if not success:
+        return gr.update(), gr.update(), gr.update(), gr.update(), f"Error: {result}"
+    
+    # Refresh stacks gallery
+    stacks, stack_ids = refresh_stacks_wrapper(input_path, sort_by, sort_order)
+    
+    return stacks, stack_ids, [], [], f"Created new stack with {len(image_ids)} images"
 
-def open_modal_view(details):
-    """Opens the custom full-screen modal."""
-    path, _ = view_full_res_action(details)
-    if path:
-        return gr.update(visible=True), path
-    return gr.update(visible=False), None
 
-def close_modal_view():
-    """Closes the custom full-screen modal."""
-    return gr.update(visible=False), None
+def remove_from_stack_handler(selected_indices, content_paths, current_stack_id, input_path, sort_by, sort_order):
+    """
+    Removes selected images from their current stack.
+    Returns updated galleries and status.
+    """
+    if not selected_indices or not content_paths:
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), "No images selected"
+    
+    selected_paths = [content_paths[i] for i in selected_indices if i < len(content_paths)]
+    if not selected_paths:
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), "No valid images selected"
+    
+    image_ids = db.get_image_ids_by_paths(selected_paths)
+    if not image_ids:
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), "Could not find selected images in database"
+    
+    success, msg = db.remove_images_from_stack(image_ids)
+    if not success:
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), f"Error: {msg}"
+    
+    # Refresh both galleries
+    stacks, stack_ids = refresh_stacks_wrapper(input_path, sort_by, sort_order)
+    
+    # Refresh content gallery if current stack still exists
+    content_gallery = []
+    new_content_paths = []
+    if current_stack_id:
+        remaining_images = db.get_images_in_stack(current_stack_id)
+        for row in remaining_images:
+            file_path = row['file_path']
+            if file_path:
+                new_content_paths.append(file_path)
+                thumb = row['thumbnail_path']
+                p = utils.convert_path_to_local(thumb if thumb else file_path)
+                file_name = os.path.basename(file_path)
+                score = row['score_general']
+                score_str = f"{score:.2f}" if score else "N/A"
+                content_gallery.append((p, f"{file_name}\nGen: {score_str}"))
+    
+    return stacks, stack_ids, content_gallery, new_content_paths, None, msg
+
+
+def dissolve_stack_handler(current_stack_id, input_path, sort_by, sort_order):
+    """
+    Dissolves the currently selected stack entirely.
+    Returns updated stacks gallery and clears content.
+    """
+    if not current_stack_id:
+        return gr.update(), gr.update(), [], [], None, "No stack selected"
+    
+    success, msg = db.dissolve_stack(current_stack_id)
+    if not success:
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), f"Error: {msg}"
+    
+    # Refresh stacks gallery
+    stacks, stack_ids = refresh_stacks_wrapper(input_path, sort_by, sort_order)
+    
+    return stacks, stack_ids, [], [], None, msg
+
+
+def set_cover_image_handler(selected_indices, content_paths, current_stack_id, input_path, sort_by, sort_order):
+    """
+    Sets the selected image as the cover (best_image_id) for the current stack.
+    Only works with a single selected image.
+    """
+    if not current_stack_id:
+        return gr.update(), gr.update(), "No stack selected"
+    
+    if not selected_indices or len(selected_indices) != 1:
+        return gr.update(), gr.update(), "Select exactly one image to set as cover"
+    
+    idx = selected_indices[0]
+    if idx >= len(content_paths):
+        return gr.update(), gr.update(), "Invalid selection"
+    
+    selected_path = content_paths[idx]
+    image_ids = db.get_image_ids_by_paths([selected_path])
+    
+    if not image_ids:
+        return gr.update(), gr.update(), "Could not find selected image in database"
+    
+    image_id = image_ids[0]
+    success, msg = db.set_stack_cover_image(current_stack_id, image_id)
+    
+    if not success:
+        return gr.update(), gr.update(), f"Error: {msg}"
+    
+    # Refresh stacks gallery to show new cover
+    stacks, stack_ids = refresh_stacks_wrapper(input_path, sort_by, sort_order)
+    
+    return stacks, stack_ids, msg
+
+
+# --- Culling Workflow Handlers ---
+
+def run_culling_wrapper(input_path, threshold, time_gap, auto_export, force_rescan=False, progress=gr.Progress()):
+    """
+    Wrapper to run culling logic (Non-blocking).
+    Now accepts force_rescan to allow non-destructive runs overlaying existing stacks.
+    """
+    if not input_path:
+        return "⚠️ Please select a folder first.", gr.update(interactive=True), [], None, [], [], []
+    
+    # Disable button while running
+    # This return is for immediate UI update, the actual processing happens in a background thread
+    # and updates are sent via the progress object or other mechanisms if needed.
+    # For now, we'll keep the original blocking structure but add the force_rescan parameter.
+    
+    config.save_config_value('culling_input_path', input_path)
+    
+    progress(0.1, desc="Creating culling session...")
+    
+    # Run full culling workflow
+    result = culling.culling_engine.run_full_cull(
+        folder_path=input_path,
+        distance_threshold=threshold,
+        time_gap_seconds=int(time_gap),
+        score_field='score_general',
+        auto_export=auto_export,
+        force_rescan=force_rescan
+    )
+    
+    if 'error' in result:
+        return f"❌ Error: {result['error']}", gr.update(), [], None, [], [], []
+    
+    progress(0.9, desc="Preparing results...")
+    
+    # Format result message
+    session_id = result.get('session_id')
+    total = result.get('total', 0)
+    picked = result.get('picked', 0)
+    rejected = result.get('rejected', 0)
+    pick_pct = (picked / total * 100) if total > 0 else 0
+    reject_pct = (rejected / total * 100) if total > 0 else 0
+    
+    msg_lines = [
+        f"✅ Culling complete for: {input_path}",
+        f"📊 Total images: {total}",
+        f"📚 Groups found: {result.get('groups', 0)}",
+        f"✅ Picked: {picked} ({pick_pct:.0f}%)",
+        f"❌ Rejected: {rejected} ({reject_pct:.0f}%)",
+        f"🔑 Session ID: {session_id}"
+    ]
+    
+    if result.get('exported'):
+        msg_lines.append(f"💾 XMP Pick/Reject flags written: {result.get('xmp_count', 0)}")
+        if result.get('xmp_errors', 0) > 0:
+            msg_lines.append(f"⚠️ XMP errors: {result.get('xmp_errors', 0)}")
+    
+    progress(1.0, desc="Done!")
+    
+    # Get picks for gallery display
+    picks_gallery = []
+    picks_paths = []
+    if session_id:
+        picks = db.get_session_picks(session_id, decision_filter='pick')
+        for pick in picks:
+            file_path = pick.get('file_path')
+            thumb = pick.get('thumbnail_path') or file_path
+            if thumb:
+                p = utils.convert_path_to_local(thumb)
+                label = f"{pick.get('file_name', '?')}\nGen: {pick.get('score_general', 0):.2f}"
+                picks_gallery.append((p, label))
+                picks_paths.append(file_path)
+    
+    # Get rejects for gallery display
+    rejects_gallery = []
+    rejects_paths = []
+    if session_id:
+        rejects = db.get_session_picks(session_id, decision_filter='reject')
+        for reject in rejects:
+            file_path = reject.get('file_path')
+            thumb = reject.get('thumbnail_path') or file_path
+            if thumb:
+                p = utils.convert_path_to_local(thumb)
+                label = f"{reject.get('file_name', '?')}\nGen: {reject.get('score_general', 0):.2f}"
+                rejects_gallery.append((p, label))
+                rejects_paths.append(file_path)
+    
+    return "\n".join(msg_lines), gr.update(interactive=True), picks_gallery, session_id, picks_paths, rejects_gallery, rejects_paths
+
+
+def get_culling_groups(session_id):
+    """Returns grouped images for review."""
+    if not session_id:
+        return [], []
+    
+    groups = db.get_session_groups(session_id)
+    
+    gallery_imgs = []
+    group_ids = []
+    
+    for group in groups:
+        # Show best image (first in sorted list) as group cover
+        if group['images']:
+            best = group['images'][0]
+            thumb = best.get('thumbnail_path') or best.get('file_path')
+            if thumb:
+                p = utils.convert_path_to_local(thumb)
+                count = len(group['images'])
+                picked = 1 if group.get('has_pick') else 0
+                label = f"Group {group['group_id']}\n{count} imgs, {picked} picked"
+                gallery_imgs.append((p, label))
+                group_ids.append(group['group_id'])
+    
+    return gallery_imgs, group_ids
+
+
+def export_culling_xmp(session_id):
+    """Exports culling decisions to XMP sidecars using Lightroom Pick/Reject flags."""
+    if not session_id:
+        return "No active session to export"
+    
+    result = culling.culling_engine.export_to_xmp(session_id)
+    
+    exported = result.get('exported', 0)
+    errors = result.get('errors', 0)
+    failed_files = result.get('failed_files', [])
+    
+    msg = f"✅ Exported {exported} Pick/Reject flags"
+    if errors > 0:
+        msg += f"\n⚠️ {errors} errors"
+        if failed_files:
+            msg += "\n\nFailed files:"
+            for file_path, error_msg in failed_files[:5]:  # Show first 5
+                file_name = os.path.basename(file_path)
+                msg += f"\n  • {file_name}: {error_msg[:50]}"
+            if len(failed_files) > 5:
+                msg += f"\n  ... and {len(failed_files) - 5} more"
+    
+    return msg
+
+
+def refresh_culling_groups(session_id, threshold, time_gap):
+    """
+    Re-imports group assignments for an existing session.
+    Useful after manual stack modifications in the Stacks tab.
+    """
+    if not session_id:
+        return "❌ No active session. Run AI Culling first.", [], []
+    
+    # Get session info
+    session = db.get_culling_session(session_id)
+    if not session:
+        return "❌ Session not found.", [], []
+    
+    folder_path = session['folder_path']
+    
+    # Clear existing picks for this session (so we can re-import)
+    db.clear_culling_picks(session_id)
+    
+    # Re-run import with current stack assignments
+    import_stats = culling.culling_engine.import_images(
+        session_id,
+        distance_threshold=threshold,
+        time_gap_seconds=int(time_gap)
+    )
+    
+    if 'error' in import_stats:
+        return f"❌ {import_stats['error']}", [], []
+    
+    msg = f"✅ Refreshed groups from: {folder_path}\n"
+    msg += f"📊 Total: {import_stats.get('total', 0)} images\n"
+    msg += f"📚 Groups: {import_stats.get('groups', 0)}\n"
+    msg += f"ℹ️ Use 'Re-Pick Best' to auto-select best images"
+    
+    return msg, [], []
+
+
+def repick_culling_best(session_id, score_field='score_general'):
+    """
+    Re-runs auto-pick on an existing session.
+    Useful after refreshing groups or changing preferences.
+    """
+    if not session_id:
+        return "❌ No active session.", [], []
+    
+    # Clear existing decisions
+    db.reset_culling_decisions(session_id)
+    
+    # Re-run auto-pick
+    pick_stats = culling.culling_engine.auto_pick_all(session_id, score_field=score_field)
+    
+    # Get updated picks for gallery
+    picks_gallery = []
+    picks_paths = []
+    picks = db.get_session_picks(session_id, decision_filter='pick')
+    for pick in picks:
+        file_path = pick.get('file_path')
+        thumb = pick.get('thumbnail_path') or file_path
+        if thumb:
+            p = utils.convert_path_to_local(thumb)
+            label = f"{pick.get('file_name', '?')}\nGen: {pick.get('score_general', 0):.2f}"
+            picks_gallery.append((p, label))
+            picks_paths.append(file_path)
+    
+    msg = f"✅ Re-picked best images\n"
+    msg += f"📸 Picked: {pick_stats.get('picked', 0)}\n"
+    msg += f"❌ Rejected: {pick_stats.get('rejected', 0)}"
+    
+    return msg, picks_gallery, picks_paths
+
+
+def get_active_sessions():
+    """Returns active culling sessions for dropdown."""
+    sessions = db.get_active_culling_sessions()
+    choices = []
+    for s in sessions:
+        folder = os.path.basename(s['folder_path'])
+        # Include stats in label
+        picked = s.get('picked_count', 0)
+        rejected = s.get('rejected_count', 0)
+        total = s.get('total_groups', 0)
+        reviewed = s.get('reviewed_groups', 0)
+        label = f"Session {s['id']}: {folder} ({picked} picks, {rejected} rejects, {reviewed}/{total} groups)"
+        choices.append((label, s['id']))
+    return choices
+
+
+def resume_culling_session(session_id):
+    """
+    Resumes a culling session by loading its picks and rejects into the galleries.
+    Returns: (status_msg, picks_gallery, session_id, picks_paths, rejects_gallery, rejects_paths)
+    """
+    if not session_id:
+        return "❌ Please select a session to resume", [], None, [], [], []
+    
+    # Get session details
+    session = db.get_culling_session(session_id)
+    if not session:
+        return f"❌ Session {session_id} not found", [], None, [], [], []
+    
+    folder_path = session.get('folder_path', '')
+    
+    # Get picks for gallery display
+    picks_gallery = []
+    picks_paths = []
+    picks = db.get_session_picks(session_id, decision_filter='pick')
+    
+    for pick in picks:
+        file_path = pick.get('file_path')
+        thumb = pick.get('thumbnail_path') or file_path
+        if thumb:
+            p = utils.convert_path_to_local(thumb)
+            label = f"{pick.get('file_name', '?')}\nGen: {pick.get('score_general', 0):.2f}"
+            picks_gallery.append((p, label))
+            picks_paths.append(file_path)
+    
+    # Get rejects for gallery display
+    rejects_gallery = []
+    rejects_paths = []
+    rejects = db.get_session_picks(session_id, decision_filter='reject')
+    
+    for reject in rejects:
+        file_path = reject.get('file_path')
+        thumb = reject.get('thumbnail_path') or file_path
+        if thumb:
+            p = utils.convert_path_to_local(thumb)
+            label = f"{reject.get('file_name', '?')}\nGen: {reject.get('score_general', 0):.2f}"
+            rejects_gallery.append((p, label))
+            rejects_paths.append(file_path)
+    
+    # Format status message
+    total = session.get('total_images', 0)
+    groups = session.get('total_groups', 0)
+    picked = session.get('picked_count', len(picks))
+    rejected = session.get('rejected_count', len(rejects))
+    reviewed = session.get('reviewed_groups', 0)
+    
+    msg_lines = [
+        f"✅ Resumed Session {session_id}: {os.path.basename(folder_path)}",
+        f"📊 Total images: {total}",
+        f"📚 Groups: {groups}",
+        f"✅ Picked: {picked}",
+        f"❌ Rejected: {rejected}",
+        f"📝 Reviewed: {reviewed}/{groups} groups"
+    ]
+    
+    return "\n".join(msg_lines), picks_gallery, session_id, picks_paths, rejects_gallery, rejects_paths
+
+
+def get_rejects_gallery(session_id):
+    """
+    Returns rejected images for gallery display.
+    Returns: (rejects_gallery, rejects_paths)
+    """
+    if not session_id:
+        return [], []
+    
+    rejects_gallery = []
+    rejects_paths = []
+    rejects = db.get_session_picks(session_id, decision_filter='reject')
+    
+    for reject in rejects:
+        file_path = reject.get('file_path')
+        thumb = reject.get('thumbnail_path') or file_path
+        if thumb:
+            p = utils.convert_path_to_local(thumb)
+            label = f"{reject.get('file_name', '?')}\nGen: {reject.get('score_general', 0):.2f}"
+            rejects_gallery.append((p, label))
+            rejects_paths.append(file_path)
+    
+    return rejects_gallery, rejects_paths
+
+
+def delete_rejected_files(session_id, confirmed):
+    """
+    Permanently deletes rejected files from disk and database.
+    
+    WARNING: This is destructive and cannot be undone!
+    
+    Returns: (status_message, updated_rejects_gallery, updated_rejects_paths)
+    """
+    from modules import xmp as xmp_module
+    
+    if not confirmed:
+        return "⚠️ Please check the confirmation box to delete files", [], []
+    
+    if not session_id:
+        return "❌ No active session", [], []
+    
+    rejects = db.get_session_picks(session_id, decision_filter='reject')
+    
+    if not rejects:
+        return "ℹ️ No rejected files to delete", [], []
+    
+    deleted_count = 0
+    error_count = 0
+    errors = []
+    
+    for reject in rejects:
+        file_path = reject.get('file_path')
+        if not file_path:
+            continue
+        
+        try:
+            local_path = utils.convert_path_to_local(file_path)
+            
+            # Delete the image file
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            
+            # Delete XMP sidecar if exists
+            xmp_module.delete_xmp(file_path)
+            
+            # Delete thumbnail if exists
+            thumb_path = reject.get('thumbnail_path')
+            if thumb_path:
+                local_thumb = utils.convert_path_to_local(thumb_path)
+                if os.path.exists(local_thumb):
+                    os.remove(local_thumb)
+            
+            # Remove from database
+            db.delete_image(file_path)
+            
+            deleted_count += 1
+            
+        except Exception as e:
+            error_count += 1
+            errors.append(f"{os.path.basename(file_path)}: {str(e)}")
+    
+    # Build status message
+    status = f"🗑️ Deleted {deleted_count} rejected files"
+    if error_count > 0:
+        status += f"\n⚠️ {error_count} errors"
+        if errors[:3]:  # Show first 3 errors
+            status += "\n" + "\n".join(errors[:3])
+    
+    # Return empty galleries since files are deleted
+    return status, [], []
+
+
 
 
 def get_tree_choices():
@@ -942,8 +1653,9 @@ def refresh_tree_wrapper():
 
 # --- UI Definition ---
 
-# Tree View Start Script + Gallery Close Button
+# Tree View Start Script + Gallery Close Button + NEF Viewer
 tree_js = """
+<script src="/file=static/js/libraw-viewer.js"></script>
 <script>
 window.selectFolder = function(e, path) {
     e.preventDefault();
@@ -1109,6 +1821,568 @@ if (document.readyState === 'loading') {
 } else {
     initGalleryCloseButton();
 }
+
+// ========== STACK BADGE OVERLAY ==========
+function initStackBadges() {
+    function addBadgesToStackGallery() {
+        // Find the Stacks tab gallery (first gallery in the Stacks tab)
+        const stacksTab = document.querySelector('[id*="stacks"]');
+        if (!stacksTab) return;
+        
+        // Find all gallery items in the stacks section
+        const galleries = document.querySelectorAll('.gallery');
+        
+        galleries.forEach(gallery => {
+            // Look for stack gallery items (they have captions with "X imgs")
+            const items = gallery.querySelectorAll('.thumbnail-item, .gallery-item, [class*="thumbnail"]');
+            
+            items.forEach(item => {
+                // Skip if already has badge
+                if (item.querySelector('.stack-badge')) return;
+                
+                // Get the caption/label
+                const caption = item.querySelector('.caption, .label, [class*="caption"]');
+                if (!caption) return;
+                
+                const text = caption.textContent || '';
+                // Match pattern like "(5 imgs)" or "(12 imgs)"
+                const match = text.match(/\((\d+)\s*imgs?\)/i);
+                
+                if (match) {
+                    const count = parseInt(match[1], 10);
+                    if (count >= 2) {
+                        // Make item position relative if not already
+                        const computed = window.getComputedStyle(item);
+                        if (computed.position === 'static') {
+                            item.style.position = 'relative';
+                        }
+                        
+                        // Create and add badge
+                        const badge = document.createElement('span');
+                        badge.className = 'stack-badge' + (count >= 10 ? ' large' : '');
+                        badge.textContent = count;
+                        item.appendChild(badge);
+                    }
+                }
+            });
+        });
+    }
+    
+    // Watch for DOM changes (galleries update dynamically)
+    const badgeObserver = new MutationObserver(function(mutations) {
+        // Debounce
+        clearTimeout(window._stackBadgeTimeout);
+        window._stackBadgeTimeout = setTimeout(addBadgesToStackGallery, 200);
+    });
+    
+    badgeObserver.observe(document.body, { 
+        childList: true, 
+        subtree: true 
+    });
+    
+    // Initial run
+    setTimeout(addBadgesToStackGallery, 1000);
+    
+    // Also run on tab changes
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('[role="tab"]')) {
+            setTimeout(addBadgesToStackGallery, 300);
+        }
+    });
+}
+
+// Initialize stack badges
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initStackBadges);
+} else {
+    initStackBadges();
+}
+
+// ========== KEYBOARD SHORTCUTS FOR STACK OPERATIONS ==========
+function initStackKeyboardShortcuts() {
+    document.addEventListener('keydown', function(e) {
+        // Only trigger if no input/textarea is focused
+        const activeEl = document.activeElement;
+        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+            return;
+        }
+        
+        // Ctrl+G -> Group Selected
+        if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'g') {
+            e.preventDefault();
+            const groupBtn = document.getElementById('stack-group-btn');
+            if (groupBtn) {
+                groupBtn.click();
+                console.log('Keyboard: Ctrl+G -> Group Selected');
+            }
+        }
+        
+        // Ctrl+Shift+G -> Ungroup All
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'g') {
+            e.preventDefault();
+            const ungroupBtn = document.getElementById('stack-ungroup-btn');
+            if (ungroupBtn) {
+                ungroupBtn.click();
+                console.log('Keyboard: Ctrl+Shift+G -> Ungroup All');
+            }
+        }
+        
+        // Ctrl+R -> Remove from Stack
+        if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r') {
+            // Check if we're on stacks tab to avoid conflicts
+            const stacksTab = document.querySelector('[id*="stacks"].tabitem--selected, [id*="stacks"][aria-selected="true"]');
+            if (stacksTab) {
+                e.preventDefault();
+                const removeBtn = document.getElementById('stack-remove-btn');
+                if (removeBtn) {
+                    removeBtn.click();
+                    console.log('Keyboard: Ctrl+R -> Remove from Stack');
+                }
+            }
+        }
+    });
+    
+    console.log('Stack keyboard shortcuts initialized: Ctrl+G (Group), Ctrl+Shift+G (Ungroup), Ctrl+R (Remove)');
+}
+
+// Initialize keyboard shortcuts
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initStackKeyboardShortcuts);
+} else {
+    initStackKeyboardShortcuts();
+}
+
+// ========== STACK INLINE EXPAND/COLLAPSE ==========
+function initStackExpandCollapse() {
+    let currentExpandedStack = null;
+    
+    // Add visual feedback for expand/collapse state
+    function updateExpandState() {
+        const stacksTab = document.querySelector('[id*="stacks"]');
+        if (!stacksTab) return;
+        
+        // Find the content gallery section
+        const contentSection = stacksTab.querySelector('[id*="stack"][class*="gallery"]');
+        const stackItems = stacksTab.querySelectorAll('.gallery .thumbnail-item, .gallery .gallery-item, .gallery [class*="thumbnail"]');
+        
+        // Add expand indicator to stack items
+        stackItems.forEach((item, index) => {
+            if (item.querySelector('.expand-indicator')) return;
+            
+            const indicator = document.createElement('span');
+            indicator.className = 'expand-indicator';
+            indicator.style.cssText = `
+                position: absolute;
+                bottom: 6px;
+                left: 6px;
+                font-size: 14px;
+                opacity: 0.7;
+                pointer-events: none;
+                transition: transform 0.2s ease;
+            `;
+            indicator.textContent = '▼';
+            
+            const computed = window.getComputedStyle(item);
+            if (computed.position === 'static') {
+                item.style.position = 'relative';
+            }
+            item.appendChild(indicator);
+        });
+    }
+    
+    // Create collapse button for content gallery
+    function addCollapseButton() {
+        const stacksTab = document.querySelector('[id*="stacks"]');
+        if (!stacksTab) return;
+        
+        // Find the content gallery header
+        const contentHeaders = stacksTab.querySelectorAll('h3, .markdown');
+        contentHeaders.forEach(header => {
+            if (header.textContent.includes('Stack Contents') && !header.querySelector('.collapse-btn')) {
+                const btn = document.createElement('button');
+                btn.className = 'collapse-btn';
+                btn.innerHTML = '▲ Collapse';
+                btn.style.cssText = `
+                    margin-left: 10px;
+                    padding: 4px 12px;
+                    font-size: 11px;
+                    background: var(--bg-tertiary, #21262d);
+                    border: 1px solid var(--border-color, #30363d);
+                    border-radius: 6px;
+                    color: var(--text-secondary, #8b949e);
+                    cursor: pointer;
+                    vertical-align: middle;
+                `;
+                btn.onclick = function(e) {
+                    e.preventDefault();
+                    const gallery = this.closest('[id*="stacks"]').querySelector('.gallery:not(:first-child)');
+                    if (gallery) {
+                        const isCollapsed = gallery.style.display === 'none';
+                        gallery.style.display = isCollapsed ? '' : 'none';
+                        this.innerHTML = isCollapsed ? '▲ Collapse' : '▼ Expand';
+                    }
+                };
+                header.appendChild(btn);
+            }
+        });
+    }
+    
+    // Observe DOM changes
+    const expandObserver = new MutationObserver(function() {
+        clearTimeout(window._expandTimeout);
+        window._expandTimeout = setTimeout(() => {
+            updateExpandState();
+            addCollapseButton();
+        }, 300);
+    });
+    
+    expandObserver.observe(document.body, { childList: true, subtree: true });
+    
+    // Initial setup
+    setTimeout(() => {
+        updateExpandState();
+        addCollapseButton();
+    }, 1500);
+}
+
+// Initialize expand/collapse
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initStackExpandCollapse);
+} else {
+    initStackExpandCollapse();
+}
+
+// ========== IMAGE COMPARISON VIEW ==========
+window.compareImages = [];
+window.maxCompareImages = 4;
+
+function initCompareMode() {
+    // Add compare button to image details
+    const addBtn = document.getElementById('compare-add-btn');
+    if (addBtn && !addBtn.hasAttribute('data-compare-init')) {
+        addBtn.setAttribute('data-compare-init', 'true');
+        addBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Get current image path from JSON details
+            let imagePath = null;
+            const jsonElements = document.querySelectorAll('.json-holder pre, [data-testid="json"] pre');
+            jsonElements.forEach(el => {
+                try {
+                    const data = JSON.parse(el.textContent);
+                    if (data && data.file_path) {
+                        imagePath = data.file_path;
+                    }
+                } catch (ex) {}
+            });
+            
+            if (!imagePath) {
+                alert('Select an image first');
+                return;
+            }
+            
+            // Add to compare list (max 4)
+            if (window.compareImages.length >= window.maxCompareImages) {
+                window.compareImages.shift(); // Remove oldest
+            }
+            
+            if (!window.compareImages.includes(imagePath)) {
+                window.compareImages.push(imagePath);
+            }
+            
+            // Show visual feedback
+            const count = window.compareImages.length;
+            this.textContent = `📊 Compare (${count}/${window.maxCompareImages})`;
+            
+            if (count >= 2) {
+                showCompareView();
+            }
+        });
+    }
+}
+
+function showCompareView() {
+    if (window.compareImages.length < 2) {
+        alert('Add at least 2 images to compare');
+        return;
+    }
+    
+    // Create modal
+    const modal = document.createElement('div');
+    modal.className = 'compare-modal';
+    modal.innerHTML = `
+        <div class="compare-header">
+            <span class="compare-title">📊 Image Comparison (${window.compareImages.length} images)</span>
+            <button onclick="closeCompareView()" style="background: #f85149; border: none; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;">✕ Close</button>
+        </div>
+        <div class="compare-grid cols-${Math.min(window.compareImages.length, 4)}">
+            ${window.compareImages.map((path, i) => `
+                <div class="compare-item">
+                    <img src="/file=${path.replace(/\\\\/g, '/')}" alt="Image ${i+1}">
+                    <div class="compare-item-info">
+                        <strong>${path.split(/[/\\\\]/).pop()}</strong>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+function closeCompareView() {
+    const modal = document.querySelector('.compare-modal');
+    if (modal) {
+        modal.remove();
+    }
+    window.compareImages = [];
+    
+    // Reset button text
+    const addBtn = document.getElementById('compare-add-btn');
+    if (addBtn) {
+        addBtn.textContent = '📊 Add to Compare';
+    }
+}
+
+// Initialize compare mode
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCompareMode);
+} else {
+    initCompareMode();
+}
+
+// Re-init on DOM changes (Gradio rerenders)
+const compareObserver = new MutationObserver(() => {
+    clearTimeout(window._compareInitTimeout);
+    window._compareInitTimeout = setTimeout(initCompareMode, 500);
+});
+compareObserver.observe(document.body, { childList: true, subtree: true });
+
+// ========== LAZY LOAD FULL RESOLUTION ==========
+function initLazyFullResolution() {
+    console.log("Initializing Lazy Full Resolution Loader");
+    let currentPreviewId = 0;
+    let loadTimeout = null;
+    let abortController = null;
+    let previousObjectURL = null;  // Track ObjectURL for cleanup
+    const LOAD_DELAY_MS = 600;  // Wait 600ms before loading full res (debounce)
+    
+    // Find the preview image element
+    function getCurrentPreviewImg() {
+        // Gradio 3/4 structure vary, check multiple selectors
+        return document.querySelector('.gallery .preview img, .gallery button.preview img, img.preview-image');
+    }
+    
+    // Show a subtle loading indicator
+    function showLoadingIndicator(img) {
+        if (!img || img.parentNode.querySelector('.full-res-loader')) return;
+        
+        const loader = document.createElement('div');
+        loader.className = 'full-res-loader';
+        loader.innerHTML = `
+            <div style="
+                position: absolute; 
+                top: 50%; 
+                left: 50%; 
+                transform: translate(-50%, -50%);
+                background: rgba(0,0,0,0.6);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-size: 13px;
+                pointer-events: none;
+                z-index: 10;
+                backdrop-filter: blur(4px);
+                border: 1px solid rgba(255,255,255,0.1);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            ">
+                <div class="spinner" style="
+                    width: 14px; 
+                    height: 14px; 
+                    border: 2px solid rgba(255,255,255,0.3); 
+                    border-top: 2px solid white; 
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                "></div>
+                <span>Loading Full Res...</span>
+            </div>
+            <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+        `;
+        
+        // Position relative to parent if needed
+        if (getComputedStyle(img.parentNode).position === 'static') {
+            img.parentNode.style.position = 'relative';
+        }
+        
+        img.parentNode.appendChild(loader);
+    }
+    
+    function hideLoadingIndicator(img) {
+        if (!img) return;
+        const loader = img.parentNode.querySelector('.full-res-loader');
+        if (loader) loader.remove();
+    }
+    
+    // BETTER APPROACH: Use the selected gallery item data
+    function getSelectedImagePath() {
+        // Try to find the file path from the details panel (which updates instantly on click)
+        // This is robust because it comes from the server metadata
+        const jsonElements = document.querySelectorAll('.json-holder pre, [data-testid="json"] pre');
+        for (const el of jsonElements) {
+            try {
+                const data = JSON.parse(el.textContent);
+                if (data && data.file_path) {
+                    return data.file_path;
+                }
+            } catch (e) {}
+        }
+        
+        // Fallback: visible path textbox?
+        // In webui.py we have 'stacks_selected_path' or similar components
+        const pathInputs = document.querySelectorAll('textarea[label="Selected Image"], input[label="Selected Image"]');
+        for (const input of pathInputs) {
+            if (input.value && input.value.trim().length > 1) {
+                return input.value;
+            }
+        }
+        
+        return null;
+    }
+    
+    function loadFullResolution(imgPath, previewId, imgElement) {
+        // Cancel previous load
+        if (abortController) {
+            abortController.abort();
+            abortController = null;
+        }
+        
+        // Cleanup previous ObjectURL to prevent memory leak
+        if (previousObjectURL) {
+            URL.revokeObjectURL(previousObjectURL);
+            previousObjectURL = null;
+        }
+        
+        // If previewId changed, don't load (stale)
+        if (previewId !== currentPreviewId) return;
+        
+        abortController = new AbortController();
+        
+        // Determine URL
+        // If it's a RAW file, use our API. Else use /file=
+        const ext = imgPath.split('.').pop().toLowerCase();
+        const isRaw = ['nef', 'cr2', 'arw', 'dng', 'orf', 'nrw', 'cr3', 'rw2'].includes(ext);
+        
+        let url = '';
+        if (isRaw) {
+             url = `/api/raw-preview?path=${encodeURIComponent(imgPath)}`;
+        } else {
+             // For standard images, append a distinct param to bypass cache or ensure full load
+             url = `/file=${imgPath}`;
+        }
+        
+        showLoadingIndicator(imgElement);
+        
+        fetch(url, { signal: abortController.signal })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.blob();
+            })
+            .then(blob => {
+                if (previewId !== currentPreviewId) {
+                    // Changed, discard blob (no need to create ObjectURL just to revoke)
+                    return;
+                }
+                
+                const objectURL = URL.createObjectURL(blob);
+                previousObjectURL = objectURL;  // Track for cleanup
+                imgElement.onload = () => {
+                   hideLoadingIndicator(imgElement);
+                };
+                imgElement.src = objectURL;
+                
+                // Cleanup controller
+                abortController = null;
+            })
+            .catch(err => {
+                if (err.name !== 'AbortError') {
+                    console.error('Full res load error:', err);
+                }
+                hideLoadingIndicator(imgElement);
+            });
+    }
+    
+    function handlePreviewChange() {
+        const img = getCurrentPreviewImg();
+        
+        // If no preview image, we might be in grid mode.
+        if (!img) {
+            // Cancel any pending
+            if (loadTimeout) clearTimeout(loadTimeout);
+            if (abortController) abortController.abort();
+            
+            // Cleanup previous ObjectURL
+            if (previousObjectURL) {
+                URL.revokeObjectURL(previousObjectURL);
+                previousObjectURL = null;
+            }
+            
+            currentPreviewId++; 
+            return;
+        }
+        
+        // Retrieve path
+        const path = getSelectedImagePath();
+        if (!path) return; // Wait until details populate
+        
+        // Check if we already loaded this path for this session?
+        if (img.dataset.fullResPath === path) {
+             return; // Already initiated or loaded
+        }
+        
+        // New image detected!
+        currentPreviewId++;
+        const myPreviewId = currentPreviewId;
+        
+        img.dataset.fullResPath = path; // Mark as handled
+        
+        // Cancel previous
+        if (loadTimeout) clearTimeout(loadTimeout);
+        if (abortController) abortController.abort();
+        
+        // Cleanup previous ObjectURL (if we are switching faster than load completes)
+        if (previousObjectURL) {
+            URL.revokeObjectURL(previousObjectURL);
+            previousObjectURL = null;
+        }
+        
+        // Set delay
+        loadTimeout = setTimeout(() => {
+            loadFullResolution(path, myPreviewId, img);
+        }, LOAD_DELAY_MS);
+    }
+    
+    // Watch for DOM changes to detect when preview opens or changes
+    // The gallery preview creates a new <img> or changes src
+    const observer = new MutationObserver((mutations) => {
+        // Quick check if preview exists
+        if (document.querySelector('.gallery .preview')) {
+             handlePreviewChange();
+        }
+    });
+    
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style'] });
+}
+
+// Initialize Lazy Loader
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initLazyFullResolution);
+} else {
+    initLazyFullResolution();
+}
+
 </script>
 """
 
@@ -1953,6 +3227,188 @@ button.media-button.svelte-ao1xvt {
 [data-testid="highlighted-text"] .text {
     color: white !important;
 }
+
+/* ========== STACK BADGE OVERLAY ========== */
+.stack-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: linear-gradient(135deg, #58a6ff 0%, #a371f7 100%);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    z-index: 10;
+    pointer-events: none;
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+.stack-badge.large {
+    background: linear-gradient(135deg, #3fb950 0%, #238636 100%);
+}
+
+/* ========== STACK INLINE PREVIEW (Hover Expand) ========== */
+.stack-preview-popup {
+    position: fixed;
+    background: var(--bg-secondary, #161b22);
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    z-index: 9999;
+    max-width: 400px;
+    display: none;
+}
+
+.stack-preview-popup.visible {
+    display: block;
+    animation: fadeInScale 0.15s ease-out;
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.stack-preview-header {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary, #e6edf3);
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-subtle, #21262d);
+}
+
+.stack-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+.stack-preview-thumb {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    transition: border-color 0.15s ease;
+}
+
+.stack-preview-thumb:hover {
+    border-color: var(--accent-primary, #58a6ff);
+}
+
+.stack-preview-thumb.best {
+    border-color: var(--accent-success, #3fb950);
+}
+
+.stack-preview-more {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-tertiary, #21262d);
+    border-radius: 6px;
+    color: var(--text-secondary, #8b949e);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* ========== IMAGE COMPARISON VIEW ========== */
+.compare-modal {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: rgba(0, 0, 0, 0.95) !important;
+    z-index: 10000 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 20px !important;
+    box-sizing: border-box !important;
+}
+
+.compare-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: var(--bg-secondary, #161b22);
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
+
+.compare-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary, #e6edf3);
+}
+
+.compare-grid {
+    display: grid;
+    gap: 15px;
+    flex: 1;
+    overflow: hidden;
+}
+
+.compare-grid.cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.compare-grid.cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.compare-grid.cols-4 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+
+.compare-item {
+    background: var(--bg-secondary, #161b22);
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.compare-item img {
+    width: 100%;
+    height: calc(100% - 60px);
+    object-fit: contain;
+    background: var(--bg-primary, #0d1117);
+}
+
+.compare-item-info {
+    padding: 10px 15px;
+    background: var(--bg-tertiary, #21262d);
+    color: var(--text-primary, #e6edf3);
+    font-size: 0.9rem;
+}
+
+.compare-item-score {
+    display: flex;
+    gap: 15px;
+    margin-top: 5px;
+}
+
+.compare-item-score span {
+    color: var(--accent-primary, #58a6ff);
+    font-weight: 600;
+}
 """
 
 with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as demo:
@@ -1966,16 +3422,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
     # Polling Timer for status updates
     status_timer = gr.Timer(value=1.0)
     
-    # Custom Full Screen Modal
-    with gr.Group(visible=False, elem_classes=["full-res-modal"]) as full_res_modal:
-        modal_close_btn = gr.Button("❌ Close", variant="secondary", elem_classes=["modal-close-btn"])
-        modal_image = gr.Image(show_label=False, interactive=False, type="filepath", elem_classes=["modal-image-container"])
-        
-        modal_close_btn.click(
-            fn=close_modal_view,
-            inputs=[],
-            outputs=[full_res_modal, modal_image]
-        )
+
     
     with gr.Tabs() as main_tabs:
         # TAB 1: RUN SCORING
@@ -1992,7 +3439,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                         )
                         force_checkbox = gr.Checkbox(
                             label="🔄 Force Re-score", 
-                            value=False,
+                            value=app_config.get('scoring', {}).get('force_rescore_default', False),
                             info="Overwrite existing scores in database"
                         )
                     
@@ -2046,15 +3493,18 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                             value=app_config.get('tagging_input_path', ''),
                             info="Process images from this folder"
                         )
-                        k_custom = gr.Textbox(
-                            label="✨ Custom Keywords", 
-                            placeholder="vintage, cinematic, rainy...",
-                            info="Additional keywords to detect (comma separated)"
-                        )
+                        # Hidden state - Custom Keywords removed from UI
+                        k_custom = gr.State(value="")
                     
                     with gr.Row():
-                        k_overwrite = gr.Checkbox(label="Overwrite", value=False)
-                        k_captions = gr.Checkbox(label="Captions", value=False)
+                        k_overwrite = gr.Checkbox(
+                            label="Overwrite",
+                            value=app_config.get('tagging', {}).get('overwrite_default', False)
+                        )
+                        k_captions = gr.Checkbox(
+                            label="Captions",
+                            value=app_config.get('tagging', {}).get('captions_default', False)
+                        )
                         k_run_btn = gr.Button("▶ Generate", variant="primary")
                         k_stop_btn = gr.Button("⏹ Stop", variant="stop", interactive=False)
                 
@@ -2113,13 +3563,13 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                                 ("📉 PaQ2PiQ", "score_paq2piq"),
                                 ("🎯 LIQE", "score_liqe")
                             ], 
-                            value="score_general", 
+                            value=app_config.get('scoring', {}).get('default_sort_by', 'score_general'), 
                             label="Sort By",
                             container=False
                         )
                         order_dropdown = gr.Dropdown(
                             choices=[("↓ Highest First", "desc"), ("↑ Lowest First", "asc")], 
-                            value="desc", 
+                            value=app_config.get('scoring', {}).get('default_sort_order', 'desc'), 
                             label="Order",
                             container=False
                         )
@@ -2145,14 +3595,145 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                         )
                 
                 with gr.Row():
-                    f_min_gen = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min General", info="0.0 - 1.0")
-                    f_min_aes = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Aesthetic", info="0.0 - 1.0")
-                    f_min_tech = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Technical", info="0.0 - 1.0")
+                    f_min_gen = gr.Slider(
+                        0.0, 1.0,
+                        value=app_config.get('ui', {}).get('default_min_general', 0.0),
+                        step=0.05, label="Min General", info="0.0 - 1.0"
+                    )
+                    f_min_aes = gr.Slider(
+                        0.0, 1.0,
+                        value=app_config.get('ui', {}).get('default_min_aesthetic', 0.0),
+                        step=0.05, label="Min Aesthetic", info="0.0 - 1.0"
+                    )
+                    f_min_tech = gr.Slider(
+                        0.0, 1.0,
+                        value=app_config.get('ui', {}).get('default_min_technical', 0.0),
+                        step=0.05, label="Min Technical", info="0.0 - 1.0"
+                    )
                 
                 with gr.Row():
                     f_date_start = gr.Textbox(label="From Date", placeholder="YYYY-MM-DD", scale=1)
                     f_date_end = gr.Textbox(label="To Date", placeholder="YYYY-MM-DD", scale=1)
                     filter_keyword = gr.Textbox(label="Keyword Search", placeholder="Search tags...", scale=2)
+            
+            # Export Section
+            with gr.Accordion("📤 Export Data", open=False, elem_classes=["accordion"]):
+                with gr.Row():
+                    export_format = gr.Dropdown(
+                        choices=[
+                            ("📄 JSON (Full Data)", "json"),
+                            ("📊 CSV (Spreadsheet)", "csv"),
+                            ("📗 Excel (.xlsx)", "xlsx")
+                        ],
+                        value=app_config.get('ui', {}).get('default_export_format', 'json'),
+                        label="Export Format",
+                        scale=1
+                    )
+                    export_btn = gr.Button("⬇️ Export All Images", variant="primary", size="sm", scale=1)
+                
+                # Export Templates - DISABLED: Feature hidden from UI
+                # with gr.Accordion("📋 Export Templates", open=False):
+                #     gr.Markdown("Save and load preset export configurations for quick reuse.")
+                #     with gr.Row():
+                #         export_template_dropdown = gr.Dropdown(
+                #             choices=[],
+                #             value=None,
+                #             label="Template",
+                #             scale=2,
+                #             info="Select a saved template to load"
+                #         )
+                #         export_template_load_btn = gr.Button("📥 Load Template", variant="secondary", size="sm", scale=1)
+                #         export_template_delete_btn = gr.Button("🗑️ Delete", variant="stop", size="sm", scale=1, visible=False)
+                #     with gr.Row():
+                #         export_template_name = gr.Textbox(
+                #             label="Template Name",
+                #             placeholder="e.g., 'Scores Only', 'High Quality Filter'",
+                #             scale=2
+                #         )
+                #         export_template_save_btn = gr.Button("💾 Save Template", variant="secondary", size="sm", scale=1)
+                #     export_template_status = gr.Textbox(label="Template Status", interactive=False, visible=False)
+                #     export_template_state = gr.State(None)  # Track currently loaded template name
+                export_template_dropdown = gr.State(None)  # Hidden placeholder for removed feature
+                
+                # Advanced Export Options
+                with gr.Accordion("⚙️ Advanced Options", open=False):
+                    # Column Selection
+                    available_columns = db.get_available_columns()
+                    # Group columns by category for better UX
+                    basic_cols = ['id', 'file_path', 'file_name', 'file_type', 'created_at']
+                    score_cols = ['score_general', 'score_technical', 'score_aesthetic', 
+                                 'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe']
+                    metadata_cols = ['rating', 'label', 'keywords', 'title', 'description']
+                    other_cols = [c for c in available_columns if c not in basic_cols + score_cols + metadata_cols]
+                    
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("**Basic Info**")
+                            export_cols_basic = gr.CheckboxGroup(
+                                choices=basic_cols,
+                                value=basic_cols,
+                                label="",
+                                show_label=False
+                            )
+                        with gr.Column(scale=1):
+                            gr.Markdown("**Scores**")
+                            export_cols_scores = gr.CheckboxGroup(
+                                choices=score_cols,
+                                value=score_cols,
+                                label="",
+                                show_label=False
+                            )
+                        with gr.Column(scale=1):
+                            gr.Markdown("**Metadata**")
+                            export_cols_metadata = gr.CheckboxGroup(
+                                choices=metadata_cols,
+                                value=metadata_cols,
+                                label="",
+                                show_label=False
+                            )
+                    # Always create other_cols component (empty if no other columns)
+                    export_cols_other = gr.CheckboxGroup(
+                        choices=other_cols if other_cols else [],
+                        value=[],
+                        label="Other Columns",
+                        visible=bool(other_cols)
+                    )
+                    
+                    # Filtering Options
+                    gr.Markdown("**Filtering (optional)**")
+                    with gr.Row():
+                        export_filter_rating = gr.CheckboxGroup(
+                            choices=["1", "2", "3", "4", "5", "Unrated"],
+                            value=[],
+                            label="Rating Filter",
+                            scale=1
+                        )
+                        export_filter_label = gr.CheckboxGroup(
+                            choices=["Red", "Yellow", "Green", "Blue", "Purple", "None"],
+                            value=[],
+                            label="Label Filter",
+                            scale=1
+                        )
+                    with gr.Row():
+                        export_filter_keyword = gr.Textbox(
+                            label="Keyword Search",
+                            placeholder="Search in keywords...",
+                            scale=2
+                        )
+                        export_filter_folder = gr.Textbox(
+                            label="Folder Path",
+                            placeholder="D:\\Photos\\...",
+                            scale=2
+                        )
+                    with gr.Row():
+                        export_filter_min_gen = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min General Score")
+                        export_filter_min_aes = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Aesthetic Score")
+                        export_filter_min_tech = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Min Technical Score")
+                    with gr.Row():
+                        export_filter_date_start = gr.Textbox(label="From Date (YYYY-MM-DD)", placeholder="2024-01-01", scale=1)
+                        export_filter_date_end = gr.Textbox(label="To Date (YYYY-MM-DD)", placeholder="2024-12-31", scale=1)
+                
+                export_status = gr.Textbox(label="Status", interactive=False, visible=False)
 
             # Pagination
             with gr.Row(elem_classes=["pagination-container"]):
@@ -2186,6 +3767,12 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                             d_score_weighted = gr.Label(label="Weighted", num_top_classes=2, scale=1)
                         d_score_models = gr.Label(label="Models", num_top_classes=5)
                     
+                    # Culling Status (from AI Culling workflow)
+                    d_culling_status = gr.HTML(
+                        value='<div style="display: none;"></div>',
+                        elem_id="culling-status-display"
+                    )
+                    
                     # Metadata Editor
                     with gr.Accordion("✏️ Edit Metadata", open=False):
                         d_title = gr.Textbox(label="Title", placeholder="Enter title...", lines=1)
@@ -2194,7 +3781,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                             label="Keywords",
                             combine_adjacent=False,
                             show_legend=False,
-                            interactive=True,
+                            interactive=False,
                             color_map=KEYWORD_COLOR_MAP
                         )
                         with gr.Row():
@@ -2213,9 +3800,32 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                     
                     # Actions
                     with gr.Group():
-                        view_full_btn = gr.Button("🔍 View Full Resolution", variant="secondary", size="sm")
-                        delete_btn = gr.Button("🗑️ Delete NEF File", variant="stop", visible=False, size="sm")
+                        # Buttons removed
+
+                        
+                        with gr.Row():
+                            fix_btn = gr.Button("🔧 Fix Data (Fast)", variant="secondary", size="sm", visible=False)
+                            rerun_score_btn = gr.Button("🔄 Re-Run Scoring (Slow)", variant="secondary", size="sm", visible=False)
+                            rerun_tags_btn = gr.Button("🏷️ Re-Run Keywords", variant="secondary", size="sm", visible=False)
+                            delete_btn = gr.Button("🗑️ Delete NEF File", variant="stop", visible=False, size="sm")
+                        
+                        fix_status = gr.Textbox(label="Status", visible=False)
                         delete_status = gr.Textbox(label="Status", interactive=False, visible=False)
+                    
+
+                    
+                    # Selected file path for RAW preview (hidden, used by JavaScript)
+                    gallery_selected_path = gr.Textbox(visible=False, elem_id="gallery-selected-path")
+                    
+                    # In-Browser RAW Preview (LibRaw-WASM) - DISABLED: Feature not working
+                    # with gr.Accordion("🎞️ In-Browser RAW Preview", open=False):
+                    #     gr.Markdown("""
+                    #     **Client-side NEF preview** - Extracts embedded JPEG directly in your browser.
+                    #     No server processing required. Works for Nikon NEF files.
+                    #     """)
+                    #     raw_preview_btn = gr.Button("🖼️ Extract Preview", variant="secondary", size="sm", elem_id="raw-preview-btn")
+                    #     raw_preview_status = gr.HTML(value='<div id="raw-preview-status" style="color: #8b949e; font-size: 0.9em;">Click button to extract preview</div>')
+                    #     raw_preview_canvas = gr.HTML(value='<canvas id="raw-preview-canvas" style="max-width: 100%; border-radius: 8px; display: none;"></canvas>')
                     
                     # Raw Data (hidden by default)
                     with gr.Accordion("📋 Raw JSON Data", open=False):
@@ -2228,7 +3838,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
             # Events
             
             # Helper to link outputs
-            gallery_outputs = [gallery, page_label, current_paths, image_details] # Note: image_details is still needed for pagination update if we want to clear it, but typically pagination just updates gallery. We might wanna clear details on page change? Let's leave as is for now, it's fine.
+            gallery_outputs = [gallery, page_label, current_paths, image_details] # Note: image_details is still needed for pagination update if we want to clear it, but typically pagination just updates gallery. We might wanna clear details on page? Let's leave as is for now, it's fine.
             # Actually, `get_gallery_data` returns just gallery list + label.
             # `update_gallery` wrapper returns images, label, paths, {}.
             # The last {} was `image_details`. We need to match the new outputs if we want to clear them.
@@ -2252,7 +3862,9 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
             
             # Helper list for all detail outputs that need clearing
             # Must match return order of update_gallery (excluding first 3: images, label, paths)
-            detail_outputs = [d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label]
+            # Helper list for all detail outputs that need clearing
+            # Must match return order of update_gallery (excluding first 3: images, label, paths)
+            detail_outputs = [d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label, d_culling_status, fix_btn, fix_status, rerun_score_btn, rerun_tags_btn]
             
             # Combined outputs for gallery update: [current_page, gallery, page_label, current_paths, *detail_outputs]
             
@@ -2305,12 +3917,7 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
             f_min_gen.release(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
             f_min_aes.release(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
             
-            # Full Res View Event
-            view_full_btn.click(
-                fn=open_modal_view,
-                inputs=[image_details],
-                outputs=[full_res_modal, modal_image]
-            )
+
             f_min_tech.release(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
             f_date_start.submit(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
             f_date_end.submit(first_page, filter_inputs, [current_page, gallery, page_label, current_paths, *detail_outputs])
@@ -2321,7 +3928,8 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
             # Update: added delete_btn to outputs
             # Wrapper for display details to also return form values
             def display_details_wrapper(evt: gr.SelectData, raw_paths):
-                 res, gen, weight, models, raw, del_upd = display_details(evt, raw_paths)
+                 # display_details now returns fix_btn updated too (used for all 3 buttons for now)
+                 res, gen, weight, models, raw, del_upd, fix_upd, rerun_score_upd, rerun_tags_upd = display_details(evt, raw_paths)
                  
                  # Extract form data from 'raw' (details dict)
                  t = raw.get('title', '')
@@ -2332,16 +3940,71 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                  l = raw.get('label', 'None')
                  if not l: l = "None"
                  
-                 # Reset delete status
+                 # Reset delete/fix status
                  del_status_upd = gr.update(value="", visible=False)
+                 fix_status_upd = gr.update(value="", visible=False)
                  
-                 return res, gen, weight, models, raw, del_upd, t, d, k, r, l, del_status_upd
+                 # Extract file path for RAW preview
+                 selected_file_path = ""
+                 if evt is not None and raw_paths and evt.index < len(raw_paths):
+                     selected_file_path = raw_paths[evt.index]
+                 
+                 # Get culling status for this image
+                 culling_html = '<div style="display: none;"></div>'  # Hidden by default
+                 if selected_file_path:
+                     culling_status = db.get_image_culling_status(selected_file_path)
+                     if culling_status and culling_status.get('decision'):
+                         decision = culling_status['decision']
+                         if decision == 'pick':
+                             culling_html = '''
+                             <div style="background: linear-gradient(135deg, #10b981, #059669); color: white; 
+                                         padding: 8px 16px; border-radius: 8px; text-align: center; 
+                                         font-weight: 600; font-size: 14px; margin: 8px 0;">
+                                 ✅ Accepted
+                             </div>'''
+                         elif decision == 'reject':
+                             culling_html = '''
+                             <div style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white; 
+                                         padding: 8px 16px; border-radius: 8px; text-align: center; 
+                                         font-weight: 600; font-size: 14px; margin: 8px 0;">
+                                 ❌ Rejected
+                             </div>'''
+                         elif decision == 'maybe':
+                             culling_html = '''
+                             <div style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; 
+                                         padding: 8px 16px; border-radius: 8px; text-align: center; 
+                                         font-weight: 600; font-size: 14px; margin: 8px 0;">
+                                 ❓ Maybe
+                             </div>'''
+                 
+                 return res, gen, weight, models, raw, del_upd, t, d, k, r, l, del_status_upd, selected_file_path, culling_html, fix_upd, fix_status_upd, rerun_score_upd, rerun_tags_upd
             
             gallery.select(
                 fn=display_details_wrapper, 
                 inputs=[current_paths], 
-                outputs=[gr.Textbox(visible=False), d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label, delete_status]
+                outputs=[gr.Textbox(visible=False), d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label, delete_status, gallery_selected_path, d_culling_status, fix_btn, fix_status, rerun_score_btn, rerun_tags_btn]
             )
+            
+            # Fix Action
+            fix_btn.click(
+                fn=fix_image_wrapper,
+                inputs=[image_details],
+                outputs=[fix_btn, fix_status]
+            ).success(fn=display_details_wrapper, inputs=[gr.State(None), current_paths], outputs=None)
+            
+            # Re-Run Scoring Action
+            rerun_score_btn.click(
+                fn=rerun_scoring_wrapper,
+                inputs=[image_details],
+                outputs=[rerun_score_btn, fix_status]
+            ).success(fn=display_details_wrapper, inputs=[gr.State(None), current_paths], outputs=None)
+            
+            # Re-Run Tags Action
+            rerun_tags_btn.click(
+                fn=rerun_keywords_wrapper,
+                inputs=[image_details],
+                outputs=[rerun_tags_btn, fix_status]
+            ).success(fn=display_details_wrapper, inputs=[gr.State(None), current_paths], outputs=None)
             
             # Save Action
             save_btn.click(
@@ -2355,6 +4018,148 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                 fn=delete_nef,
                 inputs=[image_details],
                 outputs=[delete_status, delete_btn]
+            )
+            
+            # Export template functions
+            def load_export_templates():
+                """Returns list of template names for dropdown."""
+                templates = config.get_export_templates()
+                return list(templates.keys()) if templates else []
+            
+            def save_export_template_handler(template_name, export_format, cols_basic, cols_scores, 
+                                            cols_metadata, cols_other, filter_rating, filter_label,
+                                            filter_keyword, filter_folder, filter_min_gen, filter_min_aes,
+                                            filter_min_tech, filter_date_start, filter_date_end):
+                """Save current export settings as a template."""
+                if not template_name or not template_name.strip():
+                    return gr.update(value="❌ Template name is required", visible=True), gr.update()
+                
+                template_config = {
+                    'format': export_format,
+                    'columns_basic': cols_basic or [],
+                    'columns_scores': cols_scores or [],
+                    'columns_metadata': cols_metadata or [],
+                    'columns_other': cols_other or [],
+                    'filter_rating': filter_rating or [],
+                    'filter_label': filter_label or [],
+                    'filter_keyword': filter_keyword or '',
+                    'filter_folder': filter_folder or '',
+                    'filter_min_gen': float(filter_min_gen) if filter_min_gen else 0.0,
+                    'filter_min_aes': float(filter_min_aes) if filter_min_aes else 0.0,
+                    'filter_min_tech': float(filter_min_tech) if filter_min_tech else 0.0,
+                    'filter_date_start': filter_date_start or '',
+                    'filter_date_end': filter_date_end or ''
+                }
+                
+                success = config.save_export_template(template_name.strip(), template_config)
+                if success:
+                    return gr.update(value=f"✅ Template '{template_name}' saved successfully", visible=True), gr.update(choices=load_export_templates())
+                else:
+                    return gr.update(value="❌ Failed to save template", visible=True), gr.update()
+            
+            def load_export_template_handler(template_name):
+                """Load a template and return all export settings."""
+                if not template_name:
+                    return (
+                        export_format, export_cols_basic, export_cols_scores, export_cols_metadata,
+                        export_cols_other, export_filter_rating, export_filter_label,
+                        export_filter_keyword, export_filter_folder, export_filter_min_gen,
+                        export_filter_min_aes, export_filter_min_tech, export_filter_date_start,
+                        export_filter_date_end, export_template_state, export_template_delete_btn,
+                        gr.update(value="", visible=False)
+                    )
+                
+                template = config.get_export_template(template_name)
+                if not template:
+                    return (
+                        export_format, export_cols_basic, export_cols_scores, export_cols_metadata,
+                        export_cols_other, export_filter_rating, export_filter_label,
+                        export_filter_keyword, export_filter_folder, export_filter_min_gen,
+                        export_filter_min_aes, export_filter_min_tech, export_filter_date_start,
+                        export_filter_date_end, export_template_state, export_template_delete_btn,
+                        gr.update(value=f"❌ Template '{template_name}' not found", visible=True)
+                    )
+                
+                # Return template values
+                return (
+                    template.get('format', 'csv'),
+                    template.get('columns_basic', []),
+                    template.get('columns_scores', []),
+                    template.get('columns_metadata', []),
+                    template.get('columns_other', []),
+                    template.get('filter_rating', []),
+                    template.get('filter_label', []),
+                    template.get('filter_keyword', ''),
+                    template.get('filter_folder', ''),
+                    template.get('filter_min_gen', 0.0),
+                    template.get('filter_min_aes', 0.0),
+                    template.get('filter_min_tech', 0.0),
+                    template.get('filter_date_start', ''),
+                    template.get('filter_date_end', ''),
+                    template_name,  # Update state
+                    gr.update(visible=True),  # Show delete button
+                    gr.update(value=f"✅ Template '{template_name}' loaded", visible=True)
+                )
+            
+            def delete_export_template_handler(template_name):
+                """Delete an export template."""
+                if not template_name:
+                    return gr.update(choices=load_export_templates()), gr.update(value="❌ No template selected", visible=True), gr.update(visible=False), None
+                
+                success = config.delete_export_template(template_name)
+                if success:
+                    new_choices = load_export_templates()
+                    return (
+                        gr.update(choices=new_choices, value=None),
+                        gr.update(value=f"✅ Template '{template_name}' deleted", visible=True),
+                        gr.update(visible=False),
+                        None  # Clear state
+                    )
+                else:
+                    return gr.update(), gr.update(value="❌ Failed to delete template", visible=True), gr.update(), export_template_state
+            
+            # Template management events
+            export_template_save_btn.click(
+                fn=save_export_template_handler,
+                inputs=[
+                    export_template_name, export_format, export_cols_basic, export_cols_scores,
+                    export_cols_metadata, export_cols_other, export_filter_rating, export_filter_label,
+                    export_filter_keyword, export_filter_folder, export_filter_min_gen,
+                    export_filter_min_aes, export_filter_min_tech, export_filter_date_start, export_filter_date_end
+                ],
+                outputs=[export_template_status, export_template_dropdown]
+            )
+            
+            export_template_load_btn.click(
+                fn=load_export_template_handler,
+                inputs=[export_template_dropdown],
+                outputs=[
+                    export_format, export_cols_basic, export_cols_scores, export_cols_metadata,
+                    export_cols_other, export_filter_rating, export_filter_label,
+                    export_filter_keyword, export_filter_folder, export_filter_min_gen,
+                    export_filter_min_aes, export_filter_min_tech, export_filter_date_start,
+                    export_filter_date_end, export_template_state, export_template_delete_btn,
+                    export_template_status
+                ]
+            )
+            
+            export_template_delete_btn.click(
+                fn=delete_export_template_handler,
+                inputs=[export_template_state],
+                outputs=[export_template_dropdown, export_template_status, export_template_delete_btn, export_template_state]
+            )
+            
+            # Export Action
+            export_btn.click(
+                fn=export_database,
+                inputs=[
+                    export_format,
+                    export_cols_basic, export_cols_scores, export_cols_metadata, export_cols_other,
+                    export_filter_rating, export_filter_label, export_filter_keyword, export_filter_folder,
+                    export_filter_min_gen, export_filter_min_aes, export_filter_min_tech,
+                    export_filter_date_start, export_filter_date_end
+                ],
+                outputs=[export_status]
             )
 
 
@@ -2414,10 +4219,15 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                         placeholder="D:\\Photos\\... (Leave empty for all)",
                         value=app_config.get('stacks_input_path', '')
                     )
-                    c_threshold = gr.Slider(0.01, 1.0, value=0.15, label="Similarity Threshold")
-                    c_gap = gr.Number(value=120, label="Time Split Gap (seconds)")
+                    # Hidden state components - values from Configurations tab
+                    c_threshold = gr.State(value=app_config.get('clustering', {}).get('default_threshold', 0.15))
+                    c_gap = gr.State(value=app_config.get('clustering', {}).get('default_time_gap', 120))
                     with gr.Row():
-                        c_force_rescan = gr.Checkbox(label="Force Rescan", value=False, scale=1)
+                        c_force_rescan = gr.Checkbox(
+                            label="Force Rescan",
+                            value=app_config.get('clustering', {}).get('force_rescan_default', False),
+                            scale=1
+                        )
                         c_run_btn = gr.Button("▶ Group", variant="primary", scale=1)
                         c_refresh_btn = gr.Button("🔄", variant="secondary", scale=0, min_width=50)
                 
@@ -2460,6 +4270,41 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                 show_share_button=False
             )
             
+            # State for tracking content and selection
+            stack_content_paths = gr.State([])  # Paths for selection tracking
+            current_stack_id = gr.State(None)   # Currently selected stack
+            
+            # Stack Management Buttons
+            with gr.Row():
+                c_create_stack_btn = gr.Button("📚 Group Selected", variant="primary", size="sm", scale=1, elem_id="stack-group-btn")
+                c_open_gallery_btn = gr.Button("📖 Open in Gallery", variant="secondary", size="sm", scale=1, elem_id="stack-open-gallery-btn")
+                c_remove_btn = gr.Button("➖ Remove from Stack", variant="secondary", size="sm", scale=1, elem_id="stack-remove-btn")
+                c_set_cover_btn = gr.Button("🖼️ Set as Cover", variant="secondary", size="sm", scale=1, elem_id="stack-cover-btn")
+                c_dissolve_btn = gr.Button("🔓 Ungroup All", variant="stop", size="sm", scale=1, elem_id="stack-ungroup-btn")
+            
+            c_stack_status = gr.Textbox(label="Status", interactive=False, visible=True, lines=1)
+            
+            # In-Browser RAW Preview for Stacks - DISABLED: Feature not working
+            # with gr.Accordion("🎞️ In-Browser RAW Preview", open=False):
+            #     gr.Markdown("**Client-side NEF preview** - Select an image, then click Extract to view.")
+            #     with gr.Row():
+            #         stacks_selected_path = gr.Textbox(label="Selected Image", interactive=False, scale=3)
+            #         stacks_preview_btn = gr.Button("🖼️ Extract Preview", variant="secondary", size="sm", elem_id="stacks-raw-preview-btn", scale=1)
+            #     stacks_preview_status = gr.HTML(value='<div id="stacks-raw-preview-status" style="color: #8b949e; font-size: 0.9em;">Select an image from Stack Contents above</div>')
+            #     stacks_preview_canvas = gr.HTML(value='<canvas id="stacks-raw-preview-canvas" style="max-width: 100%; border-radius: 8px; display: none;"></canvas>')
+            #
+            # # Handle content gallery selection to update selected path for RAW preview
+            # def update_stacks_selected_path(evt: gr.SelectData, paths):
+            #     if evt is None or not paths or evt.index >= len(paths):
+            #         return ""
+            #     return paths[evt.index]
+            #
+            # c_all_gallery.select(
+            #     fn=update_stacks_selected_path,
+            #     inputs=[stack_content_paths],
+            #     outputs=[stacks_selected_path]
+            # )
+            
             # Events
             c_run_btn.click(
                 fn=run_clustering_wrapper,
@@ -2489,10 +4334,593 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                 outputs=[stack_gallery, stack_ids_state]
             )
             
+            # State for tracking selected indices in content gallery (must be defined before event wiring)
+            selected_indices_state = gr.State([])
+            
+            # Content gallery selection handler for tracking selected indices (toggle behavior)
+            def get_selected_indices(evt: gr.SelectData, current_indices):
+                """Accumulates selections via toggle. Click to add/remove from selection."""
+                if evt is None:
+                    return current_indices or []
+                idx = evt.index
+                current = current_indices or []
+                # Toggle behavior: click to add, click again to remove
+                if idx in current:
+                    return [i for i in current if i != idx]  # Deselect
+                return current + [idx]  # Add to selection
+            
+            # Stack selection - returns gallery, paths, stack_id, and clears selection
             stack_gallery.select(
                 fn=select_stack,
                 inputs=[stack_ids_state, c_sort, c_order],
-                outputs=[c_all_gallery]
+                outputs=[c_all_gallery, stack_content_paths, current_stack_id]
+            ).then(
+                fn=lambda: [],  # Clear selection when switching stacks
+                inputs=[],
+                outputs=[selected_indices_state]
+            )
+            
+            c_all_gallery.select(
+                fn=get_selected_indices,
+                inputs=[selected_indices_state],
+                outputs=[selected_indices_state]
+            )
+            
+            # Manual Stack Creation from selection
+            c_create_stack_btn.click(
+                fn=create_stack_from_selection,
+                inputs=[selected_indices_state, stack_content_paths, c_input_dir, c_sort, c_order],
+                outputs=[stack_gallery, stack_ids_state, c_all_gallery, stack_content_paths, c_stack_status]
+            )
+            
+            # Remove from Stack
+            c_remove_btn.click(
+                fn=remove_from_stack_handler,
+                inputs=[selected_indices_state, stack_content_paths, current_stack_id, c_input_dir, c_sort, c_order],
+                outputs=[stack_gallery, stack_ids_state, c_all_gallery, stack_content_paths, current_stack_id, c_stack_status]
+            )
+            
+            # Dissolve Stack (Ungroup All)
+            c_dissolve_btn.click(
+                fn=dissolve_stack_handler,
+                inputs=[current_stack_id, c_input_dir, c_sort, c_order],
+                outputs=[stack_gallery, stack_ids_state, c_all_gallery, stack_content_paths, current_stack_id, c_stack_status]
+            )
+            
+            # Set Cover Image
+            c_set_cover_btn.click(
+                fn=set_cover_image_handler,
+                inputs=[selected_indices_state, stack_content_paths, current_stack_id, c_input_dir, c_sort, c_order],
+                outputs=[stack_gallery, stack_ids_state, c_stack_status]
+            )
+            
+            # Open Stack in Gallery
+            c_open_gallery_btn.click(
+                fn=open_stack_in_gallery,
+                inputs=[current_stack_id, c_sort, c_order],
+                outputs=[main_tabs, current_folder_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths, *detail_outputs]
+            )
+
+        # TAB: CULLING (AI-Automated)
+        with gr.TabItem("Culling", id="culling"):
+            gr.Markdown("### ✂️ AI Culling - Pick/Reject Best Shots")
+            gr.Markdown("*Import a folder, let AI group similar shots, and mark top 38% as Picked (rest as Rejected). Export Pick/Reject flags to XMP for Lightroom.*")
+            
+            # Row 1: Controls
+            with gr.Row():
+                with gr.Column(scale=1, min_width=350):
+                    with gr.Group():
+                        cull_input_dir = gr.Textbox(
+                            label="📁 Folder to Cull",
+                            placeholder="D:\\Photos\\...",
+                            value=app_config.get('culling_input_path', ''),
+                            info="Select folder with scored images"
+                        )
+                        
+                        # Hidden state components - values from Configurations tab
+                        cull_threshold = gr.State(value=app_config.get('culling', {}).get('default_threshold', 0.15))
+                        cull_time_gap = gr.State(value=app_config.get('culling', {}).get('default_time_gap', 120))
+                        
+                        cull_auto_export = gr.Checkbox(
+                            label="📤 Auto-export to XMP after culling",
+                            value=app_config.get('culling', {}).get('auto_export_default', False),
+                            info="Write Pick/Reject flags to XMP for Lightroom"
+                        )
+                        
+                        cull_force_rescan = gr.Checkbox(
+                            label="Rescan/Regroup (Destructive)",
+                            value=False,
+                            info="⚠️ If checked, WILL DESTROY existing stacks and re-group all images. Leave unchecked to preserve manual stacks."
+                        )
+                    
+                    cull_run_btn = gr.Button("▶️ Run AI Culling", variant="primary", size="lg")
+                
+                with gr.Column(scale=2):
+                    # Results display
+                    cull_status = gr.Textbox(
+                        label="Results",
+                        lines=6,
+                        interactive=False,
+                        placeholder="Click 'Run AI Culling' to start..."
+                    )
+            
+            # Divider
+            gr.Markdown("---")
+            
+            # Row 2: Picks Gallery
+            gr.Markdown("### ✅ AI Picks (Top 38% of Each Group)")
+            cull_picks_gallery = gr.Gallery(
+                label="Picked Images",
+                columns=6,
+                height=400,
+                object_fit="cover",
+                allow_preview=True,
+                show_share_button=False
+            )
+            
+            # State for tracking culling picks paths
+            cull_picks_paths = gr.State([])
+            
+            # In-Browser RAW Preview for Culling - DISABLED: Feature not working
+            # with gr.Accordion("🎞️ In-Browser RAW Preview", open=False):
+            #     gr.Markdown("**Client-side NEF preview** - Select a picked image, then click Extract to view.")
+            #     with gr.Row():
+            #         cull_selected_path = gr.Textbox(label="Selected Image", interactive=False, scale=3)
+            #         cull_preview_btn = gr.Button("🖼️ Extract Preview", variant="secondary", size="sm", elem_id="cull-raw-preview-btn", scale=1)
+            #     cull_preview_status = gr.HTML(value='<div id="cull-raw-preview-status" style="color: #8b949e; font-size: 0.9em;">Select an image from AI Picks above</div>')
+            #     cull_preview_canvas = gr.HTML(value='<canvas id="cull-raw-preview-canvas" style="max-width: 100%; border-radius: 8px; display: none;"></canvas>')
+            
+            # Session management (refresh groups after manual stack changes)
+            with gr.Accordion("🔄 Session Management", open=False):
+                gr.Markdown("""
+                **Resume Previous Session**: Load a previous culling session to review or continue working.
+                
+                **Refresh Groups**: If you've manually modified stacks in the Stacks tab, use this to re-import 
+                the updated stack assignments into the current culling session.
+                
+                **Re-Pick Best**: Re-run the auto-pick logic to update picks based on current scores.
+                """)
+                with gr.Row():
+                    cull_session_id = gr.State(None)
+                    cull_resume_dropdown = gr.Dropdown(
+                        label="Resume Session",
+                        choices=get_active_sessions(),
+                        value=None,
+                        interactive=True,
+                        scale=2,
+                        info="Select a previous session to resume"
+                    )
+                    cull_resume_btn = gr.Button("▶️ Resume Session", variant="primary", size="sm", scale=1)
+                with gr.Row():
+                    cull_refresh_btn = gr.Button("🔄 Refresh Groups", variant="secondary", size="sm", scale=1)
+                    cull_repick_btn = gr.Button("🎯 Re-Pick Best", variant="secondary", size="sm", scale=1)
+                cull_session_status = gr.Textbox(label="Session Status", interactive=False, lines=3)
+            
+            # Export controls (for manual export if not auto)
+            with gr.Accordion("💾 Manual XMP Export", open=False):
+                gr.Markdown("Export Pick/Reject flags to XMP sidecar files for Lightroom. Uses `xmpDM:pick` (1=Picked, -1=Rejected).")
+                with gr.Row():
+                    cull_export_btn = gr.Button("📤 Export Pick/Reject Flags to XMP", variant="secondary")
+                cull_export_status = gr.Textbox(label="Export Status", interactive=False)
+            
+            # Divider
+            gr.Markdown("---")
+            
+            # Row 3: Rejected Gallery
+            gr.Markdown("### ❌ Rejected Images (62%)")
+            cull_rejects_gallery = gr.Gallery(
+                label="Rejected Images",
+                columns=6,
+                height=300,
+                object_fit="cover",
+                allow_preview=True,
+                show_share_button=False
+            )
+            
+            # State for tracking rejects paths
+            cull_rejects_paths = gr.State([])
+            
+            # Delete rejected files
+            with gr.Accordion("🗑️ Delete Rejected Files", open=False):
+                gr.Markdown("⚠️ **WARNING**: This will permanently delete rejected image files from disk. This cannot be undone!")
+                with gr.Row():
+                    cull_delete_confirm = gr.Checkbox(
+                        label="I confirm I want to permanently delete these files",
+                        value=False
+                    )
+                    cull_delete_btn = gr.Button("🗑️ Delete All Rejected", variant="stop", size="sm")
+                cull_delete_status = gr.Textbox(label="Delete Status", interactive=False)
+            
+            # Events
+            # Handle culling picks gallery selection for RAW preview
+            def update_cull_selected_path(evt: gr.SelectData, paths):
+                if evt is None or not paths or evt.index >= len(paths):
+                    return ""
+                return paths[evt.index]
+            
+            cull_picks_gallery.select(
+                fn=update_cull_selected_path,
+                inputs=[cull_picks_paths],
+                outputs=[cull_selected_path]
+            )
+            
+            cull_run_btn.click(
+                fn=run_culling_wrapper,
+                inputs=[cull_input_dir, cull_threshold, cull_time_gap, cull_auto_export, cull_force_rescan],
+                outputs=[cull_status, cull_run_btn, cull_picks_gallery, cull_session_id, cull_picks_paths, cull_rejects_gallery, cull_rejects_paths]
+            )
+            
+            # Session resume: Load existing session
+            cull_resume_btn.click(
+                fn=resume_culling_session,
+                inputs=[cull_resume_dropdown],
+                outputs=[cull_status, cull_picks_gallery, cull_session_id, cull_picks_paths, cull_rejects_gallery, cull_rejects_paths]
+            )
+            
+            cull_export_btn.click(
+                fn=export_culling_xmp,
+                inputs=[cull_session_id],
+                outputs=[cull_export_status]
+            )
+            
+            # Delete rejected files event
+            cull_delete_btn.click(
+                fn=delete_rejected_files,
+                inputs=[cull_session_id, cull_delete_confirm],
+                outputs=[cull_delete_status, cull_rejects_gallery, cull_rejects_paths]
+            )
+            
+            # Session management: Refresh groups after manual stack changes
+            cull_refresh_btn.click(
+                fn=refresh_culling_groups,
+                inputs=[cull_session_id, cull_threshold, cull_time_gap],
+                outputs=[cull_session_status, cull_picks_gallery, cull_picks_paths]
+            )
+            
+            # Session management: Re-pick best images in groups
+            cull_repick_btn.click(
+                fn=repick_culling_best,
+                inputs=[cull_session_id],
+                outputs=[cull_session_status, cull_picks_gallery, cull_picks_paths]
+            )
+
+        # TAB: SETTINGS - HIDDEN (weights are now hard-coded and stable)
+        # Hard-coded model weights (do not modify - stable values for consistency):
+        # paq2piq: 0.25, liqe: 0.25, ava: 0.20, koniq: 0.20, spaq: 0.10, vila: 0.00
+
+        # TAB: CONFIGURATIONS
+        with gr.TabItem("Configurations", id="configurations"):
+            gr.Markdown("### ⚙️ Experimental & Advanced Configuration")
+            gr.Markdown("*Configure experimental options and advanced settings. Changes are saved to config.json.*")
+            
+            # Load current config values with defaults
+            scoring_config = app_config.get('scoring', {})
+            processing_config = app_config.get('processing', {})
+            clustering_config = app_config.get('clustering', {})
+            culling_config = app_config.get('culling', {})
+            ui_config = app_config.get('ui', {})
+            tagging_config = app_config.get('tagging', {})
+            
+            # Scoring Configuration
+            with gr.Accordion("🎯 Scoring Configuration", open=False):
+                with gr.Row():
+                    with gr.Column():
+                        cfg_force_rescore = gr.Checkbox(
+                            label="Force Re-score (Default)",
+                            value=scoring_config.get('force_rescore_default', False),
+                            info="Default value for 'Force Re-score' checkbox in Scoring tab"
+                        )
+                        cfg_default_sort_by = gr.Dropdown(
+                            choices=[
+                                ("📅 Date Added", "created_at"),
+                                ("🆔 ID", "id"),
+                                ("⭐ General Score", "score_general"),
+                                ("🔧 Technical Score", "score_technical"),
+                                ("🎨 Aesthetic Score", "score_aesthetic"),
+                                ("📊 SPAQ", "score_spaq"),
+                                ("🏆 AVA", "score_ava"),
+                                ("📈 KonIQ", "score_koniq"),
+                                ("📉 PaQ2PiQ", "score_paq2piq"),
+                                ("🎯 LIQE", "score_liqe")
+                            ],
+                            value=scoring_config.get('default_sort_by', 'score_general'),
+                            label="Default Sort Field"
+                        )
+                        cfg_default_sort_order = gr.Radio(
+                            choices=[("↓ Descending (Highest First)", "desc"), ("↑ Ascending (Lowest First)", "asc")],
+                            value=scoring_config.get('default_sort_order', 'desc'),
+                            label="Default Sort Order"
+                        )
+            
+            # Processing Configuration
+            with gr.Accordion("⚙️ Processing Configuration", open=False):
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("**Queue Sizes** (for threaded pipeline)")
+                        cfg_prep_queue_size = gr.Number(
+                            value=processing_config.get('prep_queue_size', 50),
+                            label="Prep Queue Max Size",
+                            info="Maximum items in preparation queue (default: 50)"
+                        )
+                        cfg_scoring_queue_size = gr.Number(
+                            value=processing_config.get('scoring_queue_size', 10),
+                            label="Scoring Queue Max Size",
+                            info="Maximum items in scoring queue - keep small to avoid VRAM overload (default: 10)"
+                        )
+                        cfg_result_queue_size = gr.Number(
+                            value=processing_config.get('result_queue_size', 50),
+                            label="Result Queue Max Size",
+                            info="Maximum items in result queue (default: 50)"
+                        )
+                    with gr.Column():
+                        gr.Markdown("**Batch Processing**")
+                        cfg_clustering_batch_size = gr.Number(
+                            value=processing_config.get('clustering_batch_size', 32),
+                            label="Clustering Batch Size",
+                            info="Number of images processed per batch for clustering (default: 32)"
+                        )
+                        cfg_enable_gpu = gr.Checkbox(
+                            label="Enable GPU for Scoring",
+                            value=processing_config.get('enable_gpu', True),
+                            info="Use GPU acceleration for model inference (if available)"
+                        )
+            
+            # Clustering/Stacks Configuration
+            with gr.Accordion("📚 Clustering/Stacks Configuration", open=False):
+                with gr.Row():
+                    with gr.Column():
+                        cfg_clustering_threshold = gr.Slider(
+                            0.01, 1.0,
+                            value=clustering_config.get('default_threshold', 0.15),
+                            step=0.01,
+                            label="Default Similarity Threshold",
+                            info="Default threshold for grouping similar images (0.01-1.0)"
+                        )
+                        cfg_clustering_time_gap = gr.Number(
+                            value=clustering_config.get('default_time_gap', 120),
+                            label="Default Time Gap (seconds)",
+                            info="Default time gap for splitting groups (default: 120)"
+                        )
+                        cfg_clustering_force_rescan = gr.Checkbox(
+                            label="Force Rescan (Default)",
+                            value=clustering_config.get('force_rescan_default', False),
+                            info="Default value for 'Force Rescan' checkbox in Stacks tab"
+                        )
+            
+            # Culling Configuration
+            with gr.Accordion("✂️ Culling Configuration", open=False):
+                with gr.Row():
+                    with gr.Column():
+                        cfg_culling_threshold = gr.Slider(
+                            0.05, 0.5,
+                            value=culling_config.get('default_threshold', 0.15),
+                            step=0.05,
+                            label="Default Similarity Threshold",
+                            info="Default threshold for culling groups (0.05-0.5)"
+                        )
+                        cfg_culling_time_gap = gr.Number(
+                            value=culling_config.get('default_time_gap', 120),
+                            label="Default Time Gap (seconds)",
+                            info="Default time gap for splitting culling groups (default: 120)"
+                        )
+                        cfg_culling_auto_export = gr.Checkbox(
+                            label="Auto Export (Default)",
+                            value=culling_config.get('auto_export_default', False),
+                            info="Default value for 'Auto-export to XMP' checkbox in Culling tab"
+                        )
+                    with gr.Column():
+                        gr.Markdown("**Rating Thresholds**")
+                        cfg_culling_pick_rating = gr.Slider(
+                            1, 5,
+                            value=culling_config.get('pick_rating_threshold', 4),
+                            step=1,
+                            label="Pick Rating Threshold (stars)",
+                            info="Minimum rating for 'picks' (default: 4)"
+                        )
+                        cfg_culling_reject_rating = gr.Slider(
+                            0, 2,
+                            value=culling_config.get('reject_rating_threshold', 1),
+                            step=1,
+                            label="Reject Rating Threshold (stars)",
+                            info="Maximum rating for 'rejects' (default: 1)"
+                        )
+            
+            # UI Configuration
+            with gr.Accordion("🖼️ UI Configuration", open=False):
+                with gr.Row():
+                    with gr.Column():
+                        cfg_gallery_page_size = gr.Number(
+                            value=ui_config.get('gallery_page_size', 50),
+                            label="Gallery Page Size",
+                            info="Number of images per page in gallery (default: 50)"
+                        )
+                        cfg_default_export_format = gr.Dropdown(
+                            choices=[
+                                ("📄 JSON (Full Data)", "json"),
+                                ("📊 CSV (Spreadsheet)", "csv"),
+                                ("📗 Excel (.xlsx)", "xlsx")
+                            ],
+                            value=ui_config.get('default_export_format', 'json'),
+                            label="Default Export Format"
+                        )
+                    with gr.Column():
+                        gr.Markdown("**Default Filter Minimum Scores**")
+                        cfg_default_min_general = gr.Slider(
+                            0.0, 1.0,
+                            value=ui_config.get('default_min_general', 0.0),
+                            step=0.05,
+                            label="Min General Score",
+                            info="Default minimum general score filter"
+                        )
+                        cfg_default_min_aesthetic = gr.Slider(
+                            0.0, 1.0,
+                            value=ui_config.get('default_min_aesthetic', 0.0),
+                            step=0.05,
+                            label="Min Aesthetic Score",
+                            info="Default minimum aesthetic score filter"
+                        )
+                        cfg_default_min_technical = gr.Slider(
+                            0.0, 1.0,
+                            value=ui_config.get('default_min_technical', 0.0),
+                            step=0.05,
+                            label="Min Technical Score",
+                            info="Default minimum technical score filter"
+                        )
+            
+            # Tagging Configuration
+            with gr.Accordion("🏷️ Tagging Configuration", open=False):
+                with gr.Row():
+                    with gr.Column():
+                        cfg_tagging_overwrite = gr.Checkbox(
+                            label="Overwrite Existing Tags (Default)",
+                            value=tagging_config.get('overwrite_default', False),
+                            info="Default value for 'Overwrite' checkbox in Tagging tab"
+                        )
+                        cfg_tagging_captions = gr.Checkbox(
+                            label="Generate Captions (Default)",
+                            value=tagging_config.get('captions_default', False),
+                            info="Default value for 'Captions' checkbox in Tagging tab"
+                        )
+                        cfg_tagging_max_tokens = gr.Number(
+                            value=tagging_config.get('max_new_tokens', 50),
+                            label="Max New Tokens (BLIP)",
+                            info="Maximum tokens for BLIP caption generation (default: 50)"
+                        )
+                    with gr.Column():
+                        cfg_tagging_clip_model = gr.Dropdown(
+                            choices=[
+                                ("CLIP Base (ViT-B/32)", "openai/clip-vit-base-patch32"),
+                                ("CLIP Large (ViT-L/14)", "openai/clip-vit-large-patch14")
+                            ],
+                            value=tagging_config.get('clip_model', 'openai/clip-vit-base-patch32'),
+                            label="CLIP Model Selection",
+                            info="CLIP model for keyword extraction"
+                        )
+            
+            # Save and Reset buttons
+            with gr.Row():
+                cfg_save_btn = gr.Button("💾 Save All Configuration", variant="primary", size="lg")
+                cfg_reset_btn = gr.Button("🔄 Reset to Defaults", variant="secondary", size="lg")
+            
+            cfg_status = gr.Textbox(label="Status", interactive=False, visible=False)
+            
+            # Configuration save handler
+            def save_all_config(
+                force_rescore, sort_by, sort_order,
+                prep_queue, scoring_queue, result_queue, clustering_batch, enable_gpu,
+                clust_threshold, clust_gap, clust_force,
+                cull_threshold, cull_gap, cull_auto, cull_pick, cull_reject,
+                page_size, export_format, min_gen, min_aes, min_tech,
+                tag_overwrite, tag_captions, tag_tokens, tag_clip_model
+            ):
+                try:
+                    # Save each section
+                    config.save_config_value('scoring', {
+                        'force_rescore_default': force_rescore,
+                        'default_sort_by': sort_by,
+                        'default_sort_order': sort_order
+                    })
+                    config.save_config_value('processing', {
+                        'prep_queue_size': int(prep_queue) if prep_queue else 50,
+                        'scoring_queue_size': int(scoring_queue) if scoring_queue else 10,
+                        'result_queue_size': int(result_queue) if result_queue else 50,
+                        'clustering_batch_size': int(clustering_batch) if clustering_batch else 32,
+                        'enable_gpu': enable_gpu
+                    })
+                    config.save_config_value('clustering', {
+                        'default_threshold': float(clust_threshold) if clust_threshold else 0.15,
+                        'default_time_gap': int(clust_gap) if clust_gap else 120,
+                        'force_rescan_default': clust_force
+                    })
+                    config.save_config_value('culling', {
+                        'default_threshold': float(cull_threshold) if cull_threshold else 0.15,
+                        'default_time_gap': int(cull_gap) if cull_gap else 120,
+                        'auto_export_default': cull_auto,
+                        'pick_rating_threshold': int(cull_pick) if cull_pick else 4,
+                        'reject_rating_threshold': int(cull_reject) if cull_reject else 1
+                    })
+                    config.save_config_value('ui', {
+                        'gallery_page_size': int(page_size) if page_size else 50,
+                        'default_export_format': export_format,
+                        'default_min_general': float(min_gen) if min_gen else 0.0,
+                        'default_min_aesthetic': float(min_aes) if min_aes else 0.0,
+                        'default_min_technical': float(min_tech) if min_tech else 0.0
+                    })
+                    config.save_config_value('tagging', {
+                        'overwrite_default': tag_overwrite,
+                        'captions_default': tag_captions,
+                        'max_new_tokens': int(tag_tokens) if tag_tokens else 50,
+                        'clip_model': tag_clip_model
+                    })
+                    return gr.update(value="✅ Configuration saved successfully! Restart the application for some changes to take effect.", visible=True)
+                except Exception as e:
+                    return gr.update(value=f"❌ Error saving configuration: {str(e)}", visible=True)
+            
+            # Reset to defaults handler
+            def reset_config_defaults():
+                defaults = {
+                    'force_rescore': False,
+                    'sort_by': 'score_general',
+                    'sort_order': 'desc',
+                    'prep_queue': 50,
+                    'scoring_queue': 10,
+                    'result_queue': 50,
+                    'clustering_batch': 32,
+                    'enable_gpu': True,
+                    'clust_threshold': 0.15,
+                    'clust_gap': 120,
+                    'clust_force': False,
+                    'cull_threshold': 0.15,
+                    'cull_gap': 120,
+                    'cull_auto': False,
+                    'cull_pick': 4,
+                    'cull_reject': 1,
+                    'page_size': 50,
+                    'export_format': 'json',
+                    'min_gen': 0.0,
+                    'min_aes': 0.0,
+                    'min_tech': 0.0,
+                    'tag_overwrite': False,
+                    'tag_captions': False,
+                    'tag_tokens': 50,
+                    'tag_clip_model': 'openai/clip-vit-base-patch32'
+                }
+                return (
+                    defaults['force_rescore'], defaults['sort_by'], defaults['sort_order'],
+                    defaults['prep_queue'], defaults['scoring_queue'], defaults['result_queue'],
+                    defaults['clustering_batch'], defaults['enable_gpu'],
+                    defaults['clust_threshold'], defaults['clust_gap'], defaults['clust_force'],
+                    defaults['cull_threshold'], defaults['cull_gap'], defaults['cull_auto'],
+                    defaults['cull_pick'], defaults['cull_reject'],
+                    defaults['page_size'], defaults['export_format'],
+                    defaults['min_gen'], defaults['min_aes'], defaults['min_tech'],
+                    defaults['tag_overwrite'], defaults['tag_captions'],
+                    defaults['tag_tokens'], defaults['tag_clip_model']
+                )
+            
+            # Wire up events
+            cfg_inputs = [
+                cfg_force_rescore, cfg_default_sort_by, cfg_default_sort_order,
+                cfg_prep_queue_size, cfg_scoring_queue_size, cfg_result_queue_size,
+                cfg_clustering_batch_size, cfg_enable_gpu,
+                cfg_clustering_threshold, cfg_clustering_time_gap, cfg_clustering_force_rescan,
+                cfg_culling_threshold, cfg_culling_time_gap, cfg_culling_auto_export,
+                cfg_culling_pick_rating, cfg_culling_reject_rating,
+                cfg_gallery_page_size, cfg_default_export_format,
+                cfg_default_min_general, cfg_default_min_aesthetic, cfg_default_min_technical,
+                cfg_tagging_overwrite, cfg_tagging_captions, cfg_tagging_max_tokens, cfg_tagging_clip_model
+            ]
+            
+            cfg_save_btn.click(
+                fn=save_all_config,
+                inputs=cfg_inputs,
+                outputs=[cfg_status]
+            )
+            
+            cfg_reset_btn.click(
+                fn=reset_config_defaults,
+                inputs=[],
+                outputs=cfg_inputs
             )
 
     # Folder Tree Events (Moved here to ensure all referenced components like c_input_dir are defined)
@@ -2533,6 +4961,24 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
         inputs=[],
         outputs=[t_tree_view]
     )
+    
+            # Load active culling sessions for resume dropdown
+    demo.load(
+        fn=get_active_sessions,
+        inputs=[],
+        outputs=[cull_resume_dropdown]
+    )
+    
+    # Load export templates on page load - DISABLED: Feature hidden from UI
+    # def load_export_templates_for_dropdown():
+    #     templates = config.get_export_templates()
+    #     return list(templates.keys()) if templates else []
+    # 
+    # demo.load(
+    #     fn=load_export_templates_for_dropdown,
+    #     inputs=[],
+    #     outputs=[export_template_dropdown]
+    # )
 
     # Monitor Loop
     status_timer.tick(
@@ -2553,5 +4999,69 @@ if __name__ == "__main__":
         mcp_server.start_mcp_server_background()
     elif MCP_ENABLED and not MCP_AVAILABLE:
         print("Warning: MCP server requested but 'mcp' package not installed. Run: pip install mcp")
+    
+    # Add server-side RAW preview endpoint for optimized in-browser preview
+    @demo.app.get("/api/raw-preview")
+    async def raw_preview_endpoint(path: str):
+        """
+        Server-side endpoint to extract embedded JPEG preview from RAW files.
+        Returns JPEG blob directly (~2-5MB vs 20-60MB NEF), much faster than client-side extraction.
+        
+        Args:
+            path: File path (URL encoded, Windows or WSL format)
+        
+        Returns:
+            JPEG image bytes with appropriate content-type header
+        """
+        import urllib.parse
+        from fastapi.responses import Response
+        from fastapi import HTTPException
+        
+        try:
+            # Decode URL-encoded path
+            file_path = urllib.parse.unquote(path)
+            
+            # Convert WSL path to Windows if needed (for file access)
+            if IS_WINDOWS and file_path.startswith("/mnt/"):
+                file_path = utils.convert_path_to_local(file_path)
+            elif not IS_WINDOWS and ":" in file_path and file_path[1] == ":":
+                # Windows path on Linux/WSL - convert to WSL format
+                file_path = utils.convert_path_to_wsl(file_path)
+            
+            # Validate file exists
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+            
+            # Check if RAW file
+            ext = Path(file_path).suffix.lower()
+            if ext not in ['.nef', '.cr2', '.dng', '.arw', '.orf', '.nrw', '.cr3', '.rw2']:
+                raise HTTPException(status_code=400, detail=f"Not a supported RAW format: {ext}")
+            
+            # Extract embedded JPEG using optimized method
+            img = thumbnails.extract_embedded_jpeg(file_path, min_size=1000)
+            
+            if img is None:
+                raise HTTPException(status_code=500, detail="Failed to extract embedded JPEG preview")
+            
+            # Convert PIL Image to JPEG bytes
+            import io
+            jpeg_bytes = io.BytesIO()
+            img.save(jpeg_bytes, format='JPEG', quality=90)
+            jpeg_bytes.seek(0)
+            
+            # Return JPEG response
+            return Response(
+                content=jpeg_bytes.read(),
+                media_type="image/jpeg",
+                headers={
+                    "Content-Disposition": f"inline; filename=preview.jpg",
+                    "Cache-Control": "public, max-age=3600"  # Cache for 1 hour
+                }
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error extracting preview: {str(e)}")
     
     demo.queue().launch(inbrowser=False, allowed_paths=allowed_paths)

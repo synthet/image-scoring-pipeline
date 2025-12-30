@@ -87,7 +87,12 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
     conn.close()
     return count
 
-def get_images_paginated(page=1, page_size=50, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None):
+def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None):
+    # Load page_size from config if not provided
+    if page_size is None:
+        from modules import config
+        ui_config = config.get_config_section('ui')
+        page_size = ui_config.get('gallery_page_size', 50)
     conn = get_db()
     c = conn.cursor()
     offset = (page - 1) * page_size
@@ -345,12 +350,43 @@ def init_db():
         created_at TIMESTAMP
     )''')
 
-    # Cluster Progress table
-
     c.execute('''CREATE TABLE IF NOT EXISTS cluster_progress (
         folder_path TEXT PRIMARY KEY,
         last_run TIMESTAMP
     )''')
+
+    # Culling Sessions table - tracks culling workflow runs
+    c.execute('''CREATE TABLE IF NOT EXISTS culling_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        folder_path TEXT,
+        mode TEXT,  -- 'automated' or 'assisted'
+        status TEXT DEFAULT 'active',  -- 'active', 'completed', 'exported'
+        total_images INTEGER DEFAULT 0,
+        total_groups INTEGER DEFAULT 0,
+        reviewed_groups INTEGER DEFAULT 0,
+        picked_count INTEGER DEFAULT 0,
+        rejected_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP,
+        completed_at TIMESTAMP
+    )''')
+
+    # Culling Picks table - stores pick/reject decisions per session
+    c.execute('''CREATE TABLE IF NOT EXISTS culling_picks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER,
+        image_id INTEGER,
+        group_id INTEGER,  -- Which group this image belongs to
+        decision TEXT,  -- 'pick', 'reject', 'maybe', NULL (unreviewed)
+        auto_suggested BOOLEAN DEFAULT 0,  -- True if AI suggested this pick
+        is_best_in_group BOOLEAN DEFAULT 0,  -- True if best of its group
+        created_at TIMESTAMP,
+        FOREIGN KEY(session_id) REFERENCES culling_sessions(id),
+        FOREIGN KEY(image_id) REFERENCES images(id)
+    )''')
+    
+    # Index for fast lookup
+    c.execute("CREATE INDEX IF NOT EXISTS idx_culling_picks_session ON culling_picks(session_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_culling_picks_image ON culling_picks(image_id)")
 
 
 
@@ -1175,6 +1211,271 @@ def export_db_to_json(output_path):
     except Exception as e:
         return False, f"Export failed: {e}"
 
+
+def get_available_columns():
+    """Returns list of all available columns in the images table."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("PRAGMA table_info(images)")
+    columns = [row[1] for row in c.fetchall()]
+    conn.close()
+    return columns
+
+
+def _build_export_where_clause(rating_filter=None, label_filter=None, keyword_filter=None, 
+                                min_score_general=0, min_score_aesthetic=0, min_score_technical=0,
+                                date_range=None, folder_path=None):
+    """
+    Helper function to build WHERE clause for export queries.
+    Returns (conditions_list, params_list)
+    """
+    conditions = []
+    params = []
+    
+    if rating_filter:
+        placeholders = ','.join(['?'] * len(rating_filter))
+        conditions.append(f"rating IN ({placeholders})")
+        params.extend(rating_filter)
+        
+    if label_filter:
+        clean_labels = [l for l in label_filter if l != "None"]
+        has_none = "None" in label_filter
+        
+        lbl_conds = []
+        if clean_labels:
+            placeholders = ','.join(['?'] * len(clean_labels))
+            lbl_conds.append(f"label IN ({placeholders})")
+            params.extend(clean_labels)
+            
+        if has_none:
+            lbl_conds.append("(label IS NULL OR label = '')")
+            
+        if lbl_conds:
+            conditions.append(f"({' OR '.join(lbl_conds)})")
+            
+    if keyword_filter and keyword_filter.strip():
+        conditions.append("keywords LIKE ?")
+        params.append(f"%{keyword_filter.strip()}%")
+
+    # Score Filters
+    if min_score_general > 0:
+        conditions.append("score_general >= ?")
+        params.append(min_score_general)
+    
+    if min_score_aesthetic > 0:
+        conditions.append("score_aesthetic >= ?")
+        params.append(min_score_aesthetic)
+
+    if min_score_technical > 0:
+        conditions.append("score_technical >= ?")
+        params.append(min_score_technical)
+        
+    # Date Filter
+    if date_range and len(date_range) == 2:
+        start_date, end_date = date_range
+        if start_date:
+            conditions.append("DATE(created_at) >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("DATE(created_at) <= ?")
+            params.append(end_date)
+    
+    # Folder Filter
+    if folder_path:
+        conditions.append("file_path LIKE ?")
+        params.append(f"{folder_path}%")
+    
+    return conditions, params
+
+
+def export_db_to_csv(output_path, columns=None, rating_filter=None, label_filter=None, 
+                     keyword_filter=None, min_score_general=0, min_score_aesthetic=0, 
+                     min_score_technical=0, date_range=None, folder_path=None):
+    """
+    Exports the images table to a CSV file with optional filtering.
+    
+    Args:
+        output_path: Path for the output CSV file
+        columns: Optional list of column names to export. If None, exports common columns.
+        rating_filter: Optional list of ratings to filter by
+        label_filter: Optional list of labels to filter by
+        keyword_filter: Optional keyword string to search for
+        min_score_general: Minimum general score threshold
+        min_score_aesthetic: Minimum aesthetic score threshold
+        min_score_technical: Minimum technical score threshold
+        date_range: Optional tuple (start_date, end_date) as strings "YYYY-MM-DD"
+        folder_path: Optional folder path prefix to filter by
+    
+    Returns (success, message)
+    """
+    import csv
+    
+    # Default columns for export (most useful ones)
+    default_columns = [
+        'id', 'file_path', 'file_name', 'file_type',
+        'score_general', 'score_technical', 'score_aesthetic',
+        'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe',
+        'rating', 'label', 'keywords', 'title', 'description',
+        'stack_id', 'created_at'
+    ]
+    
+    columns_to_export = columns if columns else default_columns
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    try:
+        # Build column list (filter to existing columns)
+        c.execute("PRAGMA table_info(images)")
+        existing_cols = {row[1] for row in c.fetchall()}
+        valid_columns = [col for col in columns_to_export if col in existing_cols]
+        
+        if not valid_columns:
+            return False, "No valid columns to export"
+        
+        # Build WHERE clause from filters
+        conditions, params = _build_export_where_clause(
+            rating_filter, label_filter, keyword_filter,
+            min_score_general, min_score_aesthetic, min_score_technical,
+            date_range, folder_path
+        )
+        
+        # Build query
+        query = f"SELECT {', '.join(valid_columns)} FROM images"
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY id"
+        
+        c.execute(query, params)
+        rows = c.fetchall()
+        conn.close()
+        
+        # Write CSV
+        with open(output_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            # Header
+            writer.writerow(valid_columns)
+            # Data
+            for row in rows:
+                writer.writerow(list(row))
+        
+        return True, f"Successfully exported {len(rows)} records to {output_path}"
+        
+    except Exception as e:
+        conn.close()
+        return False, f"CSV export failed: {e}"
+
+
+def export_db_to_excel(output_path, columns=None, rating_filter=None, label_filter=None,
+                       keyword_filter=None, min_score_general=0, min_score_aesthetic=0,
+                       min_score_technical=0, date_range=None, folder_path=None):
+    """
+    Exports the images table to an Excel file with optional filtering.
+    Requires openpyxl to be installed.
+    
+    Args:
+        output_path: Path for the output Excel file (.xlsx)
+        columns: Optional list of column names to export. If None, exports common columns.
+        rating_filter: Optional list of ratings to filter by
+        label_filter: Optional list of labels to filter by
+        keyword_filter: Optional keyword string to search for
+        min_score_general: Minimum general score threshold
+        min_score_aesthetic: Minimum aesthetic score threshold
+        min_score_technical: Minimum technical score threshold
+        date_range: Optional tuple (start_date, end_date) as strings "YYYY-MM-DD"
+        folder_path: Optional folder path prefix to filter by
+    
+    Returns (success, message)
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        return False, "openpyxl is required for Excel export. Install with: pip install openpyxl"
+    
+    # Default columns for export
+    default_columns = [
+        'id', 'file_path', 'file_name', 'file_type',
+        'score_general', 'score_technical', 'score_aesthetic',
+        'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe',
+        'rating', 'label', 'keywords', 'title', 'description',
+        'stack_id', 'created_at'
+    ]
+    
+    columns_to_export = columns if columns else default_columns
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    try:
+        # Build column list (filter to existing columns)
+        c.execute("PRAGMA table_info(images)")
+        existing_cols = {row[1] for row in c.fetchall()}
+        valid_columns = [col for col in columns_to_export if col in existing_cols]
+        
+        if not valid_columns:
+            return False, "No valid columns to export"
+        
+        # Build WHERE clause from filters
+        conditions, params = _build_export_where_clause(
+            rating_filter, label_filter, keyword_filter,
+            min_score_general, min_score_aesthetic, min_score_technical,
+            date_range, folder_path
+        )
+        
+        # Build query
+        query = f"SELECT {', '.join(valid_columns)} FROM images"
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY id"
+        
+        c.execute(query, params)
+        rows = c.fetchall()
+        conn.close()
+        
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Image Scores"
+        
+        # Header styling
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        
+        # Write header
+        for col_idx, col_name in enumerate(valid_columns, 1):
+            cell = ws.cell(row=1, column=col_idx, value=col_name)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+        
+        # Write data
+        for row_idx, row in enumerate(rows, 2):
+            for col_idx, value in enumerate(row, 1):
+                ws.cell(row=row_idx, column=col_idx, value=value)
+        
+        # Auto-adjust column widths (approximate)
+        for col_idx, col_name in enumerate(valid_columns, 1):
+            max_length = len(col_name)
+            for row in rows[:100]:  # Sample first 100 rows
+                val = row[col_idx - 1]
+                if val:
+                    max_length = max(max_length, min(len(str(val)), 50))
+            ws.column_dimensions[chr(64 + col_idx) if col_idx <= 26 else 'A'].width = max_length + 2
+        
+        # Freeze header row
+        ws.freeze_panes = 'A2'
+        
+        # Save
+        wb.save(output_path)
+        
+        return True, f"Successfully exported {len(rows)} records to {output_path}"
+        
+    except Exception as e:
+        conn.close()
+        return False, f"Excel export failed: {e}"
+
+
 # --- Stack Management ---
 
 def clear_stacks():
@@ -1244,6 +1545,89 @@ def get_stacks():
     rows = c.fetchall()
     conn.close()
     return rows
+
+
+def get_stack_context(image_id):
+    """
+    Get stack context for a single image.
+    Returns dict with stack_id, stack_size, is_best, stack_name or None if not in stack.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT stack_id FROM images WHERE id = ?", (image_id,))
+    row = c.fetchone()
+    
+    if not row or not row['stack_id']:
+        conn.close()
+        return None
+    
+    stack_id = row['stack_id']
+    
+    # Get stack info
+    c.execute("""
+        SELECT 
+            s.name,
+            s.best_image_id,
+            (SELECT COUNT(*) FROM images WHERE stack_id = s.id) as stack_size
+        FROM stacks s
+        WHERE s.id = ?
+    """, (stack_id,))
+    stack_row = c.fetchone()
+    conn.close()
+    
+    if not stack_row:
+        return None
+    
+    return {
+        'stack_id': stack_id,
+        'stack_name': stack_row['name'],
+        'stack_size': stack_row['stack_size'],
+        'is_best': stack_row['best_image_id'] == image_id
+    }
+
+
+def get_stack_contexts_batch(image_ids):
+    """
+    Get stack context for multiple images in a single query.
+    Returns dict mapping image_id to stack context.
+    Efficient for gallery display with many images.
+    """
+    if not image_ids:
+        return {}
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Query all images and their stack info in one go
+    placeholders = ','.join(['?'] * len(image_ids))
+    query = f"""
+        SELECT 
+            i.id as image_id,
+            i.stack_id,
+            s.name as stack_name,
+            s.best_image_id,
+            (SELECT COUNT(*) FROM images i2 WHERE i2.stack_id = s.id) as stack_size
+        FROM images i
+        LEFT JOIN stacks s ON i.stack_id = s.id
+        WHERE i.id IN ({placeholders})
+    """
+    c.execute(query, image_ids)
+    rows = c.fetchall()
+    conn.close()
+    
+    result = {}
+    for row in rows:
+        if row['stack_id']:
+            result[row['image_id']] = {
+                'stack_id': row['stack_id'],
+                'stack_name': row['stack_name'],
+                'stack_size': row['stack_size'],
+                'is_best': row['best_image_id'] == row['image_id']
+            }
+    
+    return result
+
 
 def get_stacks_for_display(folder_path=None, sort_by="score_general", order="desc"):
     """
@@ -1375,6 +1759,96 @@ def clear_cluster_progress():
     finally:
         conn.close()
 
+
+def clear_stacks_in_folder(folder_path):
+    """
+    Clears stacks for images in a specific folder only.
+    Used for targeted re-clustering of a single folder.
+    
+    Steps:
+    1. Get all image IDs in the folder
+    2. Get stack_ids for those images
+    3. Set stack_id = NULL for those images
+    4. Delete stacks that are now empty
+    5. Remove folder from cluster_progress
+    
+    Returns (success, message)
+    """
+    import os
+    folder_path = os.path.normpath(folder_path)
+    
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # 1. Get folder_id for this folder
+        c.execute("SELECT id FROM folders WHERE path = ?", (folder_path,))
+        folder_row = c.fetchone()
+        
+        if not folder_row:
+            # No folder entry - might be using file paths directly
+            # Try matching by file_path prefix
+            c.execute("""
+                SELECT DISTINCT stack_id FROM images 
+                WHERE file_path LIKE ? AND stack_id IS NOT NULL
+            """, (folder_path + '%',))
+        else:
+            folder_id = folder_row[0]
+            # 2. Get stack_ids for images in this folder
+            c.execute("""
+                SELECT DISTINCT stack_id FROM images 
+                WHERE folder_id = ? AND stack_id IS NOT NULL
+            """, (folder_id,))
+        
+        affected_stacks = [row[0] for row in c.fetchall()]
+        
+        if not affected_stacks:
+            # No stacks in this folder
+            c.execute("DELETE FROM cluster_progress WHERE folder_path = ?", (folder_path,))
+            conn.commit()
+            return True, f"No stacks found in folder: {folder_path}"
+        
+        # 3. Set stack_id = NULL for images in this folder
+        if folder_row:
+            c.execute("UPDATE images SET stack_id = NULL WHERE folder_id = ?", (folder_id,))
+        else:
+            c.execute("UPDATE images SET stack_id = NULL WHERE file_path LIKE ?", (folder_path + '%',))
+        
+        updated_count = c.rowcount
+        
+        # 4. Delete stacks that are now empty
+        deleted_stacks = 0
+        for stack_id in affected_stacks:
+            c.execute("SELECT COUNT(*) FROM images WHERE stack_id = ?", (stack_id,))
+            remaining = c.fetchone()[0]
+            if remaining == 0:
+                c.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
+                deleted_stacks += 1
+            else:
+                # Recalculate best_image_id for stacks that still have images
+                c.execute("""
+                    UPDATE stacks SET best_image_id = (
+                        SELECT id FROM images 
+                        WHERE stack_id = ? 
+                        ORDER BY score_general DESC NULLS LAST 
+                        LIMIT 1
+                    ) WHERE id = ?
+                """, (stack_id, stack_id))
+        
+        # 5. Remove folder from cluster_progress
+        c.execute("DELETE FROM cluster_progress WHERE folder_path = ?", (folder_path,))
+        
+        conn.commit()
+        msg = f"Cleared {deleted_stacks} stacks, updated {updated_count} images in folder: {folder_path}"
+        logging.info(msg)
+        return True, msg
+        
+    except Exception as e:
+        logging.error(f"Failed to clear stacks in folder {folder_path}: {e}")
+        return False, str(e)
+    finally:
+        conn.close()
+
+
 def create_stacks_batch(stacks_data):
     """
     Creates multiple stacks and updates associations in a single transaction.
@@ -1412,3 +1886,576 @@ def create_stacks_batch(stacks_data):
         return False, str(e)
     finally:
         conn.close()
+
+# --- Manual Stack Operations ---
+
+def create_stack_from_images(image_ids, name=None):
+    """
+    Creates a new stack from a list of image IDs (manual grouping).
+    Returns (success, stack_id or error message).
+    """
+    if not image_ids or len(image_ids) < 2:
+        return False, "Need at least 2 images to create a stack"
+    
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Validate images exist and get the best one
+        placeholders = ','.join(['?'] * len(image_ids))
+        c.execute(f"SELECT id, score_general FROM images WHERE id IN ({placeholders})", tuple(image_ids))
+        rows = c.fetchall()
+        
+        if len(rows) != len(image_ids):
+            return False, f"Some images not found. Expected {len(image_ids)}, found {len(rows)}"
+        
+        # Find best image (highest score_general)
+        best_id = None
+        best_score = -1
+        for row in rows:
+            score = row['score_general'] if row['score_general'] else 0
+            if score > best_score:
+                best_score = score
+                best_id = row['id']
+        
+        # Auto-generate name if not provided
+        if not name:
+            # Count existing stacks for unique naming
+            c.execute("SELECT COUNT(*) FROM stacks")
+            stack_count = c.fetchone()[0]
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+            name = f"Stack {timestamp} #{stack_count + 1:03d}"
+        
+        # Create the stack
+        c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?)",
+                  (name, best_id, datetime.datetime.now()))
+        stack_id = c.lastrowid
+        
+        # Update all images to belong to this stack
+        updates = [(stack_id, img_id) for img_id in image_ids]
+        c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
+        
+        conn.commit()
+        return True, stack_id
+    except Exception as e:
+        logging.error(f"Failed to create stack from images: {e}")
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def remove_images_from_stack(image_ids):
+    """
+    Removes images from their current stacks (sets stack_id to NULL).
+    Also cleans up empty stacks after removal.
+    Returns (success, message).
+    """
+    if not image_ids:
+        return False, "No images specified"
+    
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Get the stack IDs affected (to check for cleanup later)
+        placeholders = ','.join(['?'] * len(image_ids))
+        c.execute(f"SELECT DISTINCT stack_id FROM images WHERE id IN ({placeholders}) AND stack_id IS NOT NULL", 
+                  tuple(image_ids))
+        affected_stacks = [row[0] for row in c.fetchall()]
+        
+        # Remove from stacks
+        c.execute(f"UPDATE images SET stack_id = NULL WHERE id IN ({placeholders})", tuple(image_ids))
+        removed_count = c.rowcount
+        
+        # Cleanup: delete empty stacks or recalculate best_image_id for remaining stacks
+        deleted_stacks = 0
+        for stack_id in affected_stacks:
+            c.execute("SELECT COUNT(*) FROM images WHERE stack_id = ?", (stack_id,))
+            remaining = c.fetchone()[0]
+            if remaining == 0:
+                c.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
+                deleted_stacks += 1
+            else:
+                # Recalculate best_image_id from remaining images
+                c.execute("""
+                    UPDATE stacks SET best_image_id = (
+                        SELECT id FROM images 
+                        WHERE stack_id = ? 
+                        ORDER BY score_general DESC NULLS LAST 
+                        LIMIT 1
+                    ) WHERE id = ?
+                """, (stack_id, stack_id))
+        
+        conn.commit()
+        msg = f"Removed {removed_count} images from stacks"
+        if deleted_stacks > 0:
+            msg += f", deleted {deleted_stacks} empty stack(s)"
+        return True, msg
+    except Exception as e:
+        logging.error(f"Failed to remove images from stack: {e}")
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def dissolve_stack(stack_id):
+    """
+    Completely dissolves a stack - removes all images and deletes the stack.
+    Returns (success, message).
+    """
+    if not stack_id:
+        return False, "No stack specified"
+    
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Count images in stack for message
+        c.execute("SELECT COUNT(*) FROM images WHERE stack_id = ?", (stack_id,))
+        image_count = c.fetchone()[0]
+        
+        # Get stack name for message
+        c.execute("SELECT name FROM stacks WHERE id = ?", (stack_id,))
+        row = c.fetchone()
+        stack_name = row['name'] if row else f"Stack #{stack_id}"
+        
+        # Remove stack_id from all images
+        c.execute("UPDATE images SET stack_id = NULL WHERE stack_id = ?", (stack_id,))
+        
+        # Delete the stack record
+        c.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
+        
+        conn.commit()
+        return True, f"Dissolved '{stack_name}' ({image_count} images ungrouped)"
+    except Exception as e:
+        logging.error(f"Failed to dissolve stack: {e}")
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def set_stack_cover_image(stack_id, image_id):
+    """
+    Sets a specific image as the cover (best_image_id) for a stack.
+    Allows manual override of the auto-selected best image.
+    
+    Args:
+        stack_id: ID of the stack to update
+        image_id: ID of the image to set as cover
+    
+    Returns (success, message)
+    """
+    if not stack_id or not image_id:
+        return False, "Stack ID and Image ID are required"
+    
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Verify the stack exists
+        c.execute("SELECT name FROM stacks WHERE id = ?", (stack_id,))
+        stack_row = c.fetchone()
+        if not stack_row:
+            return False, f"Stack {stack_id} not found"
+        
+        # Verify the image exists and belongs to this stack
+        c.execute("SELECT file_name, stack_id FROM images WHERE id = ?", (image_id,))
+        img_row = c.fetchone()
+        if not img_row:
+            return False, f"Image {image_id} not found"
+        
+        if img_row['stack_id'] != stack_id:
+            return False, f"Image {image_id} does not belong to stack {stack_id}"
+        
+        # Update the stack's best_image_id
+        c.execute("UPDATE stacks SET best_image_id = ? WHERE id = ?", (image_id, stack_id))
+        
+        conn.commit()
+        return True, f"Set '{img_row['file_name']}' as cover for '{stack_row['name']}'"
+    except Exception as e:
+        logging.error(f"Failed to set stack cover image: {e}")
+        return False, str(e)
+    finally:
+        conn.close()
+
+
+def get_image_ids_by_paths(file_paths):
+    """
+    Returns image IDs for given file paths.
+    Useful for converting gallery selection (paths) to DB IDs.
+    """
+    if not file_paths:
+        return []
+    
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Need to handle path normalization and WSL/Windows path differences
+        ids = []
+        for path in file_paths:
+            # Try exact match first
+            c.execute("SELECT id FROM images WHERE file_path = ?", (path,))
+            row = c.fetchone()
+            if row:
+                ids.append(row['id'])
+            else:
+                # Try with basename match as fallback (less accurate but handles path issues)
+                basename = os.path.basename(path)
+                c.execute("SELECT id FROM images WHERE file_name = ?", (basename,))
+                row = c.fetchone()
+                if row:
+                    logging.warning(f"Path lookup fallback used: {path} -> id {row['id']} (matched by filename)")
+                    ids.append(row['id'])
+        return ids
+    except Exception as e:
+        logging.error(f"Failed to get image IDs by paths: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+# --- Culling Session Management ---
+
+def create_culling_session(folder_path, mode='automated'):
+    """
+    Creates a new culling session for a folder.
+    Returns session_id.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("""INSERT INTO culling_sessions 
+                     (folder_path, mode, status, created_at) 
+                     VALUES (?, ?, 'active', ?)""",
+                  (folder_path, mode, datetime.datetime.now()))
+        session_id = c.lastrowid
+        conn.commit()
+        return session_id
+    except Exception as e:
+        logging.error(f"Failed to create culling session: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_culling_session(session_id):
+    """Returns culling session details."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM culling_sessions WHERE id = ?", (session_id,))
+    row = c.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_active_culling_sessions():
+    """Returns all active (incomplete) culling sessions."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""SELECT * FROM culling_sessions 
+                 WHERE status = 'active' 
+                 ORDER BY created_at DESC""")
+    rows = c.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def update_culling_session(session_id, **kwargs):
+    """
+    Updates culling session fields.
+    Accepts: status, total_images, total_groups, reviewed_groups, picked_count, rejected_count
+    """
+    allowed = ['status', 'total_images', 'total_groups', 'reviewed_groups', 
+               'picked_count', 'rejected_count', 'completed_at']
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    
+    if not updates:
+        return False
+    
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+        params = list(updates.values()) + [session_id]
+        c.execute(f"UPDATE culling_sessions SET {set_clause} WHERE id = ?", params)
+        conn.commit()
+        return True
+    except Exception as e:
+        logging.error(f"Failed to update culling session: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def complete_culling_session(session_id):
+    """Marks a culling session as completed."""
+    return update_culling_session(
+        session_id, 
+        status='completed', 
+        completed_at=datetime.datetime.now()
+    )
+
+
+# --- Culling Picks Management ---
+
+def add_images_to_culling_session(session_id, image_ids, group_assignments=None):
+    """
+    Adds images to a culling session.
+    group_assignments: dict of {image_id: group_id} if groups are pre-computed.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        now = datetime.datetime.now()
+        for img_id in image_ids:
+            group_id = group_assignments.get(img_id) if group_assignments else None
+            c.execute("""INSERT OR IGNORE INTO culling_picks 
+                         (session_id, image_id, group_id, created_at)
+                         VALUES (?, ?, ?, ?)""",
+                      (session_id, img_id, group_id, now))
+        conn.commit()
+        return True
+    except Exception as e:
+        logging.error(f"Failed to add images to culling session: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def set_pick_decision(session_id, image_id, decision, auto_suggested=False):
+    """
+    Sets pick/reject decision for an image in a culling session.
+    decision: 'pick', 'reject', 'maybe', or None (to clear)
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("""UPDATE culling_picks 
+                     SET decision = ?, auto_suggested = ?
+                     WHERE session_id = ? AND image_id = ?""",
+                  (decision, auto_suggested, session_id, image_id))
+        conn.commit()
+        return c.rowcount > 0
+    except Exception as e:
+        logging.error(f"Failed to set pick decision: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def set_best_in_group(session_id, image_id, group_id):
+    """Marks an image as the best in its group."""
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Clear previous best in this group
+        c.execute("""UPDATE culling_picks 
+                     SET is_best_in_group = 0 
+                     WHERE session_id = ? AND group_id = ?""",
+                  (session_id, group_id))
+        
+        # Set new best
+        c.execute("""UPDATE culling_picks 
+                     SET is_best_in_group = 1, decision = 'pick', auto_suggested = 1
+                     WHERE session_id = ? AND image_id = ?""",
+                  (session_id, image_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        logging.error(f"Failed to set best in group: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_session_picks(session_id, decision_filter=None):
+    """
+    Returns all picks for a session with image details.
+    decision_filter: None for all, or 'pick', 'reject', 'maybe'
+    """
+    conn = get_db()
+    c = conn.cursor()
+    
+    query = """
+        SELECT cp.*, i.file_path, i.file_name, i.thumbnail_path,
+               i.score_general, i.score_technical, i.score_aesthetic,
+               i.rating, i.label
+        FROM culling_picks cp
+        JOIN images i ON cp.image_id = i.id
+        WHERE cp.session_id = ?
+    """
+    params = [session_id]
+    
+    if decision_filter:
+        query += " AND cp.decision = ?"
+        params.append(decision_filter)
+    
+    query += " ORDER BY cp.group_id, i.score_general DESC"
+    
+    c.execute(query, params)
+    rows = c.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_session_groups(session_id):
+    """
+    Returns images grouped by group_id for a session.
+    Returns list of groups, each group is a dict with group info and list of images.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("""
+        SELECT cp.group_id, cp.image_id, cp.decision, cp.auto_suggested, cp.is_best_in_group,
+               i.file_path, i.file_name, i.thumbnail_path,
+               i.score_general, i.score_technical, i.score_aesthetic
+        FROM culling_picks cp
+        JOIN images i ON cp.image_id = i.id
+        WHERE cp.session_id = ?
+        ORDER BY cp.group_id, i.score_general DESC
+    """, (session_id,))
+    
+    rows = c.fetchall()
+    conn.close()
+    
+    # Group by group_id
+    groups = {}
+    for row in rows:
+        gid = row['group_id'] if row['group_id'] else 0  # Singles in group 0
+        if gid not in groups:
+            groups[gid] = {
+                'group_id': gid,
+                'images': [],
+                'has_pick': False,
+                'best_image_id': None
+            }
+        
+        img = dict(row)
+        groups[gid]['images'].append(img)
+        
+        if img['decision'] == 'pick':
+            groups[gid]['has_pick'] = True
+        if img['is_best_in_group']:
+            groups[gid]['best_image_id'] = img['image_id']
+    
+    return list(groups.values())
+
+
+def get_session_stats(session_id):
+    """Returns statistics for a culling session."""
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT COUNT(*) FROM culling_picks WHERE session_id = ?", (session_id,))
+    total = c.fetchone()[0]
+    
+    c.execute("SELECT COUNT(*) FROM culling_picks WHERE session_id = ? AND decision = 'pick'", (session_id,))
+    picked = c.fetchone()[0]
+    
+    c.execute("SELECT COUNT(*) FROM culling_picks WHERE session_id = ? AND decision = 'reject'", (session_id,))
+    rejected = c.fetchone()[0]
+    
+    c.execute("SELECT COUNT(DISTINCT group_id) FROM culling_picks WHERE session_id = ? AND group_id IS NOT NULL", (session_id,))
+    groups = c.fetchone()[0]
+    
+    # Groups with at least one decision
+    c.execute("""SELECT COUNT(DISTINCT group_id) FROM culling_picks 
+                 WHERE session_id = ? AND group_id IS NOT NULL AND decision IS NOT NULL""", (session_id,))
+    reviewed = c.fetchone()[0]
+    
+    conn.close()
+    
+    return {
+        'total_images': total,
+        'total_groups': groups,
+        'reviewed_groups': reviewed,
+        'picked_count': picked,
+        'rejected_count': rejected,
+        'unreviewed': total - picked - rejected
+    }
+
+
+def clear_culling_picks(session_id):
+    """
+    Removes all picks from a culling session.
+    Used before re-importing groups from updated stacks.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("DELETE FROM culling_picks WHERE session_id = ?", (session_id,))
+        conn.commit()
+        deleted = c.rowcount
+        logging.info(f"Cleared {deleted} picks from session {session_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Failed to clear picks for session {session_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def reset_culling_decisions(session_id):
+    """
+    Resets all decisions (pick/reject) in a session without removing the picks.
+    Used before re-running auto-pick.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("""
+            UPDATE culling_picks 
+            SET decision = NULL, auto_suggested = 0, is_best_in_group = 0
+            WHERE session_id = ?
+        """, (session_id,))
+        conn.commit()
+        updated = c.rowcount
+        logging.info(f"Reset {updated} decisions in session {session_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Failed to reset decisions for session {session_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_image_culling_status(file_path):
+    """
+    Returns the most recent culling decision for an image.
+    Returns dict with 'decision' ('pick', 'reject', 'maybe', or None) and 'session_id'.
+    'pick' = Accepted, 'reject' = Rejected
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # First get image_id from file_path
+        c.execute("SELECT id FROM images WHERE file_path = ?", (file_path,))
+        row = c.fetchone()
+        if not row:
+            return None
+        
+        image_id = row[0]
+        
+        # Get most recent culling decision for this image
+        c.execute("""
+            SELECT cp.decision, cp.session_id, cp.is_best_in_group, cs.folder_path
+            FROM culling_picks cp
+            JOIN culling_sessions cs ON cp.session_id = cs.id
+            WHERE cp.image_id = ?
+            ORDER BY cs.created_at DESC
+            LIMIT 1
+        """, (image_id,))
+        
+        row = c.fetchone()
+        if not row:
+            return None
+        
+        return {
+            'decision': row['decision'],
+            'session_id': row['session_id'],
+            'is_best_in_group': row['is_best_in_group'],
+            'folder_path': row['folder_path']
+        }
+    except Exception as e:
+        logging.error(f"Failed to get culling status for {file_path}: {e}")
+        return None
+    finally:
+        conn.close()
+

@@ -1,0 +1,595 @@
+"""
+XMP Sidecar Module for Lightroom Cloud Integration
+
+Non-destructive XMP sidecar file handler that writes star ratings and color labels
+to .xmp sidecar files, which Lightroom Cloud can read when syncing.
+
+This module NEVER modifies original RAW/JPEG files.
+"""
+
+import os
+import logging
+from pathlib import Path
+from datetime import datetime
+from xml.etree import ElementTree as ET
+from modules import utils
+
+logger = logging.getLogger(__name__)
+
+# XMP Namespaces
+NAMESPACES = {
+    'x': 'adobe:ns:meta/',
+    'rdf': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+    'xmp': 'http://ns.adobe.com/xap/1.0/',
+    'xmpMM': 'http://ns.adobe.com/xap/1.0/mm/',
+    'dc': 'http://purl.org/dc/elements/1.1/',
+    'photoshop': 'http://ns.adobe.com/photoshop/1.0/',
+    'xmpDM': 'http://ns.adobe.com/xmp/1.0/DynamicMedia/',
+}
+
+# Register namespaces for clean XML output
+for prefix, uri in NAMESPACES.items():
+    ET.register_namespace(prefix, uri)
+
+
+def get_xmp_path(image_path: str) -> str:
+    """
+    Returns the XMP sidecar path for an image.
+    For 'IMG_001.NEF' -> 'IMG_001.xmp'
+    
+    Handles path conversion for WSL: database stores Windows paths,
+    but we need local (WSL) paths for file operations.
+    """
+    # Convert to local path (WSL or Windows depending on platform)
+    local_path = utils.convert_path_to_local(image_path)
+    p = Path(local_path)
+    return str(p.with_suffix('.xmp'))
+
+
+def xmp_exists(image_path: str) -> bool:
+    """Check if XMP sidecar exists for the image."""
+    return os.path.exists(get_xmp_path(image_path))
+
+
+def read_xmp(image_path: str) -> dict:
+    """
+    Read existing XMP sidecar data.
+    Returns dict with 'rating', 'label', 'picked' keys.
+    """
+    xmp_path = get_xmp_path(image_path)
+    result = {'rating': None, 'label': None, 'picked': None}
+    
+    if not os.path.exists(xmp_path):
+        return result
+    
+    try:
+        tree = ET.parse(xmp_path)
+        root = tree.getroot()
+        
+        # Find the Description element
+        desc = root.find('.//rdf:Description', NAMESPACES)
+        if desc is None:
+            return result
+        
+        # Read rating
+        rating = desc.get(f'{{{NAMESPACES["xmp"]}}}Rating')
+        if rating:
+            result['rating'] = int(rating)
+        
+        # Read label (color)
+        label = desc.get(f'{{{NAMESPACES["xmp"]}}}Label')
+        if label:
+            result['label'] = label
+            
+        # Read pick flag (crs:Picked or xmp custom)
+        picked = desc.get(f'{{{NAMESPACES["xmp"]}}}Picked')
+        if picked:
+            result['picked'] = picked.lower() == 'true'
+            
+    except Exception as e:
+        logger.warning(f"Failed to read XMP {xmp_path}: {e}")
+    
+    return result
+
+
+def _create_xmp_template() -> ET.Element:
+    """Create a minimal XMP document structure."""
+    # Root xmpmeta element
+    root = ET.Element(f'{{{NAMESPACES["x"]}}}xmpmeta')
+    root.set('x:xmptk', 'Image Scoring Culling Tool')
+    
+    # RDF wrapper
+    rdf = ET.SubElement(root, f'{{{NAMESPACES["rdf"]}}}RDF')
+    
+    # Description element (where all metadata goes)
+    desc = ET.SubElement(rdf, f'{{{NAMESPACES["rdf"]}}}Description')
+    desc.set(f'{{{NAMESPACES["rdf"]}}}about', '')
+    
+    return root
+
+
+def _get_or_create_xmp(image_path: str) -> tuple[ET.Element, Path]:
+    """
+    Get existing XMP tree or create new one.
+    Returns (root_element, xmp_path).
+    """
+    xmp_path = Path(get_xmp_path(image_path))
+    
+    if xmp_path.exists():
+        try:
+            tree = ET.parse(xmp_path)
+            return tree.getroot(), xmp_path
+        except Exception as e:
+            logger.warning(f"Corrupted XMP, recreating: {e}")
+    
+    return _create_xmp_template(), xmp_path
+
+
+def _get_description(root: ET.Element) -> ET.Element:
+    """Get or create the rdf:Description element."""
+    desc = root.find('.//rdf:Description', NAMESPACES)
+    if desc is None:
+        rdf = root.find('.//rdf:RDF', NAMESPACES)
+        if rdf is None:
+            rdf = ET.SubElement(root, f'{{{NAMESPACES["rdf"]}}}RDF')
+        desc = ET.SubElement(rdf, f'{{{NAMESPACES["rdf"]}}}Description')
+        desc.set(f'{{{NAMESPACES["rdf"]}}}about', '')
+    return desc
+
+
+def write_rating(image_path: str, rating: int) -> bool:
+    """
+    Write star rating (0-5) to XMP sidecar.
+    Creates sidecar if it doesn't exist.
+    """
+    if not 0 <= rating <= 5:
+        logger.error(f"Invalid rating {rating}, must be 0-5")
+        return False
+    
+    try:
+        root, xmp_path = _get_or_create_xmp(image_path)
+        desc = _get_description(root)
+        
+        # Set rating attribute
+        desc.set(f'{{{NAMESPACES["xmp"]}}}Rating', str(rating))
+        
+        # Write file
+        tree = ET.ElementTree(root)
+        tree.write(xmp_path, encoding='utf-8', xml_declaration=True)
+        
+        logger.info(f"Wrote rating {rating} to {xmp_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to write rating to {image_path}: {e}")
+        return False
+
+
+def write_label(image_path: str, label: str) -> bool:
+    """
+    Write color label to XMP sidecar.
+    Valid labels: Red, Yellow, Green, Blue, Purple, None
+    """
+    valid_labels = ['Red', 'Yellow', 'Green', 'Blue', 'Purple', 'None', '']
+    if label not in valid_labels:
+        logger.error(f"Invalid label '{label}', must be one of {valid_labels}")
+        return False
+    
+    try:
+        root, xmp_path = _get_or_create_xmp(image_path)
+        desc = _get_description(root)
+        
+        # Set or remove label
+        if label and label != 'None':
+            desc.set(f'{{{NAMESPACES["xmp"]}}}Label', label)
+        else:
+            # Remove label attribute if exists
+            key = f'{{{NAMESPACES["xmp"]}}}Label'
+            if key in desc.attrib:
+                del desc.attrib[key]
+        
+        # Write file
+        tree = ET.ElementTree(root)
+        tree.write(xmp_path, encoding='utf-8', xml_declaration=True)
+        
+        logger.info(f"Wrote label '{label}' to {xmp_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to write label to {image_path}: {e}")
+        return False
+
+
+def write_pick_flag(image_path: str, is_picked: bool) -> bool:
+    """
+    [DEPRECATED] Write pick/reject flag to XMP sidecar using old schema.
+    
+    This function uses the legacy xmp:Picked and xmp:Label approach.
+    Use write_pick_reject_flag() instead for Lightroom-compatible flags.
+    
+    For Lightroom: picked images get Rating >= 1 if unrated.
+    This also sets a custom Picked attribute.
+    
+    .. deprecated:: Use write_pick_reject_flag() instead
+    """
+    import warnings
+    warnings.warn(
+        "write_pick_flag() is deprecated. Use write_pick_reject_flag() instead for Lightroom-compatible flags.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    logger.warning(f"write_pick_flag() is deprecated. Called for {image_path}")
+    
+    try:
+        root, xmp_path = _get_or_create_xmp(image_path)
+        desc = _get_description(root)
+        
+        # Set custom picked flag
+        desc.set(f'{{{NAMESPACES["xmp"]}}}Picked', str(is_picked).lower())
+        
+        # Lightroom Cloud convention: picked = Green label, rejected = Red label
+        # (But only if user hasn't set a label already)
+        existing_label = desc.get(f'{{{NAMESPACES["xmp"]}}}Label')
+        if not existing_label:
+            if is_picked:
+                desc.set(f'{{{NAMESPACES["xmp"]}}}Label', 'Green')
+            else:
+                desc.set(f'{{{NAMESPACES["xmp"]}}}Label', 'Red')
+        
+        # Write file
+        tree = ET.ElementTree(root)
+        tree.write(xmp_path, encoding='utf-8', xml_declaration=True)
+        
+        logger.info(f"Wrote pick={is_picked} to {xmp_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to write pick flag to {image_path}: {e}")
+        return False
+
+
+def write_pick_reject_flag(image_path: str, pick_status: int) -> bool:
+    """
+    Write Lightroom-compatible Pick/Reject flag to XMP sidecar.
+    
+    Args:
+        image_path: Path to the image file
+        pick_status: 1 = Picked, -1 = Rejected, 0 = Unflagged
+    
+    Uses xmpDM namespace properties:
+        - xmpDM:pick: 1 (picked), -1 (rejected), 0 (unflagged)
+        - xmpDM:good: true (picked), false (rejected)
+    
+    These are the standard Lightroom Classic 13.2+ flag properties.
+    """
+    if pick_status not in (1, -1, 0):
+        logger.error(f"Invalid pick_status {pick_status}, must be 1, -1, or 0")
+        return False
+    
+    try:
+        root, xmp_path = _get_or_create_xmp(image_path)
+        desc = _get_description(root)
+        
+        # Write xmpDM:pick (1, -1, or 0)
+        desc.set(f'{{{NAMESPACES["xmpDM"]}}}pick', str(pick_status))
+        
+        # Write xmpDM:good (true/false) - only for picked/rejected, not unflagged
+        if pick_status == 1:
+            desc.set(f'{{{NAMESPACES["xmpDM"]}}}good', 'true')
+        elif pick_status == -1:
+            desc.set(f'{{{NAMESPACES["xmpDM"]}}}good', 'false')
+        else:
+            # Remove good attribute if unflagging
+            good_key = f'{{{NAMESPACES["xmpDM"]}}}good'
+            if good_key in desc.attrib:
+                del desc.attrib[good_key]
+        
+        # Add modification timestamp
+        desc.set(f'{{{NAMESPACES["xmp"]}}}ModifyDate', datetime.now().isoformat())
+        
+        # Write file
+        tree = ET.ElementTree(root)
+        tree.write(xmp_path, encoding='utf-8', xml_declaration=True)
+        
+        status_name = {1: 'Picked', -1: 'Rejected', 0: 'Unflagged'}[pick_status]
+        logger.info(f"Wrote pick_status={status_name} to {xmp_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to write pick/reject flag to {image_path}: {e}")
+        return False
+
+
+def read_pick_reject_flag(image_path: str) -> int:
+    """
+    Read Lightroom Pick/Reject flag from XMP sidecar.
+    
+    Returns:
+        1 = Picked, -1 = Rejected, 0 = Unflagged/Not set
+    """
+    xmp_path = get_xmp_path(image_path)
+    
+    if not os.path.exists(xmp_path):
+        return 0
+    
+    try:
+        tree = ET.parse(xmp_path)
+        root = tree.getroot()
+        
+        desc = root.find('.//rdf:Description', NAMESPACES)
+        if desc is None:
+            return 0
+        
+        # Read xmpDM:pick
+        pick = desc.get(f'{{{NAMESPACES["xmpDM"]}}}pick')
+        if pick:
+            return int(pick)
+        
+        return 0
+        
+    except Exception as e:
+        logger.warning(f"Failed to read pick/reject flag from {xmp_path}: {e}")
+        return 0
+
+def write_culling_results(image_path: str, rating: int = None, label: str = None, 
+                          is_picked: bool = None) -> bool:
+    """
+    Write all culling results to XMP in a single operation.
+    Only writes non-None values.
+    """
+    try:
+        root, xmp_path = _get_or_create_xmp(image_path)
+        desc = _get_description(root)
+        
+        if rating is not None and 0 <= rating <= 5:
+            desc.set(f'{{{NAMESPACES["xmp"]}}}Rating', str(rating))
+        
+        if label is not None:
+            if label and label != 'None':
+                desc.set(f'{{{NAMESPACES["xmp"]}}}Label', label)
+        
+        if is_picked is not None:
+            desc.set(f'{{{NAMESPACES["xmp"]}}}Picked', str(is_picked).lower())
+        
+        # Add modification timestamp
+        desc.set(f'{{{NAMESPACES["xmp"]}}}ModifyDate', 
+                datetime.now().isoformat())
+        
+        # Write file
+        tree = ET.ElementTree(root)
+        tree.write(xmp_path, encoding='utf-8', xml_declaration=True)
+        
+        logger.info(f"Wrote culling results to {xmp_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to write culling results to {image_path}: {e}")
+        return False
+
+
+def delete_xmp(image_path: str) -> bool:
+    """
+    Delete XMP sidecar file (if user wants to remove culling decisions).
+    """
+    xmp_path = get_xmp_path(image_path)
+    
+    if os.path.exists(xmp_path):
+        try:
+            os.remove(xmp_path)
+            logger.info(f"Deleted XMP sidecar: {xmp_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete {xmp_path}: {e}")
+            return False
+    
+    return True  # Nothing to delete
+
+
+# =============================================================================
+# Unified Metadata Write Functions
+# =============================================================================
+
+def write_metadata_unified(image_path: str, 
+                           rating: int = None, 
+                           label: str = None,
+                           keywords: list = None,
+                           title: str = None,
+                           description: str = None,
+                           is_picked: bool = None,
+                           use_sidecar: bool = True,
+                           use_embedded: bool = False) -> bool:
+    """
+    Unified metadata write function.
+    
+    Can write to XMP sidecar (non-destructive) and/or embedded EXIF/XMP.
+    This provides a single entry point for all metadata operations.
+    
+    Args:
+        image_path: Path to the image file
+        rating: Star rating (0-5)
+        label: Color label (Red, Yellow, Green, Blue, Purple, None)
+        keywords: List of keyword strings
+        title: Image title
+        description: Image description/caption
+        is_picked: Pick/reject flag for culling
+        use_sidecar: Write to .xmp sidecar file (default: True)
+        use_embedded: Write to embedded EXIF/XMP in file (default: False)
+    
+    Returns:
+        True if at least one write succeeded
+    """
+    success = False
+    
+    # 1. Write to XMP sidecar (preferred for non-destructive workflow)
+    if use_sidecar:
+        try:
+            root, xmp_path = _get_or_create_xmp(image_path)
+            desc = _get_description(root)
+            
+            if rating is not None and 0 <= rating <= 5:
+                desc.set(f'{{{NAMESPACES["xmp"]}}}Rating', str(rating))
+            
+            if label is not None:
+                if label and label != 'None':
+                    desc.set(f'{{{NAMESPACES["xmp"]}}}Label', label)
+                else:
+                    key = f'{{{NAMESPACES["xmp"]}}}Label'
+                    if key in desc.attrib:
+                        del desc.attrib[key]
+            
+            if is_picked is not None:
+                desc.set(f'{{{NAMESPACES["xmp"]}}}Picked', str(is_picked).lower())
+            
+            # Keywords as dc:subject (Dublin Core)
+            if keywords:
+                # Add dc namespace if needed
+                dc_ns = 'http://purl.org/dc/elements/1.1/'
+                ET.register_namespace('dc', dc_ns)
+                
+                # Remove existing subjects
+                existing_subject = desc.find(f'{{{dc_ns}}}subject')
+                if existing_subject is not None:
+                    desc.remove(existing_subject)
+                
+                # Add new subjects as RDF Bag
+                subject = ET.SubElement(desc, f'{{{dc_ns}}}subject')
+                bag = ET.SubElement(subject, f'{{{NAMESPACES["rdf"]}}}Bag')
+                for kw in keywords:
+                    li = ET.SubElement(bag, f'{{{NAMESPACES["rdf"]}}}li')
+                    li.text = kw.strip()
+            
+            if title:
+                desc.set(f'{{{NAMESPACES["xmp"]}}}Title', title)
+                # Also add dc:title
+                dc_ns = 'http://purl.org/dc/elements/1.1/'
+                existing_title = desc.find(f'{{{dc_ns}}}title')
+                if existing_title is not None:
+                    desc.remove(existing_title)
+                title_elem = ET.SubElement(desc, f'{{{dc_ns}}}title')
+                alt = ET.SubElement(title_elem, f'{{{NAMESPACES["rdf"]}}}Alt')
+                li = ET.SubElement(alt, f'{{{NAMESPACES["rdf"]}}}li')
+                li.set('{http://www.w3.org/XML/1998/namespace}lang', 'x-default')
+                li.text = title
+            
+            if description:
+                desc.set(f'{{{NAMESPACES["xmp"]}}}Description', description)
+                # Also add dc:description
+                dc_ns = 'http://purl.org/dc/elements/1.1/'
+                existing_desc = desc.find(f'{{{dc_ns}}}description')
+                if existing_desc is not None:
+                    desc.remove(existing_desc)
+                desc_elem = ET.SubElement(desc, f'{{{dc_ns}}}description')
+                alt = ET.SubElement(desc_elem, f'{{{NAMESPACES["rdf"]}}}Alt')
+                li = ET.SubElement(alt, f'{{{NAMESPACES["rdf"]}}}li')
+                li.set('{http://www.w3.org/XML/1998/namespace}lang', 'x-default')
+                li.text = description
+            
+            # Add modification timestamp
+            desc.set(f'{{{NAMESPACES["xmp"]}}}ModifyDate', datetime.now().isoformat())
+            
+            # Write file
+            tree = ET.ElementTree(root)
+            tree.write(xmp_path, encoding='utf-8', xml_declaration=True)
+            
+            logger.info(f"Wrote metadata to XMP sidecar: {xmp_path}")
+            success = True
+            
+        except Exception as e:
+            logger.error(f"Failed to write XMP sidecar for {image_path}: {e}")
+    
+    # 2. Write to embedded EXIF/XMP via exiftool (optional)
+    if use_embedded:
+        try:
+            embedded_success = _write_metadata_embedded(
+                image_path, rating, label, keywords, title, description
+            )
+            if embedded_success:
+                success = True
+        except Exception as e:
+            logger.error(f"Failed to write embedded metadata for {image_path}: {e}")
+    
+    return success
+
+
+def _write_metadata_embedded(image_path: str, 
+                              rating: int = None, 
+                              label: str = None,
+                              keywords: list = None,
+                              title: str = None,
+                              description: str = None) -> bool:
+    """
+    Write metadata to embedded EXIF/IPTC/XMP using exiftool.
+    This modifies the original file.
+    """
+    import subprocess
+    
+    # Convert to local path
+    local_path = utils.convert_path_to_local(image_path)
+    
+    if not os.path.exists(local_path):
+        logger.error(f"File not found: {local_path}")
+        return False
+    
+    cmd = ['exiftool', '-overwrite_original', '-sep', ',']
+    
+    # Build command arguments
+    if rating is not None and 0 <= rating <= 5:
+        cmd.append(f'-Rating={rating}')
+        cmd.append(f'-XMP:Rating={rating}')
+    
+    if label:
+        cmd.append(f'-Label={label}')
+        cmd.append(f'-XMP:Label={label}')
+    
+    if keywords:
+        kw_str = ",".join(keywords)
+        cmd.append(f'-Subject={kw_str}')
+        cmd.append(f'-Keywords={kw_str}')
+        cmd.append(f'-XMP:Subject={kw_str}')
+    
+    if title:
+        cmd.append(f'-Title={title}')
+        cmd.append(f'-XMP:Title={title}')
+        cmd.append(f'-XPTitle={title}')
+    
+    if description:
+        cmd.append(f'-Description={description}')
+        cmd.append(f'-ImageDescription={description}')
+        cmd.append(f'-XMP:Description={description}')
+        cmd.append(f'-XPComment={description}')
+        cmd.append(f'-IPTC:Caption-Abstract={description}')
+    
+    # Only run if we have something to write
+    if len(cmd) <= 3:
+        logger.debug("No metadata to write")
+        return True
+    
+    cmd.append(local_path)
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            logger.info(f"Wrote embedded metadata to {local_path}")
+            return True
+        else:
+            logger.warning(f"exiftool failed: {result.stderr}")
+            return False
+    except subprocess.TimeoutExpired:
+        logger.error(f"exiftool timeout for {local_path}")
+        return False
+    except FileNotFoundError:
+        logger.error("exiftool not found in PATH")
+        return False
+    except Exception as e:
+        logger.error(f"Embedded metadata write failed: {e}")
+        return False
+
+
+def sync_xmp_to_db(image_path: str) -> dict:
+    """
+    Read XMP sidecar and return data that can be used to update database.
+    Useful for importing Lightroom edits back into the scoring database.
+    
+    Returns dict with rating, label, picked suitable for db.update_image_metadata()
+    """
+    return read_xmp(image_path)

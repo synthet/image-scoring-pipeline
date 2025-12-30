@@ -6,7 +6,7 @@ import queue
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration
 from typing import List, Dict, Optional, Tuple
-from modules import db, thumbnails
+from modules import db, thumbnails, xmp
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -24,7 +24,12 @@ class KeywordScorer:
         "aerial", "transportation"
     ]
 
-    def __init__(self, model_name: str = "openai/clip-vit-base-patch32", device: str = None):
+    def __init__(self, model_name: str = None, device: str = None):
+        # Load model name from config if not provided
+        if model_name is None:
+            from modules import config
+            tagging_config = config.get_config_section('tagging')
+            model_name = tagging_config.get('clip_model', "openai/clip-vit-base-patch32")
         self.model_name = model_name
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
@@ -109,7 +114,11 @@ class CaptionGenerator:
             image = Image.open(image_path).convert('RGB')
             import torch
             inputs = self.processor(image, return_tensors="pt").to(self.device)
-            context_tokens = self.model.generate(**inputs, max_new_tokens=50)
+            # Load max_new_tokens from config
+            from modules import config
+            tagging_config = config.get_config_section('tagging')
+            max_tokens = tagging_config.get('max_new_tokens', 50)
+            context_tokens = self.model.generate(**inputs, max_new_tokens=max_tokens)
             caption = self.processor.decode(context_tokens[0], skip_special_tokens=True)
             return caption.capitalize()
         except Exception as e:
@@ -333,65 +342,122 @@ class TaggingRunner:
 
     def write_metadata(self, image_path: str, keywords: List[str], title: str = "", description: str = "", rating: int = 0, label: str = "") -> bool:
         """
-        Write keywords to image metadata (XMP/IPTC).
-        """
-        import subprocess
+        Write keywords and metadata to image using unified XMP module.
         
-        # Try ExifTool (most robust for Keywords)
+        Uses XMP sidecar files for non-destructive workflow by default.
+        Also writes embedded metadata for maximum compatibility.
+        """
         try:
-            # Flatten keywords
-            # ExifTool expects: -CurrentIPTCDigest= -Subject={tag} -HierarchicalSubject={tag} ...
-            # Actually -Subject="tag1, tag2" works or multiple -Subject args
-            # Safest is -Subject and -Keywords and -XMP:Subject
+            # Use the unified XMP module for consistent metadata handling
+            # Write to both sidecar (non-destructive) and embedded (compatibility)
+            success = xmp.write_metadata_unified(
+                image_path=image_path,
+                rating=rating if rating and rating > 0 else None,
+                label=label if label else None,
+                keywords=keywords if keywords else None,
+                title=title if title else None,
+                description=description if description else None,
+                use_sidecar=True,   # Non-destructive XMP sidecar
+                use_embedded=True   # Also write embedded for compatibility
+            )
             
-            cmd = ['exiftool', '-overwrite_original', '-sep', ',']
+            if success:
+                logger.info(f"Metadata written for {os.path.basename(image_path)}")
+            return success
             
-            if keywords:
-                kw_str = ",".join(keywords)
-                cmd.append(f'-Subject={kw_str}')
-                cmd.append(f'-Keywords={kw_str}')
-                cmd.append(f'-XMP:Subject={kw_str}')
-
-            if title:
-                cmd.append(f'-Title={title}')
-                cmd.append(f'-XMP:Title={title}')
-                cmd.append(f'-XPTitle={title}')
-                
-            if description:
-                cmd.append(f'-Description={description}')
-                cmd.append(f'-ImageDescription={description}')
-                cmd.append(f'-XMP:Description={description}')
-                # XPComment matching Windows "Comments" often used for description too
-                cmd.append(f'-XPComment={description}') 
-                # Caption-Abstract for old IPTC
-                cmd.append(f'-IPTC:Caption-Abstract={description}')
-            
-            if rating and rating > 0:
-                cmd.append(f'-Rating={rating}')
-                cmd.append(f'-XMP:Rating={rating}')
-                
-            if label:
-                 cmd.append(f'-Label={label}')
-                 cmd.append(f'-XMP:Label={label}')
-
-            # Hierarchical keywords often used by Lightroom
-            # cmd.append(f'-HierarchicalSubject={kw_str}')  
-            
-            cmd.append(image_path)
-            
-            # Run
-            # We assume 'exiftool' is in path (WSL or Windows)
-            # If running in python in WSL, 'exiftool' checks WSL path.
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-            if res.returncode == 0:
-                return True
-            else:
-                logger.warning(f"Exiftool failed: {res.stderr}")
-                return False
-                
         except Exception as e:
             logger.error(f"Metadata write failed: {e}")
             return False
         
     def stop(self):
         self.stop_event.set()
+
+    def run_single_image(self, file_path, custom_keywords=None, generate_captions=True):
+        """
+        Runs tagging/captioning for a single image, blocking.
+        Returns: success (bool), message (str)
+        """
+        if not os.path.exists(file_path):
+            return False, f"File not found: {file_path}"
+        
+        self.status_message = "Tagging (Manual)..."
+        
+        # Initialize Scorer
+        if not self.scorer:
+            try:
+                self.scorer = KeywordScorer()
+                self.scorer.load_model()
+            except Exception as e:
+                self.status_message = "Error"
+                return False, f"Error loading CLIP model: {e}"
+
+        if generate_captions and not self.captioner:
+            try:
+                self.captioner = CaptionGenerator()
+                self.captioner.load_model()
+            except Exception as e:
+                self.status_message = "Error"
+                return False, f"Error loading BLIP model: {e}"
+
+        # Determine inference path (use thumbnail for NEF/RAW)
+        inference_path = file_path
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in ['.nef', '.nrw', '.arw', '.cr2', '.cr3', '.dng']:
+             row = db.get_image_details(file_path)
+             if row:
+                thumb_path = row.get('thumbnail_path')
+                # Convert thumb path to WSL if needed
+                if thumb_path and ":" in thumb_path and thumb_path[1] == ":" and os.path.exists("/mnt/"):
+                    drive_t = thumb_path[0].lower()
+                    p_t = thumb_path[2:].replace("\\", "/")
+                    thumb_path = f"/mnt/{drive_t}{p_t}"
+
+                if thumb_path and os.path.exists(thumb_path):
+                    inference_path = thumb_path
+        
+        try:
+            tags = self.scorer.predict(inference_path, keywords=custom_keywords)
+            caption = ""
+            title = ""
+            
+            if generate_captions:
+                 caption = self.captioner.generate(inference_path)
+                 import textwrap
+                 title = textwrap.shorten(caption, width=50, placeholder="...")
+                 
+            if tags or caption:
+                tags_str = ",".join(tags)
+                # Update DB
+                conn = db.get_db()
+                c = conn.cursor()
+                row = db.get_image_details(file_path)
+                image_id = row['id'] if row else None
+                
+                if image_id:
+                    if caption:
+                         c.execute("UPDATE images SET keywords = ?, title = ?, description = ? WHERE id = ?", 
+                                   (tags_str, title, caption, image_id))
+                    else:
+                         c.execute("UPDATE images SET keywords = ? WHERE id = ?", (tags_str, image_id))
+                    conn.commit()
+                    success_msg = f"Tags: {len(tags)} found"
+                    if caption: success_msg += ", Caption generated"
+                else:
+                    conn.close()
+                    return False, "Image not found in DB"
+                
+                conn.close()
+                
+                # Write Metadata
+                self.write_metadata(file_path, tags, title, caption)
+                
+                self.status_message = "Idle"
+                return True, success_msg
+                
+            else:
+                self.status_message = "Idle"
+                return True, "No tags found."
+
+        except Exception as e:
+            self.status_message = "Error"
+            return False, f"Error tagging: {e}"

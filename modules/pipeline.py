@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 
 # Local imports
-from modules import db, thumbnails
+from modules import db, thumbnails, xmp
 from scripts.python.run_all_musiq_models import MultiModelMUSIQ
 from modules.liqe import LiqeScorer
 
@@ -341,15 +341,11 @@ class ResultWorker(PipelineWorker):
                 self.progress_callback(f"FAILED: {job.image_path} - {job.error}")
                 
         elif job.status == "success":
-            # Write Metadata (NEF) if applicable
+            # Write Metadata using unified XMP module
             # Doing this here takes I/O off the GPU thread
-            if self.scorer and job.is_raw and "weighted_scores" in job.result["summary"]:
+            if self.scorer and "weighted_scores" in job.result["summary"]:
                 try:
                     # Calculate Rating/Label using scorer helpers
-                    # Access logic strictly if we know scorer is loaded
-                    # We reuse logic from run_all_musiq_models but externally
-                    
-                    # Reconstruct normalized_scores_dict for label calculation
                     normalized_scores_dict = {}
                     for m_name, m_res in job.result["models"].items():
                          if m_res.get("status") == "success":
@@ -360,20 +356,24 @@ class ResultWorker(PipelineWorker):
                     rating = self.scorer.score_to_rating(avg_score)
                     label = self.scorer.determine_lightroom_label(normalized_scores_dict)
                     
-                    # Write to file
-                    # Use original image path, not temp path
-                    success = self.scorer.write_metadata_to_nef(job.image_path, rating, label)
+                    # Use unified XMP module for consistent metadata handling
+                    # Write XMP sidecar (non-destructive) for all images
+                    # For RAW files, also write embedded metadata
+                    success = xmp.write_metadata_unified(
+                        image_path=job.image_path,
+                        rating=rating,
+                        label=label,
+                        use_sidecar=True,  # Always create XMP sidecar
+                        use_embedded=job.is_raw  # Only write embedded for RAW files
+                    )
                     
                     if success:
-                        # CRITICAL FIX: Inject metadata into result for DB upsert
+                        # Inject metadata into result for DB upsert
                         job.result["nef_metadata"] = {
                             "rating": rating,
                             "label": label
                         }
                         
-                        if self.progress_callback:
-                            # Maybe detailed log?
-                            pass
                 except Exception as e:
                     if self.progress_callback:
                         self.progress_callback(f"Metadata Write Failed: {e}")

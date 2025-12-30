@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **AI Culling Tab**: Aftershoot-style culling workflow for photographers.
+  - Groups similar images (bursts, duplicates) using clustering
+  - Auto-picks best shot in each group based on quality scores
+  - Exports decisions to XMP sidecar files for Lightroom Cloud
+  - New module: `modules/culling.py` with CullingEngine class
+  - New module: `modules/xmp.py` for non-destructive XMP sidecar writing
+  - Documentation: `docs/technical/CULLING_FEATURE.md`
+- **Manual Stack Creation**: Added "Group Selected" button to create stacks from manually selected images (Lightroom Ctrl+G equivalent).
+- **Remove from Stack**: Added "Remove from Stack" button to remove individual images from their stacks.
+- **Dissolve Stack**: Added "Ungroup All" button to completely dissolve a stack and ungroup all its images.
+- **Stack Selection Tracking**: Added state management to track selected images and current stack for stack operations.
+- **Re-Run Analysis**: Added "Re-Run Scoring" and "Re-Run Tagging" buttons to Image Details panel for individual image reprocessing.
+- **Lazy Loading**: Implemented lazy loading for gallery full-resolution images to improve initial load performance and memory usage.
+
+### Changed
+- **UI Cleanup**: Removed "View Full Resolution" and "Add to Compare" buttons from gallery view.
+- **Fix Data Workflow**: Enhanced "Fix Data" dialog with "Regenerate Thumbnails" option.
+- **Raw Preview**: Disabled In-Browser RAW Preview feature due to reliability issues.
+- **Settings**: Hard-coded model weights in `webui.py` to ensure consistency.
+
+### Fixed
+- **TF Hub Cache**: Fixed `NameError` related to `os` module import in TF Hub cache configuration.
+- **Culling Error**: Fixed `ValueError` in AI culling wrapper caused by incorrect return value count.
+- **Syntax Warnings**: Resolved Python syntax warnings in `webui.py` related to invalid escape sequences.
+
+### Changed
+- **Database Schema**: Added `culling_sessions` and `culling_picks` tables for culling workflow persistence.
+- **Stacks Tab UI**: Added action buttons row below Stack Contents gallery with status feedback.
+- **Database Module**: Added `create_culling_session()`, `get_session_groups()`, `set_pick_decision()`, and 7 other culling helper functions.
+
 ## [3.5.1] - 2025-12-26
 
 ### Fixed

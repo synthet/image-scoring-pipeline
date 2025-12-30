@@ -14,6 +14,7 @@ import io
 import shutil
 import subprocess
 import logging
+import time
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
@@ -634,9 +635,9 @@ class MultiModelMUSIQ:
              self.gpu_available = False
              self.device = '/CPU:0'
         
-        # Model weights for weighted scoring (based on statistical analysis)
-        # Model weights for weighted scoring (based on statistical analysis)
-        self.model_weights = {
+        # Model weights for weighted scoring
+        # Load from config if available, otherwise use defaults
+        default_weights = {
             "paq2piq": 0.25,
             "liqe": 0.25,
             "ava": 0.20,
@@ -644,6 +645,19 @@ class MultiModelMUSIQ:
             "spaq": 0.10,
             "vila": 0.00
         }
+        
+        # Try to load from config
+        try:
+            config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config.json')
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config_data = json.load(f)
+                    self.model_weights = config_data.get('model_weights', default_weights)
+            else:
+                self.model_weights = default_weights
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Could not load model weights from config: {e}")
+            self.model_weights = default_weights
     
     def _setup_gpu(self):
         """Setup GPU configuration."""
@@ -953,7 +967,10 @@ class MultiModelMUSIQ:
                 continue
 
             if model_name in self.models:
+                # Time the model inference
+                start_time = time.time()
                 score = self.predict_quality(processing_path, model_name)
+                inference_time = time.time() - start_time
                 
                 if score is not None:
                     min_score, max_score = self.model_ranges[model_name]
@@ -964,18 +981,20 @@ class MultiModelMUSIQ:
                         "score": round(score, 2),
                         "score_range": f"{min_score}-{max_score}",
                         "normalized_score": round(normalized_score, 3),
+                        "inference_time_seconds": round(inference_time, 3),
                         "status": "success"
                     }
                     results["summary"]["successful_predictions"] += 1
-                    logger(f"  {model_name.upper()} score: {score:.2f} (range: {min_score}-{max_score})")
+                    logger(f"  {model_name.upper()} score: {score:.2f} (range: {min_score}-{max_score}) [{inference_time:.3f}s]")
                 else:
                     results["models"][model_name] = {
                         "score": None,
                         "error": "Prediction failed",
+                        "inference_time_seconds": round(inference_time, 3),
                         "status": "failed"
                     }
                     results["summary"]["failed_predictions"] += 1
-                    logger(f"  {model_name.upper()} model: FAILED")
+                    logger(f"  {model_name.upper()} model: FAILED [{inference_time:.3f}s]")
             else:
                 results["models"][model_name] = {
                     "score": None,
@@ -986,9 +1005,25 @@ class MultiModelMUSIQ:
                 logger(f"  {model_name.upper()} model: NOT LOADED")
         
         normalized_scores_dict = {}
+        total_inference_time = 0.0
+        model_times = {}
+        
         for model_name, model_result in results["models"].items():
             if model_result["status"] == "success":
                 normalized_scores_dict[model_name] = model_result["normalized_score"]
+            # Collect inference times
+            if "inference_time_seconds" in model_result:
+                model_time = model_result["inference_time_seconds"]
+                model_times[model_name] = model_time
+                total_inference_time += model_time
+        
+        # Add performance summary
+        if model_times:
+            results["summary"]["performance"] = {
+                "total_inference_time_seconds": round(total_inference_time, 3),
+                "average_inference_time_seconds": round(total_inference_time / len(model_times), 3),
+                "model_times": model_times
+            }
         
         if normalized_scores_dict:
              weighted_scores = self.calculate_weighted_categories(normalized_scores_dict)
