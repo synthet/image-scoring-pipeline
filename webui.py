@@ -212,25 +212,34 @@ PAGE_SIZE = app_config.get('ui', {}).get('gallery_page_size', 50)
 
 def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None):
     """Fetch images for gallery with pagination."""
+    
     date_range = (start_date, end_date) if (start_date or end_date) else None
     
-    rows = db.get_images_paginated(
-        page, PAGE_SIZE, sort_by, sort_order, 
-        rating_filter, label_filter, keyword_filter, 
-        min_score_general=min_gen, 
-        min_score_aesthetic=min_aes, 
-        min_score_technical=min_tech, 
-        date_range=date_range,
-        folder_path=folder
-    )
-    total_count = db.get_image_count(
-        rating_filter, label_filter, keyword_filter,
-        min_score_general=min_gen, 
-        min_score_aesthetic=min_aes, 
-        min_score_technical=min_tech, 
-        date_range=date_range,
-        folder_path=folder
-    )
+    try:
+        rows = db.get_images_paginated(
+            page, PAGE_SIZE, sort_by, sort_order, 
+            rating_filter, label_filter, keyword_filter, 
+            min_score_general=min_gen, 
+            min_score_aesthetic=min_aes, 
+            min_score_technical=min_tech, 
+            date_range=date_range,
+            folder_path=folder
+        )
+    except Exception as e:
+        rows = []
+    
+    try:
+        total_count = db.get_image_count(
+            rating_filter, label_filter, keyword_filter,
+            min_score_general=min_gen, 
+            min_score_aesthetic=min_aes, 
+            min_score_technical=min_tech, 
+            date_range=date_range,
+            folder_path=folder
+        )
+    except Exception as e:
+        total_count = 0
+    
     total_pages = math.ceil(total_count / PAGE_SIZE) if total_count > 0 else 1
     
     # Pre-fetch stack contexts for all images in batch (efficient single query)
@@ -250,8 +259,18 @@ def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, key
         # OPTIMIZATION: Use thumbnail if available, skip expensive os.path.exists() check
         # Trust DB paths - they were validated when stored
         image_path = thumb_path if thumb_path else file_path
+        
+        # Convert WSL path to Windows path if needed (DB stores Windows-style paths, but may have WSL format)
+        # Gradio needs Windows paths when running on Windows
+        original_path = image_path
+        if IS_WINDOWS and image_path.startswith("/mnt/"):
+            image_path = utils.convert_path_to_local(image_path)
+        elif not IS_WINDOWS and ":" in image_path and image_path[1] == ":":
+            # Windows path on Linux/WSL - convert to WSL format
+            image_path = utils.convert_path_to_wsl(image_path)
             
         # Ensure absolute path for Gradio
+        before_abspath = image_path
         image_path = os.path.abspath(image_path)
         
         # Format path for display (showing parent directory)
@@ -298,6 +317,7 @@ def get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, key
                 label = f"📚 {label} ({ctx['stack_size']} in stack)"
         
         results.append((image_path, label))
+    
         
     return results, f"Page {page} of {total_pages}", total_pages, raw_paths
 
@@ -305,7 +325,7 @@ def update_gallery(page, sort_by, sort_order, rating_filter, label_filter, keywo
     images, label, _, raw_paths = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
     # Return: images, label, raw_paths, *details_cleared*
     # Details cleared must match detail_outputs list:
-    return images, label, raw_paths, {}, {}, {}, {}, gr.update(visible=False), "", "", [], "0", "None", '<div style="display: none;"></div>', gr.update(visible=False), "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+    return images, label, raw_paths, {}, {}, {}, {}, gr.update(visible=False), "", "", [], "0", "None", '<div style="display: none;"></div>', gr.update(visible=False), "", gr.update(visible=False), gr.update(visible=False)
 
 def next_page(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None):
     _, _, total_pages, _ = get_gallery_data(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
@@ -476,13 +496,26 @@ def open_stack_in_gallery(stack_id, sort_by, sort_order):
         {}, {}, {}, {}, gr.update(visible=False), "", "", [], "0", "None", '<div style="display: none;"></div>', gr.update(visible=False), "", gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
     )
 
-def display_details(evt: gr.SelectData, raw_paths):
-    print(f"DEBUG: display_details called. Index: {evt.index if evt else 'None'}, Paths Len: {len(raw_paths) if raw_paths else 0}")
-    if evt is None:
-        return "", {}, {}, {}, {}, gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
-    index = evt.index
-    if index is None or not raw_paths or index >= len(raw_paths):
-        print("DEBUG: Index out of bounds or no paths.")
+def display_details(evt, raw_paths, forced_index=None):
+    
+    index = None
+    if forced_index is not None:
+        index = forced_index
+    elif evt is not None:
+        # Check if evt is a SelectData object (proper way)
+        if isinstance(evt, gr.SelectData):
+            index = evt.index
+        elif isinstance(evt, dict) and 'index' in evt:
+            index = evt['index']
+        elif isinstance(evt, list):
+            # FIX: If evt is a list (gallery value), this shouldn't happen
+            # This means Gradio passed the gallery value instead of SelectData
+            # We can't extract index from gallery value alone
+            index = None
+    
+        
+    # Ensure index is an integer before comparison
+    if index is None or not raw_paths or not isinstance(index, int) or index >= len(raw_paths):
         return "", {}, {}, {}, {}, gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
     
     file_path = raw_paths[index]
@@ -1654,7 +1687,7 @@ def refresh_tree_wrapper():
 # --- UI Definition ---
 
 # Tree View Start Script + Gallery Close Button + NEF Viewer
-tree_js = """
+tree_js = r"""
 <script src="/file=static/js/libraw-viewer.js"></script>
 <script>
 window.selectFolder = function(e, path) {
@@ -3926,10 +3959,17 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
             
             # Selection -> Details
             # Update: added delete_btn to outputs
+            # State for tracking the currently selected index in the main gallery
+            current_selection_index = gr.State(None)
+
             # Wrapper for display details to also return form values
-            def display_details_wrapper(evt: gr.SelectData, raw_paths):
+            def process_details_display(evt, raw_paths, forced_index=None):
                  # display_details now returns fix_btn updated too (used for all 3 buttons for now)
-                 res, gen, weight, models, raw, del_upd, fix_upd, rerun_score_upd, rerun_tags_upd = display_details(evt, raw_paths)
+                 try:
+                     res, gen, weight, models, raw, del_upd, fix_upd, rerun_score_upd, rerun_tags_upd = display_details(evt, raw_paths, forced_index)
+                 except Exception as e:
+                     # Return empty values on error
+                     res, gen, weight, models, raw, del_upd, fix_upd, rerun_score_upd, rerun_tags_upd = "", {}, {}, {}, {}, gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
                  
                  # Extract form data from 'raw' (details dict)
                  t = raw.get('title', '')
@@ -3946,8 +3986,28 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                  
                  # Extract file path for RAW preview
                  selected_file_path = ""
-                 if evt is not None and raw_paths and evt.index < len(raw_paths):
-                     selected_file_path = raw_paths[evt.index]
+                 
+                 # Safe index extraction
+                 index = None
+                 if forced_index is not None:
+                     index = forced_index
+                 elif evt is not None:
+                     # Check if evt is a SelectData object (has .index attribute that's an int)
+                     if hasattr(evt, 'index') and not callable(getattr(evt, 'index', None)):
+                         # It's a SelectData object with .index attribute
+                         index = evt.index
+                     elif isinstance(evt, dict) and 'index' in evt:
+                         index = evt['index']
+                     elif isinstance(evt, (list, tuple)) and len(evt) > 0:
+                         # FIX: If evt is a list (gallery value), this shouldn't happen, but handle it
+                         # This means Gradio passed the gallery value instead of SelectData
+                         # We can't extract index from gallery value alone
+                         index = None
+                 
+                 
+                 # Ensure index is an integer before comparison
+                 if index is not None and isinstance(index, int) and raw_paths and index < len(raw_paths):
+                     selected_file_path = raw_paths[index]
                  
                  # Get culling status for this image
                  culling_html = '<div style="display: none;"></div>'  # Hidden by default
@@ -3977,12 +4037,65 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                                  ❓ Maybe
                              </div>'''
                  
-                 return res, gen, weight, models, raw, del_upd, t, d, k, r, l, del_status_upd, selected_file_path, culling_html, fix_upd, fix_status_upd, rerun_score_upd, rerun_tags_upd
+                 # Return index as well so it can be saved to current_selection_index
+                 return res, gen, weight, models, raw, del_upd, t, d, k, r, l, del_status_upd, selected_file_path, culling_html, fix_upd, fix_status_upd, rerun_score_upd, rerun_tags_upd, index
             
+            # Handler for Gallery Select (Type hint removed to prevent NoneType crash)
+            # FIX: If raw_paths is empty, query DB to get paths for current page
+            def on_gallery_select(evt, raw_paths=None):
+                
+                # FIX: Handle Gradio bug where gallery value (list) is passed instead of SelectData
+                # This is a known issue in some Gradio versions
+                actual_evt = evt
+                fallback_index = None
+                if isinstance(evt, list):
+                    # WORKAROUND: When evt is a list, we can't extract the index from SelectData
+                    # As a temporary workaround, we'll use index 0 (first image) when we have raw_paths
+                    # This is not ideal, but better than showing nothing
+                    # The real fix would be to update Gradio or use JavaScript to capture the click index
+                    actual_evt = None
+                    # We'll pass forced_index=0 as a fallback if we have raw_paths
+                    # This will be handled in process_details_display
+                    fallback_index = 0
+                
+                # Check if evt is a SelectData object (proper way)
+                elif not isinstance(evt, gr.SelectData):
+                    actual_evt = None
+                
+                # Handle case where raw_paths might be None or empty
+                if raw_paths is None or (isinstance(raw_paths, list) and len(raw_paths) == 0):
+                    # FALLBACK: If current_paths State is empty, query DB to get paths for current page
+                    # This is a workaround for the State not being updated by .load()
+                    try:
+                        # Get current page from state (we'll need to pass it or get it from config)
+                        # For now, query first page with default sort
+                        default_sort = app_config.get('ui', {}).get('default_sort', 'score_general')
+                        default_order = app_config.get('ui', {}).get('default_order', 'desc')
+                        rows = db.get_images_paginated(
+                            page=1, page_size=PAGE_SIZE, sort_by=default_sort, order=default_order,
+                            rating_filter=None, label_filter=None, keyword_filter=None,
+                            min_score_general=0.0, min_score_aesthetic=0.0, min_score_technical=0.0,
+                            date_range=None, folder_path=None
+                        )
+                        raw_paths = [row['file_path'] for row in rows]
+                    except Exception as e:
+                        raw_paths = []
+                # Use fallback_index if evt was a list (Gradio bug workaround)
+                forced_idx = fallback_index if fallback_index is not None and raw_paths and len(raw_paths) > 0 else None
+                result = process_details_display(actual_evt, raw_paths, forced_idx)
+                return result
+
+            # Handler for Manual Refresh (No event)
+            def on_manual_refresh(raw_paths, forced_index):
+                return process_details_display(None, raw_paths, forced_index)
+
+            # Gallery select event - evt is SelectData, raw_paths comes from current_paths state
+            # Note: process_details_display now returns index as the last value
+            # FIX: Pass gallery value as input to allow fallback DB query if current_paths is empty
             gallery.select(
-                fn=display_details_wrapper, 
-                inputs=[current_paths], 
-                outputs=[gr.Textbox(visible=False), d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label, delete_status, gallery_selected_path, d_culling_status, fix_btn, fix_status, rerun_score_btn, rerun_tags_btn]
+                fn=on_gallery_select, 
+                inputs=[current_paths], # Only pass current_paths, not gallery (evt is SelectData event)
+                outputs=[gr.Textbox(visible=False), d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label, delete_status, gallery_selected_path, d_culling_status, fix_btn, fix_status, rerun_score_btn, rerun_tags_btn, current_selection_index]
             )
             
             # Fix Action
@@ -3990,21 +4103,21 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                 fn=fix_image_wrapper,
                 inputs=[image_details],
                 outputs=[fix_btn, fix_status]
-            ).success(fn=display_details_wrapper, inputs=[gr.State(None), current_paths], outputs=None)
+            ).success(fn=on_manual_refresh, inputs=[current_paths, current_selection_index], outputs=None)
             
             # Re-Run Scoring Action
             rerun_score_btn.click(
                 fn=rerun_scoring_wrapper,
                 inputs=[image_details],
                 outputs=[rerun_score_btn, fix_status]
-            ).success(fn=display_details_wrapper, inputs=[gr.State(None), current_paths], outputs=None)
+            ).success(fn=on_manual_refresh, inputs=[current_paths, current_selection_index], outputs=None)
             
             # Re-Run Tags Action
             rerun_tags_btn.click(
                 fn=rerun_keywords_wrapper,
                 inputs=[image_details],
                 outputs=[rerun_tags_btn, fix_status]
-            ).success(fn=display_details_wrapper, inputs=[gr.State(None), current_paths], outputs=None)
+            ).success(fn=on_manual_refresh, inputs=[current_paths, current_selection_index], outputs=None)
             
             # Save Action
             save_btn.click(
@@ -4119,35 +4232,36 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                     return gr.update(), gr.update(value="❌ Failed to delete template", visible=True), gr.update(), export_template_state
             
             # Template management events
-            export_template_save_btn.click(
-                fn=save_export_template_handler,
-                inputs=[
-                    export_template_name, export_format, export_cols_basic, export_cols_scores,
-                    export_cols_metadata, export_cols_other, export_filter_rating, export_filter_label,
-                    export_filter_keyword, export_filter_folder, export_filter_min_gen,
-                    export_filter_min_aes, export_filter_min_tech, export_filter_date_start, export_filter_date_end
-                ],
-                outputs=[export_template_status, export_template_dropdown]
-            )
+            # Template management events - DISABLED (Feature removed)
+            # export_template_save_btn.click(
+            #     fn=save_export_template_handler,
+            #     inputs=[
+            #         export_template_name, export_format, export_cols_basic, export_cols_scores,
+            #         export_cols_metadata, export_cols_other, export_filter_rating, export_filter_label,
+            #         export_filter_keyword, export_filter_folder, export_filter_min_gen,
+            #         export_filter_min_aes, export_filter_min_tech, export_filter_date_start, export_filter_date_end
+            #     ],
+            #     outputs=[export_template_status, export_template_dropdown]
+            # )
             
-            export_template_load_btn.click(
-                fn=load_export_template_handler,
-                inputs=[export_template_dropdown],
-                outputs=[
-                    export_format, export_cols_basic, export_cols_scores, export_cols_metadata,
-                    export_cols_other, export_filter_rating, export_filter_label,
-                    export_filter_keyword, export_filter_folder, export_filter_min_gen,
-                    export_filter_min_aes, export_filter_min_tech, export_filter_date_start,
-                    export_filter_date_end, export_template_state, export_template_delete_btn,
-                    export_template_status
-                ]
-            )
+            # export_template_load_btn.click(
+            #     fn=load_export_template_handler,
+            #     inputs=[export_template_dropdown],
+            #     outputs=[
+            #         export_format, export_cols_basic, export_cols_scores, export_cols_metadata,
+            #         export_cols_other, export_filter_rating, export_filter_label,
+            #         export_filter_keyword, export_filter_folder, export_filter_min_gen,
+            #         export_filter_min_aes, export_filter_min_tech, export_filter_date_start,
+            #         export_filter_date_end, export_template_state, export_template_delete_btn,
+            #         export_template_status
+            #     ]
+            # )
             
-            export_template_delete_btn.click(
-                fn=delete_export_template_handler,
-                inputs=[export_template_state],
-                outputs=[export_template_dropdown, export_template_status, export_template_delete_btn, export_template_state]
-            )
+            # export_template_delete_btn.click(
+            #     fn=delete_export_template_handler,
+            #     inputs=[export_template_state],
+            #     outputs=[export_template_dropdown, export_template_status, export_template_delete_btn, export_template_state]
+            # )
             
             # Export Action
             export_btn.click(
@@ -4538,11 +4652,11 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                     return ""
                 return paths[evt.index]
             
-            cull_picks_gallery.select(
-                fn=update_cull_selected_path,
-                inputs=[cull_picks_paths],
-                outputs=[cull_selected_path]
-            )
+            # cull_picks_gallery.select(
+            #     fn=update_cull_selected_path,
+            #     inputs=[cull_picks_paths],
+            #     outputs=[cull_selected_path]
+            # )
             
             cull_run_btn.click(
                 fn=run_culling_wrapper,
@@ -4960,6 +5074,51 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
         fn=ui_tree.get_tree_html,
         inputs=[],
         outputs=[t_tree_view]
+    )
+    
+    # Load gallery initially with first page of images
+    def load_initial_gallery():
+        """Load the first page of images when the app starts."""
+        
+        # Get default filter values from config or use defaults
+        default_sort = app_config.get('ui', {}).get('default_sort', 'score_general')
+        default_order = app_config.get('ui', {}).get('default_order', 'desc')
+        
+        
+        # Call update_gallery with default values and return page number first (like first_page does)
+        # This ensures correct mapping: (current_page, gallery, page_label, current_paths, ...)
+        result = (1, *update_gallery(
+            page=1,
+            sort_by=default_sort,
+            sort_order=default_order,
+            rating_filter=None,
+            label_filter=None,
+            keyword_filter=None,
+            min_gen=0.0,
+            min_aes=0.0,
+            min_tech=0.0,
+            start_date=None,
+            end_date=None,
+            folder=None
+        ))
+        
+        
+        return result
+    
+    # Note: detail_outputs is defined in the Gallery tab, so we reference components directly
+    # The outputs must match update_gallery return: images, label, paths, then detail_outputs
+    # IMPORTANT: We need to ensure current_paths State is updated, so we use a wrapper that explicitly extracts and returns it
+    def load_initial_gallery_with_paths():
+        result = load_initial_gallery()
+        # Extract raw_paths (4th element: page, images, label, paths, ...)
+        if result and len(result) >= 4:
+            raw_paths = result[3]
+        return result
+    
+    demo.load(
+        fn=load_initial_gallery_with_paths,
+        inputs=[],
+        outputs=[current_page, gallery, page_label, current_paths, d_score_gen, d_score_weighted, d_score_models, image_details, delete_btn, d_title, d_desc, d_keywords, d_rating, d_label, d_culling_status, fix_btn, fix_status, rerun_score_btn, rerun_tags_btn]
     )
     
             # Load active culling sessions for resume dropdown

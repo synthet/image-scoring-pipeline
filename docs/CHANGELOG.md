@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TF Hub Cache**: Fixed `NameError` related to `os` module import in TF Hub cache configuration.
 - **Culling Error**: Fixed `ValueError` in AI culling wrapper caused by incorrect return value count.
 - **Syntax Warnings**: Resolved Python syntax warnings in `webui.py` related to invalid escape sequences.
+- **Gallery Selection**: Fixed TypeError when selecting images in gallery view. Added workaround for Gradio bug where gallery value (list) is passed instead of SelectData event. Details panels now display correctly when images are selected.
 
 ### Changed
 - **Database Schema**: Added `culling_sessions` and `culling_picks` tables for culling workflow persistence.
