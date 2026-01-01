@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lazy Loading**: Implemented lazy loading for gallery full-resolution images to improve initial load performance and memory usage.
 
 ### Changed
+- **WebUI Modular Refactoring**: Complete architectural refactoring of `webui.py` (5,000+ lines) into modular component structure.
+  - Extracted to `modules/ui/app.py` (main orchestrator), `modules/ui/assets.py` (CSS/JS), `modules/ui/navigation.py` (cross-tab navigation)
+  - Individual tabs moved to `modules/ui/tabs/` (scoring, tagging, gallery, folder_tree, stacks, culling, settings)
+  - Shared utilities in `modules/ui/common.py` and `modules/ui/state.py`
+  - `webui.py` reduced to ~50-line bootstrap script
+  - Improved maintainability, testability, and developer experience
+  - All functionality preserved with cleaner separation of concerns
 - **UI Cleanup**: Removed "View Full Resolution" and "Add to Compare" buttons from gallery view.
 - **Fix Data Workflow**: Enhanced "Fix Data" dialog with "Regenerate Thumbnails" option.
 - **Raw Preview**: Disabled In-Browser RAW Preview feature due to reliability issues.
@@ -30,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **XMP Export**: Improved error reporting and validation for XMP sidecar export operations.
 
 ### Fixed
+- **WebUI Refactoring Stabilization**: Fixed critical bugs discovered during modular refactoring.
+  - Fixed `image_details` state initialization (was `None`, causing AttributeError)
+  - Fixed missing imports in `navigation.py` (`os`, `gradio`)
+  - Fixed `get_total_images_count` function name (changed to `get_image_count`)
+  - Fixed `all_outputs` NameError in gallery refresh button wiring
+  - Added component validation to prevent None components in event handlers
+  - Extracted component count constants for maintainability
 - **TF Hub Cache**: Fixed `NameError` related to `os` module import in TF Hub cache configuration.
 - **Culling Error**: Fixed `ValueError` in AI culling wrapper caused by incorrect return value count.
 - **Syntax Warnings**: Resolved Python syntax warnings in `webui.py` related to invalid escape sequences.
