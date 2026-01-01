@@ -42,15 +42,46 @@ class BatchImageProcessor:
             return
 
         # 2. Find Images
-        import glob
-        extensions = ['*.jpg', '*.jpeg', '*.png', '*.nef', '*.NEF', '*.nrw', '*.dng', '*.cr2', '*.arw']
+        # 2. Find Images (using os.walk for folder-level control)
+        # import glob # No longer used
+        extensions = {'.jpg', '.jpeg', '.png', '.nef', '.nrw', '.dng', '.cr2', '.arw'}
         files = []
-        for ext in extensions:
-            files.extend(glob.glob(os.path.join(input_dir, "**", ext), recursive=True))
-        files = sorted(list(set(files))) # Dedup
+        visited_folders = set()
+        
+        # Normalize input_dir
+        input_dir = os.path.normpath(input_dir)
+        
+        for root, dirs, filenames in os.walk(input_dir):
+            # Check folder flag if we are skipping existing
+            if self.skip_existing:
+                try:
+                    if db.is_folder_scored(root):
+                        self.log(f"Skipping fully scored folder: {root}")
+                        # We do not process files in this folder.
+                        # We DO continue into subdirectories (os.walk default), 
+                        # because they might not be scored.
+                        continue
+                except Exception as e:
+                    self.log(f"Error checking folder status for {root}: {e}", "WARNING")
+
+            visited_folders.add(root)
+            
+            for filename in filenames:
+                ext = os.path.splitext(filename)[1]
+                if ext.lower() in extensions:
+                    files.append(os.path.join(root, filename))
+
+        files = sorted(list(set(files))) # Dedup just in case
+
         
         if not files:
             self.log("No images found.")
+            # Update flags for visited (e.g. empty) folders as they might be "done" (empty)
+            if visited_folders:
+                self.log("Verifying empty folders...")
+                for f in visited_folders:
+                     try: db.check_and_update_folder_status(f)
+                     except: pass
             return
 
         self.log(f"Found {len(files)} images to process.")
@@ -143,6 +174,16 @@ class BatchImageProcessor:
         result_queue.put(None) # Sentinel for result
         result_worker.join()
         
+        
+        # 6. Update Folder Flags
+        if visited_folders:
+            self.log("Updating folder completion flags...")
+            for f in visited_folders:
+                 try:
+                     db.check_and_update_folder_status(f)
+                 except Exception as e:
+                     self.log(f"Failed to update status for {f}: {e}", "WARNING")
+
         self.log("Batch processing finished.")
 
     def process_list(self, jobs_list, job_id_override=None):

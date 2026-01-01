@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fix Data Workflow**: Enhanced "Fix Data" dialog with "Regenerate Thumbnails" option.
 - **Raw Preview**: Disabled In-Browser RAW Preview feature due to reliability issues.
 - **Settings**: Hard-coded model weights in `webui.py` to ensure consistency.
+- **XMP Export**: Improved error reporting and validation for XMP sidecar export operations.
 
 ### Fixed
 - **TF Hub Cache**: Fixed `NameError` related to `os` module import in TF Hub cache configuration.

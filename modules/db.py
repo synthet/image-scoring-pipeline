@@ -326,12 +326,20 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_stack_id ON images(stack_id)")
     
     # Composite index for efficient cover image lookup in stacks (stack_id + score for ordering)
-    c.execute("CREATE INDEX IF NOT EXISTS idx_stack_score_general ON images(stack_id, score_general DESC) WHERE stack_id IS NOT NULL")
+    # Moved index creation to end
+
 
     # Migration for Folders
     if "folder_id" not in columns:
         c.execute("ALTER TABLE images ADD COLUMN folder_id INTEGER")
         c.execute("CREATE INDEX IF NOT EXISTS idx_folder_id ON images(folder_id)")
+
+    if "is_fully_scored" not in columns:
+        # We need to check columns of FOLDERS table, not images
+        pass 
+        # Actually doing it properly below in separate migrations block for folders if needed
+        # But let's check it here for images? No, it's on folders table.
+
 
     # Stacks table
     c.execute('''CREATE TABLE IF NOT EXISTS stacks (
@@ -347,6 +355,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         path TEXT UNIQUE,
         parent_id INTEGER,
+        is_fully_scored INTEGER DEFAULT 0,
         created_at TIMESTAMP
     )''')
 
@@ -449,6 +458,16 @@ def init_db():
         c.execute("ALTER TABLE images ADD COLUMN description TEXT")
     except sqlite3.OperationalError:
         pass
+
+    try:
+        c.execute("ALTER TABLE folders ADD COLUMN is_fully_scored INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    # Create composite index if not exists (Attempt at end to ensure columns exist)
+    try:
+        c.execute("CREATE INDEX IF NOT EXISTS idx_stack_score_general ON images(stack_id, score_general DESC) WHERE stack_id IS NOT NULL")
+    except: pass
         
     conn.commit()
     conn.close()
@@ -728,6 +747,74 @@ def rebuild_folder_cache():
     print(msg)
     return msg
 
+
+
+def set_folder_scored(folder_path, is_scored=True):
+    folder_id = get_or_create_folder(folder_path)
+    if not folder_id: return
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE folders SET is_fully_scored = ? WHERE id = ?", (1 if is_scored else 0, folder_id))
+    conn.commit()
+    conn.close()
+
+def is_folder_scored(folder_path):
+    folder_id = get_or_create_folder(folder_path)
+    if not folder_id: return False
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT is_fully_scored FROM folders WHERE id = ?", (folder_id,))
+    row = c.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+def check_and_update_folder_status(folder_path):
+    """
+    Verifies if all images in a folder have valid scores in the DB.
+    If so, sets is_fully_scored = 1.
+    """
+    # 1. List files in folder
+    path = Path(folder_path)
+    if not path.exists() or not path.is_dir():
+        return False
+        
+    extensions = {'.jpg', '.jpeg', '.png', '.nef', '.nrw', '.dng', '.cr2', '.arw'}
+    
+    try:
+        files = [p for p in path.iterdir() if p.is_file() and p.suffix.lower() in extensions]
+    except (PermissionError, OSError) as e:
+        print(f"Error accessing folder {folder_path}: {e}")
+        return False
+
+    if not files:
+        # Empty folder is "fully scored" -> mark it done.
+        set_folder_scored(folder_path, True)
+        return True
+
+    # 2. Check DB for these files using folder_id
+    folder_id = get_or_create_folder(folder_path)
+    if not folder_id: return False
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT file_name, score_general FROM images WHERE folder_id = ?", (folder_id,))
+    rows = c.fetchall()
+    conn.close()
+    
+    # helper set of scored filenames
+    scored_files = {row['file_name'] for row in rows if row['score_general'] and row['score_general'] > 0}
+            
+    # 3. Compare
+    all_scored = True
+    for f in files:
+        if f.name not in scored_files:
+            all_scored = False
+            break
+            
+    # Update status
+    set_folder_scored(folder_path, all_scored)
+        
+    return all_scored
 
 
 def get_all_folders():

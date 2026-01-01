@@ -4040,27 +4040,12 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                  # Return index as well so it can be saved to current_selection_index
                  return res, gen, weight, models, raw, del_upd, t, d, k, r, l, del_status_upd, selected_file_path, culling_html, fix_upd, fix_status_upd, rerun_score_upd, rerun_tags_upd, index
             
-            # Handler for Gallery Select (Type hint removed to prevent NoneType crash)
+            # Handler for Gallery Select
             # FIX: If raw_paths is empty, query DB to get paths for current page
-            def on_gallery_select(evt, raw_paths=None):
-                
-                # FIX: Handle Gradio bug where gallery value (list) is passed instead of SelectData
-                # This is a known issue in some Gradio versions
-                actual_evt = evt
-                fallback_index = None
-                if isinstance(evt, list):
-                    # WORKAROUND: When evt is a list, we can't extract the index from SelectData
-                    # As a temporary workaround, we'll use index 0 (first image) when we have raw_paths
-                    # This is not ideal, but better than showing nothing
-                    # The real fix would be to update Gradio or use JavaScript to capture the click index
-                    actual_evt = None
-                    # We'll pass forced_index=0 as a fallback if we have raw_paths
-                    # This will be handled in process_details_display
-                    fallback_index = 0
-                
-                # Check if evt is a SelectData object (proper way)
-                elif not isinstance(evt, gr.SelectData):
-                    actual_evt = None
+            def on_gallery_select(evt: gr.SelectData, raw_paths=None):
+                # Debug logging to help diagnose event handling
+                print(f"Event Type: {type(evt)}")
+                print(f"Event Data: {evt.__dict__ if hasattr(evt, '__dict__') else evt}")
                 
                 # Handle case where raw_paths might be None or empty
                 if raw_paths is None or (isinstance(raw_paths, list) and len(raw_paths) == 0):
@@ -4080,9 +4065,9 @@ with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as dem
                         raw_paths = [row['file_path'] for row in rows]
                     except Exception as e:
                         raw_paths = []
-                # Use fallback_index if evt was a list (Gradio bug workaround)
-                forced_idx = fallback_index if fallback_index is not None and raw_paths and len(raw_paths) > 0 else None
-                result = process_details_display(actual_evt, raw_paths, forced_idx)
+                
+                # Pass the SelectData event directly - it contains the index
+                result = process_details_display(evt, raw_paths, None)
                 return result
 
             # Handler for Manual Refresh (No event)
