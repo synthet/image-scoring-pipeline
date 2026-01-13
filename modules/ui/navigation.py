@@ -34,8 +34,9 @@ def open_folder_in_gallery(folder, sort_by, sort_order, rating_filter, label_fil
         # If no folder provided, treat as "Reset / View All"
         print("DEBUG: No folder provided, resetting filter.")
         # Call update_gallery with None folder
-        gal_outs = update_gallery_fn(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None)
-        return gr.update(selected="gallery"), None, gr.update(visible=False), "", 1, *gal_outs
+        gal_outs = update_gallery_fn(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None, stack_id=None)
+        # Returns: tabs, folder_state, stack_state, context_visible, folder_html, page, *gallery_outputs
+        return gr.update(selected="gallery"), None, None, gr.update(visible=False), "", 1, *gal_outs
         
     print(f"DEBUG: open_folder_in_gallery called with folder='{folder}'")
     
@@ -52,9 +53,9 @@ def open_folder_in_gallery(folder, sort_by, sort_order, rating_filter, label_fil
     </div>
     """
     
-    gal_outs = update_gallery_fn(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder)
+    gal_outs = update_gallery_fn(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder, stack_id=None)
     
-    return gr.update(selected="gallery"), folder, gr.update(visible=True), folder_html, 1, *gal_outs
+    return gr.update(selected="gallery"), folder, None, gr.update(visible=True), folder_html, 1, *gal_outs
 
 def open_folder_in_stacks(folder):
     """Switches to Stacks tab and sets input folder."""
@@ -80,71 +81,38 @@ def open_stack_folder_in_tree(folder):
     html = ui_tree.get_tree_html(folder)
     return gr.update(selected="folder_tree"), folder, html
 
-def open_stack_in_gallery(stack_id, sort_by, sort_order):
+def open_stack_in_gallery(stack_id, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, update_gallery_fn):
     """Switches to Gallery tab and displays only images from the selected stack."""
-    if not stack_id:
-        # Return empty/reset
-        return (gr.update(selected="gallery"), None, gr.update(visible=False), "", 1, [], "", []) + tuple(common.get_empty_details())
-
-    # Get images
-    images = db.get_images_in_stack(stack_id)
+    # Get content via main gallery update function to ensure consistency (and filtering support)
+    # Note: open_stack bypasses folder filter (folder=None) but sets stack_id
     
-    # Sort locally
-    if sort_by and sort_by != "created_at":
-         try:
-             reverse = (sort_order == "desc")
-             images.sort(key=lambda x: x[sort_by] if x[sort_by] is not None else (0 if reverse else 999), reverse=reverse)
-         except:
-             pass
+    gal_outs = update_gallery_fn(1, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None, stack_id=stack_id)
     
-    # Format for gallery
-    gallery_imgs = []
-    raw_paths = []
+    # We need to get the image count for the label
+    # The gal_outs[0] is images list, gal_outs[2] is total_pages, gal_outs[3] is raw_paths
+    # Wait, gallery outputs from update_gallery in gallery.py: [images, label, raw_paths] + details
+    # So gal_outs[0] is images (list of tuples), gal_outs[1] is page_label
     
-    score_map = {
-        'score_general': ('score_general', 'Gen'),
-        'score_technical': ('score_technical', 'Tech'),
-        'score_aesthetic': ('score_aesthetic', 'Aes'),
-        'created_at': ('score_general', 'Gen'), 
-    }
-    score_col, score_label = score_map.get(sort_by, ('score_general', 'Gen'))
-
-    for row in images:
-        file_path = row['file_path']
-        if not file_path: continue
-        
-        raw_paths.append(file_path)
-        file_name = os.path.basename(file_path)
-        
-        thumb = row['thumbnail_path']
-        if thumb:
-            p = utils.convert_path_to_local(thumb)
-        else:
-            p = utils.convert_path_to_local(file_path)
-            
-        score = row[score_col] if score_col in row.keys() else None
-        score_str = f"{score:.2f}" if score is not None else "N/A"
-        label = f"{file_name}\n{score_label}: {score_str}"
-        gallery_imgs.append((p, label))
-        
+    # Extract info from gal_outs if possible or just use the return
+    page_label = gal_outs[1]
+    
     stack_html = f"""
     <div style="display: flex; align-items: center; gap: 12px;">
         <span style="font-size: 1.5rem;">📚</span>
         <div>
             <div style="font-size: 1.1rem; font-weight: 600; color: #e6edf3;">Stack Viewer</div>
-            <div style="font-size: 0.8rem; color: #8b949e;">stack #{stack_id} • {len(images)} images</div>
+            <div style="font-size: 0.8rem; color: #8b949e;">stack #{stack_id} • {page_label}</div>
         </div>
     </div>
     """
     
-    # Return matched to open_folder_in_gallery outputs
+    # Returns: tabs, folder_state, stack_state, context_visible, folder_html, page, *gallery_outputs
     return (
         gr.update(selected="gallery"), 
-        None, 
+        None,        # folder_state
+        stack_id,    # stack_state
         gr.update(visible=True), 
         stack_html, 
-        1, 
-        gallery_imgs, 
-        f"Stack ({len(images)})", 
-        raw_paths
-    ) + tuple(common.get_empty_details())
+        1,           # page
+        *gal_outs
+    )

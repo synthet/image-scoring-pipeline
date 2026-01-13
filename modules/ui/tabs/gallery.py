@@ -10,7 +10,7 @@ IS_WINDOWS = (platform.system() == 'Windows')
 
 # --- Helper Functions ---
 
-def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None):
+def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None, stack_id=None):
     """Fetch images for gallery with pagination."""
     date_range = (start_date, end_date) if (start_date or end_date) else None
     
@@ -24,7 +24,8 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
             min_score_aesthetic=min_aes, 
             min_score_technical=min_tech, 
             date_range=date_range,
-            folder_path=wsl_folder
+            folder_path=wsl_folder,
+            stack_id=stack_id
         )
         
         total_count = db.get_image_count(
@@ -35,7 +36,8 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
             min_score_aesthetic=min_aes, 
             min_score_technical=min_tech, 
             date_range=date_range,
-            folder_path=wsl_folder
+            folder_path=wsl_folder,
+            stack_id=stack_id
         )
         
         total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
@@ -194,7 +196,10 @@ def display_details(evt, raw_paths, forced_index=None):
     file_path = raw_paths[index]
     details = db.get_image_details(file_path)
     if not details:
-        return common.get_empty_details()
+        # Debugging Output
+        empty = common.get_empty_details()
+        empty[0] = f"**DEBUG ERROR:**\nDetails not found for path:\n`{file_path}`\n\nRaw Paths Len: {len(raw_paths)}\nIndex: {index}"
+        return empty
 
     # Parse scores_json safely
     scores_data = details.get('scores_json', {})
@@ -226,11 +231,14 @@ def display_details(evt, raw_paths, forced_index=None):
     created = details.get('created_at', 'Unknown')
     res_info = f"**File:** `{filename}`\n\n**Date:** {created}"
     
-    gen_score = details.get('score_general', 0)
+    gen_score = details.get('score_general')
+    gen_score = float(gen_score) if gen_score is not None else 0.0
     gen_label = {"General Score": gen_score}
     
-    tech = details.get('score_technical', 0)
-    aes = details.get('score_aesthetic', 0)
+    tech = details.get('score_technical')
+    tech = float(tech) if tech is not None else 0.0
+    aes = details.get('score_aesthetic')
+    aes = float(aes) if aes is not None else 0.0
     weighted_label = {"Technical": tech, "Aesthetic": aes}
     
     models_label = {}
@@ -287,15 +295,15 @@ def display_details(evt, raw_paths, forced_index=None):
 
 # --- Component Creation ---
 
-def create_tab(shared_state, current_folder_state, runner, tagging_runner, app_config):
+def create_tab(shared_state, current_folder_state, current_stack_state, runner, tagging_runner, app_config):
     PAGE_SIZE = app_config.get('ui', {}).get('gallery_page_size', 50)
     current_page, current_paths, image_details = shared_state
     
     # Internal wrappers that close over variables
-    def update_gallery(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None):
+    def update_gallery(page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None, stack_id=None):
         images, label, total_pages, raw_paths = get_gallery_data(
             page, PAGE_SIZE, sort_by, sort_order, rating_filter, label_filter, keyword_filter, 
-            min_gen, min_aes, min_tech, start_date, end_date, folder
+            min_gen, min_aes, min_tech, start_date, end_date, folder, stack_id
         )
         
         # Details cleared must match detail_outputs list
@@ -309,35 +317,44 @@ def create_tab(shared_state, current_folder_state, runner, tagging_runner, app_c
         # We need to extract folder from args if present.
         # But filter_inputs includes folder_context_group which is just a Group. 
         # Actually in webui.py `current_folder_state` was passed.
-        folder = args[-1]
-        other_args = args[:-1]
-        _, _, total, _ = get_gallery_data(page, PAGE_SIZE, *other_args, folder=folder)
+        stack_id = args[-1]
+        folder = args[-2]
+        other_args = args[:-2]
+        _, _, total, _ = get_gallery_data(page, PAGE_SIZE, *other_args, folder=folder, stack_id=stack_id)
         new = min(page + 1, total)
-        return [new] + update_gallery(new, *other_args, folder=folder)
+        return [new] + update_gallery(new, *other_args, folder=folder, stack_id=stack_id)
 
     def prev_page(page, *args):
-        folder = args[-1]
-        other_args = args[:-1]
+        stack_id = args[-1]
+        folder = args[-2]
+        other_args = args[:-2]
         new = max(page - 1, 1)
-        return [new] + update_gallery(new, *other_args, folder=folder)
+        return [new] + update_gallery(new, *other_args, folder=folder, stack_id=stack_id)
     
     def first_page(*args):
-        folder = args[-1]
-        other_args = args[:-1]
-        return [1] + update_gallery(1, *other_args, folder=folder)
+        stack_id = args[-1]
+        folder = args[-2]
+        other_args = args[:-2]
+        return [1] + update_gallery(1, *other_args, folder=folder, stack_id=stack_id)
     
     def last_page(*args):
-        folder = args[-1]
-        other_args = args[:-1]
-        _, _, total, _ = get_gallery_data(1, PAGE_SIZE, *other_args, folder=folder)
-        return [total] + update_gallery(total, *other_args, folder=folder)
+        stack_id = args[-1]
+        folder = args[-2]
+        other_args = args[:-2]
+        _, _, total, _ = get_gallery_data(1, PAGE_SIZE, *other_args, folder=folder, stack_id=stack_id)
+        return [total] + update_gallery(total, *other_args, folder=folder, stack_id=stack_id)
         
     def reset_folder_filter(*args):
          # Returns: folder_context_group, folder_display, current_folder_state, page, *gallery_outputs
          folder = None 
-         # args are filters but we reset folder to None
-         gal_outs = update_gallery(1, *args, folder=None)
-         return gr.update(visible=False), "", None, 1, *gal_outs
+         # args are filters + stack_id? No, reset_folder_btn inputs don't include stack_id in base logic usually calling first_page.
+         # But reset_folder_btn should also clear stack?
+         # "Clear Filter" usually clears folder. User might want to clear stack too.
+         # Let's say it clears both for "View All".
+         stack_id = None
+         # args will be other filters
+         gal_outs = update_gallery(1, *args, folder=None, stack_id=None)
+         return gr.update(visible=False), "", None, None, 1, *gal_outs
 
     def display_details_wrapper(evt, raw_paths):
         return display_details(evt, raw_paths)
@@ -487,7 +504,7 @@ def create_tab(shared_state, current_folder_state, runner, tagging_runner, app_c
         detail_outputs = validate_components()
         
         # Wiring Logic
-        filter_inputs_base = [sort_dropdown, order_dropdown, filter_rating, filter_label, filter_keyword, f_min_gen, f_min_aes, f_min_tech, f_date_start, f_date_end, current_folder_state]
+        filter_inputs_base = [sort_dropdown, order_dropdown, filter_rating, filter_label, filter_keyword, f_min_gen, f_min_aes, f_min_tech, f_date_start, f_date_end, current_folder_state, current_stack_state]
         
         refresh_btn.click(fn=first_page, inputs=filter_inputs_base, outputs=[current_page, gallery, page_label, current_paths] + detail_outputs)
         
@@ -498,21 +515,21 @@ def create_tab(shared_state, current_folder_state, runner, tagging_runner, app_c
         last_btn.click(fn=last_page, inputs=filter_inputs_base, outputs=[current_page, gallery, page_label, current_paths] + detail_outputs)
         
         # Filter Changes
-        for inp in filter_inputs_base[:-1]: # exclude folder_state
+        for inp in filter_inputs_base[:-2]: # exclude folder_state and stack_state
             # When filter changes, go to first page
              inp.change(fn=first_page, inputs=filter_inputs_base, outputs=[current_page, gallery, page_label, current_paths] + detail_outputs)
              
         # Reset Folder
         reset_folder_btn.click(
             fn=reset_folder_filter, 
-            inputs=filter_inputs_base[:-1], # filters
-            outputs=[folder_context_group, folder_display, current_folder_state, current_page, gallery, page_label, current_paths] + detail_outputs
+            inputs=filter_inputs_base[:-2], # filters only
+            outputs=[folder_context_group, folder_display, current_folder_state, current_stack_state, current_page, gallery, page_label, current_paths] + detail_outputs
         )
         
         # Gallery Select
         gallery.select(
             fn=display_details,
-            inputs=[gallery, current_paths], 
+            inputs=[current_paths], 
             outputs=detail_outputs
         )
         

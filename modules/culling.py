@@ -178,8 +178,11 @@ class CullingEngine:
             )
             
             # Calculate pick count: ceil(38% of stack size)
-            # This ensures at least 1 is picked per group
-            pick_count = math.ceil(len(images_sorted) * pick_percentage)
+            # Special handling for Singles (group_id=0): Pick ALL because they are unique moments
+            if group.get('group_id') == 0:
+                pick_count = len(images)
+            else:
+                pick_count = math.ceil(len(images_sorted) * pick_percentage)
             
             # Mark top percentage as picked, rest as rejected
             for i, img in enumerate(images_sorted):

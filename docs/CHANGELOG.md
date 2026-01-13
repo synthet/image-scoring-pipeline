@@ -5,7 +5,7 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.6.0] - 2026-01-12
 
 ### Added
 - **AI Culling Tab**: Aftershoot-style culling workflow for photographers.
@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **XMP Export**: Improved error reporting and validation for XMP sidecar export operations.
 
 ### Fixed
+- **Gallery Crash**: Fixed `TypeError` when selecting images in the gallery by adding null checks for event data.
+- **Gallery Labels**: Fixed issue where scoring labels (General, Weighted, Models) were not displaying in the image details panel.
 - **WebUI Refactoring Stabilization**: Fixed critical bugs discovered during modular refactoring.
   - Fixed `image_details` state initialization (was `None`, causing AttributeError)
   - Fixed missing imports in `navigation.py` (`os`, `gradio`)

@@ -66,6 +66,7 @@ def create_ui():
         current_paths = gr.State(value=[])
         image_details = gr.State(value={})
         current_folder_state = gr.State(value=None)
+        current_stack_state = gr.State(value=None)
         
         # Polling Timer for status
         status_timer = gr.Timer(value=1.0)
@@ -81,6 +82,7 @@ def create_ui():
             gallery_components = gallery_tab.create_tab(
                 (current_page, current_paths, image_details), 
                 current_folder_state, 
+                current_stack_state,
                 runner, 
                 tagging_runner, 
                 app_config
@@ -117,8 +119,8 @@ def create_ui():
         # Folder Tree -> Gallery
         folder_tree_components['open_gallery_btn'].click(
             fn=lambda *args: navigation.open_folder_in_gallery(*args, update_gallery_fn=update_gallery),
-            inputs=[folder_tree_components['selected_path'], *filter_inputs[:-1]],
-            outputs=[main_tabs, current_folder_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths] + detail_outputs
+            inputs=[folder_tree_components['selected_path'], *filter_inputs[:-2]], # Exclude folder_state and stack_state
+            outputs=[main_tabs, current_folder_state, current_stack_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths] + detail_outputs
         )
         
         # Folder Tree -> Stacks
@@ -136,10 +138,16 @@ def create_ui():
         )
         
         # Stacks -> Gallery
+        # Stacks -> Gallery
+        # Inputs: stack_id, sort_by, order, (filters...), update_fn
+        # filter_inputs: [sort, order, rating, label, keyword, gen, aes, tech, start, end, folder, stack]
+        # We use Stacks tab sort/order, keeping other filters from Gallery
         stacks_components["open_gallery_btn"].click(
-            fn=navigation.open_stack_in_gallery,
-            inputs=[stacks_components["current_stack_id"], stacks_components["sort_by"], stacks_components["order"]],
-            outputs=[main_tabs, current_folder_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths] + detail_outputs
+            fn=lambda stack_id, sort, order, *args: navigation.open_stack_in_gallery(
+                stack_id, sort, order, *args, update_gallery_fn=update_gallery
+            ),
+            inputs=[stacks_components["current_stack_id"], stacks_components["sort_by"], stacks_components["order"]] + filter_inputs[2:-2],
+            outputs=[main_tabs, current_folder_state, current_stack_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths] + detail_outputs
         )
 
         # --- Initialization Logic ---

@@ -13,7 +13,7 @@ def get_db():
     return conn
 
 
-def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None):
+def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     conn = get_db()
     c = conn.cursor()
     
@@ -79,6 +79,10 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
         conditions.append("folder_id = ?")
         params.append(folder_id)
 
+    if stack_id:
+        conditions.append("stack_id = ?")
+        params.append(stack_id)
+
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
         
@@ -87,7 +91,7 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
     conn.close()
     return count
 
-def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None):
+def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     # Load page_size from config if not provided
     if page_size is None:
         from modules import config
@@ -155,6 +159,10 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
         conditions.append("folder_id = ?")
         params.append(folder_id)
 
+    if stack_id:
+        conditions.append("stack_id = ?")
+        params.append(stack_id)
+
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     
@@ -166,7 +174,7 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
     conn.close()
     return rows
 
-def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None):
+def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     """
     Returns a list of file_paths matching the filters (No pagination).
     """
@@ -230,6 +238,10 @@ def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=Non
         folder_id = get_or_create_folder(folder_path)
         conditions.append("folder_id = ?")
         params.append(folder_id)
+
+    if stack_id:
+        conditions.append("stack_id = ?")
+        params.append(stack_id)
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -596,6 +608,22 @@ def get_or_create_folder(folder_path):
     """
     # Normalize path
     folder_path = os.path.normpath(folder_path)
+    
+    # Auto-convert Windows paths to WSL if we are on Windows but DB has WSL paths
+    # This is critical because scoring runs in WSL (saving /mnt/d/...) 
+    # but UI runs in Windows (sending D:\...)
+    try:
+        from modules import utils
+        # Check if it looks like a Windows path (e.g. D:\...)
+        if ":" in folder_path or "\\" in folder_path:
+             wsl_path = utils.convert_path_to_wsl(folder_path)
+             if wsl_path != folder_path:
+                 # We prefer the WSL path if it exists in DB? 
+                 # Or we just always normalize to WSL for storage if that's the convention.
+                 # Let's use WSL path.
+                 folder_path = wsl_path
+    except ImportError:
+        pass
     
     # Base case for recursion / root check
     # On Windows, os.path.dirname("D:\\") is "D:\\". 

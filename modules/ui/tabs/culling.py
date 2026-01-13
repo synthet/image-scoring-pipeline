@@ -29,8 +29,11 @@ def run_culling_wrapper(input_path, threshold, time_gap, auto_export, force_resc
     progress(0.1, desc="Creating culling session...")
     
     # Run full culling workflow
+    # Ensure path is in WSL format if that's how it's stored
+    wsl_path = utils.convert_path_to_wsl(input_path)
+    
     result = culling.culling_engine.run_full_cull(
-        folder_path=input_path,
+        folder_path=wsl_path,
         distance_threshold=threshold,
         time_gap_seconds=int(time_gap),
         score_field='score_general',
@@ -67,65 +70,110 @@ def run_culling_wrapper(input_path, threshold, time_gap, auto_export, force_resc
     
     progress(1.0, desc="Done!")
     
+    progress(1.0, desc="Done!")
+    
     # Get updated views
-    res_msg, picks, sid, ppaths, rgallery, rpaths = resume_culling_session(session_id)
+    res_msg, gal, sid, paths = resume_culling_session(session_id)
     # Combine messages
     full_msg = "\n".join(msg_lines) + "\n\n" + res_msg
     
-    return full_msg, gr.update(interactive=True), picks, sid, ppaths, rgallery, rpaths
+    return full_msg, gr.update(interactive=True), gal, sid, paths
+
 
 def resume_culling_session(session_id):
     """
-    Resumes a culling session by loading its picks and rejects into the galleries.
-    Returns: (status_msg, picks_gallery, session_id, picks_paths, rejects_gallery, rejects_paths)
+    Resumes a culling session by loading all images into a single gallery, 
+    grouped by stack, with color-coded borders.
+    Returns: (status_msg, main_gallery, session_id, all_file_paths)
     """
     if not session_id:
-        return "❌ Please select a session to resume", [], None, [], [], []
+        return "❌ Please select a session to resume", [], None, []
     
     session = db.get_culling_session(session_id)
     if not session:
-        return f"❌ Session {session_id} not found", [], None, [], [], []
+        return f"❌ Session {session_id} not found", [], None, []
     
-    folder_path = session.get('folder_path', '')
+    # Get all groups
+    groups = db.get_session_groups(session_id)
     
-    picks_gallery = []
-    picks_paths = []
-    picks = db.get_session_picks(session_id, decision_filter='pick')
-    for pick in picks:
-        file_path = pick.get('file_path')
-        thumb = pick.get('thumbnail_path') or file_path
-        if thumb:
-            p = utils.convert_path_to_local(thumb)
-            label = f"{pick.get('file_name', '?')}\nGen: {pick.get('score_general', 0):.2f}"
-            picks_gallery.append((p, label))
-            picks_paths.append(file_path)
+    gallery_items = []
+    all_paths = []
     
-    rejects_gallery = []
-    rejects_paths = []
-    rejects = db.get_session_picks(session_id, decision_filter='reject')
-    for reject in rejects:
-        file_path = reject.get('file_path')
-        thumb = reject.get('thumbnail_path') or file_path
-        if thumb:
-            p = utils.convert_path_to_local(thumb)
-            label = f"{reject.get('file_name', '?')}\nGen: {reject.get('score_general', 0):.2f}"
-            rejects_gallery.append((p, label))
-            rejects_paths.append(file_path)
+    # Separate Singles (Group 0) from others
+    regular_groups = [g for g in groups if g['group_id'] != 0]
+    singles_group = next((g for g in groups if g['group_id'] == 0), None)
     
+    # Sort groups by ID (or we could use another metric, but ID is stable)
+    regular_groups.sort(key=lambda x: x['group_id'])
+    
+    # Process regular groups
+    for group in regular_groups:
+        gid = group['group_id']
+        images = group['images']
+        
+        # Sort internal: Picks first, then Rejects, then others
+        # Within those, sort by score descending
+        
+        picks = [img for img in images if img['decision'] == 'pick']
+        rejects = [img for img in images if img['decision'] == 'reject']
+        others = [img for img in images if img['decision'] not in ('pick', 'reject')]
+        
+        picks.sort(key=lambda x: x.get('score_general') or 0, reverse=True)
+        rejects.sort(key=lambda x: x.get('score_general') or 0, reverse=True)
+        others.sort(key=lambda x: x.get('score_general') or 0, reverse=True)
+        
+        # Add to gallery with borders
+        for img in picks:
+             _add_to_gallery(gallery_items, all_paths, img, gid, 'green', 'PICK')
+        for img in rejects:
+             _add_to_gallery(gallery_items, all_paths, img, gid, 'red', 'REJECT')
+        for img in others:
+             _add_to_gallery(gallery_items, all_paths, img, gid, 'gray', 'UNREVIEWED')
+             
+    # Process Singles (Gray border)
+    if singles_group:
+        singles = singles_group['images']
+        singles.sort(key=lambda x: x.get('score_general') or 0, reverse=True)
+        for img in singles:
+            # User requested gray border for singles
+            # Even if they are "picked", they are visually distinct as singles
+            color = 'gray'
+            status = 'SINGLE'
+            if img['decision'] == 'pick':
+                 color = 'gray' # Or 'green'? User said "singles with gray border"
+                 status = 'SINGLE PICK'
+            elif img['decision'] == 'reject':
+                 color = 'red' # Rejects are always red?
+                 status = 'SINGLE REJECT'
+                 
+            _add_to_gallery(gallery_items, all_paths, img, 0, color, status)
+            
+    # Stats
     total = session.get('total_images', 0)
-    groups = session.get('total_groups', 0)
-    picked = session.get('picked_count', len(picks))
-    rejected = session.get('rejected_count', len(rejects))
-    reviewed = session.get('reviewed_groups', 0)
+    msg = f"✅ Session {session_id}: Loaded {len(gallery_items)} images in {len(regular_groups) + (1 if singles_group else 0)} groups."
     
-    msg_lines = [
-        f"✅ Session {session_id}: {os.path.basename(folder_path)}",
-        f"📊 Total: {total} | Groups: {groups}",
-        f"✅ Picked: {picked} | ❌ Rejected: {rejected}",
-        f"📝 Reviewed: {reviewed}/{groups} groups"
-    ]
+    return msg, gallery_items, session_id, all_paths
+
+def _add_to_gallery(gallery_list, path_list, img_data, group_id, color, status):
+    """Helper to process image and add to gallery list."""
+    file_path = img_data.get('file_path')
+    thumb = img_data.get('thumbnail_path') or file_path
     
-    return "\n".join(msg_lines), picks_gallery, session_id, picks_paths, rejects_gallery, rejects_paths
+    # Create label
+    score = img_data.get('score_general', 0)
+    gid_str = f"G{group_id}" if group_id > 0 else "Single"
+    label = f"{gid_str}\n{status}\n{score:.2f}"
+    
+    # Add border
+    # Uses utils.add_border_to_image
+    # NOTE: This might be slow for many images.
+    # We pass the PIL object to Gradio.
+    
+    if thumb:
+        bordered_img = utils.add_border_to_image(thumb, color=color, border=15)
+        if bordered_img:
+            gallery_list.append((bordered_img, label))
+            path_list.append(file_path)
 
 def export_culling_xmp(session_id):
     if not session_id:
@@ -166,7 +214,11 @@ def delete_rejected_files(session_id, confirmed):
             db.delete_image(file_path)
             deleted_count += 1
         except: pass
-    return f"🗑️ Deleted {deleted_count} rejected files", [], []
+    
+    # Refresh gallery after delete
+    msg, gal, sid, paths = resume_culling_session(session_id)
+    
+    return f"🗑️ Deleted {deleted_count} rejected files. {msg}", gal, paths
 
 def refresh_culling_groups(session_id, threshold, time_gap):
     if not session_id: return "❌ No active session.", [], []
@@ -175,33 +227,20 @@ def refresh_culling_groups(session_id, threshold, time_gap):
     db.clear_culling_picks(session_id)
     import_stats = culling.culling_engine.import_images(session_id, distance_threshold=threshold, time_gap_seconds=int(time_gap))
     if 'error' in import_stats: return f"❌ {import_stats['error']}", [], []
-    msg = f"✅ Refreshed groups\n📊 Total: {import_stats.get('total', 0)} | 📚 Groups: {import_stats.get('groups', 0)}"
-    return msg, [], []
+    
+    msg, gal, sid, paths = resume_culling_session(session_id)
+    return f"✅ Refreshed groups\n{msg}", gal, paths
 
 def repick_culling_best(session_id, score_field='score_general'):
     if not session_id: return "❌ No active session.", [], []
     db.reset_culling_decisions(session_id)
     pick_stats = culling.culling_engine.auto_pick_all(session_id, score_field=score_field)
-    _, picks_gal, _, picks_paths, _, _ = resume_culling_session(session_id)
-    msg = f"✅ Re-picked best: {pick_stats.get('picked', 0)} picks, {pick_stats.get('rejected', 0)} rejects"
-    return msg, picks_gal, picks_paths
+    msg, gal, sid, paths = resume_culling_session(session_id)
+    return f"✅ Re-picked best: {pick_stats.get('picked', 0)} picks\n{msg}", gal, paths
 
-"""
-Culling tab module for AI-assisted photo culling workflow.
-
-This module provides an Aftershoot-style culling interface:
-- Automatic grouping of similar images (bursts, duplicates)
-- AI-powered best shot selection based on quality scores
-- Manual override and fine-tuning
-- Export to XMP sidecar files for Lightroom Cloud integration
-- Session management (save/resume culling sessions)
-
-The create_tab() function returns components needed for session management
-and cross-tab integration.
-"""
 def create_tab(app_config):
     with gr.TabItem("Culling", id="culling") as tab_item:
-        gr.Markdown("### ✂️ AI Culling - Pick/Reject Best Shots")
+        gr.Markdown("### ✂️ AI Culling - Grouped View")
         with gr.Row():
             with gr.Column(scale=1, min_width=350):
                 with gr.Group():
@@ -219,66 +258,97 @@ def create_tab(app_config):
                     cull_force_rescan = gr.Checkbox(label="Rescan/Regroup (Destructive)", value=False)
                 cull_run_btn = gr.Button("▶️ Run AI Culling", variant="primary", size="lg")
             with gr.Column(scale=2):
-                cull_status = gr.Textbox(label="Results", lines=6, interactive=False)
+                cull_status = gr.Textbox(label="Results", lines=4, interactive=False)
         
         gr.Markdown("---")
-        gr.Markdown("### ✅ AI Picks")
-        cull_picks_gallery = gr.Gallery(label="Picked Images", columns=6, height=400, object_fit="cover")
-        cull_picks_paths = gr.State([])
         
         with gr.Accordion("🔄 Session Management", open=False):
             with gr.Row():
                 cull_session_id = gr.State(None)
-                # We need to refresh choices on open or via button.
-                # For now init empty, wire in app.
                 cull_resume_dropdown = gr.Dropdown(label="Resume Session", choices=[], interactive=True, scale=2)
                 cull_resume_btn = gr.Button("▶️ Resume", variant="primary", size="sm", scale=1)
             with gr.Row():
                 cull_refresh_btn = gr.Button("🔄 Refresh Groups", variant="secondary", size="sm", scale=1)
                 cull_repick_btn = gr.Button("🎯 Re-Pick Best", variant="secondary", size="sm", scale=1)
-            cull_session_status = gr.Textbox(label="Session Status", interactive=False, lines=3)
+            cull_session_status = gr.Textbox(label="Session Status", interactive=False, lines=2)
+            cull_delete_confirm = gr.Checkbox(label="Enable Delete", value=False)
+            cull_delete_btn = gr.Button("🗑️ Delete REJECTED Files", variant="stop", size="sm")
+
+        # Main Gallery (Unified)
+        cull_main_gallery = gr.Gallery(
+            label="Culling Decisions (Green=Pick, Red=Reject, Gray=Single)", 
+            columns=6, 
+            height=800, 
+            object_fit="contain",
+            allow_preview=True
+        )
+        cull_main_paths = gr.State([])
+        
+        # Legacy/Unused outputs (to keep signature compatible if needed, or we just update)
+        # We need to update run_wrapper too.
         
         with gr.Accordion("💾 Manual XMP Export", open=False):
             cull_export_btn = gr.Button("📤 Export Pick/Reject Flags to XMP", variant="secondary")
             cull_export_status = gr.Textbox(label="Export Status", interactive=False)
-        
-        gr.Markdown("---")
-        gr.Markdown("### ❌ Rejected Images")
-        cull_rejects_gallery = gr.Gallery(label="Rejected Images", columns=6, height=300, object_fit="cover")
-        cull_rejects_paths = gr.State([])
-        
-        with gr.Accordion("🗑️ Delete Rejected Files", open=False):
-            with gr.Row():
-                cull_delete_confirm = gr.Checkbox(label="I confirm I want to permanently delete these files", value=False)
-                cull_delete_btn = gr.Button("🗑️ Delete All Rejected", variant="stop", size="sm")
-            cull_delete_status = gr.Textbox(label="Delete Status", interactive=False)
 
         # Events
+        # Update run_wrapper signature locally
+        def local_run_wrapper(*args):
+             msg, upd, picks, sid, ppaths, rgallery, rpaths = run_culling_wrapper(*args)
+             # Adapted to new output: We need to just call resume_culling_session here essentially
+             # But run_culling_wrapper calls resume_culling_session at the end.
+             # So we just need to adapt the unpacking.
+             # run_culling_wrapper returns: full_msg, update, picks, sid, ppaths, rgallery, rpaths
+             # We want: msg, update, main_gallery, session_id, main_paths
+             # Wait, run_culling_wrapper in 'culling.py' (this file) needs update too.
+             # Actually, simpler to just update the wrapper function definition above in a separate replacement block?
+             # No, this is replacing everything from 80 downwards.
+             # I need to handle run_culling_wrapper logic too or update it.
+             # I should update run_culling_wrapper separately or include it in this block.
+             # This block starts at Resume Culling Session (line 80).
+             # Run Culling wrapper is at line 20.
+             # So I need to update run_culling_wrapper too.
+             # For now, let's just make the outputs of run_wrapper match.
+             pass
+
+        # We will re-wire run_culling_wrapper in a separate tool call or assume I will fix it.
+        # Let's fix create_tab first.
+        
         cull_run_btn.click(
-            fn=run_culling_wrapper,
+            fn=run_culling_wrapper, 
             inputs=[cull_input_dir, cull_threshold, cull_time_gap, cull_auto_export, cull_force_rescan],
-            outputs=[cull_status, cull_run_btn, cull_picks_gallery, cull_session_id, cull_picks_paths, cull_rejects_gallery, cull_rejects_paths]
+            outputs=[cull_status, cull_run_btn, cull_main_gallery, cull_session_id, cull_main_paths]
         )
+        
         cull_resume_btn.click(
             fn=resume_culling_session,
             inputs=[cull_resume_dropdown],
-            outputs=[cull_status, cull_picks_gallery, cull_session_id, cull_picks_paths, cull_rejects_gallery, cull_rejects_paths]
+            outputs=[cull_status, cull_main_gallery, cull_session_id, cull_main_paths]
         )
-        cull_export_btn.click(fn=export_culling_xmp, inputs=[cull_session_id], outputs=[cull_export_status])
-        cull_delete_btn.click(
-            fn=delete_rejected_files,
-            inputs=[cull_session_id, cull_delete_confirm],
-            outputs=[cull_delete_status, cull_rejects_gallery, cull_rejects_paths]
-        )
+        
         cull_refresh_btn.click(
             fn=refresh_culling_groups,
             inputs=[cull_session_id, cull_threshold, cull_time_gap],
-            outputs=[cull_session_status, cull_picks_gallery, cull_picks_paths]
+            outputs=[cull_session_status, cull_main_gallery, cull_main_paths]
         )
-        cull_repick_btn.click(fn=repick_culling_best, inputs=[cull_session_id], outputs=[cull_session_status, cull_picks_gallery, cull_picks_paths])
+        
+        cull_repick_btn.click(
+            fn=repick_culling_best,
+            inputs=[cull_session_id],
+            outputs=[cull_session_status, cull_main_gallery, cull_main_paths]
+        )
+        
+        cull_delete_btn.click(
+            fn=delete_rejected_files,
+            inputs=[cull_session_id, cull_delete_confirm],
+            outputs=[cull_session_status, cull_main_gallery, cull_main_paths]
+        )
+
+        cull_export_btn.click(fn=export_culling_xmp, inputs=[cull_session_id], outputs=[cull_export_status])
 
     return {
         'tab_item': tab_item,
         'resume_dropdown': cull_resume_dropdown,
         'session_id': cull_session_id
     }
+

@@ -2,6 +2,32 @@ import hashlib
 import os
 import platform
 import re
+from PIL import Image, ImageOps
+
+def add_border_to_image(image_path, color='gray', border=10):
+    """
+    Loads an image (or path) and adds a colored border.
+    Returns a PIL Image object.
+    """
+    try:
+        if isinstance(image_path, str):
+            # Resolve path if needed
+            local_path = convert_path_to_local(image_path)
+            if not os.path.exists(local_path):
+                # Placeholder or error
+                return None
+            img = Image.open(local_path)
+        else:
+            img = image_path
+            
+        # Add border
+        # ImageOps.expand adds border, but we want it inside or outside?
+        # Outside is safer to preserve content.
+        img_with_border = ImageOps.expand(img, border=border, fill=color)
+        return img_with_border
+    except Exception as e:
+        print(f"Error adding border to {image_path}: {e}")
+        return None
 
 def convert_path_to_local(path):
     """
