@@ -1,0 +1,40 @@
+╨í╨▒╨╛╤Ç╨║╨░ ╨╜╨░╤ç╨░╤é╨░ 17.01.2026 21:10:43.
+     1>╨ƒ╤Ç╨╛╨╡╨║╤é "D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.sln" ╨▓ ╤â╨╖╨╗╨╡ 1 (╤å╨╡╨╗╨╡╨▓╤ï╨╡ ╨╛╨▒╤è╨╡╨║╤é╤ï VSTest).
+     1>ValidateSolutionConfiguration:
+         ╨í╨╛╨╖╨┤╨░╨╜╨╕╨╡ ╨║╨╛╨╜╤ä╨╕╨│╤â╤Ç╨░╤å╨╕╨╕ ╤Ç╨╡╤ê╨╡╨╜╨╕╤Å "Debug|Any CPU".
+╨ó╨╡╤ü╤é╨╛╨▓╤ï╨╣ ╨╖╨░╨┐╤â╤ü╨║ ╨┤╨╗╤Å D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\bin\Debug\net8.0-windows\ImageGalleryViewer.Tests.dll (.NETCoreApp,Version=v8.0)
+╨Æ╨╡╤Ç╤ü╨╕╤Å VSTest 17.14.1 (x64)
+
+╨ù╨░╨┐╤â╤ü╨║ ╨▓╤ï╨┐╨╛╨╗╨╜╨╡╨╜╨╕╤Å ╤é╨╡╤ü╤é╨╛╨▓; ╨┐╨╛╨┤╨╛╨╢╨┤╨╕╤é╨╡...
+╨₧╨▒╤ë╨╡╨╡ ╨║╨╛╨╗╨╕╤ç╨╡╤ü╤é╨▓╨╛ ╤é╨╡╤ü╤é╨╛╨▓╤ï╤à ╤ä╨░╨╣╨╗╨╛╨▓ (1), ╤ü╨╛╨╛╤é╨▓╨╡╤é╤ü╤é╨▓╤â╤Ä╤ë╨╕╤à ╤â╨║╨░╨╖╨░╨╜╨╜╨╛╨╝╤â ╤ê╨░╨▒╨╗╨╛╨╜╤â.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.6+bf9b858c26 (64-bit .NET 8.0.23)
+[xUnit.net 00:00:00.17]   Discovering: ImageGalleryViewer.Tests
+[xUnit.net 00:00:00.26]   Discovered:  ImageGalleryViewer.Tests
+[xUnit.net 00:00:00.26]   Starting:    ImageGalleryViewer.Tests
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWslPath_HandlesEmptyString [10 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWindowsPath_ConvertsMountPaths(wslPath: "/mnt/e/Backup/2024/photo.nef", expectedWindowsPath: "E:\\Backup\\2024\\photo.nef") [8 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWindowsPath_ConvertsMountPaths(wslPath: "/mnt/d/Photos/file.jpg", expectedWindowsPath: "D:\\Photos\\file.jpg") [1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWindowsPath_ConvertsMountPaths(wslPath: "/mnt/c/Users/test/image.png", expectedWindowsPath: "C:\\Users\\test\\image.png") [< 1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.RoundTrip_PreservesPath [< 1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWslPath_PreservesWslPaths(wslPath: "/mnt/c/path/to/image.jpg") [< 1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWslPath_PreservesWslPaths(wslPath: "/mnt/d/Photos/file.jpg") [< 1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWindowsPath_PreservesWindowsPaths(windowsPath: "D:\\Photos\\file.jpg") [< 1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWindowsPath_PreservesWindowsPaths(windowsPath: "C:\\Users\\test\\image.png") [< 1 ms]
+[xUnit.net 00:00:00.45]   Finished:    ImageGalleryViewer.Tests
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWindowsPath_HandlesEmptyString [< 1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWindowsPath_NormalizesForwardSlashes(inputPath: "C:/Users/test/image.png", expected: "C:\\Users\\test\\image.png") [< 1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWindowsPath_NormalizesForwardSlashes(inputPath: "D:/Photos/file.jpg", expected: "D:\\Photos\\file.jpg") [< 1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWslPath_ConvertsWindowsPaths(windowsPath: "D:\\Photos\\file.jpg", expectedWslPath: "/mnt/d/Photos/file.jpg") [< 1 ms]
+  ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜ ImageGalleryViewer.Tests.PathResolverTests.ToWslPath_ConvertsWindowsPaths(windowsPath: "C:\\Users\\test\\image.png", expectedWslPath: "/mnt/c/Users/test/image.png") [< 1 ms]
+
+╨ó╨╡╤ü╤é╨╛╨▓╤ï╨╣ ╨╖╨░╨┐╤â╤ü╨║ ╨▓╤ï╨┐╨╛╨╗╨╜╨╡╨╜.
+╨Æ╤ü╨╡╨│╨╛ ╤é╨╡╤ü╤é╨╛╨▓: 14
+     ╨ƒ╤Ç╨╛╨╣╨┤╨╡╨╜╨╛: 14
+ ╨₧╨▒╤ë╨╡╨╡ ╨▓╤Ç╨╡╨╝╤Å: 1,6297 ╨í╨╡╨║╤â╨╜╨┤╤ï
+     1>╨í╨▒╨╛╤Ç╨║╨░ ╨┐╤Ç╨╛╨╡╨║╤é╨░ "D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.sln" ╨╖╨░╨▓╨╡╤Ç╤ê╨╡╨╜╨░ (╤å╨╡╨╗╨╡╨▓╤ï╨╡ ╨╛╨▒╤è╨╡╨║╤é╤ï VSTest).
+
+╨í╨▒╨╛╤Ç╨║╨░ ╤â╤ü╨┐╨╡╤ê╨╜╨╛ ╨╖╨░╨▓╨╡╤Ç╤ê╨╡╨╜╨░.
+    ╨ƒ╤Ç╨╡╨┤╤â╨┐╤Ç╨╡╨╢╨┤╨╡╨╜╨╕╨╣: 0
+    ╨₧╤ê╨╕╨▒╨╛╨║: 0
+
+╨ƒ╤Ç╨╛╤ê╨╗╨╛ ╨▓╤Ç╨╡╨╝╨╡╨╜╨╕ 00:00:03.62

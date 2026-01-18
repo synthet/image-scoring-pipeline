@@ -1,0 +1,8 @@
+  ImageGalleryViewer -> D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer\bin\Debug\net8.0-windows\ImageGalleryViewer.dll
+  ImageGalleryViewer.Tests -> D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\bin\Debug\net8.0-windows\ImageGalleryViewer.Tests.dll
+
+╨í╨▒╨╛╤Ç╨║╨░ ╤â╤ü╨┐╨╡╤ê╨╜╨╛ ╨╖╨░╨▓╨╡╤Ç╤ê╨╡╨╜╨░.
+    ╨ƒ╤Ç╨╡╨┤╤â╨┐╤Ç╨╡╨╢╨┤╨╡╨╜╨╕╨╣: 0
+    ╨₧╤ê╨╕╨▒╨╛╨║: 0
+
+╨ƒ╤Ç╨╛╤ê╨╗╨╛ ╨▓╤Ç╨╡╨╝╨╡╨╜╨╕ 00:00:01.38
