@@ -75,6 +75,43 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         
+                        <!-- Folder Tree -->
+                        <Expander Header="📁 Folder Tree" IsExpanded="True" Margin="0,0,0,12">
+                            <StackPanel>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding FolderFilter}" TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource TextSecondaryBrush}" 
+                                               FontSize="11" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="✕" Width="24" Height="24" 
+                                            Command="{Binding ClearFolderFilterCommand}"
+                                            Visibility="{Binding FolderFilter, Converter={StaticResource BoolToVisibility}}"
+                                            ToolTip="Clear folder filter"/>
+                                </Grid>
+                                <TreeView ItemsSource="{Binding FolderTree}" 
+                                          SelectedItemChanged="FolderTree_SelectedItemChanged"
+                                          Height="200" Margin="0,8,0,0"
+                                          Background="Transparent" BorderThickness="0">
+                                    <TreeView.ItemTemplate>
+                                        <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                            <TextBlock Text="{Binding DisplayName}" 
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       FontSize="12"/>
+                                        </HierarchicalDataTemplate>
+                                    </TreeView.ItemTemplate>
+                                    <TreeView.ItemContainerStyle>
+                                        <Style TargetType="TreeViewItem">
+                                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                        </Style>
+                                    </TreeView.ItemContainerStyle>
+                                </TreeView>
+                            </StackPanel>
+                        </Expander>
+                        
                         <!-- Rating Filter -->
                         <Expander Header="⭐ Rating Filter" IsExpanded="True" Margin="0,0,0,12">
                             <StackPanel Margin="8,8,0,0">

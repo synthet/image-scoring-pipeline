@@ -22,6 +22,15 @@ public partial class MainViewModel : ObservableObject
     private ImageRecord? _selectedImage;
     
     [ObservableProperty]
+    private ObservableCollection<FolderNode> _folderTree = new();
+    
+    [ObservableProperty]
+    private FolderNode? _selectedFolder;
+    
+    [ObservableProperty]
+    private string _folderFilter = string.Empty;
+    
+    [ObservableProperty]
     private int _totalImages;
     
     [ObservableProperty]
@@ -116,6 +125,86 @@ public partial class MainViewModel : ObservableObject
     };
     
     public static int[] PageSizeOptions => new[] { 25, 50, 100, 200 };
+    
+    #endregion
+    
+    #region Folder Tree Methods
+    
+    private void LoadFolderTree()
+    {
+        try
+        {
+            var folders = App.Database.GetAllFolders();
+            var counts = App.Database.GetFolderImageCounts();
+            var roots = BuildFolderTree(folders, counts);
+            
+            FolderTree.Clear();
+            foreach (var root in roots)
+                FolderTree.Add(root);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Error loading folders: {ex.Message}";
+        }
+    }
+    
+    private List<FolderNode> BuildFolderTree(List<string> wslPaths, Dictionary<string, int> counts)
+    {
+        var nodes = new Dictionary<string, FolderNode>();
+        var roots = new List<FolderNode>();
+        
+        foreach (var wslPath in wslPaths.OrderBy(p => p))
+        {
+            var winPath = PathResolver.ToWindowsPath(wslPath);
+            if (string.IsNullOrWhiteSpace(winPath)) continue;
+            
+            // Get parent path
+            var parent = System.IO.Path.GetDirectoryName(winPath);
+            var name = System.IO.Path.GetFileName(winPath);
+            if (string.IsNullOrEmpty(name)) name = winPath;
+            
+            counts.TryGetValue(wslPath, out var count);
+            
+            var node = new FolderNode
+            {
+                Name = name,
+                Path = wslPath,
+                WindowsPath = winPath,
+                ImageCount = count
+            };
+            nodes[winPath] = node;
+            
+            // Find parent
+            if (!string.IsNullOrEmpty(parent) && nodes.TryGetValue(parent, out var parentNode))
+            {
+                parentNode.Children.Add(node);
+            }
+            else
+            {
+                roots.Add(node);
+            }
+        }
+        
+        return roots;
+    }
+    
+    partial void OnSelectedFolderChanged(FolderNode? value)
+    {
+        if (value != null)
+        {
+            FolderFilter = value.WindowsPath;
+            StatusText = $"Filtering by folder: {value.Name}";
+            _ = LoadImagesAsync();
+        }
+    }
+    
+    [RelayCommand]
+    private void ClearFolderFilter()
+    {
+        SelectedFolder = null;
+        FolderFilter = string.Empty;
+        _ = LoadImagesAsync();
+    }
     
     #endregion
     
@@ -244,6 +333,7 @@ public partial class MainViewModel : ObservableObject
     public async Task InitializeAsync()
     {
         StatusText = "Connecting to database...";
+        LoadFolderTree();
         await LoadImagesAsync();
     }
     
@@ -340,6 +430,12 @@ public partial class MainViewModel : ObservableObject
             4 => "score_aesthetic",
             _ => "score_general"
         };
+        
+        // Folder filter
+        if (!string.IsNullOrWhiteSpace(FolderFilter))
+        {
+            filter.FolderPath = FolderFilter;
+        }
         
         return filter;
     }

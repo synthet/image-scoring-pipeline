@@ -129,5 +129,14 @@ public partial class MainWindow : Window
             viewModel.OpenInPhotosCommand.Execute(null);
         }
     }
+    
+    private void FolderTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (DataContext is MainViewModel viewModel && e.NewValue is Models.FolderNode folder)
+        {
+            viewModel.SelectedFolder = folder;
+        }
+    }
 }
+
 

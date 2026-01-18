@@ -181,6 +181,63 @@ public class DatabaseService : IDisposable
     }
     
     /// <summary>
+    /// Get all unique folder paths from images
+    /// </summary>
+    public List<string> GetAllFolders()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT DISTINCT 
+                substr(file_path, 1, length(file_path) - length(file_name) - 1) as folder_path
+            FROM images 
+            WHERE file_path IS NOT NULL AND file_path != ''
+            ORDER BY folder_path";
+            
+        var folders = new List<string>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (!reader.IsDBNull(0))
+            {
+                var folder = reader.GetString(0);
+                if (!string.IsNullOrWhiteSpace(folder))
+                    folders.Add(folder);
+            }
+        }
+        return folders;
+    }
+    
+    /// <summary>
+    /// Get count of images per folder (for tree display)
+    /// </summary>
+    public Dictionary<string, int> GetFolderImageCounts()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT 
+                substr(file_path, 1, length(file_path) - length(file_name) - 1) as folder_path,
+                COUNT(*) as count
+            FROM images 
+            WHERE file_path IS NOT NULL AND file_path != ''
+            GROUP BY folder_path
+            ORDER BY folder_path";
+            
+        var counts = new Dictionary<string, int>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (!reader.IsDBNull(0))
+            {
+                var folder = reader.GetString(0);
+                var count = reader.GetInt32(1);
+                if (!string.IsNullOrWhiteSpace(folder))
+                    counts[folder] = count;
+            }
+        }
+        return counts;
+    }
+    
+    /// <summary>
     /// Build WHERE clause from filter state
     /// </summary>
     private (string whereClause, List<(string name, object value)> parameters) BuildWhereClause(FilterState filter)

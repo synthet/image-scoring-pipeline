@@ -127,7 +127,15 @@ public class BoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        return value is true ? Visibility.Visible : Visibility.Collapsed;
+        // Handle both booleans and non-empty strings
+        var isVisible = value switch
+        {
+            bool b => b,
+            string s => !string.IsNullOrWhiteSpace(s),
+            null => false,
+            _ => true
+        };
+        return isVisible ? Visibility.Visible : Visibility.Collapsed;
     }
     
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
