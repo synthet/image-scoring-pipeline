@@ -37,10 +37,12 @@ def convert_path_to_local(path):
     system = platform.system()
     
     if system == "Windows":
-        # Handle WSL paths
-        if path.startswith("/mnt/"):
+        # Handle WSL paths (forward and backslashes)
+        # Normalize to forward slashes for checking
+        p_str = path.replace('\\', '/')
+        if p_str.startswith("/mnt/"):
             # /mnt/d/Description -> D:/Description
-            parts = path.split('/')
+            parts = p_str.split('/')
             if len(parts) > 2 and len(parts[2]) == 1:
                 drive = parts[2].upper()
                 rest = "/".join(parts[3:])
@@ -54,6 +56,10 @@ def convert_path_to_local(path):
              drive = match.group(1).lower()
              rest = match.group(2).replace('\\', '/')
              return f"/mnt/{drive}/{rest}"
+         
+         # Fallback: maintain forward slashes for Linux
+         if '\\' in path:
+             path = path.replace('\\', '/')
     
     return path
 

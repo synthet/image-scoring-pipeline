@@ -5,6 +5,19 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-01-17
+
+### Fixed
+- **Path Conversion Reliability**: Enhanced Windows/WSL path conversion logic in `modules/utils.py`.
+  - Added support for backslashes in WSL paths (e.g., `\mnt\d\...`).
+  - Improved drive letter detection and normalization for cross-platform compatibility.
+  - Added fallback for Linux-style paths with Windows separators.
+- **Gallery Styling**: Fixed CSS inheritance issues in gallery details panel for better visibility.
+- **Folder Tree Navigation**: Fixed path normalization in `modules/ui_tree.py` to prevent "doubled" root paths in the UI.
+
+### Changed
+- **Modular Stability**: Refined event handling in `modules/ui/tabs/gallery.py` and `modules/ui/tabs/stacks.py` to prevent UI lockups during rapid selection.
+
 ## [3.6.0] - 2026-01-12
 
 ### Added

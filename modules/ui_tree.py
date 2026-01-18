@@ -65,6 +65,18 @@ def get_tree_html(selected_path=None):
     for p in raw_folders:
         local_p = utils.convert_path_to_local(p)
         if local_p:
+            # Filter out WSL artifacts on Windows (e.g. \mnt, \)
+            norm = os.path.normpath(local_p)
+            
+            if os.name == 'nt':
+                 # Check if normalized path starts with \mnt or is just \
+                 if norm.startswith('\\mnt') or norm == '\\':
+                     continue
+            else:
+                 # On Linux/WSL, filter paths that still look like Windows paths or are just root artifacts
+                 if local_p.startswith('\\'): # Unconverted windows path
+                     continue
+            
             folders.append(local_p)
             
     # Remove duplicates after conversion

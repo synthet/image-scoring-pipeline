@@ -130,3 +130,6 @@ backups/
 .venv_wsl/
 config.json
 test_export.json
+image_scoring.db
+error_output.txt
+

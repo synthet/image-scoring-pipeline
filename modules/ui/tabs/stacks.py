@@ -308,7 +308,7 @@ def create_stacks_tab():
         stack_gallery = gr.Gallery(
             label="Stacks", 
             columns=8, 
-            height=180,
+            height=350,
             object_fit="cover",
             allow_preview=False,
             show_share_button=False

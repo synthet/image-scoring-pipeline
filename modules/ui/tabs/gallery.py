@@ -178,120 +178,138 @@ def save_metadata_action(details, title, desc, keywords, rating, label, tagging_
     except Exception as e:
         return f"Error saving metadata: {e}", gr.update(visible=True)
 
-def display_details(evt, raw_paths, forced_index=None):
+def display_details(raw_paths, evt: gr.SelectData = None, forced_index=None):
     """Fetches and formats image details for the side panel."""
-    index = None
-    if forced_index is not None:
-        index = forced_index
-    elif evt is not None:
-        if isinstance(evt, gr.SelectData):
-            index = evt.index
-        elif isinstance(evt, dict) and 'index' in evt:
-            index = evt['index']
-            
-    if index is None or not raw_paths or not isinstance(index, int) or index >= len(raw_paths):
-        # Return empty/invisible updates matching detail_outputs order
-        return common.get_empty_details()
-    
-    file_path = raw_paths[index]
-    details = db.get_image_details(file_path)
-    if not details:
-        # Debugging Output
-        empty = common.get_empty_details()
-        empty[0] = f"**DEBUG ERROR:**\nDetails not found for path:\n`{file_path}`\n\nRaw Paths Len: {len(raw_paths)}\nIndex: {index}"
-        return empty
-
-    # Parse scores_json safely
-    scores_data = details.get('scores_json', {})
-    if isinstance(scores_data, str):
-        try: scores_data = json.loads(scores_data)
-        except: scores_data = {}
-    
-    # Logic for Delete Button (NEF only + specific ratings/labels)
-    show_delete = False
-    is_nef = os.path.splitext(file_path)[1].lower() in ['.nef', '.nrw']
-    if is_nef:
-        nef_meta = scores_data.get('nef_metadata')
-        if not nef_meta and 'summary' in scores_data:
-            nef_meta = scores_data['summary'].get('nef_metadata')
-        if not nef_meta and 'full_results' in scores_data:
-             # Use safe get
-             full_res = scores_data.get('full_results', {})
-             summary = full_res.get('summary', {}) if isinstance(full_res, dict) else {}
-             nef_meta = summary.get('nef_metadata') if isinstance(summary, dict) else None
-        
-        rating = int(nef_meta.get('rating', 0)) if nef_meta and isinstance(nef_meta, dict) else 0
-        label = nef_meta.get('label', '') if nef_meta and isinstance(nef_meta, dict) else ""
-        
-        if (rating > 0 and rating <= 2) or label in ["Red", "Yellow"]:
-            show_delete = True
-
-    # Prepare Visual Outputs
-    filename = details.get('file_name', os.path.basename(file_path))
-    created = details.get('created_at', 'Unknown')
-    res_info = f"**File:** `{filename}`\n\n**Date:** {created}"
-    
-    gen_score = details.get('score_general')
-    gen_score = float(gen_score) if gen_score is not None else 0.0
-    gen_label = {"General Score": gen_score}
-    
-    tech = details.get('score_technical')
-    tech = float(tech) if tech is not None else 0.0
-    aes = details.get('score_aesthetic')
-    aes = float(aes) if aes is not None else 0.0
-    weighted_label = {"Technical": tech, "Aesthetic": aes}
-    
-    models_label = {}
-    perform_data = scores_data.get('summary', {}) if isinstance(scores_data, dict) else {}
-    performance = perform_data.get('performance', {}) if isinstance(perform_data, dict) else {}
-    model_times = performance.get('model_times', {}) if isinstance(performance, dict) else {}
-    
-    model_scores_map = {
-        'spaq': ('SPAQ', details.get('score_spaq', 0)),
-        'ava': ('AVA', details.get('score_ava', 0)),
-        'koniq': ('KonIQ', details.get('score_koniq', 0)),
-        'paq2piq': ('PaQ2PiQ', details.get('score_paq2piq', 0)),
-        'liqe': ('LIQE', details.get('score_liqe', 0))
-    }
-    
-    for model_key, (model_name, score) in model_scores_map.items():
-        if score and score > 0:
-            if model_key in model_times:
-                models_label[f"{model_name} ({model_times[model_key]:.3f}s)"] = score
-            else:
-                models_label[model_name] = score
-
-    # Metadata fields
-    title = details.get('title', '')
-    desc = details.get('description', '')
-    keywords_str = details.get('keywords', '')
-    keywords_highlighted = common.keywords_to_highlighted(keywords_str)
-    rating_val = str(details.get('rating', 0))
-    label_val = details.get('label', 'None') or 'None'
-    
-    # Culling Status HTML (Optional DB sidecar)
     try:
-        culling_status = db.get_image_culling_status(file_path) if hasattr(db, 'get_image_culling_status') else None
-    except:
-        culling_status = None
+        index = None
+        if forced_index is not None:
+            index = forced_index
+        elif evt is not None:
+            index = evt.index
+                
+        # Debug info for empty return case
+        if index is None or not raw_paths or not isinstance(index, int) or index >= len(raw_paths):
+            empty = common.get_empty_details()
+            debug_msg = "**DEBUG INFO:** No selection or invalid index.\n"
+            if index is None: debug_msg += "- Index is None\n"
+            else: debug_msg += f"- Index: {index}\n"
+            
+            if not raw_paths: debug_msg += "- Raw Paths is Empty/None\n"
+            else: debug_msg += f"- Raw Paths Len: {len(raw_paths)}\n"
+            
+            # Additional Type Debugging
+            debug_msg += f"\n- Arg raw_paths type: {type(raw_paths)}\n"
+            debug_msg += f"- Arg evt type: {type(evt)}\n"
+
+            empty[0] = debug_msg
+            return empty
         
-    culling_html = '<div style="display: none;"></div>'
-    if culling_status:
-        color = "#3fb950" if culling_status == "pick" else "#f85149" if culling_status == "reject" else "#d29922"
-        text = "Pick" if culling_status == "pick" else "Reject" if culling_status == "reject" else "Maybe"
-        culling_html = f'<div style="margin-top: 10px; padding: 5px 10px; border-radius: 5px; background: {color}22; border: 1px solid {color}44; color: {color}; font-weight: bold; text-align: center;">AI Status: {text}</div>'
+        file_path = raw_paths[index]
+        details = db.get_image_details(file_path)
+        if not details:
+            empty = common.get_empty_details()
+            empty[0] = f"**DEBUG ERROR:**\nDetails not found for path:\n`{file_path}`\n\nRaw Paths Len: {len(raw_paths)}\nIndex: {index}"
+            return empty
 
-    # Fix button visibility logic
-    local_p = utils.convert_path_to_local(file_path)
-    show_fix = os.path.exists(local_p)
+        # Parse scores_json safely
+        scores_data = details.get('scores_json', {})
+        if isinstance(scores_data, str):
+            try: scores_data = json.loads(scores_data)
+            except: scores_data = {}
+        
+        # Logic for Delete Button (NEF only + specific ratings/labels)
+        show_delete = False
+        is_nef = os.path.splitext(file_path)[1].lower() in ['.nef', '.nrw']
+        if is_nef:
+            nef_meta = scores_data.get('nef_metadata')
+            if not nef_meta and 'summary' in scores_data:
+                nef_meta = scores_data['summary'].get('nef_metadata')
+            if not nef_meta and 'full_results' in scores_data:
+                 # Use safe get
+                 full_res = scores_data.get('full_results', {})
+                 summary = full_res.get('summary', {}) if isinstance(full_res, dict) else {}
+                 nef_meta = summary.get('nef_metadata') if isinstance(summary, dict) else None
+            
+            rating = int(nef_meta.get('rating', 0)) if nef_meta and isinstance(nef_meta, dict) else 0
+            label = nef_meta.get('label', '') if nef_meta and isinstance(nef_meta, dict) else ""
+            
+            if (rating > 0 and rating <= 2) or label in ["Red", "Yellow"]:
+                show_delete = True
 
-    return [
-        res_info, gen_label, weighted_label, models_label, details,
-        gr.update(visible=show_delete), title, desc, keywords_highlighted,
-        rating_val, label_val, gr.update(visible=False), 
-        file_path, culling_html, gr.update(visible=show_fix), 
-        gr.update(visible=False), gr.update(visible=show_fix), gr.update(visible=show_fix), index
-    ]
+        # Prepare Visual Outputs
+        filename = details.get('file_name', os.path.basename(file_path))
+        created = details.get('created_at', 'Unknown')
+        res_info = f"**File:** `{filename}`\n\n**Date:** {created}"
+        
+        gen_score = details.get('score_general')
+        gen_score = float(gen_score) if gen_score is not None else 0.0
+        # Ensure we pass a dict to Label to force bar visualization, but handle 0.0 explicitly
+        gen_label = {"General Score": gen_score}
+        
+        tech = details.get('score_technical')
+        tech = float(tech) if tech is not None else 0.0
+        aes = details.get('score_aesthetic')
+        aes = float(aes) if aes is not None else 0.0
+        weighted_label = {"Technical": tech, "Aesthetic": aes}
+        
+        models_label = {}
+        perform_data = scores_data.get('summary', {}) if isinstance(scores_data, dict) else {}
+        performance = perform_data.get('performance', {}) if isinstance(perform_data, dict) else {}
+        model_times = performance.get('model_times', {}) if isinstance(performance, dict) else {}
+        
+        model_scores_map = {
+            'spaq': ('SPAQ', details.get('score_spaq', 0)),
+            'ava': ('AVA', details.get('score_ava', 0)),
+            'koniq': ('KonIQ', details.get('score_koniq', 0)),
+            'paq2piq': ('PaQ2PiQ', details.get('score_paq2piq', 0)),
+            'liqe': ('LIQE', details.get('score_liqe', 0))
+        }
+        
+        for model_key, (model_name, score) in model_scores_map.items():
+            if score and score > 0:
+                if model_key in model_times:
+                    models_label[f"{model_name} ({model_times[model_key]:.3f}s)"] = score
+                else:
+                    models_label[model_name] = score
+
+        # Metadata fields
+        title = details.get('title', '')
+        desc = details.get('description', '')
+        keywords_str = details.get('keywords', '')
+        keywords_highlighted = common.keywords_to_highlighted(keywords_str)
+        rating_val = str(details.get('rating', 0))
+        label_val = details.get('label', 'None') or 'None'
+        
+        # Culling Status HTML (Optional DB sidecar)
+        try:
+            culling_status = db.get_image_culling_status(file_path) if hasattr(db, 'get_image_culling_status') else None
+        except:
+            culling_status = None
+            
+        culling_html = '<div style="display: none;"></div>'
+        if culling_status:
+            color = "#3fb950" if culling_status == "pick" else "#f85149" if culling_status == "reject" else "#d29922"
+            text = "Pick" if culling_status == "pick" else "Reject" if culling_status == "reject" else "Maybe"
+            culling_html = f'<div style="margin-top: 10px; padding: 5px 10px; border-radius: 5px; background: {color}22; border: 1px solid {color}44; color: {color}; font-weight: bold; text-align: center;">AI Status: {text}</div>'
+
+        # Fix button visibility logic
+        local_p = utils.convert_path_to_local(file_path)
+        show_fix = os.path.exists(local_p)
+
+        return [
+            res_info, gen_label, weighted_label, models_label, details,
+            gr.update(visible=show_delete), title, desc, keywords_highlighted,
+            rating_val, label_val, gr.update(visible=False), 
+            file_path, culling_html, gr.update(visible=show_fix), 
+            gr.update(visible=False), gr.update(visible=show_fix), gr.update(visible=show_fix), index
+        ]
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        empty = common.get_empty_details()
+        empty[0] = f"**SYSTEM ERROR in display_details:**\n\n{str(e)}\n\nSee console for traceback."
+        return empty
 
 # --- Component Creation ---
 
