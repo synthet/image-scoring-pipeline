@@ -143,3 +143,25 @@ public class BoolToVisibilityConverter : IValueConverter
         return value is Visibility.Visible;
     }
 }
+
+/// <summary>
+/// Converts null to Collapsed, non-null to Visible (or inverse if parameter is "Inverted")
+/// </summary>
+public class NullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        bool isNull = value == null;
+        bool invert = parameter is string s && s == "Inverted";
+        
+        if (invert)
+            return isNull ? Visibility.Visible : Visibility.Collapsed;
+            
+        return isNull ? Visibility.Collapsed : Visibility.Visible;
+    }
+    
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}

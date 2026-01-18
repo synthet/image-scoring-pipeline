@@ -1,9 +1,8 @@
-D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer\ViewModels\MainViewModel.cs(465,1): error CS1038: ╨ó╤Ç╨╡╨▒╤â╨╡╤é╤ü╤Å ╨┤╨╕╤Ç╨╡╨║╤é╨╕╨▓╨░ #endregion. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer\ImageGalleryViewer_eff0pn0x_wpftmp.csproj]
+  ImageGalleryViewer -> D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer\bin\Debug\net8.0-windows\ImageGalleryViewer.dll
+  ImageGalleryViewer.Tests -> D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\bin\Debug\net8.0-windows\ImageGalleryViewer.Tests.dll
 
-╨₧╤ê╨╕╨▒╨║╨░ ╤ü╨▒╨╛╤Ç╨║╨╕.
-
-D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer\ViewModels\MainViewModel.cs(465,1): error CS1038: ╨ó╤Ç╨╡╨▒╤â╨╡╤é╤ü╤Å ╨┤╨╕╤Ç╨╡╨║╤é╨╕╨▓╨░ #endregion. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer\ImageGalleryViewer_eff0pn0x_wpftmp.csproj]
+╨í╨▒╨╛╤Ç╨║╨░ ╤â╤ü╨┐╨╡╤ê╨╜╨╛ ╨╖╨░╨▓╨╡╤Ç╤ê╨╡╨╜╨░.
     ╨ƒ╤Ç╨╡╨┤╤â╨┐╤Ç╨╡╨╢╨┤╨╡╨╜╨╕╨╣: 0
-    ╨₧╤ê╨╕╨▒╨╛╨║: 1
+    ╨₧╤ê╨╕╨▒╨╛╨║: 0
 
-╨ƒ╤Ç╨╛╤ê╨╗╨╛ ╨▓╤Ç╨╡╨╝╨╡╨╜╨╕ 00:00:03.46
+╨ƒ╤Ç╨╛╤ê╨╗╨╛ ╨▓╤Ç╨╡╨╝╨╡╨╜╨╕ 00:00:05.57

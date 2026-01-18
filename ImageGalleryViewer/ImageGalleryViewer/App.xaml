@@ -14,6 +14,7 @@
             <conv:LabelToColorConverter x:Key="LabelToColor"/>
             <conv:ScoreToColorConverter x:Key="ScoreToColor"/>
             <conv:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
+            <conv:NullToVisibilityConverter x:Key="NullToVisibility"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

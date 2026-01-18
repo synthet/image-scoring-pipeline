@@ -68,6 +68,8 @@
                 <ColumnDefinition Width="280" MinWidth="200" MaxWidth="400"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             
             <!-- Left Panel: Filters -->
@@ -313,6 +315,138 @@
                     </Border.Style>
                 </Border>
             </Grid>
+            
+            <!-- Details Panel Splitter -->
+            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Center" 
+                          Background="{StaticResource BorderBrush}"
+                          Visibility="{Binding IsDetailsPanelVisible, Converter={StaticResource BoolToVisibility}}"/>
+            
+            <!-- Details Panel -->
+            <Border Grid.Column="4" Background="{StaticResource BackgroundMediumBrush}" 
+                    Visibility="{Binding IsDetailsPanelVisible, Converter={StaticResource BoolToVisibility}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                    <StackPanel DataContext="{Binding SelectedImage}">
+                        <StackPanel.Resources>
+                            <Style TargetType="TextBlock" x:Key="LabelStyle">
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                                <Setter Property="Margin" Value="0,0,8,0"/>
+                            </Style>
+                            <Style TargetType="TextBlock" x:Key="ValueStyle">
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                <Setter Property="TextWrapping" Value="Wrap"/>
+                            </Style>
+                            <Style TargetType="TextBlock" x:Key="HeaderStyle">
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="FontSize" Value="14"/>
+                                <Setter Property="Margin" Value="0,16,0,8"/>
+                            </Style>
+                        </StackPanel.Resources>
+                        
+                        <!-- No Selection -->
+                        <TextBlock Text="Select an image to view details" 
+                                   Visibility="{Binding Converter={StaticResource NullToVisibility}, ConverterParameter=Inverted}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Center" Margin="0,20,0,0"/>
+                                   
+                        <!-- Content -->
+                        <StackPanel Visibility="{Binding Converter={StaticResource NullToVisibility}}">
+                            <!-- File Info -->
+                            <TextBlock Text="File Info" Style="{StaticResource HeaderStyle}" Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding FileName}" Style="{StaticResource ValueStyle}" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding WindowsPath}" Style="{StaticResource ValueStyle}" 
+                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,8"/>
+                            
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Type:" Style="{StaticResource LabelStyle}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding FileType}" Style="{StaticResource ValueStyle}"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Date:" Style="{StaticResource LabelStyle}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding CreatedAt}" Style="{StaticResource ValueStyle}"/>
+                            </Grid>
+                            
+                            <!-- Scores -->
+                            <TextBlock Text="Scores" Style="{StaticResource HeaderStyle}"/>
+                            
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="General" Style="{StaticResource LabelStyle}"/>
+                                    <TextBlock Text="{Binding ScoreGeneral, StringFormat=F2}" FontSize="24"
+                                               Foreground="{Binding ScoreGeneral, Converter={StaticResource ScoreToColor}}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Aesthetic" Style="{StaticResource LabelStyle}"/>
+                                    <TextBlock Text="{Binding ScoreAesthetic, StringFormat=F2}" FontSize="24"
+                                               Foreground="{Binding ScoreAesthetic, Converter={StaticResource ScoreToColor}}"/>
+                                </StackPanel>
+                            </Grid>
+                            
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Label"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Technical:" Style="{StaticResource LabelStyle}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding ScoreTechnical, StringFormat=F2}" Style="{StaticResource ValueStyle}"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="SPAQ:" Style="{StaticResource LabelStyle}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding ScoreSpaq, StringFormat=F2}" Style="{StaticResource ValueStyle}"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="AVA:" Style="{StaticResource LabelStyle}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding ScoreAva, StringFormat=F2}" Style="{StaticResource ValueStyle}"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="KonIQ:" Style="{StaticResource LabelStyle}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding ScoreKoniq, StringFormat=F2}" Style="{StaticResource ValueStyle}"/>
+                            </Grid>
+                            
+                            <!-- Metadata -->
+                            <TextBlock Text="Metadata" Style="{StaticResource HeaderStyle}"/>
+                            
+                            <TextBlock Text="Title:" Style="{StaticResource LabelStyle}"/>
+                            <TextBlock Text="{Binding Title, TargetNullValue='-'}" Style="{StaticResource ValueStyle}" Margin="0,0,0,8"/>
+                            
+                            <TextBlock Text="Keywords:" Style="{StaticResource LabelStyle}"/>
+                            <TextBlock Text="{Binding Keywords, TargetNullValue='-'}" Style="{StaticResource ValueStyle}" Margin="0,0,0,8"/>
+                            
+                            <TextBlock Text="Description:" Style="{StaticResource LabelStyle}"/>
+                            <TextBlock Text="{Binding Description, TargetNullValue='-'}" Style="{StaticResource ValueStyle}" Margin="0,0,0,8"/>
+
+                            <TextBlock Text="Rating:" Style="{StaticResource LabelStyle}"/>
+                            <TextBlock Text="{Binding RatingDisplay}" Style="{StaticResource ValueStyle}" Foreground="#FFD700"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
         </Grid>
         
         <!-- Status Bar -->
@@ -326,6 +460,8 @@
                 <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextSecondaryBrush}"/>
                 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <ToggleButton Content="ℹ️ Info" IsChecked="{Binding IsDetailsPanelVisible}" 
+                                  Margin="0,0,8,0" Padding="8,4"/>
                     <Button Content="📂 Show in Explorer" Command="{Binding OpenInExplorerCommand}" 
                             Margin="0,0,8,0" Padding="8,4"/>
                     <Button Content="🖼️ Open in Photos" Command="{Binding OpenInPhotosCommand}" 

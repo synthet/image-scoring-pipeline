@@ -106,6 +106,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int _pageSize = 50;
     
+    [ObservableProperty]
+    private bool _isDetailsPanelVisible = true;
+    
     #endregion
     
     #region Computed Properties
@@ -210,6 +213,12 @@ public partial class MainViewModel : ObservableObject
     
     #region Commands
     
+    [RelayCommand]
+    private void ToggleDetailsPanel()
+    {
+        IsDetailsPanelVisible = !IsDetailsPanelVisible;
+    }
+
     [RelayCommand]
     private async Task RefreshAsync()
     {
