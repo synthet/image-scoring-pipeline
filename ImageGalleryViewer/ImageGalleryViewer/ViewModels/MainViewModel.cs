@@ -31,6 +31,9 @@ public partial class MainViewModel : ObservableObject
     private string _folderFilter = string.Empty;
     
     [ObservableProperty]
+    private int? _stackFilter;
+    
+    [ObservableProperty]
     private int _totalImages;
     
     [ObservableProperty]
@@ -209,6 +212,23 @@ public partial class MainViewModel : ObservableObject
         _ = LoadImagesAsync();
     }
     
+    [RelayCommand]
+    private void FilterByStack()
+    {
+        if (SelectedImage?.StackId == null) return;
+        
+        StackFilter = SelectedImage.StackId;
+        StatusText = $"Filtering by stack ID: {StackFilter}";
+        _ = LoadImagesAsync();
+    }
+    
+    [RelayCommand]
+    private void ClearStackFilter()
+    {
+        StackFilter = null;
+        _ = LoadImagesAsync();
+    }
+    
     #endregion
     
     #region Commands
@@ -273,7 +293,10 @@ public partial class MainViewModel : ObservableObject
         FilterLabelRed = FilterLabelYellow = FilterLabelGreen = FilterLabelBlue = FilterLabelPurple = FilterLabelNone = false;
         MinScoreGeneral = MinScoreAesthetic = MinScoreTechnical = 0;
         DateFrom = DateTo = null;
+        MinScoreGeneral = MinScoreAesthetic = MinScoreTechnical = 0;
+        DateFrom = DateTo = null;
         KeywordSearch = string.Empty;
+        StackFilter = null;
         CurrentPage = 1;
         await LoadImagesAsync();
     }
@@ -440,11 +463,13 @@ public partial class MainViewModel : ObservableObject
             _ => "score_general"
         };
         
-        // Folder filter
         if (!string.IsNullOrWhiteSpace(FolderFilter))
         {
             filter.FolderPath = FolderFilter;
         }
+        
+        // Stack filter
+        filter.StackId = StackFilter;
         
         return filter;
     }

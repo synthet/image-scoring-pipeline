@@ -113,6 +113,26 @@
                                 </TreeView>
                             </StackPanel>
                         </Expander>
+
+                        <!-- Stack Filter Active Indicator -->
+                        <Border Background="{StaticResource BackgroundLightBrush}" Margin="0,0,0,12" CornerRadius="4"
+                                Visibility="{Binding StackFilter, Converter={StaticResource NullToVisibility}}" Padding="8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="📚 Stack Filter Active" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding StackFilter, StringFormat='Stack ID: {0}'}" 
+                                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="✕" Width="24" Height="24" 
+                                        Command="{Binding ClearStackFilterCommand}"
+                                        Style="{StaticResource SecondaryButton}" Padding="0"
+                                        ToolTip="Clear stack filter"/>
+                            </Grid>
+                        </Border>
                         
                         <!-- Rating Filter -->
                         <Expander Header="⭐ Rating Filter" IsExpanded="True" Margin="0,0,0,12">
@@ -259,6 +279,7 @@
                         <ContextMenu>
                             <MenuItem Header="🖼️ Open in Photos" Command="{Binding OpenInPhotosCommand}"/>
                             <MenuItem Header="📂 Show in Explorer" Command="{Binding OpenInExplorerCommand}"/>
+                            <MenuItem Header="📚 Show Stack" Command="{Binding FilterByStackCommand}"/>
                             <Separator/>
                             <MenuItem Header="📋 Copy Path" Command="{Binding CopyPathCommand}"/>
                         </ContextMenu>
@@ -275,6 +296,13 @@
                                         <Image Source="{Binding WindowsPath, Converter={StaticResource PathToThumbnail}}" 
                                                Stretch="UniformToFill"
                                                RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <!-- Stack badge -->
+                                        <Border Background="#AA000000" CornerRadius="4" 
+                                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4" Padding="2"
+                                                Visibility="{Binding StackId, Converter={StaticResource NullToVisibility}}">
+                                            <TextBlock Text="📚" FontSize="10"/>
+                                        </Border>
+
                                         <!-- Label color indicator -->
                                         <Border Width="8" Height="8" CornerRadius="4" 
                                                 HorizontalAlignment="Right" VerticalAlignment="Top"

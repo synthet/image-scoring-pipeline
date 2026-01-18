@@ -1,8 +1,17 @@
   ImageGalleryViewer -> D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer\bin\Debug\net8.0-windows\ImageGalleryViewer.dll
+D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\NullToVisibilityConverterTests.cs(15,41): warning CS8625: ╨¢╨╕╤é╨╡╤Ç╨░╨╗, ╤Ç╨░╨▓╨╜╤ï╨╣ NULL, ╨╜╨╡ ╨╝╨╛╨╢╨╡╤é ╨▒╤ï╤é╤î ╨┐╤Ç╨╡╨╛╨▒╤Ç╨░╨╖╨╛╨▓╨░╨╜ ╨▓ ╤ü╤ü╤ï╨╗╨╛╤ç╨╜╤ï╨╣ ╤é╨╕╨┐, ╨╜╨╡ ╨┤╨╛╨┐╤â╤ü╨║╨░╤Ä╤ë╨╕╨╣ ╨╖╨╜╨░╤ç╨╡╨╜╨╕╨╡ NULL. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\ImageGalleryViewer.Tests.csproj]
+D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\NullToVisibilityConverterTests.cs(15,67): warning CS8625: ╨¢╨╕╤é╨╡╤Ç╨░╨╗, ╤Ç╨░╨▓╨╜╤ï╨╣ NULL, ╨╜╨╡ ╨╝╨╛╨╢╨╡╤é ╨▒╤ï╤é╤î ╨┐╤Ç╨╡╨╛╨▒╤Ç╨░╨╖╨╛╨▓╨░╨╜ ╨▓ ╤ü╤ü╤ï╨╗╨╛╤ç╨╜╤ï╨╣ ╤é╨╕╨┐, ╨╜╨╡ ╨┤╨╛╨┐╤â╤ü╨║╨░╤Ä╤ë╨╕╨╣ ╨╖╨╜╨░╤ç╨╡╨╜╨╕╨╡ NULL. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\ImageGalleryViewer.Tests.csproj]
+D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\NullToVisibilityConverterTests.cs(22,75): warning CS8625: ╨¢╨╕╤é╨╡╤Ç╨░╨╗, ╤Ç╨░╨▓╨╜╤ï╨╣ NULL, ╨╜╨╡ ╨╝╨╛╨╢╨╡╤é ╨▒╤ï╤é╤î ╨┐╤Ç╨╡╨╛╨▒╤Ç╨░╨╖╨╛╨▓╨░╨╜ ╨▓ ╤ü╤ü╤ï╨╗╨╛╤ç╨╜╤ï╨╣ ╤é╨╕╨┐, ╨╜╨╡ ╨┤╨╛╨┐╤â╤ü╨║╨░╤Ä╤ë╨╕╨╣ ╨╖╨╜╨░╤ç╨╡╨╜╨╕╨╡ NULL. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\ImageGalleryViewer.Tests.csproj]
+D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\NullToVisibilityConverterTests.cs(29,41): warning CS8625: ╨¢╨╕╤é╨╡╤Ç╨░╨╗, ╤Ç╨░╨▓╨╜╤ï╨╣ NULL, ╨╜╨╡ ╨╝╨╛╨╢╨╡╤é ╨▒╤ï╤é╤î ╨┐╤Ç╨╡╨╛╨▒╤Ç╨░╨╖╨╛╨▓╨░╨╜ ╨▓ ╤ü╤ü╤ï╨╗╨╛╤ç╨╜╤ï╨╣ ╤é╨╕╨┐, ╨╜╨╡ ╨┤╨╛╨┐╤â╤ü╨║╨░╤Ä╤ë╨╕╨╣ ╨╖╨╜╨░╤ç╨╡╨╜╨╕╨╡ NULL. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\ImageGalleryViewer.Tests.csproj]
   ImageGalleryViewer.Tests -> D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\bin\Debug\net8.0-windows\ImageGalleryViewer.Tests.dll
 
 ╨í╨▒╨╛╤Ç╨║╨░ ╤â╤ü╨┐╨╡╤ê╨╜╨╛ ╨╖╨░╨▓╨╡╤Ç╤ê╨╡╨╜╨░.
-    ╨ƒ╤Ç╨╡╨┤╤â╨┐╤Ç╨╡╨╢╨┤╨╡╨╜╨╕╨╣: 0
+
+D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\NullToVisibilityConverterTests.cs(15,41): warning CS8625: ╨¢╨╕╤é╨╡╤Ç╨░╨╗, ╤Ç╨░╨▓╨╜╤ï╨╣ NULL, ╨╜╨╡ ╨╝╨╛╨╢╨╡╤é ╨▒╤ï╤é╤î ╨┐╤Ç╨╡╨╛╨▒╤Ç╨░╨╖╨╛╨▓╨░╨╜ ╨▓ ╤ü╤ü╤ï╨╗╨╛╤ç╨╜╤ï╨╣ ╤é╨╕╨┐, ╨╜╨╡ ╨┤╨╛╨┐╤â╤ü╨║╨░╤Ä╤ë╨╕╨╣ ╨╖╨╜╨░╤ç╨╡╨╜╨╕╨╡ NULL. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\ImageGalleryViewer.Tests.csproj]
+D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\NullToVisibilityConverterTests.cs(15,67): warning CS8625: ╨¢╨╕╤é╨╡╤Ç╨░╨╗, ╤Ç╨░╨▓╨╜╤ï╨╣ NULL, ╨╜╨╡ ╨╝╨╛╨╢╨╡╤é ╨▒╤ï╤é╤î ╨┐╤Ç╨╡╨╛╨▒╤Ç╨░╨╖╨╛╨▓╨░╨╜ ╨▓ ╤ü╤ü╤ï╨╗╨╛╤ç╨╜╤ï╨╣ ╤é╨╕╨┐, ╨╜╨╡ ╨┤╨╛╨┐╤â╤ü╨║╨░╤Ä╤ë╨╕╨╣ ╨╖╨╜╨░╤ç╨╡╨╜╨╕╨╡ NULL. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\ImageGalleryViewer.Tests.csproj]
+D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\NullToVisibilityConverterTests.cs(22,75): warning CS8625: ╨¢╨╕╤é╨╡╤Ç╨░╨╗, ╤Ç╨░╨▓╨╜╤ï╨╣ NULL, ╨╜╨╡ ╨╝╨╛╨╢╨╡╤é ╨▒╤ï╤é╤î ╨┐╤Ç╨╡╨╛╨▒╤Ç╨░╨╖╨╛╨▓╨░╨╜ ╨▓ ╤ü╤ü╤ï╨╗╨╛╤ç╨╜╤ï╨╣ ╤é╨╕╨┐, ╨╜╨╡ ╨┤╨╛╨┐╤â╤ü╨║╨░╤Ä╤ë╨╕╨╣ ╨╖╨╜╨░╤ç╨╡╨╜╨╕╨╡ NULL. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\ImageGalleryViewer.Tests.csproj]
+D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\NullToVisibilityConverterTests.cs(29,41): warning CS8625: ╨¢╨╕╤é╨╡╤Ç╨░╨╗, ╤Ç╨░╨▓╨╜╤ï╨╣ NULL, ╨╜╨╡ ╨╝╨╛╨╢╨╡╤é ╨▒╤ï╤é╤î ╨┐╤Ç╨╡╨╛╨▒╤Ç╨░╨╖╨╛╨▓╨░╨╜ ╨▓ ╤ü╤ü╤ï╨╗╨╛╤ç╨╜╤ï╨╣ ╤é╨╕╨┐, ╨╜╨╡ ╨┤╨╛╨┐╤â╤ü╨║╨░╤Ä╤ë╨╕╨╣ ╨╖╨╜╨░╤ç╨╡╨╜╨╕╨╡ NULL. [D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\ImageGalleryViewer.Tests.csproj]
+    ╨ƒ╤Ç╨╡╨┤╤â╨┐╤Ç╨╡╨╢╨┤╨╡╨╜╨╕╨╣: 4
     ╨₧╤ê╨╕╨▒╨╛╨║: 0
 
-╨ƒ╤Ç╨╛╤ê╨╗╨╛ ╨▓╤Ç╨╡╨╝╨╡╨╜╨╕ 00:00:05.57
+╨ƒ╤Ç╨╛╤ê╨╗╨╛ ╨▓╤Ç╨╡╨╝╨╡╨╜╨╕ 00:00:02.15
