@@ -221,6 +221,22 @@ public partial class MainViewModel : ObservableObject
         }
     }
     
+    [RelayCommand]
+    private void CopyPath()
+    {
+        if (SelectedImage == null) return;
+        
+        try
+        {
+            System.Windows.Clipboard.SetText(SelectedImage.WindowsPath);
+            StatusText = $"Copied: {SelectedImage.WindowsPath}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Error: {ex.Message}";
+        }
+    }
+    
     #endregion
     
     #region Methods

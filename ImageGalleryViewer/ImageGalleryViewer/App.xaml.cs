@@ -10,6 +10,7 @@ public partial class App : Application
 {
     public static SettingsService Settings { get; private set; } = null!;
     public static DatabaseService Database { get; private set; } = null!;
+    public static ThumbnailService Thumbnails { get; private set; } = null!;
     
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -18,6 +19,10 @@ public partial class App : Application
         // Initialize services
         Settings = new SettingsService();
         Database = new DatabaseService(Settings.DatabasePath);
+        Thumbnails = new ThumbnailService(160, Settings.ThumbnailCacheSizeMb);
+        
+        // Cleanup old temp folders from Photos integration
+        PhotosLauncher.CleanupOldFolders();
     }
     
     protected override void OnExit(ExitEventArgs e)
@@ -25,7 +30,9 @@ public partial class App : Application
         base.OnExit(e);
         
         // Cleanup
+        Thumbnails?.Dispose();
         Database?.Dispose();
         Settings?.Save();
     }
 }
+

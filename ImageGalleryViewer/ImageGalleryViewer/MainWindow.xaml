@@ -216,17 +216,31 @@
                          VirtualizingPanel.IsVirtualizing="True"
                          VirtualizingPanel.VirtualizationMode="Recycling"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="🖼️ Open in Photos" Command="{Binding OpenInPhotosCommand}"/>
+                            <MenuItem Header="📂 Show in Explorer" Command="{Binding OpenInExplorerCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="📋 Copy Path" Command="{Binding CopyPathCommand}"/>
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Width="150">
-                                <!-- Thumbnail placeholder -->
+                                <!-- Thumbnail with Shell extraction -->
                                 <Border Width="140" Height="105" Background="{StaticResource BackgroundLightBrush}"
                                         CornerRadius="2">
                                     <Grid>
                                         <TextBlock Text="🖼️" FontSize="32" HorizontalAlignment="Center" 
                                                    VerticalAlignment="Center" Opacity="0.3"/>
-                                        <Image Source="{Binding WindowsPath}" Stretch="UniformToFill"
+                                        <Image Source="{Binding WindowsPath, Converter={StaticResource PathToThumbnail}}" 
+                                               Stretch="UniformToFill"
                                                RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <!-- Label color indicator -->
+                                        <Border Width="8" Height="8" CornerRadius="4" 
+                                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                Margin="4"
+                                                Background="{Binding Label, Converter={StaticResource LabelToColor}}"/>
                                     </Grid>
                                 </Border>
                                 
@@ -236,8 +250,9 @@
                                            Foreground="{StaticResource TextPrimaryBrush}"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                     <TextBlock Text="{Binding ScoreDisplay}" FontWeight="SemiBold" FontSize="12"
-                                               Foreground="{StaticResource AccentBrush}"/>
-                                    <TextBlock Text="{Binding LabelDisplay}" Margin="8,0,0,0" FontSize="10"/>
+                                               Foreground="{Binding ScoreGeneral, Converter={StaticResource ScoreToColor}}"/>
+                                    <TextBlock Text="{Binding RatingDisplay}" Margin="8,0,0,0" FontSize="10"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
                                 </StackPanel>
                             </StackPanel>
                         </DataTemplate>

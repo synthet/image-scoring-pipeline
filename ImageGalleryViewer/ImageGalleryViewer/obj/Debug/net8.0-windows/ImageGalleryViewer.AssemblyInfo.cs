@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("A native Windows image gallery viewer for the image scoring database")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0072d7d59261eeaef7361c62e3eac9cad193e1cf")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+731e7276660c2c6cd808ea4f9e88f1068983c5b5")]
 [assembly: System.Reflection.AssemblyProductAttribute("Image Gallery Viewer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ImageGalleryViewer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
