@@ -579,8 +579,8 @@ class MultiModelMUSIQ:
         # Fallback order: TF Hub → Kaggle Hub → Local Checkpoints
         
         # Get base directory for local checkpoints
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        checkpoint_dir = os.path.join(base_dir, "musiq_original", "checkpoints")
+        # Get base directory for local checkpoints
+        checkpoint_dir = os.path.join(self.project_root, "models", "checkpoints")
         
         self.model_sources = {
             "spaq": {

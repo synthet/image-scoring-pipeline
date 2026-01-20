@@ -39,7 +39,7 @@ except ImportError as e:
 # Model sources (from run_all_musiq_models.py v2.3.0)
 # Get base directory for local checkpoints
 base_dir = os.path.dirname(os.path.abspath(__file__))
-checkpoint_dir = os.path.join(base_dir, "musiq_original", "checkpoints")
+checkpoint_dir = os.path.join(base_dir, "..", "models", "checkpoints")
 
 MODEL_SOURCES = {
     "spaq": {
