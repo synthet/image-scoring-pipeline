@@ -1,0 +1,3 @@
+# Ignore checkpoints
+models/checkpoints/*.npz
+models/checkpoints/vila-tensorflow2-image-v1/
