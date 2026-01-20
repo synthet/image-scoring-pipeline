@@ -5,6 +5,26 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] - 2026-01-20
+
+### Added
+- **Stack Visualization**: Added "Stack Visualization" feature to image grid items.
+  - Visual badge to indicate stacked images.
+  - Context menu option to filter grid by selected image's stack.
+  - UI status indicator for active stack filters.
+- **Details Panel**: Added "Details Panel" to `ImageGalleryViewer`.
+  - Displays extensive metadata (EXIF, IPTC, File info).
+  - Configurable visibility.
+- **Folder Tree Navigation**: Enhanced `ImageGalleryViewer` with a folder tree.
+  - Tree-based folder navigation.
+  - Filtering gallery by selected folder.
+- **Keyboard Navigation**: Implemented keyboard navigation for the gallery.
+  - Arrow keys to navigate images.
+  - Enter to view full screen.
+- **Unit Tests**: Added extensive unit tests.
+  - `PhotosLauncher` tests.
+  - `ImageRecord` tests.
+
 ## [3.7.0] - 2026-01-17
 
 ### Fixed
