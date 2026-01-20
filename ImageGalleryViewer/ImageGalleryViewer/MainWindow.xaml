@@ -327,7 +327,7 @@
                 </ListBox>
                 
                 <!-- Loading Overlay -->
-                <Border Grid.Row="1" Background="#CC000000" Visibility="{Binding IsLoading, Converter={x:Null}}">
+                <Border Grid.Row="1" Background="#CC000000">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock Text="Loading..." FontSize="18" Foreground="White"/>
                     </StackPanel>
