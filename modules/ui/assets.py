@@ -64,6 +64,18 @@ custom_css = """
     --input-background-fill: var(--bg-tertiary) !important;
 }
 
+/* Hide path storage textbox (visible=True but CSS hidden for DOM access) */
+.hidden-path-storage {
+    display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+    width: 0 !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 /* ========== COMPACT LAYOUT ========== */
 /* Reduce vertical gaps between rows and blocks */
 .contain > .column > .row,
@@ -1051,8 +1063,506 @@ def get_css():
     return custom_css
 
 tree_js = r"""
-<script src="/file=static/js/libraw-viewer.js"></script>
 <script>
+/**
+ * LibRaw Viewer - In-browser NEF/RAW file preview
+ * 
+ * Provides two modes:
+ * 1. Fast embedded JPEG extraction (instant preview)
+ * 2. Full RAW decode via LibRaw-WASM (on-demand)
+ */
+
+class NefViewer {
+    constructor() {
+        this.wasmLoaded = false;
+        this.libraw = null;
+    }
+
+    /**
+     * Extract embedded JPEG preview from NEF file.
+     * NEF files contain a full-size JPEG preview that can be extracted quickly.
+     * 
+     * @param {ArrayBuffer} buffer - Raw NEF file bytes
+     * @returns {Promise<Blob|null>} - JPEG blob or null if not found
+     */
+    async extractEmbeddedJpeg(buffer) {
+        const bytes = new Uint8Array(buffer);
+
+        // JPEG markers
+        const JPEG_SOI = 0xFFD8;  // Start of Image
+        const JPEG_EOI = 0xFFD9;  // End of Image
+
+        // Search for embedded JPEG (usually after EXIF data)
+        // NEF files typically have the full-size JPEG starting around offset 0x8000+
+        let jpegStart = -1;
+        let jpegEnd = -1;
+
+        // Skip first 1KB (TIFF header area) and search for JPEG SOI
+        for (let i = 1024; i < bytes.length - 1; i++) {
+            if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8) {
+                // Found potential JPEG start
+                // Verify it's a substantial JPEG (not just thumbnail)
+                // by checking if there's enough data after it
+                if (bytes.length - i > 100000) {  // At least 100KB remaining
+                    jpegStart = i;
+                    break;
+                }
+            }
+        }
+
+        if (jpegStart === -1) {
+            console.log('NefViewer: No embedded JPEG found');
+            return null;
+        }
+
+        // Find JPEG end marker
+        for (let i = jpegStart + 2; i < bytes.length - 1; i++) {
+            if (bytes[i] === 0xFF && bytes[i + 1] === 0xD9) {
+                jpegEnd = i + 2;
+                // Continue searching for a later EOI (could be thumbnail EOI)
+            }
+        }
+
+        if (jpegEnd === -1) {
+            console.log('NefViewer: JPEG end marker not found');
+            return null;
+        }
+
+        // Extract JPEG bytes
+        const jpegBytes = bytes.slice(jpegStart, jpegEnd);
+        console.log(`NefViewer: Extracted JPEG preview (${(jpegBytes.length / 1024).toFixed(1)} KB)`);
+
+        return new Blob([jpegBytes], { type: 'image/jpeg' });
+    }
+
+    /**
+     * Load LibRaw WASM module for full RAW decoding.
+     * Only loads when needed (lazy loading).
+     */
+    async loadWasm() {
+        if (this.wasmLoaded) return true;
+
+        try {
+            // Dynamic import of libraw-wasm
+            // Note: User needs to provide the WASM file
+            const wasmPath = '/file=static/wasm/libraw.wasm';
+
+            // Check if libraw-wasm is available
+            if (typeof LibRaw !== 'undefined') {
+                this.libraw = new LibRaw();
+                await this.libraw.init(wasmPath);
+                this.wasmLoaded = true;
+                console.log('NefViewer: LibRaw WASM loaded');
+                return true;
+            } else {
+                console.warn('NefViewer: LibRaw-WASM not available, using embedded JPEG only');
+                return false;
+            }
+        } catch (e) {
+            console.error('NefViewer: Failed to load WASM', e);
+            return false;
+        }
+    }
+
+    /**
+     * Decode full RAW data using LibRaw-WASM.
+     * This is computationally expensive (2-5 seconds for 45MP).
+     * 
+     * @param {ArrayBuffer} buffer - Raw NEF file bytes
+     * @returns {Promise<ImageData|null>} - Decoded image data
+     */
+    async decodeRaw(buffer) {
+        if (!await this.loadWasm()) {
+            console.error('NefViewer: WASM not available for RAW decode');
+            return null;
+        }
+
+        try {
+            const result = await this.libraw.decode(new Uint8Array(buffer));
+            return new ImageData(
+                new Uint8ClampedArray(result.data),
+                result.width,
+                result.height
+            );
+        } catch (e) {
+            console.error('NefViewer: RAW decode failed', e);
+            return null;
+        }
+    }
+
+    /**
+     * Create an image element from a blob.
+     * 
+     * @param {Blob} blob - Image blob (JPEG)
+     * @returns {Promise<HTMLImageElement>}
+     */
+    async blobToImage(blob) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                URL.revokeObjectURL(img.src);
+                resolve(img);
+            };
+            img.onerror = reject;
+            img.src = URL.createObjectURL(blob);
+        });
+    }
+
+    /**
+     * Render ImageData to a canvas element.
+     * 
+     * @param {ImageData} imageData - Decoded RAW image data
+     * @param {HTMLCanvasElement} canvas - Target canvas
+     */
+    renderToCanvas(imageData, canvas) {
+        canvas.width = imageData.width;
+        canvas.height = imageData.height;
+        const ctx = canvas.getContext('2d');
+        ctx.putImageData(imageData, 0, 0);
+    }
+}
+
+// Global instance
+window.NefViewer = new NefViewer();
+
+/**
+ * Preview a NEF file by extracting embedded JPEG.
+ * Called from Gradio button click handlers.
+ * 
+ * @param {string} filePath - Path to NEF file
+ * @param {string} targetElementId - ID of img/canvas element to render to
+ */
+async function previewNefFile(filePath, targetElementId) {
+    const statusEl = document.getElementById('raw-preview-status');
+    if (statusEl) statusEl.textContent = 'Loading...';
+
+    try {
+        // Fetch NEF file
+        const response = await fetch(filePath);
+        if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
+
+        const buffer = await response.arrayBuffer();
+        console.log(`NefViewer: Loaded ${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB`);
+
+        // Try embedded JPEG extraction first (fast path)
+        const jpegBlob = await window.NefViewer.extractEmbeddedJpeg(buffer);
+
+        if (jpegBlob) {
+            const img = await window.NefViewer.blobToImage(jpegBlob);
+            const target = document.getElementById(targetElementId);
+
+            if (target && target.tagName === 'IMG') {
+                target.src = URL.createObjectURL(jpegBlob);
+            } else if (target && target.tagName === 'CANVAS') {
+                const ctx = target.getContext('2d');
+                target.width = img.width;
+                target.height = img.height;
+                ctx.drawImage(img, 0, 0);
+            }
+
+            if (statusEl) statusEl.textContent = `Preview: ${img.width}x${img.height}`;
+        } else {
+            if (statusEl) statusEl.textContent = 'No embedded preview found';
+        }
+    } catch (e) {
+        console.error('NefViewer: Preview failed', e);
+        if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+    }
+}
+
+// Export for global access
+window.previewNefFile = previewNefFile;
+
+/**
+ * Generic RAW preview handler with progress indicator.
+ * Uses server-side extraction endpoint for optimized performance (faster than client-side).
+ * Falls back to client-side extraction if server endpoint fails.
+ * 
+ * @param {string} filePath - Path to the NEF file
+ * @param {HTMLElement} statusEl - Status display element
+ * @param {HTMLElement} canvas - Canvas to render preview
+ */
+async function handleRawPreview(filePath, statusEl, canvas) {
+    if (!filePath) {
+        if (statusEl) statusEl.innerHTML = '<span style="color: #f85149;">❌ No file path provided. Select an image first.</span>';
+        return;
+    }
+
+    // Check if NEF file (extended to support more RAW formats)
+    const lowerPath = filePath.toLowerCase();
+    const supportedFormats = ['.nef', '.nrw', '.cr2', '.cr3', '.arw', '.orf', '.rw2', '.dng'];
+    const isRaw = supportedFormats.some(ext => lowerPath.endsWith(ext));
+    
+    if (!isRaw) {
+        if (statusEl) statusEl.innerHTML = '<span style="color: #d29922;">⚠️ Selected file is not a supported RAW format.</span>';
+        return;
+    }
+
+    const fileName = filePath.split(/[/\\]/).pop();
+
+    // Show loading status
+    if (statusEl) {
+        statusEl.innerHTML = `
+            <div style="color: #58a6ff; margin-bottom: 8px;">📥 Extracting preview from ${fileName}...</div>
+            <div style="background: #21262d; border-radius: 4px; height: 8px; overflow: hidden;">
+                <div id="nef-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #58a6ff 0%, #a371f7 100%); transition: width 0.3s ease;"></div>
+            </div>
+        `;
+    }
+
+    try {
+        // Method 1: Try server-side extraction endpoint (fast - ~2-5MB JPEG vs 20-60MB NEF)
+        const encodedPath = encodeURIComponent(filePath);
+        const previewUrl = `/api/raw-preview?path=${encodedPath}`;
+        
+        const response = await fetch(previewUrl);
+        
+        if (response.ok) {
+            // Server-side extraction successful
+            const jpegBlob = await response.blob();
+            
+            if (jpegBlob && jpegBlob.size > 1000) {
+                const img = await window.NefViewer.blobToImage(jpegBlob);
+
+                if (canvas) {
+                    canvas.style.display = 'block';
+                    canvas.width = Math.min(img.width, 800);
+                    canvas.height = (img.height / img.width) * canvas.width;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                }
+
+                if (statusEl) {
+                    statusEl.innerHTML = `<span style="color: #3fb950;">✅ Preview: ${img.width}x${img.height} (${(jpegBlob.size / 1024).toFixed(0)} KB) - Server-extracted</span>`;
+                }
+                return; // Success, exit early
+            }
+        }
+        
+        // Method 2: Fallback to client-side extraction (if server endpoint fails)
+        console.log('NefViewer: Server-side extraction failed or unavailable, falling back to client-side extraction');
+        if (statusEl) {
+            statusEl.innerHTML = `<span style="color: #d29922;">⚠️ Server extraction failed, trying client-side...</span>`;
+        }
+
+        // Convert WSL path to Windows path for fetch
+        let fetchPath = filePath;
+        if (filePath.startsWith('/mnt/')) {
+            const parts = filePath.split('/');
+            const driveLetter = parts[2].toUpperCase();
+            const rest = parts.slice(3).join('/');
+            fetchPath = `${driveLetter}:/${rest}`;
+        }
+
+        // Use Gradio's file serving endpoint
+        const fileUrl = `/file=${fetchPath}`;
+        
+        // Fetch full file with progress tracking
+        const fileResponse = await fetch(fileUrl);
+        if (!fileResponse.ok) throw new Error(`HTTP ${fileResponse.status}`);
+
+        const contentLength = fileResponse.headers.get('content-length');
+        const total = parseInt(contentLength, 10) || 0;
+        
+        const reader = fileResponse.body.getReader();
+        let receivedLength = 0;
+        const chunks = [];
+        const progressBar = document.getElementById('nef-progress-bar');
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            chunks.push(value);
+            receivedLength += value.length;
+            
+            if (progressBar && total > 0) {
+                const percent = Math.round((receivedLength / total) * 100);
+                progressBar.style.width = `${percent}%`;
+            }
+        }
+
+        // Combine chunks into a single buffer
+        const buffer = new Uint8Array(receivedLength);
+        let position = 0;
+        for (const chunk of chunks) {
+            buffer.set(chunk, position);
+            position += chunk.length;
+        }
+
+        const sizeMB = (buffer.byteLength / 1024 / 1024).toFixed(1);
+        if (statusEl) statusEl.innerHTML = `<span style="color: #58a6ff;">🔍 Extracting preview from ${sizeMB} MB file...</span>`;
+
+        const jpegBlob = await window.NefViewer.extractEmbeddedJpeg(buffer.buffer);
+
+        if (jpegBlob) {
+            const img = await window.NefViewer.blobToImage(jpegBlob);
+
+            if (canvas) {
+                canvas.style.display = 'block';
+                canvas.width = Math.min(img.width, 800);
+                canvas.height = (img.height / img.width) * canvas.width;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            }
+
+            if (statusEl) {
+                statusEl.innerHTML = `<span style="color: #3fb950;">✅ Extracted preview: ${img.width}x${img.height} (${(jpegBlob.size / 1024).toFixed(0)} KB) - Client-extracted</span>`;
+            }
+        } else {
+            // Fallback message with suggestions
+            if (statusEl) {
+                statusEl.innerHTML = `
+                    <div style="color: #d29922;">⚠️ No embedded JPEG found in this RAW file.</div>
+                    <div style="color: #8b949e; font-size: 0.85em; margin-top: 8px;">
+                        Some RAW files may not contain embedded previews, or the format may not be supported yet.
+                        The server-generated thumbnail (if available) can be used instead.
+                    </div>
+                `;
+            }
+        }
+    } catch (ex) {
+        console.error('NefViewer:', ex);
+        if (statusEl) {
+            statusEl.innerHTML = `
+                <div style="color: #f85149;">❌ Error: ${ex.message}</div>
+                <div style="color: #8b949e; font-size: 0.85em; margin-top: 8px;">
+                    Check browser console for details. The file may be too large or inaccessible.
+                </div>
+            `;
+        }
+    }
+}
+
+/**
+ * Initialize RAW preview buttons across all tabs.
+ * Supports Gallery, Stacks, and Culling tabs.
+ */
+function initRawPreviewButtons() {
+    // Configuration for each preview context
+    const previewConfigs = [
+        {
+            buttonId: 'raw-preview-btn',
+            statusId: 'raw-preview-status',
+            canvasId: 'raw-preview-canvas',
+            pathSource: 'textbox',  // Use hidden textbox with elem_id
+            pathElementId: 'gallery-selected-path',  // Gradio element ID
+            name: 'Gallery'
+        },
+        {
+            buttonId: 'stacks-raw-preview-btn',
+            statusId: 'stacks-raw-preview-status',
+            canvasId: 'stacks-raw-preview-canvas',
+            pathSource: 'textbox',  // Find path from nearby textbox
+            name: 'Stacks'
+        },
+        {
+            buttonId: 'cull-raw-preview-btn',
+            statusId: 'cull-raw-preview-status',
+            canvasId: 'cull-raw-preview-canvas',
+            pathSource: 'textbox',  // Find path from nearby textbox
+            name: 'Culling'
+        }
+    ];
+
+    const checkInterval = setInterval(() => {
+        let allInitialized = true;
+
+        previewConfigs.forEach(config => {
+            const btn = document.getElementById(config.buttonId);
+            
+            if (btn && !btn.hasAttribute('data-nef-initialized')) {
+                btn.setAttribute('data-nef-initialized', 'true');
+                
+                btn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const statusEl = document.getElementById(config.statusId);
+                    const canvas = document.getElementById(config.canvasId);
+                    
+                    let filePath = null;
+
+                    // Find the file path based on context
+                    if (config.pathSource === 'textbox') {
+                        // Gallery/Stacks/Culling tab: find from textbox (Gradio state)
+                        if (config.pathElementId) {
+                            // Use specific element ID (Gallery tab uses hidden textbox)
+                            // Gradio textboxes: try direct ID first, then look for textarea/input inside
+                            let pathEl = document.getElementById(config.pathElementId);
+                            if (!pathEl) {
+                                // Sometimes Gradio adds prefixes, try with common prefixes
+                                pathEl = document.querySelector(`[id*="${config.pathElementId}"]`);
+                            }
+                            if (pathEl) {
+                                // For Gradio textboxes, the value is in the textarea or input element
+                                const input = pathEl.querySelector('textarea, input[type="text"]') || pathEl;
+                                if (input && input.value) {
+                                    filePath = input.value;
+                                } else if (pathEl.value) {
+                                    // Sometimes the element itself has the value
+                                    filePath = pathEl.value;
+                                }
+                            }
+                        }
+                        
+                        // Fallback: find from nearby textbox (Stacks/Culling tabs)
+                        if (!filePath) {
+                            // Stacks/Culling tab: find from Gradio textbox near the button
+                            // Look for textarea with the selected path value
+                            const accordion = btn.closest('.accordion');
+                            if (accordion) {
+                                const textareas = accordion.querySelectorAll('textarea');
+                                textareas.forEach(ta => {
+                                    if (ta.value && (ta.value.includes('\\') || ta.value.includes('/'))) {
+                                        filePath = ta.value;
+                                    }
+                                });
+                            }
+                            
+                            // Fallback: try finding by looking at nearby input elements
+                            if (!filePath) {
+                                const row = btn.closest('.row');
+                                if (row) {
+                                    const textareas = row.querySelectorAll('textarea');
+                                    textareas.forEach(ta => {
+                                        if (ta.value && (ta.value.includes('\\') || ta.value.includes('/'))) {
+                                            filePath = ta.value;
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    await handleRawPreview(filePath, statusEl, canvas);
+                });
+
+                console.log(`NefViewer: ${config.name} preview button initialized`);
+            } else if (!btn) {
+                allInitialized = false;
+            }
+        });
+
+        // Stop checking once all buttons are initialized (or after timeout)
+        if (allInitialized) {
+            clearInterval(checkInterval);
+        }
+    }, 1000);
+
+    // Stop checking after 30 seconds
+    setTimeout(() => clearInterval(checkInterval), 30000);
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initRawPreviewButtons);
+} else {
+    initRawPreviewButtons();
+}
+
+console.log('NefViewer: Module loaded');
+
 window.selectFolder = function(e, path) {
     e.preventDefault();
     e.stopPropagation();
@@ -1556,13 +2066,43 @@ const compareObserver = new MutationObserver(() => {
 compareObserver.observe(document.body, { childList: true, subtree: true });
 
 // ========== LAZY LOAD FULL RESOLUTION ==========
+// Global variable to store currently selected image path
+window.currentSelectedImagePath = null;
+// Global variable to store gallery paths array (raw_paths from server)
+window.galleryPaths = [];
+
+// Intercept gallery image clicks to store the selected path
+function initGalleryPathTracking() {
+    // Watch for gallery updates to store paths array
+    // This is called when gallery.select fires - we can't intercept it directly,
+    // but we can watch for when preview opens and try to extract from DOM
+    
+    // Also listen for clicks on gallery images
+    document.addEventListener('click', function(e) {
+        const galleryItem = e.target.closest('.gallery img, .gallery-item, [class*="gallery-item"]');
+        if (galleryItem && !e.target.closest('button')) {
+            // Find the image element
+            const img = galleryItem.tagName === 'IMG' ? galleryItem : galleryItem.querySelector('img');
+            if (img && img.src) {
+                // Extract index from gallery structure
+                const galleryContainer = galleryItem.closest('.gallery');
+                if (galleryContainer) {
+                    const allItems = galleryContainer.querySelectorAll('img, [class*="gallery-item"] img');
+                    const index = Array.from(allItems).indexOf(img);
+                    // Path will be populated by display_details, which we'll watch for
+                }
+            }
+        }
+    }, true);
+}
+
 function initLazyFullResolution() {
     console.log("Initializing Lazy Full Resolution Loader");
     let currentPreviewId = 0;
     let loadTimeout = null;
     let abortController = null;
     let previousObjectURL = null;  // Track ObjectURL for cleanup
-    const LOAD_DELAY_MS = 600;  // Wait 600ms before loading full res (debounce)
+    const LOAD_DELAY_MS = 100;  // Wait 100ms before loading full res (snappy but debounced)
     
     // Find the preview image element
     function getCurrentPreviewImg() {
@@ -1623,25 +2163,129 @@ function initLazyFullResolution() {
     }
     
     // BETTER APPROACH: Use the selected gallery item data
+    // Helper function to extract file path from Gradio thumbnail/preview src URL
+    function extractPathFromSrc(src) {
+        if (!src) return null;
+        
+        // Gradio serves files via /file=<path> or /api/file=<path>
+        // Example: http://localhost:7860/file=/mnt/d/Photos/.../image.NEF
+        const fileMatch = src.match(/\/file=([^?&#]+)/);
+        if (fileMatch) {
+            const path = decodeURIComponent(fileMatch[1]);
+            // Validate it looks like an image path
+            if (path.match(/\.(nef|nrw|jpg|jpeg|png|tif|tiff|cr2|cr3|arw|orf|rw2|dng)$/i)) {
+                return path;
+            }
+        }
+        
+        // Also try /api/... pattern
+        const apiMatch = src.match(/\/api\/.*?([\/\\][^?&#]+\.(nef|nrw|jpg|jpeg|png|tif|tiff|cr2|cr3|arw|orf|rw2|dng))/i);
+        if (apiMatch) {
+            return decodeURIComponent(apiMatch[1]);
+        }
+        
+        return null;
+    }
+    
     function getSelectedImagePath() {
-        // Try to find the file path from the details panel (which updates instantly on click)
-        // This is robust because it comes from the server metadata
+        
+        // Helper function to validate if string is actually a file path
+        function isValidPath(path) {
+            if (!path || !path.trim()) return false;
+            const trimmed = path.trim();
+            
+            // Reject temp paths
+            if (trimmed.includes('/tmp/gradio/')) return false;
+            
+            // Must look like a file path (contains slashes or drive letter, and has file extension)
+            const hasPathSeparator = trimmed.includes('/') || trimmed.includes('\\');
+            const hasDriveLetter = /^[a-zA-Z]:/.test(trimmed);
+            const hasMntPath = trimmed.startsWith('/mnt/');
+            const hasFileExtension = /\.[a-zA-Z0-9]{2,4}$/i.test(trimmed);
+            
+            // Must satisfy: (has path separator OR drive letter OR /mnt/) AND has file extension
+            return (hasPathSeparator || hasDriveLetter || hasMntPath) && hasFileExtension && trimmed.length > 5;
+        }
+        
+        // PRIORITY 0: Check global variable (populated when preview opens)
+        if (window.currentSelectedImagePath && isValidPath(window.currentSelectedImagePath)) {
+            return window.currentSelectedImagePath;
+        }
+        
+        // PRIORITY 1: Check all textboxes in details panel area for path
+        // Try multiple ways to find the textbox (Gradio may prefix/modify IDs)
+        let pathTextBox = document.getElementById('gallery-selected-path');
+        
+        // Try querySelector with partial ID match (Gradio might add prefixes)
+        if (!pathTextBox) {
+            pathTextBox = document.querySelector('[id*="gallery-selected-path"]');
+        }
+        
+        // Try finding ALL textboxes in details panel (not just hidden ones)
+        if (!pathTextBox) {
+            const detailsPanel = document.querySelector('.details-panel, [class*="details"]');
+            if (detailsPanel) {
+                const allTextboxes = detailsPanel.querySelectorAll('textarea, input[type="text"]');
+                // Collect all values for logging
+                for (const tb of allTextboxes) {
+                    const val = tb.value || tb.textContent || '';
+                    if (isValidPath(val)) {
+                        pathTextBox = tb;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Also try finding all textboxes (hidden or visible) anywhere in the document
+        if (!pathTextBox) {
+            const allTextboxes = document.querySelectorAll('textarea, input[type="text"]');
+            for (const tb of allTextboxes) {
+                const val = tb.value || tb.textContent || '';
+                if (isValidPath(val)) {
+                    pathTextBox = tb;
+                    break;
+                }
+            }
+        }
+        
+        if (pathTextBox) {
+            // For Gradio textboxes, value might be in textarea/input child or on element itself
+            const input = pathTextBox.querySelector('textarea, input[type="text"]') || pathTextBox;
+            const value = input.value || input.textContent || '';
+            
+            if (isValidPath(value)) {
+                return value.trim();
+            }
+        }
+        
+        // PRIORITY 2: Try to find the file path from the details panel JSON (also contains original DB path)
         const jsonElements = document.querySelectorAll('.json-holder pre, [data-testid="json"] pre');
         for (const el of jsonElements) {
             try {
                 const data = JSON.parse(el.textContent);
-                if (data && data.file_path) {
+                if (data && data.file_path && isValidPath(data.file_path)) {
                     return data.file_path;
                 }
             } catch (e) {}
         }
         
-        // Fallback: visible path textbox?
-        // In webui.py we have 'stacks_selected_path' or similar components
-        const pathInputs = document.querySelectorAll('textarea[label="Selected Image"], input[label="Selected Image"]');
-        for (const input of pathInputs) {
-            if (input.value && input.value.trim().length > 1) {
-                return input.value;
+        
+        // Fallback: Try to match preview image to gallery item to get index, then extract path
+        // Find the currently previewed image
+        const previewImg = document.querySelector('.gallery .preview img, img.preview-image');
+        if (previewImg && previewImg.src) {
+            // Try to find the gallery item that matches this preview image
+            const galleryItems = document.querySelectorAll('.gallery img, .gallery-item img, [class*="gallery"] img');
+            // Try to match by thumbnail strip item (Gradio shows selected item in strip)
+            const thumbnailStrip = document.querySelector('.gallery .thumbnails, .gallery [class*="thumbnail"]');
+            if (thumbnailStrip) {
+                const selectedThumb = thumbnailStrip.querySelector('.selected, [class*="selected"], [class*="active"]') || 
+                                    thumbnailStrip.querySelector('img[src*="' + previewImg.src.split('/').pop() + '"]')?.closest('div, li, span');
+                if (selectedThumb) {
+                    // Try to get index from data attribute or position
+                    const thumbIndex = selectedThumb.dataset.index || Array.from(thumbnailStrip.children).indexOf(selectedThumb);
+                }
             }
         }
         
@@ -1649,6 +2293,7 @@ function initLazyFullResolution() {
     }
     
     function loadFullResolution(imgPath, previewId, imgElement) {
+        
         // Cancel previous load
         if (abortController) {
             abortController.abort();
@@ -1662,22 +2307,16 @@ function initLazyFullResolution() {
         }
         
         // If previewId changed, don't load (stale)
-        if (previewId !== currentPreviewId) return;
+        if (previewId !== currentPreviewId) {
+            return;
+        }
         
         abortController = new AbortController();
         
-        // Determine URL
-        // If it's a RAW file, use our API. Else use /file=
-        const ext = imgPath.split('.').pop().toLowerCase();
-        const isRaw = ['nef', 'cr2', 'arw', 'dng', 'orf', 'nrw', 'cr3', 'rw2'].includes(ext);
+        // Use the /source-image endpoint (not /api/ to avoid Gradio routing conflicts)
+        // Handles both RAW and regular images with proper WSL path conversion
+        const url = `/source-image?path=${encodeURIComponent(imgPath)}`;
         
-        let url = '';
-        if (isRaw) {
-             url = `/api/raw-preview?path=${encodeURIComponent(imgPath)}`;
-        } else {
-             // For standard images, append a distinct param to bypass cache or ensure full load
-             url = `/file=${imgPath}`;
-        }
         
         showLoadingIndicator(imgElement);
         
@@ -1692,12 +2331,14 @@ function initLazyFullResolution() {
                     return;
                 }
                 
+                
                 const objectURL = URL.createObjectURL(blob);
                 previousObjectURL = objectURL;  // Track for cleanup
                 imgElement.onload = () => {
                    hideLoadingIndicator(imgElement);
                 };
                 imgElement.src = objectURL;
+                
                 
                 // Cleanup controller
                 abortController = null;
@@ -1725,51 +2366,309 @@ function initLazyFullResolution() {
                 previousObjectURL = null;
             }
             
-            currentPreviewId++; 
+            currentPreviewId++;
+            window.currentSelectedImagePath = null; // Clear global path when preview closes
             return;
         }
         
-        // Retrieve path
-        const path = getSelectedImagePath();
-        if (!path) return; // Wait until details populate
+        // DETECT NAVIGATION: Check if the underlying src is back to a thumbnail
+        // If the src is NOT our blob/source-image, but we thought we loaded it, reset state.
+        const isHighRes = img.src.startsWith('blob:') || img.src.includes('/source-image');
         
-        // Check if we already loaded this path for this session?
-        if (img.dataset.fullResPath === path) {
-             return; // Already initiated or loaded
+        if (!isHighRes && img.dataset.fullResLoaded === 'true') {
+             // We navigated to a new image (Gradio reset the src)
+             img.dataset.fullResLoaded = 'false';
+             delete img.dataset.fullResPath;
         }
+
+        // RETRY LOGIC: The path textbox might be stale immediately after navigation.
+        // We need to poll until we get a path that makes sense or timeout.
         
-        // New image detected!
-        currentPreviewId++;
-        const myPreviewId = currentPreviewId;
+        let attempts = 0;
+        const checkPathAndLoad = () => {
+             // Retrieve path
+            let path = getSelectedImagePath();
+            
+            
+            // CRITICAL FIX: During arrow key navigation, Gradio does NOT fire gallery.select() event,
+            // so the path textbox is NEVER updated. We must extract path from the thumbnail src itself.
+            if (!path || (img.dataset.lastLoadedPath === path && !isHighRes)) {
+                // Try to extract path from the current image src
+                // Gradio thumbnail URLs have format: /file=<path> or /api/...<path>
+                const srcPath = extractPathFromSrc(img.src);
+                
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2375',message:'Extracting path from src',data:{srcPath:srcPath?.substring(0,100),srcUrl:img.src?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
+                // #endregion
+                
+                if (srcPath && srcPath !== path) {
+                    path = srcPath;
+                    console.log('Extracted path from img src:', path);
+                }
+            }
+            
+            // If still no path after 5 attempts, give up
+            if (!path) {
+                if (attempts < 5) {
+                     attempts++;
+                     setTimeout(checkPathAndLoad, 150);
+                }
+                return;
+            }
+            
+             // Check if we already loaded this path for this session?
+            if (img.dataset.fullResPath === path && (isHighRes || img.dataset.fullResLoaded === 'true')) {
+                 return; // Already initiated or loaded
+            }
+            
+            // New image detected!
+            currentPreviewId++;
+            const myPreviewId = currentPreviewId;
+            
+            img.dataset.fullResPath = path; // Mark as handled
+            img.dataset.lastLoadedPath = path; // Track for stale check
+            
+            // Cancel previous
+            if (loadTimeout) clearTimeout(loadTimeout);
+            if (abortController) abortController.abort();
+            
+            // Cleanup previous ObjectURL (if we are switching faster than load completes)
+            if (previousObjectURL) {
+                URL.revokeObjectURL(previousObjectURL);
+                previousObjectURL = null;
+            }
+            
+            // Set delay
+            loadTimeout = setTimeout(() => {
+                loadFullResolution(path, myPreviewId, img);
+            }, LOAD_DELAY_MS);
+        };
         
-        img.dataset.fullResPath = path; // Mark as handled
-        
-        // Cancel previous
-        if (loadTimeout) clearTimeout(loadTimeout);
-        if (abortController) abortController.abort();
-        
-        // Cleanup previous ObjectURL (if we are switching faster than load completes)
-        if (previousObjectURL) {
-            URL.revokeObjectURL(previousObjectURL);
-            previousObjectURL = null;
-        }
-        
-        // Set delay
-        loadTimeout = setTimeout(() => {
-            loadFullResolution(path, myPreviewId, img);
-        }, LOAD_DELAY_MS);
+        checkPathAndLoad();
     }
     
-    // Watch for DOM changes to detect when preview opens or changes
-    // The gallery preview creates a new <img> or changes src
-    const observer = new MutationObserver((mutations) => {
-        // Quick check if preview exists
-        if (document.querySelector('.gallery .preview')) {
-             handlePreviewChange();
+    // Intercept fullscreen button clicks to load source image
+    function interceptFullscreenButton() {
+        // Find fullscreen buttons in gallery preview
+        document.addEventListener('click', function(e) {
+            // Check if click is on fullscreen button or its SVG/path child
+            const fullscreenBtn = e.target.closest('button[aria-label="Fullscreen"], button[title="Fullscreen"]') ||
+                                 e.target.closest('button.icon-button')?.querySelector('svg[viewBox*="24"]')?.closest('button') ||
+                                 (e.target.closest('button') && e.target.closest('button').querySelector('svg')?.innerHTML.includes('maximize'));
+            
+            if (!fullscreenBtn) {
+                // Also check SVG path for maximize icon
+                const svg = e.target.closest('svg');
+                if (svg && svg.parentElement?.closest('button')) {
+                    const btn = svg.parentElement.closest('button');
+                    if (btn && (btn.getAttribute('aria-label') === 'Fullscreen' || btn.getAttribute('title') === 'Fullscreen')) {
+                        // This is a fullscreen button
+                        handleFullscreenClick(btn, e);
+                    }
+                }
+                return;
+            }
+            
+            handleFullscreenClick(fullscreenBtn, e);
+        }, true);  // Use capture phase to catch early
+        
+        function handleFullscreenClick(btn, e) {
+            
+            // Check if we're in a gallery preview context
+            const galleryPreview = btn.closest('.gallery') || btn.closest('[class*="preview"]') || document.querySelector('.gallery');
+            if (!galleryPreview) return;
+            
+            // Get the source image path
+            const imgPath = getSelectedImagePath();
+            if (!imgPath) {
+                console.log('Fullscreen: No image path found');
+                return;
+            }
+            
+            console.log('Fullscreen button clicked, path:', imgPath);
+            
+            // Cancel any pending lazy load
+            if (loadTimeout) clearTimeout(loadTimeout);
+            if (abortController) abortController.abort();
+            
+            // Immediately load source image when fullscreen is clicked
+            currentPreviewId++;
+            const myPreviewId = currentPreviewId;
+            
+            // Watch for fullscreen modal to appear and replace image
+            function waitForFullscreenModal(attemptNum = 0) {
+                
+                // Try multiple selectors for fullscreen modal
+                const selectors = [
+                    '.gallery .preview img',
+                    'img.preview-image',
+                    '.modal img',
+                    '[role="dialog"] img',
+                    '.gallery img[src*="/file="]',
+                    '.gallery img[src*="/api/"]',
+                    'img[data-testid="detailed-image"]'
+                ];
+                
+                let fullscreenImg = null;
+                let matchedSelector = null;
+                for (const selector of selectors) {
+                    const found = document.querySelector(selector);
+                    if (found) {
+                        fullscreenImg = found;
+                        matchedSelector = selector;
+                        break;
+                    }
+                }
+                
+                
+                if (fullscreenImg && myPreviewId === currentPreviewId) {
+                    console.log('Fullscreen modal detected, replacing image');
+                    loadFullResolution(imgPath, myPreviewId, fullscreenImg);
+                    return true;
+                }
+                return false;
+            }
+            
+            // Try immediately, then retry with delays
+            if (!waitForFullscreenModal(0)) {
+                setTimeout(() => waitForFullscreenModal(1), 50);
+                setTimeout(() => waitForFullscreenModal(2), 150);
+                setTimeout(() => waitForFullscreenModal(3), 300);
+                setTimeout(() => waitForFullscreenModal(4), 500);
+            }
         }
+    }
+    
+    // NEW APPROACH: Monitor image src changes directly in the gallery
+    // This is more reliable than trying to detect preview state
+    let monitoredImages = new WeakSet();
+    let lastProcessedSrc = null;
+    
+    function monitorImageElement(img) {
+        if (!img || monitoredImages.has(img)) return;
+        monitoredImages.add(img);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2512',message:'Monitoring new image element',data:{srcStart:img.src?.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
+        // #endregion
+        
+        // Create observer for this specific image
+        const imgObserver = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
+                    const newSrc = img.src;
+                    
+                    // Skip if this is the same src we just processed
+                    if (newSrc === lastProcessedSrc) return;
+                    
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2528',message:'Image src changed',data:{newSrcStart:newSrc?.substring(0,50),isBlob:newSrc?.startsWith('blob:'),lastProcessed:lastProcessedSrc?.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
+                    // #endregion
+                    
+                    lastProcessedSrc = newSrc;
+                    handlePreviewChange();
+                }
+            });
+        });
+        
+        imgObserver.observe(img, { attributes: true, attributeFilter: ['src'] });
+    }
+    
+    // Watch for new gallery images being added to DOM
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+            mutation.addedNodes.forEach(node => {
+                if (node.nodeType === 1) {
+                    // Check if this node is an image in the gallery
+                    if (node.tagName === 'IMG') {
+                        const inGallery = node.closest('.gallery, [class*="gallery"]');
+                        if (inGallery) {
+                            monitorImageElement(node);
+                        }
+                    }
+                    
+                    // Also check child images
+                    const imgs = node.querySelectorAll ? node.querySelectorAll('img') : [];
+                    imgs.forEach(img => {
+                        const inGallery = img.closest('.gallery, [class*="gallery"]');
+                        if (inGallery) {
+                            monitorImageElement(img);
+                        }
+                    });
+                }
+            });
+        });
+        
+        // Also monitor existing images on each mutation batch
+        const galleryImgs = document.querySelectorAll('.gallery img, [class*="gallery"] img');
+        galleryImgs.forEach(img => monitorImageElement(img));
     });
     
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style'] });
+    observer.observe(document.body, { childList: true, subtree: true });
+    
+    // Also intercept fullscreen button clicks
+    interceptFullscreenButton();
+
+    // Add keyboard navigation for fullscreen/preview mode
+    document.addEventListener('keydown', (e) => {
+        // Only if we are in preview mode
+        const previewImg = document.querySelector('.gallery .preview img, .gallery button.preview img, img.preview-image');
+        if (!previewImg) return;
+
+        if (e.key === 'ArrowRight') {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2542',message:'ArrowRight pressed',data:{inPreview:true},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H5'})}).catch(()=>{});
+            // #endregion
+            
+            // Find "Next" button in gallery and click it
+            const nextBtns = document.querySelectorAll('.gallery button[aria-label="Next"], .gallery button.next-btn, .gallery button[title="Next"]');
+            for (const btn of nextBtns) {
+                if (btn.offsetParent !== null) { // Visible
+                    btn.click();
+                    break;
+                }
+            }
+        } else if (e.key === 'ArrowLeft') {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2556',message:'ArrowLeft pressed',data:{inPreview:true},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H5'})}).catch(()=>{});
+            // #endregion
+            
+            // Find "Previous" button in gallery and click it
+            const prevBtns = document.querySelectorAll('.gallery button[aria-label="Previous"], .gallery button.prev-btn, .gallery button[title="Previous"]');
+            for (const btn of prevBtns) {
+                if (btn.offsetParent !== null) { // Visible
+                    btn.click();
+                    break;
+                }
+            }
+        } else if (e.key === 'Escape') {
+             // Ensure we close and return to grid
+             const closeBtn = document.querySelector('.gallery button[aria-label="Close"], .gallery .close-btn');
+             if (closeBtn) closeBtn.click();
+             
+             // Also try the custom back button
+             const backBtn = document.getElementById('gallery-close-btn');
+             if (backBtn) backBtn.click();
+        }
+    });
+
+    // Auto-close preview when exiting browser fullscreen
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement) {
+             const closeBtn = document.querySelector('.gallery button[aria-label="Close"], .gallery .close-btn');
+             if (closeBtn) closeBtn.click();
+             
+             const backBtn = document.getElementById('gallery-close-btn');
+             if (backBtn) backBtn.click();
+        }
+    });
+}
+
+// Initialize Gallery Path Tracking
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initGalleryPathTracking);
+} else {
+    initGalleryPathTracking();
 }
 
 // Initialize Lazy Loader

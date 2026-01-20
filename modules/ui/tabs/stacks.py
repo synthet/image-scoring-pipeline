@@ -68,7 +68,10 @@ def refresh_stacks_wrapper(input_path, sort_by, sort_order):
         # Convert path for WSL/Windows compatibility
         # Skip os.path.exists() check - it's slow and Gradio handles missing images gracefully
         if cover:
-            local_cover = utils.convert_path_to_local(cover)
+            # Retrieve image id first for resolution if possible? 
+            # Row has best_image_id? Yes, s['best_image_id'].
+            image_id = s.get('best_image_id')
+            local_cover = utils.resolve_file_path(cover, image_id) or utils.convert_path_to_local(cover)
             results.append((local_cover, label))
             stack_ids.append(s_id)
             
@@ -125,9 +128,12 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
         # Trust DB paths - they were validated when stored
         thumb = row['thumbnail_path']  # sqlite3.Row uses bracket notation, not .get()
         if thumb:
-            p = utils.convert_path_to_local(thumb)
-        else:
-            p = utils.convert_path_to_local(file_path)
+            # Resolve thumb or file path
+            image_id = row['id']
+            if thumb:
+                p = utils.resolve_file_path(thumb, image_id) or utils.convert_path_to_local(thumb)
+            else:
+                p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
         
         # Get the selected score
         score = row[score_col] if score_col in row.keys() else None
@@ -202,7 +208,11 @@ def remove_from_stack_handler(selected_indices, content_paths, current_stack_id,
             if file_path:
                 new_content_paths.append(file_path)
                 thumb = row['thumbnail_path']
-                p = utils.convert_path_to_local(thumb if thumb else file_path)
+                image_id = row['id']
+                if thumb:
+                    p = utils.resolve_file_path(thumb, image_id) or utils.convert_path_to_local(thumb)
+                else:
+                    p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
                 file_name = os.path.basename(file_path)
                 score = row['score_general']
                 score_str = f"{score:.2f}" if score else "N/A"

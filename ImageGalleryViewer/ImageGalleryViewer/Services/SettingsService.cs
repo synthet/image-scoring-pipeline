@@ -31,7 +31,7 @@ public class SettingsService
         // Default database path - look in typical locations
         DatabasePath = FindDatabasePath();
         
-        Load();
+        // Load() // MOVED: Call manually to avoid recursion during JSON deserialization
     }
     
     private static string FindDatabasePath()

@@ -241,6 +241,16 @@ class TaggingRunner:
             self.status_message = "Error Path"
             return
 
+
+
+        # Check folder level status if not overwriting (optimization)
+        processed_folders = set()
+        if not overwrite and os.path.isdir(input_path):
+             if db.is_folder_keywords_processed(input_path):
+                 log(f"Skipping fully processed folder: {input_path}")
+                 self.status_message = "Skipped (Processed)"
+                 return
+
         log(f"Found {len(all_images)} images to process.")
         self.total_count = len(all_images)
         self.current_count = 0
@@ -254,6 +264,8 @@ class TaggingRunner:
                 break
                 
             path = row['file_path']
+            folder = os.path.dirname(path)
+            processed_folders.add(folder)
             
             # Convert DB path to WSL path for processing if needed
             original_windows_path = path
@@ -339,6 +351,16 @@ class TaggingRunner:
                 self.current_count += 1
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")
+
+        # Update Folder Status
+        if processed_folders:
+            log("Updating folder completion flags...")
+            for f in processed_folders:
+                 try:
+                     if db.check_and_update_folder_keywords_status(f):
+                         log(f"Folder marked as fully processed: {f}")
+                 except Exception as e:
+                     log(f"Failed to update status for {f}: {e}")
 
     def write_metadata(self, image_path: str, keywords: List[str], title: str = "", description: str = "", rating: int = 0, label: str = "") -> bool:
         """

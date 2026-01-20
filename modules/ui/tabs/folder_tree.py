@@ -52,10 +52,11 @@ def create_tab(app_config):
             # Trust DB paths - they were valid when stored
             thumb_path = row.get('thumbnail_path')
             
+            image_id = row.get('id')
             if thumb_path:
-                p = utils.convert_path_to_local(thumb_path)
+                p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
             else:
-                p = utils.convert_path_to_local(p)
+                p = utils.resolve_file_path(p, image_id) or utils.convert_path_to_local(p)
             
             results.append((p, label))
 

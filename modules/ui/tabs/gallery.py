@@ -3,10 +3,13 @@ import os
 import json
 import datetime
 import platform
+import time
 from modules import db, config, utils
 from modules.ui import common
 
 IS_WINDOWS = (platform.system() == 'Windows')
+
+
 
 # --- Helper Functions ---
 
@@ -15,8 +18,11 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
     date_range = (start_date, end_date) if (start_date or end_date) else None
     
     try:
+
+
         wsl_folder = utils.convert_path_to_wsl(folder) if folder else None
         
+        t_db0 = time.perf_counter()
         rows = db.get_images_paginated(
             page, page_size, sort_by, sort_order, 
             rating_filter, label_filter, keyword_filter, 
@@ -27,7 +33,10 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
             folder_path=wsl_folder,
             stack_id=stack_id
         )
+        t_db1 = time.perf_counter()
+
         
+        t_cnt0 = time.perf_counter()
         total_count = db.get_image_count(
             rating_filter=rating_filter,
             label_filter=label_filter,
@@ -39,22 +48,43 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
             folder_path=wsl_folder,
             stack_id=stack_id
         )
+        t_cnt1 = time.perf_counter()
+
         
         total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
         
         images = []
         raw_paths = []
+
+        t_loop0 = time.perf_counter()
+        resolve_ms_total = 0.0
+        resolve_ms_max = 0.0
+        used_thumb = 0
+        resolved_ok = 0
+        resolved_none = 0
         
         for row in rows:
             file_path = row['file_path']
             raw_paths.append(file_path)
             
-            # Use thumbnail if available
+            # Use thumbnail if available, with resolved_path fallback
             thumb_path = row['thumbnail_path']
+            image_id = row['id'] if 'id' in row.keys() else None
+            t_r0 = time.perf_counter()
             if thumb_path:
-                p = utils.convert_path_to_local(thumb_path)
+                used_thumb += 1
+                p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
             else:
-                p = utils.convert_path_to_local(file_path)
+                p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
+            t_r1 = time.perf_counter()
+            dt_ms = (t_r1 - t_r0) * 1000
+            resolve_ms_total += dt_ms
+            if dt_ms > resolve_ms_max:
+                resolve_ms_max = dt_ms
+            if p:
+                resolved_ok += 1
+            else:
+                resolved_none += 1
                 
             # Create label with score
             score = row['score_general']
@@ -64,6 +94,10 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
             images.append((p, label))
             
         page_label = f"Page {page} of {total_pages} ({total_count} images)"
+
+        t1 = time.perf_counter()
+        t_loop1 = time.perf_counter()
+
         
         return images, page_label, total_pages, raw_paths
         
@@ -71,6 +105,7 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
         print(f"Error fetching gallery data: {e}")
         import traceback
         traceback.print_exc()
+
         return [], f"Error: {e}", 1, []
 
 def export_database(export_format, cols_basic, cols_scores, cols_metadata, cols_other,
@@ -181,6 +216,8 @@ def save_metadata_action(details, title, desc, keywords, rating, label, tagging_
 def display_details(raw_paths, evt: gr.SelectData = None, forced_index=None):
     """Fetches and formats image details for the side panel."""
     try:
+
+        
         index = None
         if forced_index is not None:
             index = forced_index
@@ -205,6 +242,9 @@ def display_details(raw_paths, evt: gr.SelectData = None, forced_index=None):
             return empty
         
         file_path = raw_paths[index]
+        
+
+        
         details = db.get_image_details(file_path)
         if not details:
             empty = common.get_empty_details()
@@ -292,9 +332,10 @@ def display_details(raw_paths, evt: gr.SelectData = None, forced_index=None):
             text = "Pick" if culling_status == "pick" else "Reject" if culling_status == "reject" else "Maybe"
             culling_html = f'<div style="margin-top: 10px; padding: 5px 10px; border-radius: 5px; background: {color}22; border: 1px solid {color}44; color: {color}; font-weight: bold; text-align: center;">AI Status: {text}</div>'
 
-        # Fix button visibility logic
-        local_p = utils.convert_path_to_local(file_path)
-        show_fix = os.path.exists(local_p)
+        # Fix button visibility logic - use resolved_path first
+        image_id = details.get('id')
+        local_p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
+        show_fix = local_p and os.path.exists(local_p)
 
         return [
             res_info, gen_label, weighted_label, models_label, details,
@@ -396,7 +437,18 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
             with gr.Column(scale=2):
                 with gr.Row():
                     sort_dropdown = gr.Dropdown(
-                        choices=[("📅 Date Added", "created_at"), ("🆔 ID", "id"), ("⭐ General Score", "score_general"), ("🔧 Technical Score", "score_technical"), ("🎨 Aesthetic Score", "score_aesthetic")], 
+                        choices=[
+                            ("📅 Date Added", "created_at"), 
+                            ("🆔 ID", "id"), 
+                            ("⭐ General Score", "score_general"), 
+                            ("🔧 Technical Score", "score_technical"), 
+                            ("🎨 Aesthetic Score", "score_aesthetic"),
+                            ("⬤ SPAQ", "score_spaq"),
+                            ("⬤ AVA", "score_ava"),
+                            ("⬤ KonIQ", "score_koniq"),
+                            ("⬤ PaQ2PiQ", "score_paq2piq"),
+                            ("⬤ LIQE", "score_liqe")
+                        ], 
                         value=app_config.get('scoring', {}).get('default_sort_by', 'score_general'), 
                         label="Sort By", container=False)
                     order_dropdown = gr.Dropdown(
@@ -472,7 +524,12 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
                 with gr.Accordion("✏️ Edit Metadata", open=False):
                     d_title = gr.Textbox(label="Title")
                     d_desc = gr.Textbox(label="Description")
-                    d_keywords = gr.HighlightedText(label="Keywords", combine_adjacent=False)
+                    # Use our custom color map so keyword chips aren't pastel-light (unreadable with white text)
+                    d_keywords = gr.HighlightedText(
+                        label="Keywords",
+                        combine_adjacent=False,
+                        color_map=common.KEYWORD_COLOR_MAP,
+                    )
                     with gr.Row():
                         d_rating = gr.Dropdown(choices=["0", "1", "2", "3", "4", "5"], label="Rating")
                         d_label = gr.Dropdown(choices=["None", "Red", "Yellow", "Green", "Blue", "Purple"], label="Label")
@@ -495,7 +552,17 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
                 # We can reuse fix_status or make new one.
                 delete_status = gr.Textbox(label="Status", visible=False) # Separate one
                 
-                gallery_selected_path = gr.Textbox(visible=False)
+                # Store path in a hidden textbox - MUST be visible=True for DOM rendering
+                # Hide with CSS instead of visible=False (which removes from DOM entirely)
+                gallery_selected_path = gr.Textbox(
+                    value="", 
+                    visible=True,  # Must be True to render in DOM
+                    elem_id="gallery-selected-path",
+                    elem_classes=["hidden-path-storage"],  # CSS class for hiding
+                    container=False,
+                    interactive=False,
+                    show_label=False
+                )
                 current_selection_index = gr.State(None)
 
         # Component validation function

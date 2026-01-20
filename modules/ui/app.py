@@ -180,12 +180,6 @@ def create_ui():
         
         demo.load(fn=load_initial_gallery_with_paths, inputs=[], outputs=load_outputs)
 
-        demo.load(
-            fn=culling_tab.get_active_sessions,
-            inputs=[],
-            outputs=[culling_components['resume_dropdown']]
-        )
-
         # Monitor Loop
         def monitor_status_wrapper():
             s_res = scoring_tab.get_status_update(runner)
@@ -205,9 +199,23 @@ def create_ui():
 
     return demo, runner, tagging_runner
 
-def setup_server_endpoints(demo):
+def setup_server_endpoints(fastapi_app):
     """Configures FastAPI endpoints for the Gradio app."""
-    @demo.app.get("/api/raw-preview")
+    
+    @fastapi_app.get("/manifest.json")
+    async def manifest_endpoint():
+        """Serve a minimal web app manifest to prevent 404 errors."""
+        from fastapi.responses import JSONResponse
+        return JSONResponse({
+            "name": "Image Scoring WebUI",
+            "short_name": "Image Scoring",
+            "start_url": "/",
+            "display": "standalone",
+            "theme_color": "#000000",
+            "background_color": "#ffffff"
+        })
+    
+    @fastapi_app.get("/api/raw-preview")
     async def raw_preview_endpoint(path: str):
         import urllib.parse
         from fastapi.responses import Response
@@ -216,11 +224,8 @@ def setup_server_endpoints(demo):
         
         try:
             file_path = urllib.parse.unquote(path)
-            # Conversion logic
-            if IS_WINDOWS and file_path.startswith("/mnt/"):
-                file_path = utils.convert_path_to_local(file_path)
-            elif not IS_WINDOWS and ":" in file_path and file_path[1] == ":":
-                file_path = utils.convert_path_to_wsl(file_path)
+            # Conversion logic using unified resolver
+            file_path = utils.resolve_file_path(file_path) or utils.convert_path_to_local(file_path)
             
             if not os.path.exists(file_path):
                 raise HTTPException(status_code=404, detail="File not found")
@@ -242,5 +247,129 @@ def setup_server_endpoints(demo):
                 media_type="image/jpeg",
                 headers={"Cache-Control": "public, max-age=3600"}
             )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @fastapi_app.post("/api/query")
+    async def query_endpoint(payload: dict):
+        """
+        Executes a read-only SQL query against the database.
+        Payload: {"query": "SELECT ...", "parameters": {"@param": "value"}}
+        """
+        from fastapi import HTTPException
+        import sqlite3
+        
+        query = payload.get("query")
+        parameters = payload.get("parameters", {})
+        
+        # Basic security check - only allow SELECT
+        if not query or not query.strip().upper().startswith("SELECT"):
+             raise HTTPException(status_code=400, detail="Only SELECT queries are allowed")
+
+        try:
+            conn = db.get_db()
+            # Use dict factory for JSON serialization
+            conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
+            c = conn.cursor()
+            
+            # Execute
+            c.execute(query, parameters)
+            rows = c.fetchall()
+            conn.close()
+            
+            return rows
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @fastapi_app.get("/source-image")
+    async def source_image_endpoint(path: str):
+        """
+        Serves full-resolution source images for fullscreen display.
+        For RAW files, generates high-quality JPEG preview on-the-fly.
+        For regular images, serves the original file.
+        Handles WSL->Windows path conversion.
+        """
+        import urllib.parse
+        from fastapi.responses import Response, FileResponse
+        from fastapi import HTTPException
+        import io
+        
+        try:
+            file_path = urllib.parse.unquote(path)
+            
+            # Convert WSL path to Windows path using resolution logic
+            resolved = utils.resolve_file_path(file_path)
+            if resolved:
+                file_path = resolved
+            else:
+                # Fallback to conversion if resolve failed
+                file_path = utils.convert_path_to_local(file_path)
+            
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail="File not found")
+            
+            ext = Path(file_path).suffix.lower()
+            is_raw = ext in ['.nef', '.cr2', '.dng', '.arw', '.orf', '.nrw', '.cr3', '.rw2']
+            
+            if is_raw:
+                # For RAW files, generate or extract high-quality preview
+                # Try embedded JPEG first (fast and often full resolution)
+                img = thumbnails.extract_embedded_jpeg(file_path, min_size=1000)
+                
+                # If embedded JPEG is available and large enough, use it
+                if img and img.width > 1000:
+                    jpeg_bytes = io.BytesIO()
+                    img.save(jpeg_bytes, format='JPEG', quality=95)
+                    jpeg_bytes.seek(0)
+                    return Response(
+                        content=jpeg_bytes.read(),
+                        media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=3600"}
+                    )
+                
+                # Fallback: Try to generate preview using thumbnails module
+                # This will do full RAW decode if needed (slower but higher quality)
+                preview_path = thumbnails.generate_preview(file_path)
+                if preview_path and os.path.exists(preview_path):
+                    return FileResponse(
+                        preview_path,
+                        media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=3600"}
+                    )
+                
+                # Last resort: try embedded JPEG even if smaller
+                if img:
+                    jpeg_bytes = io.BytesIO()
+                    img.save(jpeg_bytes, format='JPEG', quality=95)
+                    jpeg_bytes.seek(0)
+                    return Response(
+                        content=jpeg_bytes.read(),
+                        media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=3600"}
+                    )
+                
+                raise HTTPException(status_code=500, detail="Failed to generate RAW preview")
+            else:
+                # For regular images, serve the original file
+                # Determine media type based on extension
+                media_types = {
+                    '.jpg': 'image/jpeg',
+                    '.jpeg': 'image/jpeg',
+                    '.png': 'image/png',
+                    '.gif': 'image/gif',
+                    '.webp': 'image/webp',
+                    '.bmp': 'image/bmp',
+                    '.tiff': 'image/tiff',
+                    '.tif': 'image/tiff'
+                }
+                media_type = media_types.get(ext, 'image/jpeg')
+                
+                return FileResponse(
+                    file_path,
+                    media_type=media_type,
+                    headers={"Cache-Control": "public, max-age=3600"}
+                )
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))

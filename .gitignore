@@ -125,6 +125,7 @@ results/
 
 # Database
 scoring_history.db
+SCORING_HISTORY.FDB
 
 backups/
 .venv_wsl/
@@ -132,4 +133,8 @@ config.json
 test_export.json
 image_scoring.db
 error_output.txt
+
+# Firebird Binaries
+Firebird/
+FirebirdLinux/
 

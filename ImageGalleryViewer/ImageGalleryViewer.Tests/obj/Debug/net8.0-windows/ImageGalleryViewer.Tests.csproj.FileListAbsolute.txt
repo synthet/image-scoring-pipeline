@@ -128,3 +128,4 @@ D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\obj\Debug\
 D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\obj\Debug\net8.0-windows\ImageGalleryViewer.Tests.pdb
 D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\obj\Debug\net8.0-windows\ImageGalleryViewer.Tests.genruntimeconfig.cache
 D:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\obj\Debug\net8.0-windows\ref\ImageGalleryViewer.Tests.dll
+d:\Projects\image-scoring\ImageGalleryViewer\ImageGalleryViewer.Tests\bin\Debug\net8.0-windows\FirebirdSql.Data.FirebirdClient.dll

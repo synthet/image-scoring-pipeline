@@ -24,6 +24,15 @@
           "build/netstandard1.0/coverlet.collector.targets": {}
         }
       },
+      "FirebirdSql.Data.FirebirdClient/10.3.1": {
+        "type": "package",
+        "compile": {
+          "lib/net8.0/FirebirdSql.Data.FirebirdClient.dll": {}
+        },
+        "runtime": {
+          "lib/net8.0/FirebirdSql.Data.FirebirdClient.dll": {}
+        }
+      },
       "Microsoft.CodeCoverage/17.9.0": {
         "type": "package",
         "compile": {
@@ -602,6 +611,7 @@
         "framework": ".NETCoreApp,Version=v8.0",
         "dependencies": {
           "CommunityToolkit.Mvvm": "8.2.2",
+          "FirebirdSql.Data.FirebirdClient": "10.3.1",
           "Microsoft.Data.Sqlite": "8.0.0"
         },
         "compile": {
@@ -699,6 +709,27 @@
         "coverlet-icon.png",
         "coverlet.collector.6.0.0.nupkg.sha512",
         "coverlet.collector.nuspec"
+      ]
+    },
+    "FirebirdSql.Data.FirebirdClient/10.3.1": {
+      "sha512": "LDKlTIH3Tivi8sMkwrolVcIZWJDTwxBCugE+eEZRY6pFnK75gmJnV0u4FkC73M6ERbCKUvY7m5ox8VkicJZubg==",
+      "type": "package",
+      "path": "firebirdsql.data.firebirdclient/10.3.1",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "firebird-logo.png",
+        "firebirdsql.data.firebirdclient.10.3.1.nupkg.sha512",
+        "firebirdsql.data.firebirdclient.nuspec",
+        "lib/net48/FirebirdSql.Data.FirebirdClient.dll",
+        "lib/net5.0/FirebirdSql.Data.FirebirdClient.dll",
+        "lib/net6.0/FirebirdSql.Data.FirebirdClient.dll",
+        "lib/net7.0/FirebirdSql.Data.FirebirdClient.dll",
+        "lib/net8.0/FirebirdSql.Data.FirebirdClient.dll",
+        "lib/netstandard2.0/FirebirdSql.Data.FirebirdClient.dll",
+        "lib/netstandard2.1/FirebirdSql.Data.FirebirdClient.dll",
+        "license.txt"
       ]
     },
     "Microsoft.CodeCoverage/17.9.0": {
@@ -1323,11 +1354,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer.Tests\\ImageGalleryViewer.Tests.csproj",
+      "projectUniqueName": "d:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer.Tests\\ImageGalleryViewer.Tests.csproj",
       "projectName": "ImageGalleryViewer.Tests",
-      "projectPath": "D:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer.Tests\\ImageGalleryViewer.Tests.csproj",
+      "projectPath": "d:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer.Tests\\ImageGalleryViewer.Tests.csproj",
       "packagesPath": "C:\\Users\\owner\\.nuget\\packages\\",
-      "outputPath": "D:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer.Tests\\obj\\",
+      "outputPath": "d:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer.Tests\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -1348,8 +1379,8 @@
         "net8.0-windows7.0": {
           "targetAlias": "net8.0-windows",
           "projectReferences": {
-            "D:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer\\ImageGalleryViewer.csproj": {
-              "projectPath": "D:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer\\ImageGalleryViewer.csproj"
+            "d:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer\\ImageGalleryViewer.csproj": {
+              "projectPath": "d:\\Projects\\image-scoring\\ImageGalleryViewer\\ImageGalleryViewer\\ImageGalleryViewer.csproj"
             }
           }
         }

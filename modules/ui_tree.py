@@ -77,6 +77,11 @@ def get_tree_html(selected_path=None):
                  if local_p.startswith('\\'): # Unconverted windows path
                      continue
             
+            # Filter specific unwanted folders
+            basename = os.path.basename(norm).lower()
+            if basename in ['.tmp.drivedownload', '.tmp.driveupload', 'keywords_output', '.']:
+                continue
+            
             folders.append(local_p)
             
     # Remove duplicates after conversion

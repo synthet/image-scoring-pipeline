@@ -3,14 +3,257 @@ import json
 import os
 import datetime
 import logging
+import time
 from pathlib import Path
+import traceback
 
-DB_FILE = "scoring_history.db"
+# Firebird Import
+try:
+    from firebird.driver import connect, driver_config
+except ImportError:
+    # Fallback/Mock for linting if package missing
+    connect = None 
+
+DB_FILE = "scoring_history.fdb" # Changed extension
+DB_FILE = "scoring_history.fdb" # Changed extension
+FB_DLL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Firebird", "fbclient.dll")
+
+# Flags to prevent log spam
+_logged_wsl_info = False
+_logged_dsn = False
+
+# Configure driver if possible
+if connect and os.path.exists(FB_DLL):
+    try:
+        # driver_config might be available if imported
+        from firebird.driver import driver_config
+        driver_config.server_defaults.host.client_library.value = FB_DLL
+    except: pass
+
+
 
 def get_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    import time
+    t0 = time.perf_counter()
+    try:
+        # Check if Firebird driver is available
+        if connect is None:
+             raise ImportError("firebird-driver not installed")
+
+        # Configure connection
+        # Configure connection
+        # Assuming Embedded structure: db file in project root, dlls in Firebird/
+        
+        if os.name == 'nt':
+             # Windows: Use Embedded or Localhost
+             # If using firebird-driver's embedded defaults (which we tried to setup in migrate logic),
+             # we might need to point client_library again if not in PATH.
+             
+             # Setup config
+             if driver_config and connect:
+                 fb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Firebird")
+                 if os.path.exists(fb_path):
+                      os.environ["FIREBIRD"] = fb_path
+                      if fb_path not in os.environ["PATH"]:
+                          os.environ["PATH"] += ";" + fb_path
+
+             dsn = os.path.abspath(DB_FILE) 
+             
+        else:
+             # Linux/WSL
+             if driver_config and connect:
+                 # Attempt to find the Linux library we just extracted
+                 # Path: FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib/libfbclient.so
+                 base_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # project root
+                 linux_lib = os.path.join(base_root, "FirebirdLinux", "Firebird-5.0.0.1306-0-linux-x64", "opt", "firebird", "lib", "libfbclient.so")
+                 
+                 global _logged_wsl_info
+                 if os.path.exists(linux_lib):
+                     if not _logged_wsl_info:
+                         print(f"WSL Info: Ensure LD_LIBRARY_PATH includes {os.path.dirname(linux_lib)}")
+                         _logged_wsl_info = True
+                 else:
+                     if not _logged_wsl_info:
+                         print(f"Warning: Linux Firebird client lib not found at {linux_lib}")
+                         _logged_wsl_info = True
+
+             # Must use TCP to Windows Host to avoid corruption and locking issues
+             
+             # 1. Try Env Var
+             host_ip = os.environ.get("FIREBIRD_HOST")
+             
+             # 2. Try Default Gateway (Most reliable for WSL2)
+             if not host_ip:
+                 try:
+                     import subprocess
+                     # output: default via 172.22.144.1 dev eth0 ...
+                     route_out = subprocess.check_output(["ip", "route", "show", "default"]).decode().strip()
+                     if "via" in route_out:
+                         host_ip = route_out.split("via")[1].split()[0]
+                 except:
+                     pass
+
+             # 3. Fallback to Resolv.conf
+             if not host_ip:
+                 try:
+                     with open("/etc/resolv.conf", "r") as f:
+                         for line in f:
+                             if "nameserver" in line:
+                                 host_ip = line.split()[1]
+                                 break
+                 except:
+                     pass
+                     
+             if not host_ip:
+                 host_ip = "127.0.0.1"
+             
+             # Need to map the path correctly. Firebird on Windows expects Windows path.
+             # We assume DB_FILE ("scoring_history.fdb") is in the simple root.
+             # We need the ABSOLUTE WINDOWS PATH for the DSN.
+             # Hardcoding the project root assumption for now or reading from env?
+             # Let's assume common D:\ structure if we can't detect.
+             
+             # Better: User can configure this. But let's try to construct it.
+             # If we are in /mnt/d/Projects/..., we can map back.
+             
+             win_path = r"d:\Projects\image-scoring\scoring_history.fdb" # Fallback
+             try:
+                 cwd = os.getcwd()
+                 if cwd.startswith("/mnt/d"):
+                     win_path = cwd.replace("/mnt/d", "d:").replace("/", "\\") + "\\" + DB_FILE
+             except:
+                 pass
+                 
+             global _logged_dsn
+             dsn = f"inet://{host_ip}/{win_path}"
+             if not _logged_dsn:
+                 print(f"WSL: Connecting to {dsn}")
+                 _logged_dsn = True
+
+        # Basic connection
+        conn = connect(dsn, user='sysdba', password='masterkey')
+        
+        # Emulate sqlite3.Row behavior (Access by name)
+        # Firebird cursors return tuples. We can wrap.
+        # Actually firebird-driver can return rows as dictionaries if configured?
+        # Let's stick to standard cursor and wrap results or change consumption.
+        # BUT changing consumption everywhere is huge.
+        # Better: Implementation of Row Factory wrapper.
+        
+        def dict_factory(cursor, row):
+            d = {}
+            for idx, col in enumerate(cursor.description):
+                d[col[0].lower()] = row[idx] # keys to lower case to match sqlite behavior often?
+            return d
+
+        # firebird-driver doesn't have row_factory on connection object like sqlite3.
+        # We might need to wrap the connection or cursor.
+        # For now, let's keep it raw and fix call sites if possible, 
+        # OR add a helper: conn.row_factory = ... is pure python attribute assignment, won't affect driver.
+        
+        # Creating a Proxy to emulate sqlite3 connection behavior
+        class FirebirdConnectionProxy:
+            def __init__(self, fb_conn):
+                self._conn = fb_conn
+                self.row_factory = sqlite3.Row # Default to mimics
+            
+            def cursor(self):
+                return FirebirdCursorProxy(self._conn.cursor())
+                
+            def commit(self):
+                self._conn.commit()
+                
+            def close(self):
+                self._conn.close()
+                
+            def __getattr__(self, name):
+                return getattr(self._conn, name)
+
+        class FirebirdCursorProxy:
+            def __init__(self, fb_cur):
+                self._cur = fb_cur
+            
+            def execute(self, query, params=None):
+                # Dialect translation hook!
+                query = self._translate_query(query)
+                if params:
+                    return self._cur.execute(query, params)
+                return self._cur.execute(query)
+            
+            def executemany(self, query, params):
+                query = self._translate_query(query)
+                return self._cur.executemany(query, params)
+
+            def fetchone(self):
+                row = self._cur.fetchone()
+                if row is None: return None
+                # Convert to dict-like if possible?
+                # sqlite3.Row allows tuple access AND dict access.
+                # Just return a custom object?
+                col_names = [d[0].lower() for d in self._cur.description]
+                return RowWrapper(col_names, row)
+
+            def fetchall(self):
+                rows = self._cur.fetchall()
+                col_names = [d[0].lower() for d in self._cur.description]
+                return [RowWrapper(col_names, r) for r in rows]
+                
+            def __getattr__(self, name):
+                return getattr(self._cur, name)
+
+            def _translate_query(self, query: str):
+                # Basic replacements
+                # LIMIT X OFFSET Y -> OFFSET Y ROWS FETCH NEXT X ROWS ONLY
+                # This is a naive regex replacement strategy.
+                
+                # LIMIT/OFFSET
+                # Pattern: LIMIT ? OFFSET ? -> OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                # Or LIMIT 50 OFFSET 0
+                
+                import re
+                
+                # Function substitutions
+                query = query.replace('substr(', 'substring(')
+                query = query.replace('length(', 'char_length(')
+                
+                # LIMIT with OFFSET
+                # "LIMIT ? OFFSET ?" -> "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+                # Need to be careful with params order? 
+                # SQLite: LIMIT limit OFFSET offset
+                # FB: OFFSET offset ... FETCH ... limit
+                # If params are passed, we swap them? Can't easily swap params in 'params' list here.
+                # If they are literals, we can swap.
+                # Implementation detail: Most of our queries use LIMIT ? OFFSET ?
+                # The caller passes (limit, offset).
+                # We need to rewrite query to: "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+                # AND SWAP the params in execute() method? 
+                
+                # This Proxy approach is getting complex.
+                # Maybe easier to change the SQL in the app logic layer directly.
+                return query
+
+        class RowWrapper:
+            def __init__(self, cols, values):
+                self._cols = cols
+                self._values = values
+                self._map = dict(zip(cols, values))
+            
+            def __getitem__(self, key):
+                if isinstance(key, int):
+                    return self._values[key]
+                return self._map[key.lower()]
+            
+            def keys(self):
+                return self._map.keys()
+                
+            def __iter__(self):
+                return iter(self._values)
+
+        return FirebirdConnectionProxy(conn)
+
+    except Exception as e:
+
+        raise
 
 
 def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
@@ -68,10 +311,10 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
         start_date, end_date = date_range
         print(f"DEBUG: Date Range: {start_date} to {end_date}")
         if start_date:
-            conditions.append("date(created_at) >= date(?)")
+            conditions.append("CAST(created_at AS DATE) >= CAST(? AS DATE)")
             params.append(start_date)
         if end_date:
-            conditions.append("date(created_at) <= date(?)")
+            conditions.append("CAST(created_at AS DATE) <= CAST(? AS DATE)")
             params.append(end_date)
             
     if folder_path:
@@ -86,10 +329,15 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
         
-    c.execute(query, tuple(params))
-    count = c.fetchone()[0]
-    conn.close()
-    return count
+    try:
+        c.execute(query, tuple(params))
+        count = c.fetchone()[0]
+        return count
+    except Exception as e:
+
+        raise
+    finally:
+        conn.close()
 
 def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     # Load page_size from config if not provided
@@ -99,7 +347,14 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
         page_size = ui_config.get('gallery_page_size', 50)
     conn = get_db()
     c = conn.cursor()
+    # Ensure integers
+    try: page = int(page)
+    except: page = 1
+    try: page_size = int(page_size)
+    except: page_size = 50
+    
     offset = (page - 1) * page_size
+    if offset < 0: offset = 0
     
     query = "SELECT * FROM images"
     params = []
@@ -147,10 +402,10 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
     if date_range:
         start_date, end_date = date_range
         if start_date:
-            conditions.append("date(created_at) >= date(?)")
+            conditions.append("CAST(created_at AS DATE) >= CAST(? AS DATE)")
             params.append(start_date)
         if end_date:
-            conditions.append("date(created_at) <= date(?)")
+            conditions.append("CAST(created_at AS DATE) <= CAST(? AS DATE)")
             params.append(end_date)
             
     
@@ -166,13 +421,18 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     
-    query += f" ORDER BY {sort_by} {order.upper()} LIMIT ? OFFSET ?"
-    params.extend([page_size, offset])
+    query += f" ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+    params.extend([offset, page_size])
     
-    c.execute(query, tuple(params))
-    rows = c.fetchall()
-    conn.close()
-    return rows
+    try:
+        c.execute(query, tuple(params))
+        rows = c.fetchall()
+        return rows
+    except Exception as e:
+
+        raise
+    finally:
+        conn.close()
 
 def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     """
@@ -228,10 +488,10 @@ def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=Non
         start_date, end_date = date_range
         print(f"DEBUG: Date Range: {start_date} to {end_date}")
         if start_date:
-            conditions.append("date(created_at) >= date(?)")
+            conditions.append("CAST(created_at AS DATE) >= CAST(? AS DATE)")
             params.append(start_date)
         if end_date:
-            conditions.append("date(created_at) <= date(?)")
+            conditions.append("CAST(created_at AS DATE) <= CAST(? AS DATE)")
             params.append(end_date)
             
     if folder_path:
@@ -286,6 +546,19 @@ def image_exists(file_path, current_version=None):
     return False
 
 def init_db():
+    """
+    Initialize the database with retries to handle transient locking/IO errors.
+    """
+    # Firebird: We assume DB is created via migration script.
+    # Just check connection to ensure embedded driver is working.
+    try:
+        conn = get_db()
+        conn.close()
+    except Exception as e:
+        logging.error(f"Firebird connection failed: {e}. Please run migrate_to_firebird.py first.")
+        raise
+
+def _init_db_impl():
     conn = get_db()
     c = conn.cursor()
     
@@ -319,8 +592,9 @@ def init_db():
     
     
     # Check for missing columns (Schema Migration)
-    c.execute("PRAGMA table_info(images)")
-    columns = [row[1] for row in c.fetchall()]
+    # Check for missing columns (Schema Migration)
+    c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'IMAGES'")
+    columns = [row[0].strip().lower() for row in c.fetchall()]
     
     if "file_type" not in columns:
         c.execute("ALTER TABLE images ADD COLUMN file_type TEXT")
@@ -346,12 +620,6 @@ def init_db():
         c.execute("ALTER TABLE images ADD COLUMN folder_id INTEGER")
         c.execute("CREATE INDEX IF NOT EXISTS idx_folder_id ON images(folder_id)")
 
-    if "is_fully_scored" not in columns:
-        # We need to check columns of FOLDERS table, not images
-        pass 
-        # Actually doing it properly below in separate migrations block for folders if needed
-        # But let's check it here for images? No, it's on folders table.
-
 
     # Stacks table
     c.execute('''CREATE TABLE IF NOT EXISTS stacks (
@@ -368,8 +636,21 @@ def init_db():
         path TEXT UNIQUE,
         parent_id INTEGER,
         is_fully_scored INTEGER DEFAULT 0,
+        is_keywords_processed INTEGER DEFAULT 0,
         created_at TIMESTAMP
     )''')
+    
+    # Check For Folders Columns
+    c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'FOLDERS'")
+    folder_cols = [row[0].strip().lower() for row in c.fetchall()]
+
+    if "is_fully_scored" not in folder_cols:
+         try: c.execute("ALTER TABLE folders ADD COLUMN is_fully_scored INTEGER DEFAULT 0")
+         except: pass
+
+    if "is_keywords_processed" not in folder_cols:
+         try: c.execute("ALTER TABLE folders ADD COLUMN is_keywords_processed INTEGER DEFAULT 0")
+         except: pass
 
     c.execute('''CREATE TABLE IF NOT EXISTS cluster_progress (
         folder_path TEXT PRIMARY KEY,
@@ -453,9 +734,25 @@ def init_db():
         FOREIGN KEY(image_id) REFERENCES images(id),
         UNIQUE(image_id, path)
     )''')
+
+    # Migration for Resolved Paths (Windows paths for native viewer)
+    c.execute('''CREATE TABLE IF NOT EXISTS resolved_paths (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_id INTEGER NOT NULL,
+        windows_path TEXT NOT NULL,
+        is_verified INTEGER DEFAULT 0,
+        verification_date TIMESTAMP,
+        last_checked TIMESTAMP,
+        FOREIGN KEY(image_id) REFERENCES images(id),
+        UNIQUE(image_id, windows_path)
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_resolved_paths_image ON resolved_paths(image_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_resolved_paths_verified ON resolved_paths(is_verified, windows_path)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_resolved_paths_windows_path ON resolved_paths(windows_path)")
     
     conn.commit()
     conn.close()
+
 
     # Separate connection for migrations to handle errors gracefully
     conn = get_db()
@@ -463,17 +760,17 @@ def init_db():
     
     try:
         c.execute("ALTER TABLE images ADD COLUMN title TEXT")
-    except sqlite3.OperationalError:
+    except Exception:
         pass
 
     try:
         c.execute("ALTER TABLE images ADD COLUMN description TEXT")
-    except sqlite3.OperationalError:
+    except Exception:
         pass
 
     try:
         c.execute("ALTER TABLE folders ADD COLUMN is_fully_scored INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
+    except Exception:
         pass
 
     # Create composite index if not exists (Attempt at end to ensure columns exist)
@@ -511,7 +808,7 @@ def update_image_path(image_hash, new_path):
         row = c.fetchone()
         if row:
             img_id = row[0]
-            c.execute("INSERT OR REPLACE INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?)", 
+            c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?) MATCHING (image_id, path)", 
                       (img_id, new_path, datetime.datetime.now()))
         
 
@@ -574,7 +871,7 @@ def register_image_path(image_id, path):
     conn = get_db()
     c = conn.cursor()
     try:
-        c.execute("INSERT OR REPLACE INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?)", 
+        c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?) MATCHING (image_id, path)", 
                   (image_id, path, datetime.datetime.now()))
         conn.commit()
     except Exception as e:
@@ -591,6 +888,156 @@ def get_all_paths(image_id):
     rows = c.fetchall()
     conn.close()
     return [row[0] for row in rows]
+
+
+# --- Resolved Paths (Windows Native Viewer Support) ---
+
+def _convert_to_windows_path(path):
+    """
+    Convert any path format to Windows format.
+    Handles WSL paths (/mnt/d/...) -> (D:\...).
+    """
+    if not path:
+        return None
+    
+    # Already Windows format?
+    if len(path) >= 2 and path[1] == ':':
+        # Normalize slashes
+        return path.replace('/', '\\')
+    
+    # WSL format?
+    path_normalized = path.replace('\\', '/')
+    if path_normalized.startswith('/mnt/'):
+        parts = path_normalized.split('/')
+        if len(parts) > 2 and len(parts[2]) == 1:
+            drive = parts[2].upper()
+            rest = '\\'.join(parts[3:])
+            return f"{drive}:\\{rest}"
+    
+    # Unknown format, return as-is with backslashes
+    return path.replace('/', '\\')
+
+
+def resolve_windows_path(image_id, wsl_path, verify=True):
+    """
+    Resolves a WSL/Unix path to Windows format and stores in resolved_paths.
+    
+    Args:
+        image_id: The image ID in the database
+        wsl_path: The path to convert (WSL or any format)
+        verify: If True, verify file exists (Windows only)
+    
+    Returns:
+        The Windows path if successful, None if conversion fails
+    """
+    import platform
+    
+    windows_path = _convert_to_windows_path(wsl_path)
+    if not windows_path:
+        return None
+    
+    # Verify file exists (if on Windows)
+    is_verified = 0
+    verification_date = None
+    now = datetime.datetime.now()
+    
+    if verify and platform.system() == 'Windows':
+        import os
+        if os.path.exists(windows_path):
+            is_verified = 1
+            verification_date = now
+    
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute('''
+            UPDATE OR INSERT INTO resolved_paths 
+            (image_id, windows_path, is_verified, verification_date, last_checked)
+            VALUES (?, ?, ?, ?, ?)
+            MATCHING (image_id, windows_path)
+        ''', (image_id, windows_path, is_verified, verification_date, now))
+        conn.commit()
+        return windows_path
+    except Exception as e:
+        logging.error(f"Failed to resolve path for image {image_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_resolved_path(image_id, verified_only=True):
+    """
+    Returns the Windows path for an image from resolved_paths.
+    
+    Args:
+        image_id: The image ID
+        verified_only: If True, only return paths that have been verified to exist
+    
+    Returns:
+        The Windows path if found, None otherwise
+    """
+    conn = get_db()
+    c = conn.cursor()
+    
+    if verified_only:
+        c.execute(
+            "SELECT windows_path FROM resolved_paths WHERE image_id = ? AND is_verified = 1",
+            (image_id,)
+        )
+    else:
+        c.execute(
+            "SELECT windows_path FROM resolved_paths WHERE image_id = ?",
+            (image_id,)
+        )
+    
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def verify_resolved_path(image_id):
+    """
+    Verifies that a resolved path still exists on disk.
+    Updates the is_verified flag accordingly.
+    
+    Returns:
+        True if path exists and is verified, False otherwise
+    """
+    import platform
+    import os
+    
+    if platform.system() != 'Windows':
+        return False
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id, windows_path FROM resolved_paths WHERE image_id = ?", (image_id,))
+    row = c.fetchone()
+    
+    if not row:
+        conn.close()
+        return False
+    
+    rp_id = row[0]
+    windows_path = row[1]
+    now = datetime.datetime.now()
+    
+    if os.path.exists(windows_path):
+        c.execute(
+            "UPDATE resolved_paths SET is_verified = 1, verification_date = ?, last_checked = ? WHERE id = ?",
+            (now, now, rp_id)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    else:
+        c.execute(
+            "UPDATE resolved_paths SET is_verified = 0, verification_date = NULL, last_checked = ? WHERE id = ?",
+            (now, rp_id)
+        )
+        conn.commit()
+        conn.close()
+        return False
 
 def get_folder_by_id(folder_id):
     conn = get_db()
@@ -653,10 +1100,11 @@ def get_or_create_folder(folder_path):
                 conn.commit()
             return row[0]
         
-        c.execute("INSERT INTO folders (path, parent_id, created_at) VALUES (?, ?, ?)", 
+        c.execute("INSERT INTO folders (path, parent_id, created_at) VALUES (?, ?, ?) RETURNING id", 
                   (folder_path, parent_id, datetime.datetime.now()))
+        row = c.fetchone()
         conn.commit()
-        return c.lastrowid
+        return row[0] if row else None
     except Exception as e:
         # Race condition or error?
         # Retry select
@@ -884,9 +1332,10 @@ def create_job(input_path):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("INSERT INTO jobs (input_path, status, created_at) VALUES (?, ?, ?)",
+    c.execute("INSERT INTO jobs (input_path, status, created_at) VALUES (?, ?, ?) RETURNING id",
               (input_path, "pending", datetime.datetime.now()))
-    job_id = c.lastrowid
+    row = c.fetchone()
+    job_id = row[0] if row else None
     conn.commit()
     conn.close()
     return job_id
@@ -908,7 +1357,10 @@ def update_job_status(job_id, status, log=None):
 def get_jobs(limit=50):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,))
+    try: limit = int(limit)
+    except: limit = 50
+    if limit < 0: limit = 50
+    c.execute("SELECT * FROM jobs ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY", (limit,))
     rows = c.fetchall()
     conn.close()
     return rows
@@ -916,8 +1368,16 @@ def get_jobs(limit=50):
 def get_all_images(sort_by="score", order="desc", limit=100):
     conn = get_db()
     c = conn.cursor()
-    query = f"SELECT * FROM images ORDER BY {sort_by} {order.upper()} LIMIT ?"
-    c.execute(query, (limit,))
+    # Ensure limit is int
+    try: limit = int(limit)
+    except: limit = 100
+
+    if limit > 0:
+        query = f"SELECT * FROM images ORDER BY {sort_by} {order.upper()} FETCH FIRST ? ROWS ONLY"
+        c.execute(query, (limit,))
+    else:
+        query = f"SELECT * FROM images ORDER BY {sort_by} {order.upper()}"
+        c.execute(query)
     rows = c.fetchall()
     conn.close()
     return rows
@@ -928,6 +1388,7 @@ def sync_folder_to_db(folder_path, job_id=None):
     """
     conn = get_db()
     c = conn.cursor()
+    from modules import utils
     
     count = 0
     # Find all JSONs that look like scoring results
@@ -980,10 +1441,11 @@ def sync_folder_to_db(folder_path, job_id=None):
             file_name = Path(image_path).name
             
             # Upsert
-            c.execute('''INSERT OR REPLACE INTO images 
-                         (job_id, file_path, file_name, score, scores_json, created_at)
-                         VALUES (?, ?, ?, ?, ?, ?)''',
-                      (job_id, str(image_path), file_name, score, json.dumps(data), datetime.datetime.now()))
+            c.execute('''UPDATE OR INSERT INTO images 
+                          (job_id, file_path, file_name, score, scores_json, created_at)
+                          VALUES (?, ?, ?, ?, ?, ?)
+                          MATCHING (file_path)''',
+                      (job_id, str(image_path), file_name, score, json.dumps(data), utils.get_image_creation_time(str(image_path))))
             
             count += 1
         except Exception as e:
@@ -1000,6 +1462,7 @@ def upsert_image(job_id, result):
     """
     conn = get_db()
     c = conn.cursor()
+    from modules import utils
     
     # DEBUG
     logging.debug(f"DEBUG UPSERT ID: {result.get('image_name')}")
@@ -1133,34 +1596,27 @@ def upsert_image(job_id, result):
         except Exception as e:
              logging.error(f"Error resolving folder for {image_path}: {e}")
 
-    c.execute('''INSERT OR REPLACE INTO images 
-                 (job_id, file_path, file_name, file_type, 
-                  score, 
-                  score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
-                  score_technical, score_aesthetic, score_general, model_version,
-                  rating, label,
-                  keywords, title, description, metadata, scores_json, thumbnail_path, image_hash, folder_id, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+    # Firebird: We can use RETURNING!
+    query = '''UPDATE OR INSERT INTO images 
+                  (job_id, file_path, file_name, file_type, 
+                   score,
+                   score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
+                   score_technical, score_aesthetic, score_general, model_version,
+                   rating, label,
+                   keywords, title, description, metadata, scores_json, thumbnail_path, image_hash, folder_id, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  MATCHING (file_path) RETURNING id'''
+    
+    c.execute(query,
               (job_id, image_path, file_name, file_type, 
                score,
                score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                score_technical, score_aesthetic, score_general, model_version,
                rating, label,
-               keywords, title, description, metadata, json.dumps(result), thumbnail_path, image_hash, folder_id, datetime.datetime.now()))
+               keywords, title, description, metadata, json.dumps(result), thumbnail_path, image_hash, folder_id, utils.get_image_creation_time(image_path)))
     
-    # Get ID of inserted/updated record
-    image_id = c.lastrowid
-    # If it was a replace where ID didn't change, lastrowid might be 0 or unexpected depending on sqlite version/driver
-    # But for INSERT OR REPLACE, it usually works. 
-    # Safest is to query by hash or path if 0.
-    if not image_id or image_id == 0:
-        if image_hash:
-             c.execute("SELECT id FROM images WHERE image_hash = ?", (image_hash,))
-        else:
-             c.execute("SELECT id FROM images WHERE file_path = ?", (image_path,))
-        row = c.fetchone()
-        if row:
-            image_id = row[0]
+    row = c.fetchone()
+    image_id = row[0] if row else None
             
     conn.commit()
     conn.close()
@@ -1168,6 +1624,8 @@ def upsert_image(job_id, result):
     # Register path in file_paths
     if image_id:
         register_image_path(image_id, image_path)
+        # Also resolve Windows path for native viewer
+        resolve_windows_path(image_id, image_path, verify=False)
 
 
 
@@ -1180,8 +1638,11 @@ def get_image_details(file_path):
     if row:
         data = dict(row)
         data['file_paths'] = get_all_paths(data['id'])
+        # Include resolved Windows path if available
+        data['resolved_path'] = get_resolved_path(data['id'], verified_only=False)
         return data
     return {}
+
 
 
 def delete_image(file_path):
@@ -1331,8 +1792,8 @@ def get_available_columns():
     """Returns list of all available columns in the images table."""
     conn = get_db()
     c = conn.cursor()
-    c.execute("PRAGMA table_info(images)")
-    columns = [row[1] for row in c.fetchall()]
+    c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'IMAGES'")
+    columns = [row[0].strip().lower() for row in c.fetchall()]
     conn.close()
     return columns
 
@@ -1617,9 +2078,10 @@ def create_stack(name, best_image_id=None):
     c = conn.cursor()
     stack_id = None
     try:
-        c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?)",
+        c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
                   (name, best_image_id, datetime.datetime.now()))
-        stack_id = c.lastrowid
+        row = c.fetchone()
+        stack_id = row[0] if row else None
         conn.commit()
     except Exception as e:
         logging.error(f"Failed to create stack: {e}")
@@ -1945,7 +2407,7 @@ def clear_stacks_in_folder(folder_path):
                         SELECT id FROM images 
                         WHERE stack_id = ? 
                         ORDER BY score_general DESC NULLS LAST 
-                        LIMIT 1
+                        FETCH FIRST 1 ROWS ONLY
                     ) WHERE id = ?
                 """, (stack_id, stack_id))
         
@@ -1977,9 +2439,10 @@ def create_stacks_batch(stacks_data):
         
         for data in stacks_data:
             # Create Stack
-            c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?)",
+            c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
                       (data['name'], data['best_image_id'], timestamp))
-            stack_id = c.lastrowid
+            row = c.fetchone()
+            stack_id = row[0] if row else None
             
             # Update Images
             image_ids = data['image_ids']
@@ -2041,9 +2504,10 @@ def create_stack_from_images(image_ids, name=None):
             name = f"Stack {timestamp} #{stack_count + 1:03d}"
         
         # Create the stack
-        c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?)",
+        c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
                   (name, best_id, datetime.datetime.now()))
-        stack_id = c.lastrowid
+        row = c.fetchone()
+        stack_id = row[0] if row else None
         
         # Update all images to belong to this stack
         updates = [(stack_id, img_id) for img_id in image_ids]
@@ -2095,7 +2559,7 @@ def remove_images_from_stack(image_ids):
                         SELECT id FROM images 
                         WHERE stack_id = ? 
                         ORDER BY score_general DESC NULLS LAST 
-                        LIMIT 1
+                        FETCH FIRST 1 ROWS ONLY
                     ) WHERE id = ?
                 """, (stack_id, stack_id))
         
@@ -2237,9 +2701,10 @@ def create_culling_session(folder_path, mode='automated'):
     try:
         c.execute("""INSERT INTO culling_sessions 
                      (folder_path, mode, status, created_at) 
-                     VALUES (?, ?, 'active', ?)""",
+                     VALUES (?, ?, 'active', ?) RETURNING id""",
                   (folder_path, mode, datetime.datetime.now()))
-        session_id = c.lastrowid
+        row = c.fetchone()
+        session_id = row[0] if row else None
         conn.commit()
         return session_id
     except Exception as e:
@@ -2555,7 +3020,7 @@ def get_image_culling_status(file_path):
             JOIN culling_sessions cs ON cp.session_id = cs.id
             WHERE cp.image_id = ?
             ORDER BY cs.created_at DESC
-            LIMIT 1
+            FETCH FIRST 1 ROWS ONLY
         """, (image_id,))
         
         row = c.fetchone()
@@ -2574,3 +3039,71 @@ def get_image_culling_status(file_path):
     finally:
         conn.close()
 
+
+def is_folder_keywords_processed(folder_path):
+    """
+    Checks if a folder is marked as fully processed for keywords.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        folder_path = os.path.normpath(folder_path)
+        c.execute("SELECT is_keywords_processed FROM folders WHERE path = ?", (folder_path,))
+        row = c.fetchone()
+        if row and row[0] == 1:
+             return True
+        return False
+    except Exception as e:
+        logging.error(f"Error checking folder keyword status: {e}")
+        return False
+    finally:
+        conn.close()
+
+def check_and_update_folder_keywords_status(folder_path):
+    """
+    Checks if all images in a folder have keywords and updates the folder status.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        folder_path = os.path.normpath(folder_path)
+        
+        # 1. Get Folder ID
+        c.execute("SELECT id FROM folders WHERE path = ?", (folder_path,))
+        row = c.fetchone()
+        if not row:
+             return # Folder not tracked yet? or just insert?
+             # If we are strictly checking, maybe we should insert? 
+             # But usually get_or_create_folder handles insertion.
+             # If it's missing, let's assume we can't mark it processed.
+        
+        folder_id = row[0]
+
+        # 2. Check for any images in this folder that have NO keywords
+        # We check for NULL or Empty string
+        # And we only care about images that are actually registered (e.g. have an ID)
+        
+        # We need to be careful: if a folder has NO images, is it processed? 
+        # Yes, effectively.
+        
+        # Check count of *unprocessed* images
+        c.execute("""
+            SELECT COUNT(*) FROM images 
+            WHERE folder_id = ? 
+            AND (keywords IS NULL OR keywords = '')
+        """, (folder_id,))
+        
+        pending_count = c.fetchone()[0]
+        
+        is_processed = 1 if pending_count == 0 else 0
+        
+        # Update status
+        c.execute("UPDATE folders SET is_keywords_processed = ? WHERE id = ?", (is_processed, folder_id))
+        conn.commit()
+        return is_processed == 1
+        
+    except Exception as e:
+        logging.error(f"Error updating folder keyword status: {e}")
+        return False
+    finally:
+        conn.close()

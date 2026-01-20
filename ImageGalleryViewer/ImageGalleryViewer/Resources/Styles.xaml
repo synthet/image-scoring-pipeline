@@ -66,6 +66,13 @@
         <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
+
+    <!-- Secondary Button -->
+    <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="4"/>
+    </Style>
     
     <!-- TextBox Style -->
     <Style TargetType="TextBox">

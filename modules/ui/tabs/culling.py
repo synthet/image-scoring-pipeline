@@ -159,6 +159,13 @@ def _add_to_gallery(gallery_list, path_list, img_data, group_id, color, status):
     file_path = img_data.get('file_path')
     thumb = img_data.get('thumbnail_path') or file_path
     
+    # Resolve paths for display
+    image_id = img_data.get('id')
+    if thumb:
+        thumb = utils.resolve_file_path(thumb, image_id) or utils.convert_path_to_local(thumb)
+    if not thumb and file_path:
+        thumb = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
+    
     # Create label
     score = img_data.get('score_general', 0)
     gid_str = f"G{group_id}" if group_id > 0 else "Single"
@@ -204,13 +211,14 @@ def delete_rejected_files(session_id, confirmed):
         file_path = reject.get('file_path')
         if not file_path: continue
         try:
-            local_path = utils.convert_path_to_local(file_path)
-            if os.path.exists(local_path): os.remove(local_path)
+            # Try to resolve path
+            local_path = utils.resolve_file_path(file_path) or utils.convert_path_to_local(file_path)
+            if local_path and os.path.exists(local_path): os.remove(local_path)
             xmp_module.delete_xmp(file_path)
             thumb_path = reject.get('thumbnail_path')
             if thumb_path:
-                local_thumb = utils.convert_path_to_local(thumb_path)
-                if os.path.exists(local_thumb): os.remove(local_thumb)
+                local_thumb = utils.resolve_file_path(thumb_path) or utils.convert_path_to_local(thumb_path)
+                if local_thumb and os.path.exists(local_thumb): os.remove(local_thumb)
             db.delete_image(file_path)
             deleted_count += 1
         except: pass
@@ -265,8 +273,6 @@ def create_tab(app_config):
         with gr.Accordion("🔄 Session Management", open=False):
             with gr.Row():
                 cull_session_id = gr.State(None)
-                cull_resume_dropdown = gr.Dropdown(label="Resume Session", choices=[], interactive=True, scale=2)
-                cull_resume_btn = gr.Button("▶️ Resume", variant="primary", size="sm", scale=1)
             with gr.Row():
                 cull_refresh_btn = gr.Button("🔄 Refresh Groups", variant="secondary", size="sm", scale=1)
                 cull_repick_btn = gr.Button("🎯 Re-Pick Best", variant="secondary", size="sm", scale=1)
@@ -320,12 +326,6 @@ def create_tab(app_config):
             outputs=[cull_status, cull_run_btn, cull_main_gallery, cull_session_id, cull_main_paths]
         )
         
-        cull_resume_btn.click(
-            fn=resume_culling_session,
-            inputs=[cull_resume_dropdown],
-            outputs=[cull_status, cull_main_gallery, cull_session_id, cull_main_paths]
-        )
-        
         cull_refresh_btn.click(
             fn=refresh_culling_groups,
             inputs=[cull_session_id, cull_threshold, cull_time_gap],
@@ -348,7 +348,6 @@ def create_tab(app_config):
 
     return {
         'tab_item': tab_item,
-        'resume_dropdown': cull_resume_dropdown,
         'session_id': cull_session_id
     }
 

@@ -27,6 +27,14 @@
         }
       },
       "coverlet.collector/6.0.0": {},
+      "FirebirdSql.Data.FirebirdClient/10.3.1": {
+        "runtime": {
+          "lib/net8.0/FirebirdSql.Data.FirebirdClient.dll": {
+            "assemblyVersion": "10.3.1.0",
+            "fileVersion": "10.3.1.0"
+          }
+        }
+      },
       "Microsoft.CodeCoverage/17.9.0": {
         "runtime": {
           "lib/netcoreapp3.1/Microsoft.VisualStudio.CodeCoverage.Shim.dll": {
@@ -508,6 +516,7 @@
       "ImageGalleryViewer/1.0.0": {
         "dependencies": {
           "CommunityToolkit.Mvvm": "8.2.2",
+          "FirebirdSql.Data.FirebirdClient": "10.3.1",
           "Microsoft.Data.Sqlite": "8.0.0"
         },
         "runtime": {
@@ -538,6 +547,13 @@
       "sha512": "sha512-tW3lsNS+dAEII6YGUX/VMoJjBS1QvsxqJeqLaJXub08y1FSjasFPtQ4UBUsudE9PNrzLjooClMsPtY2cZLdXpQ==",
       "path": "coverlet.collector/6.0.0",
       "hashPath": "coverlet.collector.6.0.0.nupkg.sha512"
+    },
+    "FirebirdSql.Data.FirebirdClient/10.3.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-LDKlTIH3Tivi8sMkwrolVcIZWJDTwxBCugE+eEZRY6pFnK75gmJnV0u4FkC73M6ERbCKUvY7m5ox8VkicJZubg==",
+      "path": "firebirdsql.data.firebirdclient/10.3.1",
+      "hashPath": "firebirdsql.data.firebirdclient.10.3.1.nupkg.sha512"
     },
     "Microsoft.CodeCoverage/17.9.0": {
       "type": "package",

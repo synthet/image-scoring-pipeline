@@ -139,7 +139,7 @@ def get_database_stats() -> dict:
         # Recent activity
         c.execute("""
             SELECT COUNT(*) FROM images 
-            WHERE date(created_at) = date('now')
+            WHERE CAST(created_at AS DATE) = CURRENT_DATE
         """)
         stats["images_today"] = c.fetchone()[0]
         
@@ -218,8 +218,8 @@ def query_images(
         sort_by = "created_at"
     
     order = "DESC" if order.lower() == "desc" else "ASC"
-    query += f" ORDER BY {sort_by} {order} LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
+    query += f" ORDER BY {sort_by} {order} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+    params.extend([offset, limit])
     
     try:
         c.execute(query, tuple(params))
@@ -382,7 +382,8 @@ def get_incomplete_images(limit: int = 50) -> list:
 
 def read_debug_log(lines: int = 100) -> dict:
     """Read the debug log file."""
-    log_path = r'd:\Projects\image-scoring\.cursor\debug.log'
+    from modules import utils
+    log_path = utils.get_debug_log_path()
     
     if not os.path.exists(log_path):
         return {"error": "Debug log file not found", "path": log_path}
@@ -460,7 +461,7 @@ def get_stacks_summary(folder_path: Optional[str] = None) -> dict:
             JOIN images i ON s.id = i.stack_id
             GROUP BY s.id
             ORDER BY image_count DESC
-            LIMIT 10
+            FETCH FIRST 10 ROWS ONLY
         """)
         summary["largest_stacks"] = [
             {"id": row[0], "name": row[1], "count": row[2], "best_score": row[3]}

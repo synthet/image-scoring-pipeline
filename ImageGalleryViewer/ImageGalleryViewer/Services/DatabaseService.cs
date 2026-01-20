@@ -9,30 +9,14 @@ namespace ImageGalleryViewer.Services;
 /// </summary>
 public class DatabaseService : IDisposable
 {
-    private readonly SqliteConnection _connection;
+    private readonly IQueryExecutor _executor;
     private bool _disposed;
     
-    public string DatabasePath { get; }
-    public bool IsConnected => _connection.State == System.Data.ConnectionState.Open;
+    public bool IsConnected => _executor.IsConnected;
     
-    public DatabaseService(string databasePath)
+    public DatabaseService(IQueryExecutor executor)
     {
-        DatabasePath = databasePath;
-        
-        var connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWrite,
-            Cache = SqliteCacheMode.Shared
-        }.ToString();
-        
-        _connection = new SqliteConnection(connectionString);
-        _connection.Open();
-        
-        // Enable WAL mode for better concurrent access
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA cache_size=-64000;";
-        cmd.ExecuteNonQuery();
+        _executor = executor;
     }
     
     /// <summary>
@@ -41,14 +25,12 @@ public class DatabaseService : IDisposable
     public int GetImageCount(FilterState filter)
     {
         var (whereClause, parameters) = BuildWhereClause(filter);
+        var sql = $"SELECT COUNT(*) FROM images {whereClause}";
         
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = $"SELECT COUNT(*) FROM images {whereClause}";
+        var paramDict = parameters.ToDictionary(p => p.name, p => p.value);
+        var result = _executor.ExecuteScalar(sql, paramDict);
         
-        foreach (var (name, value) in parameters)
-            cmd.Parameters.AddWithValue(name, value);
-            
-        return Convert.ToInt32(cmd.ExecuteScalar());
+        return Convert.ToInt32(result);
     }
     
     /// <summary>
@@ -70,8 +52,7 @@ public class DatabaseService : IDisposable
         
         var offset = (filter.Page - 1) * filter.PageSize;
         
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = $@"
+        var sql = $@"
             SELECT 
                 id, file_path, file_name, file_type,
                 score_general, score_technical, score_aesthetic,
@@ -81,52 +62,14 @@ public class DatabaseService : IDisposable
             FROM images 
             {whereClause}
             ORDER BY {orderColumn} {orderDir} NULLS LAST
-            LIMIT @limit OFFSET @offset";
+            OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY";
             
-        cmd.Parameters.AddWithValue("@limit", filter.PageSize);
-        cmd.Parameters.AddWithValue("@offset", offset);
+        var paramDict = parameters.ToDictionary(p => p.name, p => p.value);
+        paramDict["@limit"] = filter.PageSize;
+        paramDict["@offset"] = offset;
         
-        foreach (var (name, value) in parameters)
-            cmd.Parameters.AddWithValue(name, value);
-            
-        var results = new List<ImageRecord>();
-        
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-        {
-            var record = new ImageRecord
-            {
-                Id = reader.GetInt32(0),
-                FilePath = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                FileName = reader.IsDBNull(2) ? "" : reader.GetString(2),
-                FileType = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                ScoreGeneral = reader.IsDBNull(4) ? null : reader.GetDouble(4),
-                ScoreTechnical = reader.IsDBNull(5) ? null : reader.GetDouble(5),
-                ScoreAesthetic = reader.IsDBNull(6) ? null : reader.GetDouble(6),
-                ScoreSpaq = reader.IsDBNull(7) ? null : reader.GetDouble(7),
-                ScoreAva = reader.IsDBNull(8) ? null : reader.GetDouble(8),
-                ScoreKoniq = reader.IsDBNull(9) ? null : reader.GetDouble(9),
-                ScorePaq2Piq = reader.IsDBNull(10) ? null : reader.GetDouble(10),
-                ScoreLiqe = reader.IsDBNull(11) ? null : reader.GetDouble(11),
-                Rating = reader.IsDBNull(12) ? null : reader.GetInt32(12),
-                Label = reader.IsDBNull(13) ? null : reader.GetString(13),
-                Keywords = reader.IsDBNull(14) ? null : reader.GetString(14),
-                Title = reader.IsDBNull(15) ? null : reader.GetString(15),
-                Description = reader.IsDBNull(16) ? null : reader.GetString(16),
-                FolderId = reader.IsDBNull(17) ? null : reader.GetInt32(17),
-                StackId = reader.IsDBNull(18) ? null : reader.GetInt32(18),
-                ThumbnailPath = reader.IsDBNull(19) ? null : reader.GetString(19),
-                ImageHash = reader.IsDBNull(20) ? null : reader.GetString(20),
-                CreatedAt = reader.IsDBNull(21) ? null : DateTime.Parse(reader.GetString(21))
-            };
-            
-            // Resolve Windows path
-            record.WindowsPath = PathResolver.ToWindowsPath(record.FilePath);
-            
-            results.Add(record);
-        }
-        
-        return results;
+        var rows = _executor.ExecuteQuery(sql, paramDict);
+        return rows.Select(MapRowToImageRecord).ToList();
     }
     
     /// <summary>
@@ -134,8 +77,7 @@ public class DatabaseService : IDisposable
     /// </summary>
     public ImageRecord? GetImageByPath(string filePath)
     {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = @"
+        var sql = @"
             SELECT 
                 id, file_path, file_name, file_type,
                 score_general, score_technical, score_aesthetic,
@@ -144,40 +86,11 @@ public class DatabaseService : IDisposable
                 folder_id, stack_id, thumbnail_path, image_hash, created_at
             FROM images 
             WHERE file_path = @path";
-        cmd.Parameters.AddWithValue("@path", filePath);
+            
+        var paramDict = new Dictionary<string, object> { { "@path", filePath } };
+        var rows = _executor.ExecuteQuery(sql, paramDict);
         
-        using var reader = cmd.ExecuteReader();
-        if (reader.Read())
-        {
-            return new ImageRecord
-            {
-                Id = reader.GetInt32(0),
-                FilePath = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                FileName = reader.IsDBNull(2) ? "" : reader.GetString(2),
-                FileType = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                ScoreGeneral = reader.IsDBNull(4) ? null : reader.GetDouble(4),
-                ScoreTechnical = reader.IsDBNull(5) ? null : reader.GetDouble(5),
-                ScoreAesthetic = reader.IsDBNull(6) ? null : reader.GetDouble(6),
-                ScoreSpaq = reader.IsDBNull(7) ? null : reader.GetDouble(7),
-                ScoreAva = reader.IsDBNull(8) ? null : reader.GetDouble(8),
-                ScoreKoniq = reader.IsDBNull(9) ? null : reader.GetDouble(9),
-                ScorePaq2Piq = reader.IsDBNull(10) ? null : reader.GetDouble(10),
-                ScoreLiqe = reader.IsDBNull(11) ? null : reader.GetDouble(11),
-                Rating = reader.IsDBNull(12) ? null : reader.GetInt32(12),
-                Label = reader.IsDBNull(13) ? null : reader.GetString(13),
-                Keywords = reader.IsDBNull(14) ? null : reader.GetString(14),
-                Title = reader.IsDBNull(15) ? null : reader.GetString(15),
-                Description = reader.IsDBNull(16) ? null : reader.GetString(16),
-                FolderId = reader.IsDBNull(17) ? null : reader.GetInt32(17),
-                StackId = reader.IsDBNull(18) ? null : reader.GetInt32(18),
-                ThumbnailPath = reader.IsDBNull(19) ? null : reader.GetString(19),
-                ImageHash = reader.IsDBNull(20) ? null : reader.GetString(20),
-                CreatedAt = reader.IsDBNull(21) ? null : DateTime.Parse(reader.GetString(21)),
-                WindowsPath = PathResolver.ToWindowsPath(reader.IsDBNull(1) ? "" : reader.GetString(1))
-            };
-        }
-        
-        return null;
+        return rows.Any() ? MapRowToImageRecord(rows.First()) : null;
     }
     
     /// <summary>
@@ -185,23 +98,21 @@ public class DatabaseService : IDisposable
     /// </summary>
     public List<string> GetAllFolders()
     {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = @"
+        var sql = @"
             SELECT DISTINCT 
-                substr(file_path, 1, length(file_path) - length(file_name) - 1) as folder_path
+                substring(file_path from 1 for char_length(file_path) - char_length(file_name) - 1) as folder_path
             FROM images 
             WHERE file_path IS NOT NULL AND file_path != ''
             ORDER BY folder_path";
             
+        var rows = _executor.ExecuteQuery(sql, new Dictionary<string, object>());
+        
         var folders = new List<string>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        foreach (var row in rows)
         {
-            if (!reader.IsDBNull(0))
+            if (row.TryGetValue("folder_path", out var val) && val is string folder && !string.IsNullOrWhiteSpace(folder))
             {
-                var folder = reader.GetString(0);
-                if (!string.IsNullOrWhiteSpace(folder))
-                    folders.Add(folder);
+                folders.Add(folder);
             }
         }
         return folders;
@@ -212,29 +123,81 @@ public class DatabaseService : IDisposable
     /// </summary>
     public Dictionary<string, int> GetFolderImageCounts()
     {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = @"
+        var sql = @"
             SELECT 
-                substr(file_path, 1, length(file_path) - length(file_name) - 1) as folder_path,
+                substring(file_path from 1 for char_length(file_path) - char_length(file_name) - 1) as folder_path,
                 COUNT(*) as count
             FROM images 
             WHERE file_path IS NOT NULL AND file_path != ''
             GROUP BY folder_path
             ORDER BY folder_path";
             
+        var rows = _executor.ExecuteQuery(sql, new Dictionary<string, object>());
         var counts = new Dictionary<string, int>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        
+        foreach (var row in rows)
         {
-            if (!reader.IsDBNull(0))
+            var folder = row["folder_path"] as string;
+            var countObj = row["count"];
+            int count = 0;
+            if (countObj is int i) count = i;
+            else if (countObj is long l) count = (int)l;
+
+            if (!string.IsNullOrWhiteSpace(folder))
             {
-                var folder = reader.GetString(0);
-                var count = reader.GetInt32(1);
-                if (!string.IsNullOrWhiteSpace(folder))
-                    counts[folder] = count;
+                counts[folder] = count;
             }
         }
         return counts;
+    }
+    
+    private ImageRecord MapRowToImageRecord(Dictionary<string, object> row)
+    {
+        T? Get<T>(string key)
+        {
+            if (!row.TryGetValue(key, out var val) || val == null || val == DBNull.Value) return default;
+            
+            // Helper for JSON numeric types which might be long/double
+            if (typeof(T) == typeof(int) && val is long l) return (T)(object)(int)l;
+            if (typeof(T) == typeof(double) && val is decimal d) return (T)(object)(double)d; 
+            if (typeof(T) == typeof(int?) && val is long l2) return (T)(object)(int)l2;
+            
+            return (T)val;
+        }
+
+        var record = new ImageRecord
+        {
+            Id = Get<int>("id"),
+            FilePath = Get<string>("file_path") ?? "",
+            FileName = Get<string>("file_name") ?? "",
+            FileType = Get<string>("file_type") ?? "",
+            ScoreGeneral = Get<double?>("score_general"),
+            ScoreTechnical = Get<double?>("score_technical"),
+            ScoreAesthetic = Get<double?>("score_aesthetic"),
+            ScoreSpaq = Get<double?>("score_spaq"),
+            ScoreAva = Get<double?>("score_ava"),
+            ScoreKoniq = Get<double?>("score_koniq"),
+            ScorePaq2Piq = Get<double?>("score_paq2piq"),
+            ScoreLiqe = Get<double?>("score_liqe"),
+            Rating = Get<int?>("rating"),
+            Label = Get<string>("label"),
+            Keywords = Get<string>("keywords"),
+            Title = Get<string>("title"),
+            Description = Get<string>("description"),
+            FolderId = Get<int?>("folder_id"),
+            StackId = Get<int?>("stack_id"),
+            ThumbnailPath = Get<string>("thumbnail_path"),
+            ImageHash = Get<string>("image_hash")
+        };
+        
+        var createdRaw = Get<object>("created_at");
+        if (createdRaw is DateTime dt) record.CreatedAt = dt;
+        else if (createdRaw is string s && DateTime.TryParse(s, out var dtParsed)) record.CreatedAt = dtParsed;
+
+        // Resolve Windows path
+        record.WindowsPath = PathResolver.ToWindowsPath(record.FilePath);
+        
+        return record;
     }
     
     /// <summary>
@@ -306,13 +269,13 @@ public class DatabaseService : IDisposable
         // Date filters
         if (filter.DateFrom.HasValue)
         {
-            conditions.Add("DATE(created_at) >= @dateFrom");
+            conditions.Add("CAST(created_at AS DATE) >= @dateFrom");
             parameters.Add(("@dateFrom", filter.DateFrom.Value.ToString("yyyy-MM-dd")));
         }
         
         if (filter.DateTo.HasValue)
         {
-            conditions.Add("DATE(created_at) <= @dateTo");
+            conditions.Add("CAST(created_at AS DATE) <= @dateTo");
             parameters.Add(("@dateTo", filter.DateTo.Value.ToString("yyyy-MM-dd")));
         }
         
@@ -350,8 +313,7 @@ public class DatabaseService : IDisposable
     {
         if (!_disposed)
         {
-            _connection.Close();
-            _connection.Dispose();
+            _executor.Dispose();
             _disposed = true;
         }
     }
