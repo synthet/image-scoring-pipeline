@@ -210,6 +210,27 @@ class ClusteringEngine:
             
         return 0.0
 
+    def _get_burst_uuid(self, row):
+        """
+        Get BurstUUID from image metadata if present.
+        Returns None if not an Apple burst photo.
+        """
+        from modules import utils
+        
+        # Try from database burst_uuid column first (cached)
+        if row.get('burst_uuid'):
+            return row['burst_uuid']
+        
+        # Try from metadata JSON
+        if row.get('metadata'):
+            burst_uuid = utils.read_burst_uuid(row['file_path'], row['metadata'])
+            if burst_uuid:
+                return burst_uuid
+        
+        # Try from file directly (slower)
+        burst_uuid = utils.read_burst_uuid(row['file_path'])
+        return burst_uuid
+
     def cluster_images(self, distance_threshold=None, time_gap_seconds=None, force_rescan=None, target_folder=None):
         """
         Main function to load images from DB, cluster them, and update DB.
@@ -264,17 +285,17 @@ class ClusteringEngine:
         if target_folder:
              images_rows = db.get_images_by_folder(target_folder)
              if not images_rows:
-                 yield f"No images found in folder: {target_folder}", 0, 0
+                 yield update_status(f"No images found in folder: {target_folder}", 0, 0)
                  return
         else:
             # Fallback to all (limit 50k)
             images_rows = db.get_all_images(sort_by="created_at", order="desc", limit=50000)
         
         if not images_rows:
-            yield "No images found in database.", 0, 0
+            yield update_status("No images found in database.", 0, 0)
             return
 
-        yield f"Found {len(images_rows)} images. Checking progress...", 0, len(images_rows)
+        yield update_status(f"Found {len(images_rows)} images. Checking progress...", 0, len(images_rows))
 
         # 1. Group by Folder
         by_folder = {}
@@ -297,14 +318,14 @@ class ClusteringEngine:
                 success, msg = db.clear_stacks_in_folder(target_folder)
                 if success:
                     processed_folders.discard(os.path.normpath(target_folder))
-                    yield f"Force Rescan: {msg}", 0, len(images_rows)
+                    yield update_status(f"Force Rescan: {msg}", 0, len(images_rows))
                 else:
-                    yield f"Warning: {msg}", 0, len(images_rows)
+                    yield update_status(f"Warning: {msg}", 0, len(images_rows))
             else:
                 # Global force rescan - clear everything
                 db.clear_cluster_progress()
                 processed_folders = set()
-                yield "Force Rescan: Cleared previous progress.", 0, len(images_rows)
+                yield update_status("Force Rescan: Cleared previous progress.", 0, len(images_rows))
         
         total_clusters = db.get_stack_count() 
         processed_count = 0
@@ -331,18 +352,80 @@ class ClusteringEngine:
             folders_to_process = [f for f in by_folder.keys() if f not in processed_folders]
         
         if not folders_to_process:
-            yield "All folders already processed or no images in target folder.", len(images_rows), len(images_rows)
+            yield update_status("All folders already processed or no images in target folder.", len(images_rows), len(images_rows))
             return
 
-        yield f"Processing {len(folders_to_process)} new folders...", processed_count, len(images_rows)
+        yield update_status(f"Processing {len(folders_to_process)} new folders...", processed_count, len(images_rows))
 
         for folder in folders_to_process:
             rows = by_folder[folder]
-            yield f"Processing folder: {folder} ({len(rows)} images)...", processed_count, len(images_rows)
+            yield update_status(f"Processing folder: {folder} ({len(rows)} images)...", processed_count, len(images_rows))
+            
+            # ===== PRE-GROUP BY BURSTUUID =====
+            # Images with same BurstUUID go directly into stacks, skip visual clustering
+            import uuid
+            from modules import xmp
+            
+            burst_groups = {}  # BurstUUID -> list of rows
+            non_burst_rows = []  # Rows without BurstUUID (need visual clustering)
+            
+            for r in rows:
+                burst_uuid = self._get_burst_uuid(r)
+                if burst_uuid:
+                    if burst_uuid not in burst_groups:
+                        burst_groups[burst_uuid] = []
+                    burst_groups[burst_uuid].append(r)
+                else:
+                    non_burst_rows.append(r)
+            
+            # Create stacks from BurstUUID groups
+            burst_stacks_data = []
+            for burst_uuid, group_rows in burst_groups.items():
+                if len(group_rows) < 2:
+                    # Single image with BurstUUID - add to visual clustering
+                    non_burst_rows.extend(group_rows)
+                    continue
+                
+                # Find best image by score
+                img_ids = [r['id'] for r in group_rows]
+                best_id = img_ids[0]
+                max_score = -1.0
+                for r in group_rows:
+                    s = r['score_general'] if r.get('score_general') else 0
+                    if s > max_score:
+                        max_score = s
+                        best_id = r['id']
+                
+                s_name = f"Burst {os.path.basename(folder)} ({len(group_rows)} shots)"
+                burst_stacks_data.append({
+                    'name': s_name,
+                    'best_image_id': best_id,
+                    'image_ids': img_ids,
+                    'burst_uuid': burst_uuid
+                })
+                folder_stacks += 1
+                total_clusters += 1
+            
+            # Create burst stacks
+            if burst_stacks_data:
+                db.create_stacks_batch(burst_stacks_data)
+                # Update burst_uuid in database for these images
+                for stack_data in burst_stacks_data:
+                    for img_id in stack_data['image_ids']:
+                        db.update_image_field(img_id, 'burst_uuid', stack_data['burst_uuid'])
+                yield update_status(f"Created {len(burst_stacks_data)} burst stacks from BurstUUID", processed_count, len(images_rows))
+            
+            # ===== CONTINUE WITH VISUAL CLUSTERING FOR REMAINING IMAGES =====
+            if not non_burst_rows:
+                # All images were burst photos - skip to next folder
+                db.mark_folder_clustered(folder)
+                processed_count += len(rows)
+                yield update_status(f"Finished {folder}. Created {folder_stacks} stacks.", processed_count, len(images_rows))
+                continue
             
             # Sort by Time
             rows_with_time = []
-            for r in rows:
+            for r in non_burst_rows:
                 t = self._get_image_time(r)
                 rows_with_time.append((r, t))
             
@@ -372,7 +455,7 @@ class ClusteringEngine:
             for b_idx, batch in enumerate(time_batches):
                 # Calculate overall progress for this folder
                 folder_progress = processed_count + (len(rows) * (b_idx / len(time_batches)))
-                yield f"Processing folder: {folder} - Batch {b_idx+1}/{len(time_batches)}", folder_progress, len(images_rows)
+                yield update_status(f"Processing folder: {folder} - Batch {b_idx+1}/{len(time_batches)}", folder_progress, len(images_rows))
 
                 if len(batch) < 2:
                     continue
@@ -453,10 +536,26 @@ class ClusteringEngine:
                 if batch_stacks_data:
                     db.create_stacks_batch(batch_stacks_data)
                     
+                    # Generate and write BurstUUID for newly created stacks
+                    for stack_data in batch_stacks_data:
+                        # Generate a new UUID for this visual stack
+                        new_burst_uuid = str(uuid.uuid4())
+                        
+                        # Update database and write to XMP for each image
+                        for img_id in stack_data['image_ids']:
+                            db.update_image_field(img_id, 'burst_uuid', new_burst_uuid)
+                            
+                            # Write to XMP sidecar
+                            # Find the file path for this image from the batch
+                            for r, t in batch:
+                                if r['id'] == img_id:
+                                    xmp.write_burst_uuid(r['file_path'], new_burst_uuid)
+                                    break
+                    
             # Mark as processed
             db.mark_folder_clustered(folder)
             processed_count += len(rows)
-            yield f"Finished {folder}. Created {folder_stacks} stacks.", processed_count, len(images_rows)
+            yield update_status(f"Finished {folder}. Created {folder_stacks} stacks.", processed_count, len(images_rows))
             
-        yield f"Done! Processed {processed_count} images. Total Stacks: {db.get_stack_count()}", len(images_rows), len(images_rows)
+        yield update_status(f"Done! Processed {processed_count} images. Total Stacks: {db.get_stack_count()}", len(images_rows), len(images_rows))
 

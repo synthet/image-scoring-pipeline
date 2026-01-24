@@ -17,6 +17,48 @@ except ImportError:
 # Cache exiftool path to avoid repeated shutil.which checks
 _EXIFTOOL_PATH = shutil.which("exiftool")
 
+
+def read_burst_uuid(image_path: str, metadata_json: str = None) -> str | None:
+    """
+    Read BurstUUID from image EXIF (Apple burst photos).
+    
+    BurstUUID is used by Apple devices to group burst photos together.
+    This allows pre-grouping burst images before visual clustering.
+    
+    Args:
+        image_path: Path to the image file
+        metadata_json: Optional cached metadata JSON from database
+        
+    Returns:
+        BurstUUID string if present, None otherwise
+    """
+    # 1. Check cached metadata first (fastest)
+    if metadata_json:
+        try:
+            meta = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+            burst_uuid = meta.get('BurstUUID') or meta.get('Apple:BurstUUID')
+            if burst_uuid:
+                return burst_uuid
+        except (json.JSONDecodeError, TypeError):
+            pass
+    
+    # 2. Try exiftool if available (for RAW/NEF/iPhone files)
+    if _EXIFTOOL_PATH:
+        resolved = resolve_file_path(image_path)
+        if resolved and os.path.exists(resolved):
+            try:
+                cmd = [_EXIFTOOL_PATH, '-s', '-S', '-BurstUUID', resolved]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    burst_uuid = result.stdout.strip()
+                    if burst_uuid and burst_uuid != '-':
+                        return burst_uuid
+            except (subprocess.TimeoutExpired, Exception):
+                pass
+    
+    return None
+
+
 def get_debug_log_path():
     """
     Returns the absolute path to the debug log file, handling Windows/WSL differences.

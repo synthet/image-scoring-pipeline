@@ -27,6 +27,8 @@ Documentation specifically designed for LLMs and AI Agents.
 | **[LLM_CONTEXT.md](LLM_CONTEXT.md)** | High-density project context for AI | 1 min |
 | **[.agent/workflows/run_scoring.md](../.agent/workflows/run_scoring.md)** | Workflow: Run Scoring | 1 min |
 | **[.agent/workflows/verify_system.md](../.agent/workflows/verify_system.md)** | Workflow: Verify System | 1 min |
+| **[.agent/mcp_tools_reference.md](../.agent/mcp_tools_reference.md)** | Quick reference for MCP debugging tools | 2 min |
+| **[technical/MCP_DEBUGGING_TOOLS.md](technical/MCP_DEBUGGING_TOOLS.md)** | Complete MCP server documentation | 5 min |
 
 ---
 

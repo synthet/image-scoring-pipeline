@@ -70,8 +70,6 @@ def run_culling_wrapper(input_path, threshold, time_gap, auto_export, force_resc
     
     progress(1.0, desc="Done!")
     
-    progress(1.0, desc="Done!")
-    
     # Get updated views
     res_msg, gal, sid, paths = resume_culling_session(session_id)
     # Combine messages
@@ -248,77 +246,61 @@ def repick_culling_best(session_id, score_field='score_general'):
 
 def create_tab(app_config):
     with gr.TabItem("Culling", id="culling") as tab_item:
-        gr.Markdown("### ✂️ AI Culling - Grouped View")
+        # Row 1: Controls & Status
         with gr.Row():
-            with gr.Column(scale=1, min_width=350):
-                with gr.Group():
-                    cull_input_dir = gr.Textbox(
-                        label="📁 Folder to Cull",
-                        value=app_config.get('culling_input_path', ''),
-                        info="Select folder with scored images"
-                    )
-                    cull_threshold = gr.State(value=app_config.get('culling', {}).get('default_threshold', 0.15))
-                    cull_time_gap = gr.State(value=app_config.get('culling', {}).get('default_time_gap', 120))
+            # Left: Inputs & Settings
+            with gr.Column(scale=1, min_width=300):
+                cull_input_dir = gr.Textbox(
+                    label="Folder",
+                    value=app_config.get('culling_input_path', ''),
+                    placeholder="D:\\Photos\\... (Select folder with images)"
+                )
+                
+                # Settings (Compact or Accordion)
+                with gr.Accordion("Settings", open=False):
+                    cull_threshold = gr.Slider(0.0, 1.0, value=app_config.get('culling', {}).get('default_threshold', 0.15), label="Similarity Threshold", step=0.01)
+                    cull_time_gap = gr.Number(value=app_config.get('culling', {}).get('default_time_gap', 120), label="Time Gap (s)")
                     cull_auto_export = gr.Checkbox(
-                        label="📤 Auto-export to XMP after culling",
+                        label="Auto-export XMP after culling",
                         value=app_config.get('culling', {}).get('auto_export_default', False)
                     )
-                    cull_force_rescan = gr.Checkbox(label="Rescan/Regroup (Destructive)", value=False)
-                cull_run_btn = gr.Button("▶️ Run AI Culling", variant="primary", size="lg")
-            with gr.Column(scale=2):
-                cull_status = gr.Textbox(label="Results", lines=4, interactive=False)
+                    cull_force_rescan = gr.Checkbox(label="Force Rescan/Regroup (Integrates with Stacks)", value=False)
+                
+                with gr.Row():
+                    cull_run_btn = gr.Button("▶ Start Culling Session", variant="primary", scale=2)
+                    cull_refresh_btn = gr.Button("🔄", variant="secondary", scale=0, min_width=50, elem_id="cull-refresh-btn")
+
+            # Right: Status (HTML Card)
+            with gr.Column(scale=1, min_width=300):
+                cull_status = gr.Textbox(label="Status", lines=6, interactive=False)
+                # Placeholder for future HTML status if needed
         
         gr.Markdown("---")
         
-        with gr.Accordion("🔄 Session Management", open=False):
-            with gr.Row():
-                cull_session_id = gr.State(None)
-            with gr.Row():
-                cull_refresh_btn = gr.Button("🔄 Refresh Groups", variant="secondary", size="sm", scale=1)
-                cull_repick_btn = gr.Button("🎯 Re-Pick Best", variant="secondary", size="sm", scale=1)
-            cull_session_status = gr.Textbox(label="Session Status", interactive=False, lines=2)
-            cull_delete_confirm = gr.Checkbox(label="Enable Delete", value=False)
-            cull_delete_btn = gr.Button("🗑️ Delete REJECTED Files", variant="stop", size="sm")
-
-        # Main Gallery (Unified)
+        # Main Gallery
+        gr.Markdown("### ✂️ Culling Decisions (Green=Pick, Red=Reject, Gray=Single)")
         cull_main_gallery = gr.Gallery(
-            label="Culling Decisions (Green=Pick, Red=Reject, Gray=Single)", 
-            columns=6, 
-            height=800, 
+            label="Culling Decisions", 
+            columns=8, 
+            height=600, 
             object_fit="contain",
             allow_preview=True
         )
+        
+        # State
+        cull_session_id = gr.State(None)
         cull_main_paths = gr.State([])
-        
-        # Legacy/Unused outputs (to keep signature compatible if needed, or we just update)
-        # We need to update run_wrapper too.
-        
-        with gr.Accordion("💾 Manual XMP Export", open=False):
-            cull_export_btn = gr.Button("📤 Export Pick/Reject Flags to XMP", variant="secondary")
-            cull_export_status = gr.Textbox(label="Export Status", interactive=False)
+        cull_session_status = gr.Textbox(visible=False) # Hidden status for event outputs if needed
+
+        # Actions Row
+        with gr.Row():
+            cull_repick_btn = gr.Button("🎯 Re-Pick Best", variant="secondary", scale=1)
+            cull_export_btn = gr.Button("📤 Export XMP", variant="secondary", scale=1)
+            with gr.Row(scale=1):
+                 cull_delete_confirm = gr.Checkbox(label="Confirm", value=False, min_width=80)
+                 cull_delete_btn = gr.Button("🗑️ Delete Rejects", variant="stop")
 
         # Events
-        # Update run_wrapper signature locally
-        def local_run_wrapper(*args):
-             msg, upd, picks, sid, ppaths, rgallery, rpaths = run_culling_wrapper(*args)
-             # Adapted to new output: We need to just call resume_culling_session here essentially
-             # But run_culling_wrapper calls resume_culling_session at the end.
-             # So we just need to adapt the unpacking.
-             # run_culling_wrapper returns: full_msg, update, picks, sid, ppaths, rgallery, rpaths
-             # We want: msg, update, main_gallery, session_id, main_paths
-             # Wait, run_culling_wrapper in 'culling.py' (this file) needs update too.
-             # Actually, simpler to just update the wrapper function definition above in a separate replacement block?
-             # No, this is replacing everything from 80 downwards.
-             # I need to handle run_culling_wrapper logic too or update it.
-             # I should update run_culling_wrapper separately or include it in this block.
-             # This block starts at Resume Culling Session (line 80).
-             # Run Culling wrapper is at line 20.
-             # So I need to update run_culling_wrapper too.
-             # For now, let's just make the outputs of run_wrapper match.
-             pass
-
-        # We will re-wire run_culling_wrapper in a separate tool call or assume I will fix it.
-        # Let's fix create_tab first.
         
         cull_run_btn.click(
             fn=run_culling_wrapper, 
@@ -326,28 +308,34 @@ def create_tab(app_config):
             outputs=[cull_status, cull_run_btn, cull_main_gallery, cull_session_id, cull_main_paths]
         )
         
+        # Refresh button also refreshes groups
         cull_refresh_btn.click(
             fn=refresh_culling_groups,
             inputs=[cull_session_id, cull_threshold, cull_time_gap],
-            outputs=[cull_session_status, cull_main_gallery, cull_main_paths]
+            outputs=[cull_status, cull_main_gallery, cull_main_paths]
         )
         
         cull_repick_btn.click(
             fn=repick_culling_best,
             inputs=[cull_session_id],
-            outputs=[cull_session_status, cull_main_gallery, cull_main_paths]
+            outputs=[cull_status, cull_main_gallery, cull_main_paths]
         )
         
         cull_delete_btn.click(
             fn=delete_rejected_files,
             inputs=[cull_session_id, cull_delete_confirm],
-            outputs=[cull_session_status, cull_main_gallery, cull_main_paths]
+            outputs=[cull_status, cull_main_gallery, cull_main_paths]
         )
 
-        cull_export_btn.click(fn=export_culling_xmp, inputs=[cull_session_id], outputs=[cull_export_status])
+        cull_export_btn.click(
+            fn=export_culling_xmp, 
+            inputs=[cull_session_id], 
+            outputs=[cull_status]
+        )
 
     return {
         'tab_item': tab_item,
-        'session_id': cull_session_id
+        'session_id': cull_session_id,
+        'input_dir': cull_input_dir # useful for cross-referencing
     }
 

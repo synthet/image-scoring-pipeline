@@ -1,15 +1,57 @@
 """
 MCP (Model Context Protocol) Server for Image Scoring WebUI
 
-Provides remote debugging tools for Cursor IDE to interact with:
-- Local SQLite database
-- Scoring/tagging job status
-- Configuration management
-- Log access and analysis
+Provides comprehensive debugging tools for Cursor IDE and AI agents to interact with:
+- Database operations: Query images, get statistics, check data integrity
+- Error diagnostics: Find failed images, error summaries, health checks
+- Performance monitoring: Track metrics, job status, pipeline state
+- System diagnostics: GPU/model status, configuration validation
+- File validation: Verify file paths exist, check consistency
+- Log access: Read debug logs for investigation
+- Configuration: Read and update application settings
+
+Available Tools (21 total):
+  Database & Stats:
+    - get_database_stats: Overall database statistics
+    - query_images: Flexible image queries with filtering
+    - get_image_details: Full details for specific image
+    - execute_sql: Read-only SQL queries (SELECT only)
+  
+  Error & Diagnostics:
+    - get_failed_images: Images with missing/failed scores
+    - get_error_summary: Summary of all errors and issues
+    - check_database_health: Data integrity validation
+    - validate_file_paths: Check if database paths exist
+  
+  Performance & Monitoring:
+    - get_performance_metrics: Processing speed and success rates
+    - get_runner_status: Current job status and progress
+    - get_recent_jobs: Recent job history
+    - get_pipeline_stats: Active pipeline state and queues
+  
+  System Diagnostics:
+    - get_model_status: GPU availability, model loading status
+    - validate_config: Configuration validation
+    - read_debug_log: Read debug log entries
+  
+  Analysis & Utilities:
+    - get_incomplete_images: Images missing data
+    - get_stacks_summary: Stack/cluster analysis
+    - get_folder_tree: Folder structure with counts
+    - search_images_by_hash: Find image by content hash
+    - get_config: Read configuration
+    - set_config_value: Update configuration
 
 Usage:
     Start alongside webui.py or run standalone:
     python -m modules.mcp_server
+    
+    Or set environment variable when running webui:
+    ENABLE_MCP_SERVER=1 python webui.py
+
+For AI Agents:
+    See docs/technical/MCP_DEBUGGING_TOOLS.md for detailed documentation
+    See .agent/mcp_tools_reference.md for quick reference guide
 """
 
 import asyncio
@@ -49,6 +91,9 @@ DB_TOOLS = frozenset({
     "get_database_stats", "query_images", "get_image_details", "execute_sql",
     "get_recent_jobs", "get_folder_tree", "get_incomplete_images",
     "search_images_by_hash", "get_stacks_summary",
+    "get_failed_images", "get_error_summary", "check_database_health",
+    "validate_file_paths", "get_performance_metrics",
+    # Note: get_model_status, validate_config, get_pipeline_stats don't require DB
 })
 
 def set_runners(scoring_runner, tagging_runner):
@@ -485,6 +530,498 @@ def get_stacks_summary(folder_path: Optional[str] = None) -> dict:
     return summary
 
 
+# --- New Debugging Tools ---
+
+def get_failed_images(limit: int = 50) -> list:
+    """Get images that failed processing or have errors."""
+    conn = db.get_db()
+    c = conn.cursor()
+    
+    try:
+        # Find images with missing critical scores (all models failed)
+        c.execute("""
+            SELECT id, file_path, file_name, created_at,
+                   score_general, score_technical, score_aesthetic,
+                   score_spaq, score_koniq, score_liqe
+            FROM images
+            WHERE (score_general IS NULL OR score_general = 0)
+               OR (score_technical IS NULL OR score_technical = 0)
+               OR (score_spaq IS NULL OR score_spaq = 0)
+               OR (score_koniq IS NULL OR score_koniq = 0)
+            ORDER BY created_at DESC
+            FETCH FIRST ? ROWS ONLY
+        """, (limit,))
+        
+        rows = c.fetchall()
+        results = []
+        for row in rows:
+            item = dict(row)
+            # Identify which scores are missing
+            missing = []
+            if not item.get('score_general') or item.get('score_general', 0) == 0:
+                missing.append('general')
+            if not item.get('score_technical') or item.get('score_technical', 0) == 0:
+                missing.append('technical')
+            if not item.get('score_spaq') or item.get('score_spaq', 0) == 0:
+                missing.append('spaq')
+            if not item.get('score_koniq') or item.get('score_koniq', 0) == 0:
+                missing.append('koniq')
+            item['missing_scores'] = missing
+            results.append(item)
+        
+        return results
+    except Exception as e:
+        return [{"error": str(e)}]
+    finally:
+        conn.close()
+
+
+def get_error_summary() -> dict:
+    """Get summary of errors and issues in the database."""
+    conn = db.get_db()
+    c = conn.cursor()
+    
+    summary = {}
+    
+    try:
+        # Failed jobs
+        c.execute("""
+            SELECT COUNT(*) FROM jobs WHERE status = 'failed'
+        """)
+        summary["failed_jobs"] = c.fetchone()[0]
+        
+        # Images with missing scores
+        c.execute("""
+            SELECT COUNT(*) FROM images 
+            WHERE score_general IS NULL OR score_general = 0
+        """)
+        summary["images_missing_general_score"] = c.fetchone()[0]
+        
+        c.execute("""
+            SELECT COUNT(*) FROM images 
+            WHERE score_technical IS NULL OR score_technical = 0
+        """)
+        summary["images_missing_technical_score"] = c.fetchone()[0]
+        
+        # Images with missing model scores
+        models = ['spaq', 'koniq', 'ava', 'paq2piq', 'liqe']
+        for model in models:
+            col = f"score_{model}"
+            c.execute(f"""
+                SELECT COUNT(*) FROM images 
+                WHERE {col} IS NULL OR {col} = 0
+            """)
+            summary[f"images_missing_{model}"] = c.fetchone()[0]
+        
+        # Orphaned images (no folder)
+        c.execute("""
+            SELECT COUNT(*) FROM images WHERE folder_id IS NULL
+        """)
+        summary["orphaned_images"] = c.fetchone()[0]
+        
+        # Images with invalid paths (check if file exists)
+        # This is expensive, so we'll just count NULL paths
+        c.execute("""
+            SELECT COUNT(*) FROM images WHERE file_path IS NULL OR file_path = ''
+        """)
+        summary["images_with_empty_paths"] = c.fetchone()[0]
+        
+        # Recent failed jobs with error messages
+        c.execute("""
+            SELECT id, job_type, status, error_message, created_at
+            FROM jobs
+            WHERE status = 'failed'
+            ORDER BY created_at DESC
+            FETCH FIRST 10 ROWS ONLY
+        """)
+        summary["recent_failed_jobs"] = [dict(row) for row in c.fetchall()]
+        
+    except Exception as e:
+        summary["error"] = str(e)
+    finally:
+        conn.close()
+    
+    return summary
+
+
+def check_database_health() -> dict:
+    """Check database for inconsistencies and orphaned records."""
+    conn = db.get_db()
+    c = conn.cursor()
+    
+    health = {
+        "status": "healthy",
+        "issues": [],
+        "warnings": []
+    }
+    
+    try:
+        # Check for orphaned images (folder_id references non-existent folder)
+        c.execute("""
+            SELECT COUNT(*) FROM images i
+            LEFT JOIN folders f ON i.folder_id = f.id
+            WHERE i.folder_id IS NOT NULL AND f.id IS NULL
+        """)
+        orphaned_count = c.fetchone()[0]
+        if orphaned_count > 0:
+            health["issues"].append(f"{orphaned_count} images with invalid folder_id")
+            health["status"] = "unhealthy"
+        
+        # Check for orphaned stack references
+        c.execute("""
+            SELECT COUNT(*) FROM images i
+            LEFT JOIN stacks s ON i.stack_id = s.id
+            WHERE i.stack_id IS NOT NULL AND s.id IS NULL
+        """)
+        orphaned_stacks = c.fetchone()[0]
+        if orphaned_stacks > 0:
+            health["issues"].append(f"{orphaned_stacks} images with invalid stack_id")
+            health["status"] = "unhealthy"
+        
+        # Check for duplicate file paths
+        c.execute("""
+            SELECT file_path, COUNT(*) as cnt
+            FROM images
+            WHERE file_path IS NOT NULL
+            GROUP BY file_path
+            HAVING COUNT(*) > 1
+        """)
+        duplicates = c.fetchall()
+        if duplicates:
+            health["warnings"].append(f"{len(duplicates)} duplicate file paths found")
+        
+        # Check for images with hash but no file_path
+        c.execute("""
+            SELECT COUNT(*) FROM images
+            WHERE image_hash IS NOT NULL AND (file_path IS NULL OR file_path = '')
+        """)
+        hash_no_path = c.fetchone()[0]
+        if hash_no_path > 0:
+            health["warnings"].append(f"{hash_no_path} images with hash but no path")
+        
+        # Check for folders with no images
+        c.execute("""
+            SELECT COUNT(*) FROM folders f
+            LEFT JOIN images i ON f.id = i.folder_id
+            WHERE i.id IS NULL
+        """)
+        empty_folders = c.fetchone()[0]
+        if empty_folders > 0:
+            health["warnings"].append(f"{empty_folders} folders with no images")
+        
+        # Check for stacks with no images
+        c.execute("""
+            SELECT COUNT(*) FROM stacks s
+            LEFT JOIN images i ON s.id = i.stack_id
+            WHERE i.id IS NULL
+        """)
+        empty_stacks = c.fetchone()[0]
+        if empty_stacks > 0:
+            health["warnings"].append(f"{empty_stacks} stacks with no images")
+        
+        health["summary"] = {
+            "total_issues": len(health["issues"]),
+            "total_warnings": len(health["warnings"])
+        }
+        
+    except Exception as e:
+        health["status"] = "error"
+        health["error"] = str(e)
+    finally:
+        conn.close()
+    
+    return health
+
+
+def validate_file_paths(limit: int = 100) -> dict:
+    """Validate that file paths in database actually exist."""
+    conn = db.get_db()
+    c = conn.cursor()
+    
+    results = {
+        "checked": 0,
+        "exists": 0,
+        "missing": 0,
+        "missing_files": []
+    }
+    
+    try:
+        c.execute("""
+            SELECT id, file_path FROM images
+            WHERE file_path IS NOT NULL AND file_path != ''
+            ORDER BY created_at DESC
+            FETCH FIRST ? ROWS ONLY
+        """, (limit,))
+        
+        rows = c.fetchall()
+        results["checked"] = len(rows)
+        
+        for row in rows:
+            file_path = row[1]
+            if os.path.exists(file_path):
+                results["exists"] += 1
+            else:
+                results["missing"] += 1
+                results["missing_files"].append({
+                    "id": row[0],
+                    "file_path": file_path
+                })
+        
+    except Exception as e:
+        results["error"] = str(e)
+    finally:
+        conn.close()
+    
+    return results
+
+
+def get_performance_metrics() -> dict:
+    """Get performance metrics from recent jobs."""
+    conn = db.get_db()
+    c = conn.cursor()
+    
+    metrics = {}
+    
+    try:
+        # Average job duration
+        c.execute("""
+            SELECT 
+                AVG(EXTRACT(EPOCH FROM (updated_at - created_at))) as avg_duration,
+                COUNT(*) as total_jobs
+            FROM jobs
+            WHERE status = 'completed' 
+              AND updated_at IS NOT NULL 
+              AND created_at IS NOT NULL
+        """)
+        row = c.fetchone()
+        if row and row[0]:
+            metrics["avg_job_duration_seconds"] = round(row[0], 2)
+            metrics["total_completed_jobs"] = row[1]
+        
+        # Images processed per hour (recent jobs)
+        c.execute("""
+            SELECT 
+                SUM(image_count) as total_images,
+                SUM(EXTRACT(EPOCH FROM (updated_at - created_at))) as total_seconds
+            FROM jobs
+            WHERE status = 'completed'
+              AND image_count > 0
+              AND updated_at IS NOT NULL
+              AND created_at IS NOT NULL
+              AND created_at > CURRENT_DATE - 7
+        """)
+        row = c.fetchone()
+        if row and row[0] and row[1] and row[1] > 0:
+            images_per_hour = (row[0] / row[1]) * 3600
+            metrics["images_per_hour"] = round(images_per_hour, 2)
+            metrics["total_images_last_7_days"] = row[0]
+        
+        # Job success rate
+        c.execute("""
+            SELECT 
+                status,
+                COUNT(*) as count
+            FROM jobs
+            GROUP BY status
+        """)
+        status_counts = {row[0]: row[1] for row in c.fetchall()}
+        total = sum(status_counts.values())
+        if total > 0:
+            metrics["job_success_rate"] = round(
+                (status_counts.get('completed', 0) / total) * 100, 2
+            )
+            metrics["job_status_breakdown"] = status_counts
+        
+    except Exception as e:
+        metrics["error"] = str(e)
+    finally:
+        conn.close()
+    
+    return metrics
+
+
+def get_model_status() -> dict:
+    """Get status of loaded models and GPU availability."""
+    status = {
+        "models": {},
+        "gpu": {},
+        "scorer_available": False
+    }
+    
+    try:
+        # Check if scorer is available
+        if _scoring_runner and _scoring_runner.shared_scorer:
+            status["scorer_available"] = True
+            scorer = _scoring_runner.shared_scorer
+            
+            # Get model version
+            try:
+                status["models"]["version"] = getattr(scorer, 'VERSION', 'unknown')
+            except:
+                pass
+            
+            # Check which models are loaded
+            model_names = ['spaq', 'ava', 'koniq', 'paq2piq']
+            for model_name in model_names:
+                try:
+                    model_attr = getattr(scorer, f'{model_name}_model', None)
+                    status["models"][model_name] = {
+                        "loaded": model_attr is not None
+                    }
+                except:
+                    status["models"][model_name] = {"loaded": False}
+        else:
+            status["models"]["note"] = "Scorer not initialized"
+        
+        # Check GPU availability
+        try:
+            import tensorflow as tf
+            gpus = tf.config.list_physical_devices('GPU')
+            status["gpu"]["tensorflow_available"] = True
+            status["gpu"]["physical_gpus"] = len(gpus)
+            status["gpu"]["cuda_built"] = tf.test.is_built_with_cuda()
+            if gpus:
+                status["gpu"]["gpu_names"] = [str(gpu) for gpu in gpus]
+        except ImportError:
+            status["gpu"]["tensorflow_available"] = False
+        except Exception as e:
+            status["gpu"]["error"] = str(e)
+        
+        # Check PyTorch GPU
+        try:
+            import torch
+            status["gpu"]["pytorch_available"] = True
+            status["gpu"]["pytorch_cuda_available"] = torch.cuda.is_available()
+            if torch.cuda.is_available():
+                status["gpu"]["pytorch_device_count"] = torch.cuda.device_count()
+                status["gpu"]["pytorch_device_name"] = torch.cuda.get_device_name(0)
+        except ImportError:
+            status["gpu"]["pytorch_available"] = False
+        except Exception as e:
+            status["gpu"]["pytorch_error"] = str(e)
+        
+        # Check NVIDIA driver
+        try:
+            import subprocess
+            result = subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader'],
+                                   capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                status["gpu"]["nvidia_driver"] = "available"
+                lines = result.stdout.strip().split('\n')
+                status["gpu"]["gpu_info"] = lines
+            else:
+                status["gpu"]["nvidia_driver"] = "not_available"
+        except:
+            status["gpu"]["nvidia_driver"] = "not_checked"
+        
+    except Exception as e:
+        status["error"] = str(e)
+    
+    return status
+
+
+def validate_config() -> dict:
+    """Validate configuration values."""
+    validation = {
+        "valid": True,
+        "issues": [],
+        "warnings": []
+    }
+    
+    try:
+        cfg = config.load_config()
+        
+        # Check required paths
+        if 'paths' in cfg:
+            paths = cfg['paths']
+            if 'image_directories' in paths:
+                dirs = paths['image_directories']
+                if isinstance(dirs, list):
+                    for dir_path in dirs:
+                        if not os.path.exists(dir_path):
+                            validation["warnings"].append(f"Image directory does not exist: {dir_path}")
+                            validation["valid"] = False
+                else:
+                    validation["issues"].append("image_directories should be a list")
+        
+        # Check processing config
+        if 'processing' in cfg:
+            proc = cfg['processing']
+            queue_sizes = ['prep_queue_size', 'scoring_queue_size', 'result_queue_size']
+            for qs in queue_sizes:
+                if qs in proc:
+                    val = proc[qs]
+                    if not isinstance(val, int) or val < 1:
+                        validation["issues"].append(f"{qs} must be a positive integer")
+                        validation["valid"] = False
+        
+        validation["config_keys"] = list(cfg.keys())
+        
+    except Exception as e:
+        validation["valid"] = False
+        validation["error"] = str(e)
+    
+    return validation
+
+
+def get_pipeline_stats() -> dict:
+    """Get statistics about the processing pipeline."""
+    stats = {
+        "runners": {},
+        "queues": {},
+        "processor": {}
+    }
+    
+    try:
+        # Get runner status
+        runner_status = get_runner_status()
+        stats["runners"] = runner_status
+        
+        # Try to get processor information
+        if _scoring_runner:
+            stats["processor"]["scorer_initialized"] = _scoring_runner.shared_scorer is not None
+            stats["processor"]["is_running"] = getattr(_scoring_runner, 'is_running', False)
+            stats["processor"]["job_type"] = getattr(_scoring_runner, 'job_type', None)
+            stats["processor"]["status_message"] = getattr(_scoring_runner, 'status_message', 'Unknown')
+            
+            # Get progress information
+            if hasattr(_scoring_runner, 'current_count') and hasattr(_scoring_runner, 'total_count'):
+                stats["processor"]["current_count"] = _scoring_runner.current_count
+                stats["processor"]["total_count"] = _scoring_runner.total_count
+                if _scoring_runner.total_count > 0:
+                    stats["processor"]["progress_percent"] = round(
+                        (_scoring_runner.current_count / _scoring_runner.total_count * 100), 2
+                    )
+            
+            # Check if processor is active
+            if _scoring_runner.current_processor:
+                processor = _scoring_runner.current_processor
+                stats["processor"]["has_active_processor"] = True
+                stats["processor"]["processed_count"] = getattr(processor, 'processed_count', 0)
+                stats["processor"]["total_count"] = getattr(processor, 'total_count', 0)
+                stats["processor"]["stop_requested"] = getattr(processor, 'stop_event', None) and processor.stop_event.is_set() if hasattr(processor, 'stop_event') else False
+            else:
+                stats["processor"]["has_active_processor"] = False
+        else:
+            stats["processor"]["note"] = "Scoring runner not available"
+        
+        # Get config-based queue sizes
+        try:
+            processing_config = config.get_config_section('processing')
+            stats["queues"] = {
+                "prep_queue_size": processing_config.get('prep_queue_size', 'not_set'),
+                "scoring_queue_size": processing_config.get('scoring_queue_size', 'not_set'),
+                "result_queue_size": processing_config.get('result_queue_size', 'not_set')
+            }
+        except:
+            stats["queues"]["note"] = "Could not read queue sizes from config"
+        
+    except Exception as e:
+        stats["error"] = str(e)
+    
+    return stats
+
+
 # --- MCP Server Setup ---
 
 def create_mcp_server() -> "Server":
@@ -645,6 +1182,82 @@ def create_mcp_server() -> "Server":
                     },
                     "required": []
                 }
+            ),
+            Tool(
+                name="get_failed_images",
+                description="Get images that failed processing or have missing scores",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "description": "Max number of results", "default": 50}
+                    },
+                    "required": []
+                }
+            ),
+            Tool(
+                name="get_error_summary",
+                description="Get summary of errors and issues in the database including failed jobs and missing scores",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            ),
+            Tool(
+                name="check_database_health",
+                description="Check database for inconsistencies, orphaned records, and data integrity issues",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            ),
+            Tool(
+                name="validate_file_paths",
+                description="Validate that file paths in database actually exist on the filesystem",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "description": "Max number of paths to check", "default": 100}
+                    },
+                    "required": []
+                }
+            ),
+            Tool(
+                name="get_performance_metrics",
+                description="Get performance metrics from recent jobs including processing speed and success rates",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            ),
+            Tool(
+                name="get_model_status",
+                description="Get status of loaded models, GPU availability, and CUDA/PyTorch/TensorFlow configuration",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            ),
+            Tool(
+                name="validate_config",
+                description="Validate configuration values and check for issues",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            ),
+            Tool(
+                name="get_pipeline_stats",
+                description="Get statistics about the processing pipeline including queue sizes and worker status",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
             )
         ]
     
@@ -686,6 +1299,22 @@ def create_mcp_server() -> "Server":
                 result = search_images_by_hash(arguments["image_hash"])
             elif name == "get_stacks_summary":
                 result = get_stacks_summary(arguments.get("folder_path"))
+            elif name == "get_failed_images":
+                result = get_failed_images(arguments.get("limit", 50))
+            elif name == "get_error_summary":
+                result = get_error_summary()
+            elif name == "check_database_health":
+                result = check_database_health()
+            elif name == "validate_file_paths":
+                result = validate_file_paths(arguments.get("limit", 100))
+            elif name == "get_performance_metrics":
+                result = get_performance_metrics()
+            elif name == "get_model_status":
+                result = get_model_status()
+            elif name == "validate_config":
+                result = validate_config()
+            elif name == "get_pipeline_stats":
+                result = get_pipeline_stats()
             else:
                 result = {"error": f"Unknown tool: {name}"}
             

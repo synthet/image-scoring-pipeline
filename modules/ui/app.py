@@ -195,7 +195,7 @@ def create_ui():
                 scoring_components['run_btn'], scoring_components['stop_btn'], scoring_components['fix_btn'],
                 tagging_components['log_output'], tagging_components['status_html'], 
                 tagging_components['run_btn'], tagging_components['stop_btn'],
-                stacks_components['run_btn'], stacks_components['refresh_btn']
+                stacks_components['status_html'], stacks_components['run_btn'], stacks_components['refresh_btn']
             ]
         )
 

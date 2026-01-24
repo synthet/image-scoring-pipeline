@@ -91,24 +91,36 @@ class CullingEngine:
         
         image_ids = [img['id'] for img in images]
         
-        # Run clustering to find similar groups
-        logger.info(f"Clustering {len(images)} images...")
+        # Check if stacks already exist for this folder
+        should_cluster = True
+        if not force_rescan:
+            try:
+                stack_count = db.get_stack_count_for_folder(folder_path)
+                if stack_count > 0:
+                    logger.info(f"Found {stack_count} existing stacks. Skipping re-clustering (use Rescan to force).")
+                    should_cluster = False
+            except Exception as e:
+                logger.warning(f"Error checking stacks: {e}. Proceeding with clustering.")
         
-        # Use the existing clustering engine
-        # This will create/update stack assignments in the DB
-        # cluster_images() is a generator - must consume it to execute
-        for progress_msg in self.cluster_engine.cluster_images(
-            distance_threshold=distance_threshold,
-            time_gap_seconds=time_gap_seconds,
-            force_rescan=force_rescan,
-            target_folder=folder_path
-        ):
-            # Log progress from the clustering generator
-            if isinstance(progress_msg, tuple):
-                msg, current, total = progress_msg
-                logger.info(f"Clustering: {msg}")
-            else:
-                logger.info(f"Clustering: {progress_msg}")
+        if should_cluster:
+            # Run clustering to find similar groups
+            logger.info(f"Clustering {len(images)} images...")
+            
+            # Use the existing clustering engine
+            # This will create/update stack assignments in the DB
+            # cluster_images() is a generator - must consume it to execute
+            for progress_msg in self.cluster_engine.cluster_images(
+                distance_threshold=distance_threshold,
+                time_gap_seconds=time_gap_seconds,
+                force_rescan=force_rescan,
+                target_folder=folder_path
+            ):
+                # Log progress from the clustering generator
+                if isinstance(progress_msg, tuple):
+                    msg, current, total = progress_msg
+                    logger.info(f"Clustering: {msg}")
+                else:
+                    logger.info(f"Clustering: {progress_msg}")
         
         # Now read the stack assignments back
         # Map image_id -> stack_id (group_id)

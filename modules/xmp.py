@@ -25,6 +25,7 @@ NAMESPACES = {
     'dc': 'http://purl.org/dc/elements/1.1/',
     'photoshop': 'http://ns.adobe.com/photoshop/1.0/',
     'xmpDM': 'http://ns.adobe.com/xmp/1.0/DynamicMedia/',
+    'MicrosoftPhoto': 'http://ns.microsoft.com/photo/1.0/',
 }
 
 # Register namespaces for clean XML output
@@ -49,6 +50,86 @@ def get_xmp_path(image_path: str) -> str:
 def xmp_exists(image_path: str) -> bool:
     """Check if XMP sidecar exists for the image."""
     return os.path.exists(get_xmp_path(image_path))
+
+
+def write_burst_uuid(image_path: str, burst_uuid: str) -> bool:
+    """
+    Write BurstUUID/StackId to XMP sidecar.
+    
+    Uses MicrosoftPhoto:StackId for compatibility with Windows Photos
+    and also writes a custom xmp:BurstUUID attribute.
+    
+    Args:
+        image_path: Path to the image file
+        burst_uuid: UUID string to identify the burst/stack
+        
+    Returns:
+        True if successful
+    """
+    if not burst_uuid:
+        logger.warning("Empty burst_uuid provided")
+        return False
+    
+    try:
+        root, xmp_path = _get_or_create_xmp(image_path)
+        desc = _get_description(root)
+        
+        # Write MicrosoftPhoto:StackId (Windows Photos compatible)
+        desc.set(f'{{{NAMESPACES["MicrosoftPhoto"]}}}StackId', burst_uuid)
+        
+        # Also write custom xmp:BurstUUID for our own use
+        desc.set(f'{{{NAMESPACES["xmp"]}}}BurstUUID', burst_uuid)
+        
+        # Add modification timestamp
+        desc.set(f'{{{NAMESPACES["xmp"]}}}ModifyDate', datetime.now().isoformat())
+        
+        # Write file
+        tree = ET.ElementTree(root)
+        tree.write(xmp_path, encoding='utf-8', xml_declaration=True)
+        
+        logger.debug(f"Wrote BurstUUID {burst_uuid} to {xmp_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to write BurstUUID to {image_path}: {e}")
+        return False
+
+
+def read_burst_uuid_from_xmp(image_path: str) -> str | None:
+    """
+    Read BurstUUID/StackId from XMP sidecar.
+    
+    Returns:
+        BurstUUID string if present, None otherwise
+    """
+    xmp_path = get_xmp_path(image_path)
+    
+    if not os.path.exists(xmp_path):
+        return None
+    
+    try:
+        tree = ET.parse(xmp_path)
+        root = tree.getroot()
+        
+        desc = root.find('.//rdf:Description', NAMESPACES)
+        if desc is None:
+            return None
+        
+        # Try xmp:BurstUUID first (our custom attribute)
+        burst_uuid = desc.get(f'{{{NAMESPACES["xmp"]}}}BurstUUID')
+        if burst_uuid:
+            return burst_uuid
+        
+        # Try MicrosoftPhoto:StackId
+        stack_id = desc.get(f'{{{NAMESPACES["MicrosoftPhoto"]}}}StackId')
+        if stack_id:
+            return stack_id
+        
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Failed to read BurstUUID from {xmp_path}: {e}")
+        return None
 
 
 def read_xmp(image_path: str) -> dict:

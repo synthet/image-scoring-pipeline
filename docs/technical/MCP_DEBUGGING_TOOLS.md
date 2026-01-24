@@ -4,11 +4,15 @@ This document describes the MCP (Model Context Protocol) server integration that
 
 ## Overview
 
-The MCP server exposes a set of tools that allow Cursor to interact with the Image Scoring application:
-- Query and analyze the SQLite database
-- Monitor scoring/tagging job progress
-- Read debug logs
-- Manage configuration
+The MCP server exposes a comprehensive set of debugging tools that allow Cursor IDE (and AI agents) to interact with the Image Scoring application:
+- **Database Operations**: Query and analyze the Firebird database, check data integrity
+- **Job Monitoring**: Monitor scoring/tagging job progress and history
+- **Error Diagnostics**: Identify failed images, error patterns, and system issues
+- **Performance Analysis**: Track processing metrics and throughput
+- **System Diagnostics**: Check GPU/model status, validate configuration
+- **File Validation**: Verify file paths and data consistency
+- **Log Access**: Read debug logs and investigate issues
+- **Configuration Management**: Read and update application settings
 
 ## Installation
 
@@ -175,6 +179,113 @@ Read recent entries from the debug log file.
 **Parameters:**
 - `lines` - Number of lines to read (default: 100)
 
+### Debugging & Diagnostics Tools
+
+#### `get_failed_images`
+Get images that failed processing or have missing scores. Identifies which specific scores are missing.
+
+**Parameters:**
+- `limit` - Max number of results (default: 50)
+
+**Returns:** List of images with missing scores, including which scores (general, technical, spaq, koniq) are missing.
+
+**Use Case:** Find problematic images that need reprocessing or identify patterns in failures.
+
+#### `get_error_summary`
+Get comprehensive summary of errors and issues in the database.
+
+**Returns:**
+- Failed jobs count
+- Images missing various scores (general, technical, spaq, koniq, ava, paq2piq, liqe)
+- Orphaned images (no folder)
+- Images with empty paths
+- Recent failed jobs with error messages
+
+**Use Case:** Quick health check to identify systemic issues or data quality problems.
+
+#### `check_database_health`
+Check database for inconsistencies, orphaned records, and data integrity issues.
+
+**Returns:**
+- Status: "healthy", "unhealthy", or "error"
+- List of issues (critical problems)
+- List of warnings (non-critical issues)
+- Summary counts
+
+**Checks:**
+- Orphaned images (invalid folder_id)
+- Orphaned stack references (invalid stack_id)
+- Duplicate file paths
+- Images with hash but no path
+- Empty folders/stacks
+
+**Use Case:** Validate data integrity before major operations or after migrations.
+
+#### `validate_file_paths`
+Validate that file paths in database actually exist on the filesystem.
+
+**Parameters:**
+- `limit` - Max number of paths to check (default: 100)
+
+**Returns:**
+- Number checked, exists, missing
+- List of missing files with IDs
+
+**Use Case:** Find images that were moved or deleted, identify broken references.
+
+#### `get_performance_metrics`
+Get performance metrics from recent jobs.
+
+**Returns:**
+- Average job duration (seconds)
+- Images processed per hour
+- Total images processed in last 7 days
+- Job success rate (%)
+- Job status breakdown
+
+**Use Case:** Monitor system performance, identify bottlenecks, track throughput over time.
+
+#### `get_model_status`
+Get status of loaded models, GPU availability, and system configuration.
+
+**Returns:**
+- Model loading status (SPAQ, AVA, KONIQ, PAQ2PIQ) - which are loaded
+- GPU availability:
+  - TensorFlow GPU support and device count
+  - PyTorch CUDA availability and device info
+  - NVIDIA driver status and GPU names/memory
+- Model version information
+- Scorer initialization status
+
+**Use Case:** Diagnose GPU/model loading issues, verify system configuration, check if models are ready for scoring.
+
+#### `validate_config`
+Validate configuration values and check for issues.
+
+**Returns:**
+- `valid` - Boolean indicating if config is valid
+- `issues` - List of critical problems
+- `warnings` - List of non-critical warnings
+- `config_keys` - List of available config sections
+
+**Checks:**
+- Image directories exist
+- Queue sizes are positive integers
+- Required config sections present
+
+**Use Case:** Verify configuration before starting jobs, catch misconfigurations early.
+
+#### `get_pipeline_stats`
+Get statistics about the processing pipeline and active jobs.
+
+**Returns:**
+- Runner status (scoring/tagging) with progress
+- Queue sizes from configuration
+- Processor state (running, progress, job type)
+- Active job information
+
+**Use Case:** Monitor active processing, check queue configuration, track job progress in real-time.
+
 ## Usage Examples
 
 ### From Cursor Chat
@@ -193,21 +304,35 @@ Once configured, you can ask Cursor to use these tools:
 
 ### Debugging Workflow
 
-1. **Check overall health:**
+1. **Initial Health Check:**
    - Use `get_database_stats` to see image distribution
-   - Use `get_incomplete_images` to find problematic records
+   - Use `check_database_health` to identify data integrity issues
+   - Use `get_error_summary` to see overall error patterns
 
-2. **Monitor running jobs:**
+2. **System Diagnostics:**
+   - Use `get_model_status` to verify GPU/models are loaded correctly
+   - Use `validate_config` to check configuration validity
+   - Use `get_pipeline_stats` to see current processing state
+
+3. **Find Problematic Images:**
+   - Use `get_failed_images` to find images with missing scores
+   - Use `get_incomplete_images` to find incomplete records
+   - Use `validate_file_paths` to find missing files
+
+4. **Monitor Running Jobs:**
    - Use `get_runner_status` to check progress
    - Use `get_recent_jobs` to see job history
+   - Use `get_performance_metrics` to track throughput
 
-3. **Investigate specific issues:**
+5. **Investigate Specific Issues:**
    - Use `read_debug_log` to see recent debug entries
    - Use `execute_sql` for custom queries
+   - Use `get_error_summary` to see error patterns
 
-4. **Analyze data:**
+6. **Analyze Data:**
    - Use `query_images` with filters to find patterns
    - Use `get_stacks_summary` to check clustering results
+   - Use `get_performance_metrics` to analyze processing speed
 
 ## Security Notes
 

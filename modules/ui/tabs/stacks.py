@@ -35,26 +35,70 @@ def run_clustering_wrapper(input_path, threshold, gap, force, progress=gr.Progre
     return "Done", gr.update(interactive=True)
 
 
-def refresh_stacks_wrapper(input_path, sort_by, sort_order):
-    target = input_path.strip() if input_path and input_path.strip() else None
-    rows = db.get_stacks_for_display(folder_path=target, sort_by=sort_by, order=sort_order)
+def run_clustering_and_refresh(input_path, threshold, gap, force, sort_by, sort_order, progress=gr.Progress()):
+    """Run clustering then refresh in one handler. Updates gallery directly (no .then()) to avoid loading spinner stuck."""
+    try:
+        log_msg, _ = run_clustering_wrapper(input_path, threshold, gap, force, progress)
+    except Exception as e:
+        return f"Error: {e}", gr.update(interactive=True), [], []
+    if log_msg.startswith("Error:"):
+        return log_msg, gr.update(interactive=True), [], []
+    results, stack_ids = refresh_stacks_wrapper(input_path, sort_by, sort_order)
+    return log_msg, gr.update(interactive=True), results, stack_ids
 
-    results = []
-    stack_ids = []
-    for row in rows:
-        s_id = row['id']
-        name = row['name']
-        count = row['image_count']
-        cover = row['cover_path']
-        label = f"{name} ({count} items)"
 
-        if cover:
-            image_id = row.get('best_image_id') if hasattr(row, 'get') else None
-            local_cover = utils.resolve_file_path(cover, image_id) or utils.convert_path_to_local(cover) or cover
-            if local_cover:
-                results.append((local_cover, label))
-                stack_ids.append(s_id)
-    return results, stack_ids
+def refresh_stacks_wrapper(input_path, sort_by, sort_order, progress=gr.Progress()):
+    try:
+        target = input_path.strip() if input_path and input_path.strip() else None
+        progress(0, desc="Loading stacks from database...")
+        
+        # Execute database query with error handling
+        try:
+            rows = db.get_stacks_for_display(folder_path=target, sort_by=sort_by, order=sort_order)
+        except Exception as db_error:
+            import traceback
+            error_msg = f"Database error: {str(db_error)}\n{traceback.format_exc()}"
+            print(f"Error loading stacks: {error_msg}")
+            progress(1.0, desc=f"Error: {str(db_error)}")
+            return [], []
+
+        results = []
+        stack_ids = []
+        total_rows = len(rows) if rows else 0
+        
+        if total_rows == 0:
+            progress(1.0, desc="No stacks found")
+            return [], []
+        
+        for i, row in enumerate(rows):
+            if total_rows > 0:
+                progress((i + 1) / total_rows, desc=f"Loading stacks... {i + 1}/{total_rows}")
+            
+            try:
+                s_id = row['id']
+                name = row['name']
+                count = row['image_count']
+                cover = row['cover_path']
+                label = f"{name} ({count} items)"
+
+                if cover:
+                    image_id = row.get('best_image_id') if hasattr(row, 'get') else None
+                    local_cover = utils.resolve_file_path(cover, image_id) or utils.convert_path_to_local(cover) or cover
+                    if local_cover and os.path.exists(local_cover):
+                        results.append((local_cover, label))
+                        stack_ids.append(s_id)
+            except Exception as row_error:
+                # Skip problematic rows but continue processing
+                print(f"Error processing stack row {i}: {str(row_error)}")
+                continue
+        
+        progress(1.0, desc=f"Loaded {len(results)} stacks")
+        return results, stack_ids
+    except Exception as e:
+        import traceback
+        error_msg = f"Unexpected error: {str(e)}\n{traceback.format_exc()}"
+        print(f"Error in refresh_stacks_wrapper: {error_msg}")
+        return [], []
 
 def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
     """Returns (gallery_images, content_paths, selected_stack_id)"""
@@ -252,6 +296,15 @@ def set_cover_image_handler(selected_indices, content_paths, current_stack_id, i
 
 
 def create_stacks_tab():
+    # #region agent log
+    import json
+    try:
+        log_path = utils.get_debug_log_path()
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"stacks.py:298","message":"create_stacks_tab CALLED","data":{},"timestamp":int(__import__('time').time()*1000)})+'\n')
+    except Exception as e:
+        print(f"DEBUG LOG ERROR in create_stacks_tab: {str(e)}")
+    # #endregion
     app_config = config.load_config()
     
     with gr.TabItem("Stacks", id="stacks") as tab_item:
@@ -260,7 +313,7 @@ def create_stacks_tab():
             # Left column: Input controls
             with gr.Column(scale=1, min_width=300):
                 c_input_dir = gr.Textbox(
-                    label="Input Folder Path", 
+                    label="Folder", 
                     placeholder="D:\\Photos\\... (Leave empty for all)",
                     value=app_config.get('stacks_input_path', '')
                 )
@@ -275,9 +328,7 @@ def create_stacks_tab():
                     )
                     c_run_btn = gr.Button("▶ Group", variant="primary", scale=1)
                     c_refresh_btn = gr.Button("🔄", variant="secondary", scale=0, min_width=50)
-            
-            # Right column: Sort controls + Console output
-            with gr.Column(scale=1, min_width=300):
+                # Sort controls - moved below action buttons
                 with gr.Row():
                     c_sort = gr.Dropdown(
                         choices=["created_at", "score_general", "score_technical", "score_aesthetic"], 
@@ -286,7 +337,12 @@ def create_stacks_tab():
                         scale=2
                     )
                     c_order = gr.Dropdown(choices=["desc", "asc"], value="desc", label="Order", scale=1)
-                with gr.Accordion("📋 Console Output", open=False):
+            
+            # Right column: Status display
+            with gr.Column(scale=1, min_width=300):
+                # Status Card
+                c_status_html = gr.HTML(label="Status")
+                with gr.Accordion("📋 Console Output", open=False, visible=False):
                     c_log = gr.Textbox(label="", lines=6, interactive=False, show_copy_button=True)
         
         # Divider
@@ -329,15 +385,11 @@ def create_stacks_tab():
         
         c_stack_status = gr.Textbox(label="Status", interactive=False, visible=True, lines=1)
         
-        # Events: clustering (regular fn) then .then(refresh) — .then() often skips after generators
+        # Events: single handler (clustering + refresh) — no .then() to avoid gallery loading spinner stuck
         c_run_btn.click(
-            fn=run_clustering_wrapper,
-            inputs=[c_input_dir, c_threshold, c_gap, c_force_rescan],
-            outputs=[c_log]
-        ).then(
-            fn=refresh_stacks_wrapper,
-            inputs=[c_input_dir, c_sort, c_order],
-            outputs=[stack_gallery, stack_ids_state]
+            fn=run_clustering_and_refresh,
+            inputs=[c_input_dir, c_threshold, c_gap, c_force_rescan, c_sort, c_order],
+            outputs=[c_log, c_run_btn, stack_gallery, stack_ids_state]
         )
         
         c_refresh_btn.click(
@@ -346,16 +398,51 @@ def create_stacks_tab():
             outputs=[stack_gallery, stack_ids_state]
         )
         
-        # Auto-refresh on sort change
+        # State to track if stacks have been loaded initially
+        stacks_loaded_state = gr.State(value=False)
+
+        # Auto-refresh on sort change, and trigger initial load
+        def refresh_stacks_with_initial_check(input_path, sort_by, sort_order, loaded_state):
+            """Refresh stacks, and load initially if not yet loaded."""
+            # #region agent log
+            import json
+            try:
+                log_path = utils.get_debug_log_path()
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"stacks.py:393","message":"refresh_stacks_with_initial_check CALLED","data":{"input_path":str(input_path),"sort_by":str(sort_by),"sort_order":str(sort_order),"loaded_state":bool(loaded_state)},"timestamp":int(__import__('time').time()*1000)})+'\n')
+            except: pass
+            # #endregion
+            result = refresh_stacks_wrapper(input_path, sort_by, sort_order)
+            return result[0], result[1], True  # Mark as loaded
+        
         c_sort.change(
-            fn=refresh_stacks_wrapper,
-            inputs=[c_input_dir, c_sort, c_order],
-            outputs=[stack_gallery, stack_ids_state]
+            fn=refresh_stacks_with_initial_check,
+            inputs=[c_input_dir, c_sort, c_order, stacks_loaded_state],
+            outputs=[stack_gallery, stack_ids_state, stacks_loaded_state]
         )
         c_order.change(
-            fn=refresh_stacks_wrapper,
+            fn=refresh_stacks_with_initial_check,
+            inputs=[c_input_dir, c_sort, c_order, stacks_loaded_state],
+            outputs=[stack_gallery, stack_ids_state, stacks_loaded_state]
+        )
+        
+        # Auto-refresh on sort change, and trigger initial load
+        def refresh_stacks_with_initial_check(input_path, sort_by, sort_order, loaded_state):
+            """Refresh stacks, and load initially if not yet loaded."""
+            result = refresh_stacks_wrapper(input_path, sort_by, sort_order)
+            return result[0], result[1], True  # Mark as loaded
+        
+        # Initial load when tab is first accessed - trigger via input_dir focus
+        def load_stacks_on_tab_open(input_path, sort_by, sort_order):
+            """Load stacks when tab is first opened."""
+            return refresh_stacks_wrapper(input_path, sort_by, sort_order)
+        
+        # Trigger initial load when input_dir gets focus (happens when tab is accessed)
+        c_input_dir.focus(
+            fn=load_stacks_on_tab_open,
             inputs=[c_input_dir, c_sort, c_order],
-            outputs=[stack_gallery, stack_ids_state]
+            outputs=[stack_gallery, stack_ids_state],
+            show_progress=True
         )
         
         # State for tracking selected indices in content gallery (must be defined before event wiring)
@@ -427,19 +514,74 @@ def create_stacks_tab():
             'order': c_order,
             'run_btn': c_run_btn,
             'refresh_btn': c_refresh_btn,
-            'log_output': c_log
+            'log_output': c_log,
+            'status_html': c_status_html,
+            'stack_gallery': stack_gallery,
+            'stack_ids_state': stack_ids_state
         }
 
 
 def get_status_update():
     """
     Called by the main timer loop to get status updates for the Stacks tab.
-    Returns: [run_btn_update, refresh_btn_update]
+    Returns: [status_html, run_btn_update, refresh_btn_update]
     """
     is_running, status_msg, cur, tot = cluster_engine.get_status()
+    
+    # Determine status icon and color
+    if is_running:
+        status_icon = "⚡"
+        status_color = "#58a6ff"
+        badge_bg = "rgba(88, 166, 255, 0.15)"
+    elif "Error" in status_msg or "Failed" in status_msg:
+        status_icon = "❌"
+        status_color = "#f85149"
+        badge_bg = "rgba(248, 81, 73, 0.15)"
+    elif "Done" in status_msg or "Complete" in status_msg:
+        status_icon = "✅"
+        status_color = "#3fb950"
+        badge_bg = "rgba(63, 185, 80, 0.15)"
+    else:
+        status_icon = "⏸️"
+        status_color = "#8b949e"
+        badge_bg = "rgba(139, 148, 158, 0.15)"
+    
+    # Build modern status HTML
+    status_html = f"""
+    <div style="padding: 16px; background: linear-gradient(135deg, #161b22 0%, #0d1117 100%); border-radius: 10px; border: 1px solid #30363d;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+            <span style="font-size: 1.3rem;">{status_icon}</span>
+            <div>
+                <div style="font-size: 1rem; font-weight: 600; color: #e6edf3;">{status_msg}</div>
+                <div style="font-size: 0.75rem; color: #8b949e;">Image Clustering Engine</div>
+            </div>
+        </div>
+    """
+    
+    if tot > 0 and is_running:
+        pct = (cur / tot) * 100
+        status_html += f"""
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: #8b949e; font-size: 0.85rem;">
+            <span>Progress: {int(cur)} / {tot} images</span>
+            <span style="color: {status_color}; font-weight: 600;">{pct:.1f}%</span>
+        </div>
+        <div style="width: 100%; background-color: #21262d; border-radius: 6px; height: 8px; overflow: hidden;">
+            <div style="width: {pct}%; background: linear-gradient(90deg, #58a6ff 0%, #a371f7 100%); height: 8px; border-radius: 6px; transition: width 0.3s ease;"></div>
+        </div>
+        """
+    elif is_running:
+        status_html += f"""
+        <div style="display: flex; align-items: center; gap: 8px; color: #8b949e;">
+            <div style="width: 8px; height: 8px; background: {status_color}; border-radius: 50%; animation: pulse 1.5s infinite;"></div>
+            <span>Processing...</span>
+        </div>
+        <style>@keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.4; }} }}</style>
+        """
+    
+    status_html += "</div>"
     
     # Disable buttons while running
     run_btn_update = gr.update(interactive=not is_running)
     refresh_btn_update = gr.update(interactive=not is_running)
     
-    return run_btn_update, refresh_btn_update
+    return status_html, run_btn_update, refresh_btn_update

@@ -5,6 +5,31 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0] - 2026-01-23
+
+### Added
+- **BurstUUID Stacking Support**: Integrated Apple-style BurstUUID for smarter image grouping.
+  - Added `burst_uuid` column to `images` table in Firebird database.
+  - Updated `modules/clustering.py` to prioritize `BurstUUID` for stack creation.
+  - Enhanced `modules/xmp.py` and `modules/utils.py` to read/write `BurstUUID` from/to XMP sidecars.
+- **Stacks & Culling Workflow Integration**: 
+  - Culling workflow now automatically detects and utilizes existing stacks.
+  - Added "Apply Stacks" logic to culling preparation.
+- **Enhanced MCP Server Tools**: Expanded diagnostic and monitoring capabilities for Cursor IDE.
+  - Added `get_failed_images`, `get_error_summary`, `check_database_health`, `validate_file_paths`.
+  - Added `get_performance_metrics`, `get_model_status`, `validate_config`, `get_pipeline_stats`.
+- **UI/UX Harmonization**:
+  - Standardized layout, control naming, and styling between Stacks and Culling tabs.
+  - New high-quality application favicon.
+- **Documentation**: New MCP tools reference guide at `.agent/mcp_tools_reference.md`.
+
+### Changed
+- **Database Optimization**: Removed debug logging and optimized `get_or_create_folder` in `modules/db.py`.
+- **UI Improvements**: Enhanced status reporting with animated pulse indicators and refined CSS in `modules/ui/tabs/stacks.py`.
+
+### Fixed
+- **Firebird Compatibility**: Fixed `INSERT OR IGNORE` syntax issues in culling session operations for Firebird SQL dialect.
+
 ## [3.9.0] - 2026-01-23
 
 ### Added

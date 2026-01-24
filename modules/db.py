@@ -643,18 +643,18 @@ def _init_db_impl():
     columns = [row[0].strip().lower() for row in c.fetchall()]
     
     if "file_type" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN file_type TEXT")
+        c.execute("ALTER TABLE images ADD file_type TEXT")
     
     if "thumbnail_path" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN thumbnail_path TEXT")
+        c.execute("ALTER TABLE images ADD thumbnail_path TEXT")
         
     if "scores_json" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN scores_json TEXT")
+        c.execute("ALTER TABLE images ADD scores_json TEXT")
 
 
     # Migration for Stacks
     if "stack_id" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN stack_id INTEGER")
+        c.execute("ALTER TABLE images ADD stack_id INTEGER")
         if not _index_exists(c, 'IDX_STACK_ID'):
             c.execute("CREATE INDEX idx_stack_id ON images(stack_id)")
     
@@ -664,7 +664,7 @@ def _init_db_impl():
 
     # Migration for Folders
     if "folder_id" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN folder_id INTEGER")
+        c.execute("ALTER TABLE images ADD folder_id INTEGER")
         if not _index_exists(c, 'IDX_FOLDER_ID'):
             c.execute("CREATE INDEX idx_folder_id ON images(folder_id)")
 
@@ -694,11 +694,11 @@ def _init_db_impl():
     folder_cols = [row[0].strip().lower() for row in c.fetchall()]
 
     if "is_fully_scored" not in folder_cols:
-         try: c.execute("ALTER TABLE folders ADD COLUMN is_fully_scored INTEGER DEFAULT 0")
+         try: c.execute("ALTER TABLE folders ADD is_fully_scored INTEGER DEFAULT 0")
          except: pass
 
     if "is_keywords_processed" not in folder_cols:
-         try: c.execute("ALTER TABLE folders ADD COLUMN is_keywords_processed INTEGER DEFAULT 0")
+         try: c.execute("ALTER TABLE folders ADD is_keywords_processed INTEGER DEFAULT 0")
          except: pass
 
     if not _table_exists(c, 'CLUSTER_PROGRESS'):
@@ -747,37 +747,43 @@ def _init_db_impl():
 
     # Migration for individual scores
     if "score_spaq" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN score_spaq REAL")
+        c.execute("ALTER TABLE images ADD score_spaq REAL")
     if "score_ava" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN score_ava REAL")
+        c.execute("ALTER TABLE images ADD score_ava REAL")
     if "score_koniq" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN score_koniq REAL")
+        c.execute("ALTER TABLE images ADD score_koniq REAL")
     if "score_paq2piq" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN score_paq2piq REAL")
+        c.execute("ALTER TABLE images ADD score_paq2piq REAL")
     if "score_liqe" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN score_liqe REAL")
+        c.execute("ALTER TABLE images ADD score_liqe REAL")
 
     # Migration for Weighted Scores and Version
     if "model_version" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN model_version TEXT")
+        c.execute("ALTER TABLE images ADD model_version TEXT")
     if "score_technical" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN score_technical REAL")
+        c.execute("ALTER TABLE images ADD score_technical REAL")
     if "score_aesthetic" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN score_aesthetic REAL")
+        c.execute("ALTER TABLE images ADD score_aesthetic REAL")
     if "score_general" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN score_general REAL")
+        c.execute("ALTER TABLE images ADD score_general REAL")
 
     # Migration for Filtering
     if "rating" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN rating INTEGER")
+        c.execute("ALTER TABLE images ADD rating INTEGER")
     if "label" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN label TEXT")
+        c.execute("ALTER TABLE images ADD label TEXT")
 
     # Migration for Deduplication
     if "image_hash" not in columns:
-        c.execute("ALTER TABLE images ADD COLUMN image_hash TEXT")
+        c.execute("ALTER TABLE images ADD image_hash TEXT")
         if not _index_exists(c, 'IDX_IMAGE_HASH'):
             c.execute("CREATE INDEX idx_image_hash ON images(image_hash)")
+
+    # Migration for BurstUUID (Apple burst photos grouping)
+    if "burst_uuid" not in columns:
+        c.execute("ALTER TABLE images ADD burst_uuid VARCHAR(64)")
+        if not _index_exists(c, 'IDX_BURST_UUID'):
+            c.execute("CREATE INDEX idx_burst_uuid ON images(burst_uuid)")
 
     # Migration for Multi-Path (File Paths Table)
     if not _table_exists(c, 'FILE_PATHS'):
@@ -812,17 +818,17 @@ def _init_db_impl():
     c = conn.cursor()
     
     try:
-        c.execute("ALTER TABLE images ADD COLUMN title TEXT")
+        c.execute("ALTER TABLE images ADD title TEXT")
     except Exception:
         pass
 
     try:
-        c.execute("ALTER TABLE images ADD COLUMN description TEXT")
+        c.execute("ALTER TABLE images ADD description TEXT")
     except Exception:
         pass
 
     try:
-        c.execute("ALTER TABLE folders ADD COLUMN is_fully_scored INTEGER DEFAULT 0")
+        c.execute("ALTER TABLE folders ADD is_fully_scored INTEGER DEFAULT 0")
     except Exception:
         pass
 
@@ -846,6 +852,43 @@ def get_image_by_hash(image_hash):
         data['file_paths'] = get_all_paths(data['id'])
         return data
     return None
+
+
+def update_image_field(image_id: int, field_name: str, value) -> bool:
+    """
+    Update a single field for an image by ID.
+    
+    Args:
+        image_id: ID of the image to update
+        field_name: Name of the column to update (must be a valid column)
+        value: New value for the field
+        
+    Returns:
+        True if successful
+    """
+    # Whitelist valid field names to prevent SQL injection
+    valid_fields = {
+        'burst_uuid', 'rating', 'label', 'score_general', 'score_aesthetic',
+        'score_technical', 'keywords', 'title', 'description', 'stack_id',
+        'thumbnail_path', 'metadata', 'image_hash'
+    }
+    
+    if field_name not in valid_fields:
+        logging.warning(f"Invalid field name for update: {field_name}")
+        return False
+    
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        # Safe because field_name is validated against whitelist
+        c.execute(f"UPDATE images SET {field_name} = ? WHERE id = ?", (value, image_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logging.error(f"Failed to update {field_name} for image {image_id}: {e}")
+        return False
+
 
 def update_image_path(image_hash, new_path):
     conn = get_db()
@@ -947,7 +990,7 @@ def get_all_paths(image_id):
 # --- Resolved Paths (Windows Native Viewer Support) ---
 
 def _convert_to_windows_path(path):
-    """
+    r"""
     Convert any path format to Windows format.
     Handles WSL paths (/mnt/d/...) -> (D:\...).
     """
@@ -1102,7 +1145,7 @@ def get_folder_by_id(folder_id):
     return row[0] if row else None
 
 
-def get_or_create_folder(folder_path):
+def get_or_create_folder(folder_path, _depth=0):
     """
     Gets folder ID from cache/DB, creating it if it doesn't exist.
     Recursively creates parent folders to establish hierarchy.
@@ -1137,7 +1180,7 @@ def get_or_create_folder(folder_path):
     else:
         # Recursive call to get/create parent first
         # We assume this won't be too deep (max 10-20 levels typically)
-        parent_id = get_or_create_folder(parent_path)
+        parent_id = get_or_create_folder(parent_path, _depth=_depth+1)
 
     conn = get_db()
     c = conn.cursor()
@@ -2291,30 +2334,30 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
     
     where_clause = ""
     params = []
+    cte_where = ""
     if folder_id:
         where_clause = "WHERE i.folder_id = ?"
-        params.append(folder_id)
+        cte_where = "AND i2.folder_id = ?"
+        # Need 2 params: one for main WHERE clause, one for subquery
+        params.append(folder_id)  # For main SELECT WHERE clause
+        params.append(folder_id)  # For subquery WHERE clause
         
+    # Simplified query without window function - use subquery for cover image
+    # Firebird uses FIRST instead of LIMIT
     query = f'''
-        WITH ranked_covers AS (
-            SELECT 
-                stack_id,
-                COALESCE(NULLIF(thumbnail_path, ''), file_path) as cover_path,
-                ROW_NUMBER() OVER (PARTITION BY stack_id ORDER BY {sort_by} {order_dir}) as rn
-            FROM images
-            WHERE stack_id IS NOT NULL
-        )
         SELECT 
             s.id, 
             s.name, 
             COUNT(i.id) as image_count,
             {agg_func}(i.{sort_by}) as sort_val,
-            rc.cover_path
+            (SELECT FIRST 1 COALESCE(NULLIF(i2.thumbnail_path, ''), i2.file_path)
+             FROM images i2
+             WHERE i2.stack_id = s.id {cte_where}
+             ORDER BY i2.{sort_by} {order_dir}) as cover_path
         FROM stacks s
         JOIN images i ON s.id = i.stack_id
-        LEFT JOIN ranked_covers rc ON s.id = rc.stack_id AND rc.rn = 1
         {where_clause}
-        GROUP BY s.id, s.name, rc.cover_path
+        GROUP BY s.id, s.name
         ORDER BY sort_val {order_dir}
     '''
     
@@ -2354,6 +2397,15 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
             pass
 
     conn.close()
+    # #region agent log
+    try:
+        import json
+        from modules import utils
+        log_path = utils.get_debug_log_path()
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"db.py:2399","message":"get_stacks_for_display EXIT","data":{"row_count":len(rows) if rows else 0},"timestamp":int(__import__('time').time()*1000)})+'\n')
+    except: pass
+    # #endregion
     return rows
 
 def get_images_in_stack(stack_id):
@@ -3194,6 +3246,39 @@ def check_and_update_folder_keywords_status(folder_path):
     except Exception as e:
         logging.error(f"Error updating folder keyword status: {e}")
         return False
+    finally:
+        conn.close()
+
+def get_stack_count_for_folder(folder_path):
+    """
+    Returns the number of stacks associated with images in a specific folder.
+    Used to check if we can reuse existing stacks for culling.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Normalize path
+        norm_path = os.path.normpath(folder_path)
+        
+        # Get folder_id
+        c.execute("SELECT id FROM folders WHERE path = ?", (norm_path,))
+        row = c.fetchone()
+        if not row:
+            return 0
+        folder_id = row[0]
+        
+        # Count stacks for images in this folder
+        query = """
+            SELECT COUNT(DISTINCT stack_id) 
+            FROM images 
+            WHERE folder_id = ? AND stack_id IS NOT NULL
+        """
+        c.execute(query, (folder_id,))
+        row = c.fetchone()
+        return row[0] if row else 0
+    except Exception as e:
+        print(f"Error counting stacks for folder: {e}")
+        return 0
     finally:
         conn.close()
 
