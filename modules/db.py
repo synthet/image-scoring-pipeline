@@ -2397,15 +2397,6 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
             pass
 
     conn.close()
-    # #region agent log
-    try:
-        import json
-        from modules import utils
-        log_path = utils.get_debug_log_path()
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"db.py:2399","message":"get_stacks_for_display EXIT","data":{"row_count":len(rows) if rows else 0},"timestamp":int(__import__('time').time()*1000)})+'\n')
-    except: pass
-    # #endregion
     return rows
 
 def get_images_in_stack(stack_id):

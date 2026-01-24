@@ -296,15 +296,6 @@ def set_cover_image_handler(selected_indices, content_paths, current_stack_id, i
 
 
 def create_stacks_tab():
-    # #region agent log
-    import json
-    try:
-        log_path = utils.get_debug_log_path()
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"stacks.py:298","message":"create_stacks_tab CALLED","data":{},"timestamp":int(__import__('time').time()*1000)})+'\n')
-    except Exception as e:
-        print(f"DEBUG LOG ERROR in create_stacks_tab: {str(e)}")
-    # #endregion
     app_config = config.load_config()
     
     with gr.TabItem("Stacks", id="stacks") as tab_item:
@@ -404,14 +395,6 @@ def create_stacks_tab():
         # Auto-refresh on sort change, and trigger initial load
         def refresh_stacks_with_initial_check(input_path, sort_by, sort_order, loaded_state):
             """Refresh stacks, and load initially if not yet loaded."""
-            # #region agent log
-            import json
-            try:
-                log_path = utils.get_debug_log_path()
-                with open(log_path, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"stacks.py:393","message":"refresh_stacks_with_initial_check CALLED","data":{"input_path":str(input_path),"sort_by":str(sort_by),"sort_order":str(sort_order),"loaded_state":bool(loaded_state)},"timestamp":int(__import__('time').time()*1000)})+'\n')
-            except: pass
-            # #endregion
             result = refresh_stacks_wrapper(input_path, sort_by, sort_order)
             return result[0], result[1], True  # Mark as loaded
         
@@ -425,12 +408,6 @@ def create_stacks_tab():
             inputs=[c_input_dir, c_sort, c_order, stacks_loaded_state],
             outputs=[stack_gallery, stack_ids_state, stacks_loaded_state]
         )
-        
-        # Auto-refresh on sort change, and trigger initial load
-        def refresh_stacks_with_initial_check(input_path, sort_by, sort_order, loaded_state):
-            """Refresh stacks, and load initially if not yet loaded."""
-            result = refresh_stacks_wrapper(input_path, sort_by, sort_order)
-            return result[0], result[1], True  # Mark as loaded
         
         # Initial load when tab is first accessed - trigger via input_dir focus
         def load_stacks_on_tab_open(input_path, sort_by, sort_order):
