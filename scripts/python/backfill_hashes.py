@@ -1,7 +1,6 @@
 
 import sys
 import os
-import sqlite3
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -56,7 +55,8 @@ def backfill_hashes(force=False):
                 # We can't call db.register_image_path here because we have an open cursor/transaction
                 # So we execute direct SQL or commit and call it.
                 # Since we are inside a loop with a transaction, let's just insert here.
-                c.execute("INSERT OR REPLACE INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?)", 
+                # Firebird: Use UPDATE OR INSERT MATCHING instead of SQLite's INSERT OR REPLACE
+                c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?) MATCHING (image_id, path)", 
                           (img_id, file_path, datetime.now()))
                 
                 updated_count += 1

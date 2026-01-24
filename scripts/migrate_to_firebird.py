@@ -146,6 +146,11 @@ def migrate_schema(sqlite_conn, fb_conn):
             is_verified INTEGER DEFAULT 0,
             verification_date TIMESTAMP,
             last_checked TIMESTAMP
+        )""",
+
+        """CREATE TABLE cluster_progress (
+            folder_path VARCHAR(4000) NOT NULL PRIMARY KEY,
+            last_run TIMESTAMP
         )"""
     ]
     

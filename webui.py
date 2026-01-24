@@ -63,7 +63,7 @@ def main():
     # Mount Gradio App onto FastAPI
     # This creates a completely new routing structure where Gradio sits at /
     # and our custom endpoints sit at /source-image etc.
-    app = gr.mount_gradio_app(app, demo, path="/", allowed_paths=allowed_paths)
+    app = gr.mount_gradio_app(app, demo, path="/", allowed_paths=allowed_paths, favicon_path="static/favicon.ico")
     
     # Apply logging filter to suppress repetitive Gradio queue polling messages
     logging.getLogger("uvicorn.access").addFilter(SuppressGradioQueueFilter())

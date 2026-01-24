@@ -45,7 +45,6 @@
                               Width="160" Margin="0,0,8,0"/>
                     
                     <ToggleButton IsChecked="{Binding SortDescending}" 
-                                  Content="{Binding SortDescending, Converter={x:Null}}"
                                   Width="40">
                         <ToggleButton.Style>
                             <Style TargetType="ToggleButton">

@@ -161,3 +161,7 @@ test_log.txt
 # Model Checkpoints
 models/checkpoints/*.npz
 models/checkpoints/vila-tensorflow2-image-v1/
+
+# Visual Studio & Test Results
+.vs/
+TestResults/

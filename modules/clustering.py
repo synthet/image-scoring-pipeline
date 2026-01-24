@@ -22,8 +22,17 @@ class ClusteringEngine:
         self.model = None
         self.feature_cache = {}  # In-memory cache (hash -> feature vector)
         self.cache_dir = cache_dir or DEFAULT_CACHE_DIR
+        # Status tracking for UI button state management
+        self.is_running = False
+        self.status_message = "Idle"
+        self.current = 0
+        self.total = 0
         self._ensure_cache_dir()
         self._load_cache()
+
+    def get_status(self):
+        """Returns current status tuple: (is_running, status_message, current, total)"""
+        return self.is_running, self.status_message, self.current, self.total
 
     def _ensure_cache_dir(self):
         """Create cache directory if it doesn't exist."""
@@ -69,7 +78,7 @@ class ClusteringEngine:
     def load_model(self):
         if self.model is None:
             # Load MobileNetV2, exclude top layer, use global average pooling
-            self.model = MobileNetV2(weights='imagenet', include_top=False, pooling='avg')
+            self.model = MobileNetV2(weights='imagenet', include_top=False, pooling='avg', input_shape=(224, 224, 3))
             logging.info("Clustering Model (MobileNetV2) loaded.")
 
     def extract_features(self, image_paths):
@@ -210,6 +219,33 @@ class ClusteringEngine:
         import json
         from itertools import groupby
         from modules import config
+        
+        # Mark as running at start
+        self.is_running = True
+        self.status_message = "Starting..."
+        self.current = 0
+        self.total = 0
+        
+        try:
+            yield from self._cluster_images_impl(distance_threshold, time_gap_seconds, force_rescan, target_folder)
+        finally:
+            # Always mark as not running when done
+            self.is_running = False
+            self.status_message = "Idle"
+            
+    def _cluster_images_impl(self, distance_threshold, time_gap_seconds, force_rescan, target_folder):
+        """Internal implementation of cluster_images."""
+        import datetime
+        import json
+        from itertools import groupby
+        from modules import config
+        
+        def update_status(msg, cur, tot):
+            """Helper to update status and yield progress."""
+            self.status_message = msg
+            self.current = cur
+            self.total = tot
+            return msg, cur, tot
         
         # Load defaults from config if not provided
         if distance_threshold is None:

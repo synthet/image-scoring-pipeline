@@ -42,6 +42,15 @@ logger = logging.getLogger(__name__)
 _scoring_runner = None
 _tagging_runner = None
 
+# Set False if db.init_db() fails (e.g. Firebird not migrated); DB-using tools then return a clear error
+_db_available = True
+
+DB_TOOLS = frozenset({
+    "get_database_stats", "query_images", "get_image_details", "execute_sql",
+    "get_recent_jobs", "get_folder_tree", "get_incomplete_images",
+    "search_images_by_hash", "get_stacks_summary",
+})
+
 def set_runners(scoring_runner, tagging_runner):
     """Set references to the runner instances from webui."""
     global _scoring_runner, _tagging_runner
@@ -643,6 +652,11 @@ def create_mcp_server() -> "Server":
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         """Handle tool calls."""
         try:
+            if name in DB_TOOLS and not _db_available:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({"error": "Database not available. Run migrate_to_firebird.py first."}, indent=2)
+                )]
             if name == "get_database_stats":
                 result = get_database_stats()
             elif name == "query_images":
@@ -690,13 +704,17 @@ def create_mcp_server() -> "Server":
 
 async def run_server():
     """Run the MCP server using stdio transport."""
+    global _db_available
     if not MCP_AVAILABLE:
         print("Error: MCP SDK not installed. Run: pip install mcp")
         return
-    
-    # Initialize database
-    db.init_db()
-    
+
+    try:
+        db.init_db()
+    except Exception as e:
+        logger.warning("DB init failed (%s). DB tools will return 'Database not available'.", e)
+        _db_available = False
+
     server = create_mcp_server()
     
     async with stdio_server() as (read_stream, write_stream):

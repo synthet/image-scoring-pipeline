@@ -11,7 +11,6 @@ Test cases:
 
 import os
 import sys
-import sqlite3
 import tempfile
 import shutil
 import logging
@@ -81,9 +80,11 @@ class TestStackOperations:
         """Helper to get test image IDs."""
         conn = db.get_db()
         c = conn.cursor()
-        query = "SELECT id FROM images ORDER BY id"
         if count:
-            query += f" LIMIT {count}"
+            # Firebird: Use FETCH FIRST instead of LIMIT
+            query = f"SELECT id FROM images ORDER BY id FETCH FIRST {count} ROWS ONLY"
+        else:
+            query = "SELECT id FROM images ORDER BY id"
         c.execute(query)
         ids = [row[0] for row in c.fetchall()]
         conn.close()
@@ -147,11 +148,12 @@ def test_create_stack_sets_best_image():
         best_image_id = row[0]
         
         # Get the image with highest score
+        # Firebird: Use FETCH FIRST instead of LIMIT
         c.execute("""
             SELECT id FROM images 
             WHERE id IN (?, ?, ?)
             ORDER BY score_general DESC 
-            LIMIT 1
+            FETCH FIRST 1 ROWS ONLY
         """, tuple(ids[:3]))
         expected_best = c.fetchone()[0]
         conn.close()
@@ -259,7 +261,8 @@ def test_path_lookup_fallback():
         # Test with a path that won't match exactly but basename should
         conn = db.get_db()
         c = conn.cursor()
-        c.execute("SELECT file_path, file_name FROM images LIMIT 1")
+        # Firebird: Use FETCH FIRST instead of LIMIT
+        c.execute("SELECT file_path, file_name FROM images FETCH FIRST 1 ROWS ONLY")
         row = c.fetchone()
         actual_path = row[0]
         basename = row[1]

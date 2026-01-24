@@ -15,7 +15,7 @@ public interface IQueryExecutor : IDisposable
 
 public class FirebirdQueryExecutor : IQueryExecutor
 {
-    private readonly string _connectionString;
+    private string _connectionString = string.Empty;
     private FbConnection? _connection;
 
     public bool IsConnected => _connection?.State == ConnectionState.Open;
@@ -28,10 +28,8 @@ public class FirebirdQueryExecutor : IQueryExecutor
             Database = databasePath,
             UserID = "sysdba",
             Password = "masterkey",
-            ServerType = FbServerType.Default, // Use Client/Server to connect to the running firebird.exe
-            DataSource = "localhost",
-            Port = 3050,
-            ClientLibrary = "fbclient.dll", // Must be in PATH or local
+            ServerType = FbServerType.Embedded,
+            ClientLibrary = "fbclient.dll", 
             Charset = "UTF8",
             Pooling = true
         };
@@ -69,14 +67,126 @@ public class FirebirdQueryExecutor : IQueryExecutor
 
     private void InitializeConnection()
     {
+        // Strategy:
+        // 1. Try TCP Connection (Client/Server) - Allows concurrency.
+        // 2. If fails, try to Launch Firebird Server (-a application mode) and retry TCP.
+        // 3. If everything fails, Fallback to Embedded (Exclusive Lock).
+
+        if (TryTcpConnection()) 
+            return;
+
+        // TCP Failed. Try to launch server.
+        System.Diagnostics.Debug.WriteLine("[DB] TCP Connection failed. Attempting to launch Firebird Server...");
+        LaunchFirebirdServer();
+
+        // Retry TCP
+        if (TryTcpConnection())
+            return;
+
+        // Fallback to Embedded
+        System.Diagnostics.Debug.WriteLine("[DB] TCP failed after server launch. Falling back to Embedded mode.");
+        InitializeEmbeddedConnection();
+    }
+
+    private bool TryTcpConnection()
+    {
         try
         {
-            _connection = new FbConnection(_connectionString);
-            _connection.Open();
+            // Update connection string to Server Mode
+            var builder = new FbConnectionStringBuilder(_connectionString)
+            {
+                ServerType = FbServerType.Default,
+                DataSource = "localhost",
+                Pooling = true
+            };
+            
+            var serverConnString = builder.ToString();
+            var conn = new FbConnection(serverConnString);
+            conn.Open();
+
+            // Success! Replace our state
+            if (_connection != null) _connection.Dispose();
+            _connection = conn;
+            _connectionString = serverConnString; // Store success
+            
+            System.Diagnostics.Debug.WriteLine("[DB] Connected via TCP (Client/Server).");
+            return true;
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to connect to Firebird: {ex.Message}", "Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Diagnostics.Debug.WriteLine($"[DB] TCP Attempt failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void InitializeEmbeddedConnection()
+    {
+        try
+        {
+            if (_connection != null) _connection.Dispose();
+            
+            // Ensure connection string is set to Embedded
+            var builder = new FbConnectionStringBuilder(_connectionString)
+            {
+                ServerType = FbServerType.Embedded,
+                DataSource = null // Clear localhost
+            };
+
+            _connectionString = builder.ToString();
+            _connection = new FbConnection(_connectionString);
+            _connection.Open();
+            
+            System.Diagnostics.Debug.WriteLine("[DB] Connected via Embedded (Exclusive).");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to connect to Firebird database.\n\n" +
+                            $"All connection methods failed.\n" +
+                            $"Error: {ex.Message}", 
+                            "Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void LaunchFirebirdServer()
+    {
+        try
+        {
+            // Locate Firebird executable
+            // We expect it in a folder named 'Firebird' relative to app
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var fbExe = Path.Combine(baseDir, "Firebird", "firebird.exe");
+
+            if (!File.Exists(fbExe))
+            {
+                // Fallback for dev environment hardcoded path
+                if (File.Exists(@"d:\Projects\image-scoring\Firebird\firebird.exe"))
+                    fbExe = @"d:\Projects\image-scoring\Firebird\firebird.exe";
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[DB] firebird.exe not found. Cannot launch server.");
+                    return;
+                }
+            }
+
+            var procInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = fbExe,
+                Arguments = "-a", // Application mode
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            System.Diagnostics.Process.Start(procInfo);
+            
+            // Give it a moment to start
+            System.Threading.Thread.Sleep(2000); 
+            System.Diagnostics.Debug.WriteLine($"[DB] Firebird Server launched: {fbExe}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DB] Failed to launch Firebird Server: {ex.Message}");
         }
     }
 

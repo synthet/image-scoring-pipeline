@@ -1,28 +1,24 @@
-
+"""
+Debug culling sessions - uses Firebird database via modules/db.py
+"""
 import sys
 import os
-import sqlite3
 
-# Add current directory to path so we can pick up modules if needed, 
-# but we will try to just read DB directly for simplicity.
+# Add current directory to path
 sys.path.append(os.getcwd())
 
-DB_FILE = "scoring_history.db"
+from modules import db
 
 def inspect_culling():
-    if not os.path.exists(DB_FILE):
-        print(f"Database {DB_FILE} not found.")
-        return
-
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
+    conn = db.get_db()
     c = conn.cursor()
 
-    # Get latest session
-    c.execute("SELECT * FROM culling_sessions ORDER BY id DESC LIMIT 1")
+    # Get latest session - Firebird: Use FETCH FIRST instead of LIMIT
+    c.execute("SELECT * FROM culling_sessions ORDER BY id DESC FETCH FIRST 1 ROWS ONLY")
     session = c.fetchone()
     if not session:
         print("No culling sessions found.")
+        conn.close()
         return
 
     session_id = session['id']
@@ -90,6 +86,8 @@ def inspect_culling():
             else: decision = "NONE"
             marker = "<--" if img['file'] in target_files else ""
             print(f"  {img['score']:.4f} [{decision}] {img['file']} {marker}")
+
+    conn.close()
 
 if __name__ == "__main__":
     inspect_culling()

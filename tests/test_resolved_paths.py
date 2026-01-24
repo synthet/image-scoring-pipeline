@@ -10,7 +10,6 @@ Tests:
 
 import os
 import sys
-import sqlite3
 import tempfile
 import shutil
 
@@ -43,8 +42,10 @@ class TestResolvedPaths:
     @classmethod
     def _create_test_images(cls):
         """Insert test images with various path formats."""
-        conn = sqlite3.connect(cls.test_db)
-        conn.row_factory = sqlite3.Row
+        # Note: This test originally used SQLite directly.
+        # For Firebird compatibility, we use db.get_db() which connects to Firebird.
+        # However, local testing may require a running Firebird server.
+        conn = db.get_db()
         c = conn.cursor()
         
         test_images = [
@@ -57,7 +58,7 @@ class TestResolvedPaths:
         for job_id, path, name in test_images:
             c.execute("""
                 INSERT INTO images (job_id, file_path, file_name, score, created_at)
-                VALUES (?, ?, ?, 0.5, datetime('now'))
+                VALUES (?, ?, ?, 0.5, CURRENT_TIMESTAMP)
             """, (job_id, path, name))
         
         conn.commit()
@@ -92,7 +93,8 @@ def test_resolve_windows_path():
     # Get the specific image with WSL path - query by a known path
     conn = db.get_db()
     c = conn.cursor()
-    c.execute("SELECT id, file_path FROM images WHERE file_path LIKE '/mnt/d/%' LIMIT 1")
+    # Firebird: Use FETCH FIRST instead of LIMIT
+    c.execute("SELECT id, file_path FROM images WHERE file_path LIKE '/mnt/d/%' FETCH FIRST 1 ROWS ONLY")
     row = c.fetchone()
     conn.close()
     
@@ -123,7 +125,8 @@ def test_get_resolved_path_verified():
     
     conn = db.get_db()
     c = conn.cursor()
-    c.execute("SELECT id FROM images LIMIT 1 OFFSET 1")
+    # Firebird: Use OFFSET ROWS FETCH NEXT instead of LIMIT OFFSET
+    c.execute("SELECT id FROM images OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY")
     row = c.fetchone()
     image_id = row[0]
     conn.close()

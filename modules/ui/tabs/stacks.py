@@ -17,64 +17,43 @@ from modules import db, utils, clustering, config
 cluster_engine = clustering.ClusteringEngine()
 
 def run_clustering_wrapper(input_path, threshold, gap, force, progress=gr.Progress()):
-    log = ""
+    """Regular (non-generator) fn so .then(refresh) runs reliably after it completes."""
     try:
-        # Save Config
         config.save_config_value('stacks_input_path', input_path)
-        
-        # Default gap 120s if None
-        if gap is None: gap = 120
-        
+        if gap is None:
+            gap = 120
         target = input_path.strip() if input_path and input_path.strip() else None
-        
         for msg_tuple in cluster_engine.cluster_images(distance_threshold=threshold, time_gap_seconds=gap, force_rescan=force, target_folder=target):
             if isinstance(msg_tuple, tuple):
                 msg, cur, tot = msg_tuple
                 if tot > 0:
-                     val = cur / tot
-                     progress(val, desc=msg)
+                    progress(cur / tot, desc=msg)
                 else:
-                     progress(0, desc=msg)
-                log = msg
-            else:
-                log = msg_tuple
-                
-            yield log, gr.update(interactive=False)
+                    progress(0, desc=msg)
     except Exception as e:
-        yield f"Error: {e}", gr.update(interactive=True)
-        return
-
-    # Refresh Stacks? No, let the UI handle it via .then() or user action.
-    yield "Done", gr.update(interactive=True)
+        return f"Error: {e}", gr.update(interactive=True)
+    return "Done", gr.update(interactive=True)
 
 
 def refresh_stacks_wrapper(input_path, sort_by, sort_order):
     target = input_path.strip() if input_path and input_path.strip() else None
-    
     rows = db.get_stacks_for_display(folder_path=target, sort_by=sort_by, order=sort_order)
-    
+
     results = []
     stack_ids = []
-    
     for row in rows:
-        # Row: id, name, image_count, sort_val, cover_path
         s_id = row['id']
         name = row['name']
         count = row['image_count']
         cover = row['cover_path']
-        
         label = f"{name} ({count} items)"
-        
-        # Convert path for WSL/Windows compatibility
-        # Skip os.path.exists() check - it's slow and Gradio handles missing images gracefully
+
         if cover:
-            # Retrieve image id first for resolution if possible? 
-            # Row has best_image_id? Yes, s['best_image_id'].
-            image_id = s.get('best_image_id')
-            local_cover = utils.resolve_file_path(cover, image_id) or utils.convert_path_to_local(cover)
-            results.append((local_cover, label))
-            stack_ids.append(s_id)
-            
+            image_id = row.get('best_image_id') if hasattr(row, 'get') else None
+            local_cover = utils.resolve_file_path(cover, image_id) or utils.convert_path_to_local(cover) or cover
+            if local_cover:
+                results.append((local_cover, label))
+                stack_ids.append(s_id)
     return results, stack_ids
 
 def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
@@ -350,12 +329,12 @@ def create_stacks_tab():
         
         c_stack_status = gr.Textbox(label="Status", interactive=False, visible=True, lines=1)
         
-        # Events
+        # Events: clustering (regular fn) then .then(refresh) — .then() often skips after generators
         c_run_btn.click(
             fn=run_clustering_wrapper,
             inputs=[c_input_dir, c_threshold, c_gap, c_force_rescan],
-            outputs=[c_log, c_run_btn]
-        ).then( 
+            outputs=[c_log]
+        ).then(
             fn=refresh_stacks_wrapper,
             inputs=[c_input_dir, c_sort, c_order],
             outputs=[stack_gallery, stack_ids_state]
@@ -445,5 +424,22 @@ def create_stacks_tab():
             'open_gallery_btn': c_open_gallery_btn,
             'current_stack_id': current_stack_id,
             'sort_by': c_sort,
-            'order': c_order
+            'order': c_order,
+            'run_btn': c_run_btn,
+            'refresh_btn': c_refresh_btn,
+            'log_output': c_log
         }
+
+
+def get_status_update():
+    """
+    Called by the main timer loop to get status updates for the Stacks tab.
+    Returns: [run_btn_update, refresh_btn_update]
+    """
+    is_running, status_msg, cur, tot = cluster_engine.get_status()
+    
+    # Disable buttons while running
+    run_btn_update = gr.update(interactive=not is_running)
+    refresh_btn_update = gr.update(interactive=not is_running)
+    
+    return run_btn_update, refresh_btn_update

@@ -1,26 +1,33 @@
-import sqlite3
+"""
+Inspect database custom utility - uses Firebird database via modules/db.py
+"""
+import sys
 import os
 
-db_path = "scoring_history.db"
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-if not os.path.exists(db_path):
-    print(f"Error: {db_path} not found")
-    exit(1)
-
-conn = sqlite3.connect(db_path)
-c = conn.cursor()
+from modules import db
 
 try:
-    c.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    conn = db.get_db()
+    c = conn.cursor()
+    
+    # Firebird: Query RDB$RELATIONS for table list
+    c.execute("SELECT RDB$RELATION_NAME FROM RDB$RELATIONS WHERE RDB$SYSTEM_FLAG = 0")
     tables = c.fetchall()
-    print("Tables:", [t[0] for t in tables])
+    print("Tables:", [t[0].strip() for t in tables])
 
-    c.execute("SELECT id, file_path, created_at FROM images LIMIT 5")
+    # Firebird: Use FETCH FIRST instead of LIMIT
+    c.execute("SELECT id, file_path, created_at FROM images FETCH FIRST 5 ROWS ONLY")
     rows = c.fetchall()
     print("\nSample Rows:")
     for row in rows:
-        print(row)
+        print(dict(row))
 except Exception as e:
     print(f"Error reading DB: {e}")
 finally:
-    conn.close()
+    try:
+        conn.close()
+    except:
+        pass

@@ -184,7 +184,8 @@ def create_ui():
         def monitor_status_wrapper():
             s_res = scoring_tab.get_status_update(runner)
             t_res = tagging_tab.get_status_update(tagging_runner)
-            return list(s_res) + list(t_res)
+            stacks_res = stacks_tab.get_status_update()
+            return list(s_res) + list(t_res) + list(stacks_res)
 
         status_timer.tick(
             fn=monitor_status_wrapper,
@@ -193,7 +194,8 @@ def create_ui():
                 scoring_components['log_output'], scoring_components['status_html'], 
                 scoring_components['run_btn'], scoring_components['stop_btn'], scoring_components['fix_btn'],
                 tagging_components['log_output'], tagging_components['status_html'], 
-                tagging_components['run_btn'], tagging_components['stop_btn']
+                tagging_components['run_btn'], tagging_components['stop_btn'],
+                stacks_components['run_btn'], stacks_components['refresh_btn']
             ]
         )
 

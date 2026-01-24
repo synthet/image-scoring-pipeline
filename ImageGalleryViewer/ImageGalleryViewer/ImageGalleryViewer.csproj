@@ -14,6 +14,7 @@
     <Company>Image Scoring</Company>
     <Product>Image Gallery Viewer</Product>
     <Description>A native Windows image gallery viewer for the image scoring database</Description>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +27,7 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <Resource Include="app.ico" />
   </ItemGroup>
 
 </Project>

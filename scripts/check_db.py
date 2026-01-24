@@ -1,15 +1,21 @@
-import sqlite3
+"""
+Check database and folder associations - uses Firebird database via modules/db.py
+"""
+import sys
 import os
 
-db_path = 'scoring_history.db'
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from modules import db
+
 target_path = r'D:\Photos\Z8\180-600mm\2025\2025-12-28'
 
-print(f"Checking database at: {os.path.abspath(db_path)}")
+print(f"Checking Firebird database")
 print(f"Target path: {target_path}")
 
 try:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = db.get_db()
     c = conn.cursor()
     
     # Check total images
@@ -29,8 +35,8 @@ try:
     count_forward = c.fetchone()[0]
     print(f"Images in folder (forward slash): {count_forward}")
     
-    # Check folders table
-    c.execute("SELECT id, path FROM folders LIMIT 10")
+    # Check folders table - Firebird: Use FETCH FIRST instead of LIMIT
+    c.execute("SELECT id, path FROM folders FETCH FIRST 10 ROWS ONLY")
     rows = c.fetchall()
     print("\nExample folders in DB:")
     for row in rows:
@@ -49,7 +55,6 @@ try:
         print(f"    -> Images with this folder_id: {img_count}")
         
     print("\nTesting get_or_create_folder logic via db.py:")
-    from modules import db
     windows_path = r'D:\Photos\Z8\180-600mm\2025\2025-12-28'
     print(f"  Input Windows Path: {windows_path}")
     fid = db.get_or_create_folder(windows_path)

@@ -5,6 +5,40 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] - 2026-01-23
+
+### Added
+- **Firebird Database Support**: Migrated from SQLite to Firebird database engine.
+  - Added Firebird connection logic with WSL path conversion support.
+  - Implemented `FirebirdCursorProxy` for SQLite compatibility layer.
+  - Added helper functions `_table_exists()` and `_index_exists()` for conditional DDL.
+  - New migration script: `scripts/migrate_to_firebird.py`.
+- **Stacks Button State Management**: Added dynamic button enable/disable based on clustering status.
+  - `ClusteringEngine` now tracks `is_running`, `status_message`, `current`, and `total` attributes.
+  - Added `get_status()` method for polling from UI.
+  - Stacks tab buttons are disabled during active clustering operations.
+- **Application Icon**: Added `app.ico` and `favicon.ico` for ImageGalleryViewer and WebUI.
+
+### Changed
+- **Database Module**: Rewrote `modules/db.py` for Firebird compatibility.
+  - Replaced `INSERT OR IGNORE` / `INSERT OR REPLACE` with `UPDATE OR INSERT ... MATCHING`.
+  - Replaced `LIMIT/OFFSET` with `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`.
+  - Replaced `CREATE TABLE IF NOT EXISTS` with conditional checks.
+  - Updated `substr()` to `substring()` and `length()` to `char_length()`.
+- **Clustering Module**: Updated `modules/clustering.py` with status tracking and Firebird-compatible queries.
+- **Scripts Updated for Firebird**: 
+  - `scripts/analysis/check_db.py`, `scripts/analysis/check_thumbs.py`
+  - `scripts/maintenance/check_db.py`, `scripts/maintenance/check_thumbs.py`
+  - `scripts/python/backfill_hashes.py`, `scripts/migrate_resolved_paths.py`
+  - `scripts/debug_culling.py`, `scripts/inspect_db_custom.py`
+- **MCP Server**: Updated `modules/mcp_server.py` for Firebird database queries.
+- **WebUI**: Updated `webui.py` and `modules/ui/app.py` for Firebird initialization.
+
+### Fixed
+- **Stacks SQL Error**: Fixed `Invalid expression in the select list` error in `get_stacks_for_display` for Firebird GROUP BY requirements.
+- **Culling Session SQL**: Fixed `INSERT OR IGNORE` syntax error when adding images to culling sessions.
+- **Database Init Error**: Fixed `Token unknown - NOT` error from unsupported `CREATE TABLE IF NOT EXISTS` syntax.
+
 ## [3.8.0] - 2026-01-20
 
 ### Added
