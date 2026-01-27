@@ -5,6 +5,21 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.0] - 2026-01-26
+
+### Added
+- **API Module**: Implemented new API endpoints (`modules/api.py`) and documentation (`docs/API.md`).
+- **Assets**: Added `static/favicon.svg` and generation script.
+
+### Changed
+- **Culling Module**: Improved robust type handling in `modules/culling.py` to prevent conversion errors.
+- **MCP Server**: Enhanced MCP server implementation (`modules/mcp_server.py`).
+- **UI Components**: Updated styles and layouts in Gallery and Culling tabs.
+- **Core Modules**: Refinements in `db.py`, `scoring.py`, and `utils.py`.
+
+### Fixed
+- **Culling Fix**: Resolved "conversion error from string '0'" during best-in-group selection.
+
 ## [3.10.0] - 2026-01-23
 
 ### Added
