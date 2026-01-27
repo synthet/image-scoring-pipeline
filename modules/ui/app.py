@@ -49,7 +49,12 @@ def create_ui():
     tree_js = assets.get_tree_js()
     custom_css = assets.get_css()
     
-    with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js) as demo:
+    favicon_links = """
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/favicon-180.png">
+"""
+    with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js + favicon_links) as demo:
         gr.Markdown("# Image Scoring WebUI")
         
         # Shared States
@@ -201,8 +206,14 @@ def create_ui():
 
     return demo, runner, tagging_runner
 
-def setup_server_endpoints(fastapi_app):
+def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None):
     """Configures FastAPI endpoints for the Gradio app."""
+    
+    # Setup REST API endpoints
+    from modules import api
+    api.set_runners(scoring_runner, tagging_runner)
+    api_router = api.create_api_router()
+    fastapi_app.include_router(api_router)
     
     @fastapi_app.get("/manifest.json")
     async def manifest_endpoint():

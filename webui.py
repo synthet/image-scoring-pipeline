@@ -36,8 +36,73 @@ def main():
     except ImportError:
         pass
     
-    # Create Main FastAPI App
-    app = FastAPI()
+    # Create Main FastAPI App with comprehensive OpenAPI documentation
+    app = FastAPI(
+        title="Image Scoring WebUI API",
+        description="""
+        REST API for the Image Scoring WebUI application.
+        
+        This API provides programmatic access to image quality assessment and tagging operations.
+        
+        ## Features
+        
+        - **Image Scoring**: Multi-model AI quality assessment (SPAQ, AVA, KonIQ, PaQ2PiQ, LIQE)
+        - **Image Tagging**: Automatic keyword extraction using CLIP
+        - **Caption Generation**: BLIP-based image captioning
+        - **Job Management**: Start, stop, and monitor batch operations
+        - **Status Monitoring**: Real-time progress tracking
+        
+        ## Authentication
+        
+        Currently, the API does not require authentication. Consider adding authentication
+        for production deployments.
+        
+        ## Base URL
+        
+        All endpoints are prefixed with `/api`. The base URL is:
+        - Development: `http://127.0.0.1:7860/api`
+        - Production: `http://your-server:7860/api`
+        
+        ## OpenAPI Schema
+        
+        The complete OpenAPI schema is available at:
+        - JSON: `/openapi.json`
+        - YAML: `/openapi.yaml`
+        - Interactive Docs: `/docs` (Swagger UI)
+        - Alternative Docs: `/redoc` (ReDoc)
+        
+        ## LLM Agent Usage
+        
+        LLM agents can use this API by:
+        1. Reading the OpenAPI schema from `/openapi.json`
+        2. Using the schema to understand available endpoints and request/response formats
+        3. Making HTTP requests to trigger operations and monitor status
+        
+        All endpoints return JSON responses following REST conventions.
+        """,
+        version="1.0.0",
+        contact={
+            "name": "Image Scoring WebUI",
+            "url": "https://github.com/your-repo/image-scoring"
+        },
+        license_info={
+            "name": "MIT",
+        },
+        openapi_tags=[
+            {
+                "name": "Image Scoring API",
+                "description": "Endpoints for image quality assessment and scoring operations."
+            },
+            {
+                "name": "Tagging API",
+                "description": "Endpoints for image tagging and keyword extraction."
+            },
+            {
+                "name": "General API",
+                "description": "General endpoints for health checks, status, and job management."
+            }
+        ]
+    )
     
     # Create UI and initialize engines (Gradio App)
     demo, runner, tagging_runner = app_module.create_ui()
@@ -58,7 +123,7 @@ def main():
     print(f"Starting WebUI on {platform.system()}...")
     
     # Configure server endpoints using the FastAPI app directly
-    app_module.setup_server_endpoints(app)
+    app_module.setup_server_endpoints(app, runner, tagging_runner)
     
     # Mount Gradio App onto FastAPI
     # This creates a completely new routing structure where Gradio sits at /

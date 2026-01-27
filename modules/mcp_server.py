@@ -72,6 +72,12 @@ except ImportError:
     MCP_AVAILABLE = False
     # Don't print warning at import time - handled by consumers
 
+try:
+    from mcp.server.sse import SseServerTransport
+    MCP_SSE_AVAILABLE = True
+except ImportError:
+    MCP_SSE_AVAILABLE = False
+
 # Add parent directory for imports when running standalone
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1331,21 +1337,58 @@ def create_mcp_server() -> "Server":
     return server
 
 
-async def run_server():
-    """Run the MCP server using stdio transport."""
+def prepare_mcp_embedded():
+    """Initialize DB and set _db_available for embedded (SSE) or stdio runs. Idempotent."""
     global _db_available
-    if not MCP_AVAILABLE:
-        print("Error: MCP SDK not installed. Run: pip install mcp")
-        return
-
     try:
         db.init_db()
+        _db_available = True
     except Exception as e:
         logger.warning("DB init failed (%s). DB tools will return 'Database not available'.", e)
         _db_available = False
 
+
+def create_mcp_sse_app(mount_path: str = "/mcp"):
+    """
+    Create a Starlette ASGI app that exposes MCP over SSE, to be mounted in FastAPI.
+    Cursor connects via url e.g. http://localhost:7860/mcp/sse
+    """
+    if not MCP_AVAILABLE or not MCP_SSE_AVAILABLE:
+        raise RuntimeError("MCP SDK with SSE required. Install: pip install mcp")
+
+    from starlette.applications import Starlette
+    from starlette.routing import Mount, Route
+    from starlette.requests import Request
+
+    prepare_mcp_embedded()
     server = create_mcp_server()
-    
+    messages_path = f"{mount_path.rstrip('/')}/messages/"
+    transport = SseServerTransport(messages_path)
+
+    async def handle_sse(request: Request):
+        async with transport.connect_sse(
+            request.scope, request.receive, request._send
+        ) as streams:
+            await server.run(
+                streams[0], streams[1], server.create_initialization_options()
+            )
+
+    routes = [
+        Route("/sse/", endpoint=handle_sse),
+        Mount("/messages/", app=transport.handle_post_message),
+    ]
+    return Starlette(routes=routes)
+
+
+async def run_server():
+    """Run the MCP server using stdio transport."""
+    if not MCP_AVAILABLE:
+        print("Error: MCP SDK not installed. Run: pip install mcp")
+        return
+
+    prepare_mcp_embedded()
+    server = create_mcp_server()
+
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 

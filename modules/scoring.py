@@ -1,6 +1,7 @@
 
 import os
 import threading
+import json
 from modules import db, thumbnails
 from modules.engine import BatchImageProcessor
 import sys

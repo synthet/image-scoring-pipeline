@@ -55,7 +55,8 @@ class CullingEngine:
     def import_images(self, session_id: int, 
                       distance_threshold: float = None,
                       time_gap_seconds: int = None,
-                      force_rescan: bool = False) -> dict:
+                      force_rescan: bool = False,
+                      progress_callback=None) -> dict:
         """
         Imports images from session folder, groups similar ones.
         
@@ -63,10 +64,18 @@ class CullingEngine:
             session_id: Culling session ID
             distance_threshold: Similarity threshold for grouping (lower = more similar)
             time_gap_seconds: Time gap to split groups (even if similar)
+            progress_callback: Optional fn(progress_pct, message) for UI updates.
         
         Returns:
             Dict with import stats: {total, groups, singles}
         """
+        def _progress(pct: float, msg: str):
+            if progress_callback:
+                try:
+                    progress_callback(pct, msg)
+                except Exception:
+                    pass
+
         # Load defaults from config if not provided
         from modules import config
         if distance_threshold is None:
@@ -90,6 +99,8 @@ class CullingEngine:
             return {'error': f'No scored images found in {folder_path}', 'total': 0}
         
         image_ids = [img['id'] for img in images]
+        n_images = len(image_ids)
+        _progress(0.08, f"Found {n_images} images. Checking stacks...")
         
         # Check if stacks already exist for this folder
         should_cluster = True
@@ -105,6 +116,7 @@ class CullingEngine:
         if should_cluster:
             # Run clustering to find similar groups
             logger.info(f"Clustering {len(images)} images...")
+            _progress(0.10, f"Clustering {n_images} images...")
             
             # Use the existing clustering engine
             # This will create/update stack assignments in the DB
@@ -115,24 +127,30 @@ class CullingEngine:
                 force_rescan=force_rescan,
                 target_folder=folder_path
             ):
-                # Log progress from the clustering generator
                 if isinstance(progress_msg, tuple):
                     msg, current, total = progress_msg
                     logger.info(f"Clustering: {msg}")
+                    if total and total > 0 and progress_callback:
+                        # Map cluster progress to 0.10 -> 0.75
+                        pct = 0.10 + 0.65 * (current / total)
+                        _progress(pct, msg)
                 else:
                     logger.info(f"Clustering: {progress_msg}")
         
-        # Now read the stack assignments back
-        # Map image_id -> stack_id (group_id)
-        group_assignments = {}
-        for img in images:
-            # Re-fetch to get updated stack_id
-            details = db.get_image_details(img['file_path'])
-            if details and details.get('stack_id'):
-                group_assignments[img['id']] = details['stack_id']
+        _progress(0.78, "Reading stack assignments...")
+        # Batch lookup: image_id -> stack_id (group_id) instead of N get_image_details
+        group_assignments = db.get_stack_ids_for_image_ids(image_ids)
         
         # Add images to culling session
-        db.add_images_to_culling_session(session_id, image_ids, group_assignments)
+        success = db.add_images_to_culling_session(session_id, image_ids, group_assignments)
+        if not success:
+            logger.error(f"Failed to add images to culling session {session_id}")
+            return {'error': 'Failed to add images to culling session', 'total': 0}
+        
+        # Verify images were added
+        verify_groups = db.get_session_groups(session_id)
+        if not verify_groups and len(image_ids) > 0:
+            logger.warning(f"Images added but get_session_groups returned empty. This may indicate a database issue.")
         
         # Count unique groups
         unique_groups = set(group_assignments.values())
@@ -313,7 +331,8 @@ class CullingEngine:
                       time_gap_seconds: int = None,
                       score_field: str = 'score_general',
                       auto_export: bool = None,
-                      force_rescan: bool = False) -> dict:
+                      force_rescan: bool = False,
+                      progress_callback=None) -> dict:
         """
         One-shot full culling workflow:
         1. Create session
@@ -321,8 +340,16 @@ class CullingEngine:
         3. Auto-pick best in each group
         4. Optionally export to XMP
         
+        progress_callback: Optional fn(progress_pct, message) for UI updates.
         Returns combined stats from all steps.
         """
+        def _progress(pct: float, msg: str):
+            if progress_callback:
+                try:
+                    progress_callback(pct, msg)
+                except Exception:
+                    pass
+
         # Load defaults from config if not provided
         from modules import config
         if distance_threshold is None:
@@ -335,23 +362,24 @@ class CullingEngine:
             culling_config = config.get_config_section('culling')
             auto_export = culling_config.get('auto_export_default', False)
         
-        # Create session
+        _progress(0.03, "Creating culling session...")
         session_id = self.create_session(folder_path, mode='automated')
         if not session_id:
             return {'error': 'Failed to create session'}
         
-        # Import and group
+        _progress(0.05, "Session created. Importing & grouping images...")
         import_stats = self.import_images(
             session_id, 
             distance_threshold=distance_threshold,
             time_gap_seconds=time_gap_seconds,
-            force_rescan=force_rescan
+            force_rescan=force_rescan,
+            progress_callback=progress_callback
         )
         
         if 'error' in import_stats:
             return import_stats
         
-        # Auto-pick
+        _progress(0.82, "Auto-picking best in each group...")
         pick_stats = self.auto_pick_all(session_id, score_field=score_field)
         
         result = {
@@ -362,13 +390,14 @@ class CullingEngine:
             'exported': False
         }
         
-        # Export if requested
         if auto_export:
+            _progress(0.92, "Exporting XMP Pick/Reject flags...")
             export_stats = self.export_to_xmp(session_id)
             result['exported'] = True
             result['xmp_count'] = export_stats['exported']
             result['xmp_errors'] = export_stats['errors']
         
+        _progress(0.98, "Preparing results...")
         return result
 
 

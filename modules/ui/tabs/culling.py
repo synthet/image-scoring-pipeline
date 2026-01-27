@@ -20,31 +20,34 @@ def get_active_sessions():
 def run_culling_wrapper(input_path, threshold, time_gap, auto_export, force_rescan=False, progress=gr.Progress()):
     """
     Wrapper to run culling logic (Non-blocking).
+    Forwards progress to the culling engine so the UI updates during clustering.
     """
     if not input_path:
-        return "⚠️ Please select a folder first.", gr.update(interactive=True), [], None, [], [], []
+        return "⚠️ Please select a folder first.", gr.update(interactive=True), [], None, []
     
     config.save_config_value('culling_input_path', input_path)
     
-    progress(0.1, desc="Creating culling session...")
+    def progress_cb(pct: float, msg: str):
+        try:
+            progress(pct, desc=msg)
+        except Exception:
+            pass
     
-    # Run full culling workflow
-    # Ensure path is in WSL format if that's how it's stored
     wsl_path = utils.convert_path_to_wsl(input_path)
-    
     result = culling.culling_engine.run_full_cull(
         folder_path=wsl_path,
         distance_threshold=threshold,
         time_gap_seconds=int(time_gap),
         score_field='score_general',
         auto_export=auto_export,
-        force_rescan=force_rescan
+        force_rescan=force_rescan,
+        progress_callback=progress_cb
     )
     
     if 'error' in result:
-        return f"❌ Error: {result['error']}", gr.update(), [], None, [], [], []
+        return f"❌ Error: {result['error']}", gr.update(interactive=True), [], None, []
     
-    progress(0.9, desc="Preparing results...")
+    progress(0.98, desc="Preparing results...")
     
     # Format result message
     session_id = result.get('session_id')
@@ -93,6 +96,36 @@ def resume_culling_session(session_id):
     
     # Get all groups
     groups = db.get_session_groups(session_id)
+    
+    # Debug: Check if groups are empty but session has images
+    reload_msg = ""
+    if not groups and session.get('total_images', 0) > 0:
+        # Try to reload images - they might not have been added properly
+        import logging
+        logging.warning(f"Session {session_id} has {session.get('total_images')} images but get_session_groups returned empty. Attempting to reload...")
+        # Get images from the folder and re-add them
+        folder_path = session.get('folder_path')
+        if folder_path:
+            # Convert WSL path back to local if needed
+            local_path = utils.convert_path_to_local(folder_path)
+            images = db.get_images_by_folder(local_path)
+            if not images:
+                # Try with original path
+                images = db.get_images_by_folder(folder_path)
+            if images:
+                image_ids = [img['id'] for img in images]
+                group_assignments = db.get_stack_ids_for_image_ids(image_ids)
+                success = db.add_images_to_culling_session(session_id, image_ids, group_assignments)
+                if success:
+                    # Retry getting groups
+                    groups = db.get_session_groups(session_id)
+                    reload_msg = f"\n⚠️ Images were reloaded into session (found {len(groups)} groups)."
+                    logging.info(f"Reloaded {len(groups)} groups for session {session_id}")
+                else:
+                    reload_msg = f"\n❌ Failed to reload images. Please try clicking the refresh button."
+                    logging.error(f"Failed to reload images for session {session_id}")
+            else:
+                reload_msg = f"\n⚠️ No images found in folder: {folder_path}"
     
     gallery_items = []
     all_paths = []
@@ -148,7 +181,7 @@ def resume_culling_session(session_id):
             
     # Stats
     total = session.get('total_images', 0)
-    msg = f"✅ Session {session_id}: Loaded {len(gallery_items)} images in {len(regular_groups) + (1 if singles_group else 0)} groups."
+    msg = f"✅ Session {session_id}: Loaded {len(gallery_items)} images in {len(regular_groups) + (1 if singles_group else 0)} groups." + reload_msg
     
     return msg, gallery_items, session_id, all_paths
 

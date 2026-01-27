@@ -1741,6 +1741,26 @@ def get_image_details(file_path):
     return {}
 
 
+def get_stack_ids_for_image_ids(image_ids):
+    """
+    Returns {image_id: stack_id} for images that have a stack_id.
+    Use for batch lookup after clustering instead of N get_image_details calls.
+    """
+    if not image_ids:
+        return {}
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        placeholders = ",".join("?" * len(image_ids))
+        c.execute(
+            f"SELECT id, stack_id FROM images WHERE id IN ({placeholders}) AND stack_id IS NOT NULL",
+            tuple(image_ids),
+        )
+        rows = c.fetchall()
+        return {r[0]: r[1] for r in rows}
+    finally:
+        conn.close()
+
 
 def delete_image(file_path):
     conn = get_db()
@@ -2909,22 +2929,136 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
     Adds images to a culling session.
     group_assignments: dict of {image_id: group_id} if groups are pre-computed.
     """
+    # #region agent log
+    import json
+    _debug_log_path = os.path.join(_PROJECT_ROOT, '.cursor', 'debug.log')
+    try:
+        with open(_debug_log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "A,B,C,D,E",
+                "location": "db.py:2927",
+                "message": "add_images_to_culling_session entry",
+                "data": {
+                    "session_id": session_id,
+                    "image_count": len(image_ids) if image_ids else 0,
+                    "has_group_assignments": group_assignments is not None,
+                    "group_assignments_type": str(type(group_assignments)),
+                    "sample_group_ids": list(group_assignments.values())[:5] if group_assignments and len(group_assignments) > 0 else None
+                },
+                "timestamp": int(time.time() * 1000)
+            }) + '\n')
+    except: pass
+    # #endregion agent log
+    
+    if not image_ids:
+        logging.warning(f"No image_ids provided for session {session_id}")
+        return False
+        
     conn = get_db()
     c = conn.cursor()
     try:
         now = datetime.datetime.now()
-        for img_id in image_ids:
+        added_count = 0
+        for idx, img_id in enumerate(image_ids):
             group_id = group_assignments.get(img_id) if group_assignments else None
+            
+            # #region agent log
+            try:
+                with open(_debug_log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "A,B,C",
+                        "location": "db.py:2942",
+                        "message": "Before execute - group_id value and type",
+                        "data": {
+                            "img_id": img_id,
+                            "group_id": group_id,
+                            "group_id_type": str(type(group_id)),
+                            "is_none": group_id is None,
+                            "is_zero": group_id == 0,
+                            "iteration": idx
+                        },
+                        "timestamp": int(time.time() * 1000)
+                    }) + '\n')
+            except: pass
+            # #endregion agent log
+            
             # Use UPDATE OR INSERT for Firebird (equivalent to SQLite's INSERT OR IGNORE)
-            c.execute("""UPDATE OR INSERT INTO culling_picks 
-                         (session_id, image_id, group_id, created_at)
-                         VALUES (?, ?, ?, ?)
-                         MATCHING (session_id, image_id)""",
-                      (session_id, img_id, group_id, now))
+            # Explicitly set all columns to avoid Firebird conversion issues with defaults
+            # Firebird may have issues with SMALLINT defaults in UPDATE OR INSERT, so set them explicitly
+            try:
+                c.execute("""UPDATE OR INSERT INTO culling_picks 
+                             (session_id, image_id, group_id, decision, auto_suggested, is_best_in_group, created_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?)
+                             MATCHING (session_id, image_id)""",
+                          (session_id, img_id, group_id, None, 0, 0, now))
+                
+                # #region agent log
+                try:
+                    with open(_debug_log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "A,B,C,D",
+                            "location": "db.py:2950",
+                            "message": "Execute succeeded",
+                            "data": {"img_id": img_id, "group_id": group_id},
+                            "timestamp": int(time.time() * 1000)
+                        }) + '\n')
+                except: pass
+                # #endregion agent log
+                
+                added_count += 1
+            except Exception as e:
+                # #region agent log
+                try:
+                    with open(_debug_log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "A,B,C,D,E",
+                            "location": "db.py:2952",
+                            "message": "Execute failed - error details",
+                            "data": {
+                                "img_id": img_id,
+                                "group_id": group_id,
+                                "group_id_type": str(type(group_id)),
+                                "error": str(e),
+                                "error_type": str(type(e).__name__)
+                            },
+                            "timestamp": int(time.time() * 1000)
+                        }) + '\n')
+                except: pass
+                # #endregion agent log
+                
+                logging.error(f"Failed to add image {img_id} to session {session_id}: {e}")
+                continue
         conn.commit()
-        return True
+        
+        # #region agent log
+        try:
+            with open(_debug_log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "A,B,C,D,E",
+                    "location": "db.py:2955",
+                    "message": "Function exit - final count",
+                    "data": {"added_count": added_count, "total": len(image_ids), "success": added_count > 0},
+                    "timestamp": int(time.time() * 1000)
+                }) + '\n')
+        except: pass
+        # #endregion agent log
+        
+        logging.info(f"Added {added_count}/{len(image_ids)} images to culling session {session_id}")
+        return added_count > 0
     except Exception as e:
         logging.error(f"Failed to add images to culling session: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return False
     finally:
         conn.close()
@@ -2958,15 +3092,15 @@ def set_best_in_group(session_id, image_id, group_id):
     try:
         # Clear previous best in this group
         c.execute("""UPDATE culling_picks 
-                     SET is_best_in_group = 0 
+                     SET is_best_in_group = ? 
                      WHERE session_id = ? AND group_id = ?""",
-                  (session_id, group_id))
+                  (0, session_id, group_id))
         
         # Set new best
         c.execute("""UPDATE culling_picks 
-                     SET is_best_in_group = 1, decision = 'pick', auto_suggested = 1
+                     SET is_best_in_group = ?, decision = 'pick', auto_suggested = ?
                      WHERE session_id = ? AND image_id = ?""",
-                  (session_id, image_id))
+                  (1, 1, session_id, image_id))
         conn.commit()
         return True
     except Exception as e:
