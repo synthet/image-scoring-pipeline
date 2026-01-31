@@ -48,7 +48,7 @@ class TestCullingWorkflow:
         template_db = os.path.abspath("template.fdb")
         if not os.path.exists(template_db):
             print(f"Error: Template DB not found at {template_db}")
-            raise Exception("Template DB missing - run debug_firebird.py first")
+            raise Exception("Template DB missing - run scripts/debug/debug_firebird.py first")
             
         try:
              # import shutil (Global import used) - Bypassing shutil due to crashes

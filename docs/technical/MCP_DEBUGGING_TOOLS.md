@@ -34,7 +34,7 @@ Add the following to your Cursor MCP settings (Settings → MCP → Add Server):
   "name": "image-scoring",
   "command": "python",
   "args": ["-m", "modules.mcp_server"],
-  "cwd": "d:\\Projects\\image-scoring"
+  "cwd": "/path/to/image-scoring"
 }
 ```
 

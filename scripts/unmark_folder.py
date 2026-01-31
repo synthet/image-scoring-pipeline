@@ -2,8 +2,9 @@
 """
 Unmark a folder as fully scored to allow re-scoring.
 """
-import sys
-sys.path.insert(0, 'd:/Projects/image-scoring')
+import os
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _PROJECT_ROOT)
 
 from modules import db
 

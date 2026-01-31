@@ -7,7 +7,7 @@ description: Run the image scoring pipeline on a full folder (NEF/JPG) or single
 2. **Execute Runner Script**:
    Run the universal runner script. It handles WSL path conversion automatically.
    ```powershell
-   .\Run-Scoring.ps1 -InputPath "D:\Photos\..."
+   .\Run-Scoring.ps1 -InputPath "C:\path\to\your\photos"
    ```
 
 3. **Monitor Progress**:

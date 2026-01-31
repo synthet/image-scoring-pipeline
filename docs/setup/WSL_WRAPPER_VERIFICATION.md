@@ -1,6 +1,6 @@
-# WSL Python Wrapper Verification for VILA Integration
+﻿# WSL Python Wrapper Verification for VILA Integration
 
-## ✅ Status: All Scripts Verified
+## âœ… Status: All Scripts Verified
 
 All batch and PowerShell scripts are now using the correct WSL wrapper with TensorFlow virtual environment for MUSIQ + VILA processing.
 
@@ -8,65 +8,65 @@ All batch and PowerShell scripts are now using the correct WSL wrapper with Tens
 
 ### Batch Files (.bat)
 
-#### ✅ `create_gallery.bat`
+#### âœ… `create_gallery.bat`
 - **Line 96**: Uses WSL with TensorFlow venv
   ```batch
-  wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python batch_process_images.py --input-dir '!WSL_PATH!' --output-dir '!WSL_PATH!'"
+  wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python batch_process_images.py --input-dir '!WSL_PATH!' --output-dir '!WSL_PATH!'"
   ```
 - **Path Conversion**: Lines 61-95 (comprehensive drive letter conversion)
-- **Step 1 (Image Processing)**: Uses WSL + TensorFlow ✅
-- **Step 2 (Gallery Generation)**: Uses regular Python (correct, no TF needed) ✅
+- **Step 1 (Image Processing)**: Uses WSL + TensorFlow âœ…
+- **Step 2 (Gallery Generation)**: Uses regular Python (correct, no TF needed) âœ…
 
-#### ✅ `process_images.bat`
+#### âœ… `process_images.bat`
 - **Line 83**: Uses WSL with TensorFlow venv
   ```batch
-  wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python batch_process_images.py --input-dir '!WSL_PATH!' --output-dir '!WSL_PATH!'"
+  wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python batch_process_images.py --input-dir '!WSL_PATH!' --output-dir '!WSL_PATH!'"
   ```
 - **Path Conversion**: Lines 48-82 (comprehensive drive letter conversion)
-- **Processing**: Uses WSL + TensorFlow ✅
+- **Processing**: Uses WSL + TensorFlow âœ…
 
 ### PowerShell Scripts (.ps1)
 
-#### ✅ `Create-Gallery.ps1`
+#### âœ… `Create-Gallery.ps1`
 - **Line 58**: Uses WSL with TensorFlow venv
   ```powershell
-  wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python batch_process_images.py --input-dir '$wslPath' --output-dir '$wslPath'"
+  wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python batch_process_images.py --input-dir '$wslPath' --output-dir '$wslPath'"
   ```
 - **Path Conversion**: Line 55 (elegant regex-based)
   ```powershell
   $wslPath = $InputFolder -replace '^([A-Z]):', '/mnt/$($matches[1].ToLower())' -replace '\\', '/'
   ```
-- **Step 1 (Image Processing)**: Uses WSL + TensorFlow ✅
-- **Step 2 (Gallery Generation)**: Uses regular Python (correct) ✅
+- **Step 1 (Image Processing)**: Uses WSL + TensorFlow âœ…
+- **Step 2 (Gallery Generation)**: Uses regular Python (correct) âœ…
 
-#### ✅ `Process-Images.ps1`
+#### âœ… `Process-Images.ps1`
 - **Line 40**: Uses WSL with TensorFlow venv
   ```powershell
-  wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python batch_process_images.py --input-dir '$wslPath' --output-dir '$wslPath'"
+  wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python batch_process_images.py --input-dir '$wslPath' --output-dir '$wslPath'"
   ```
 - **Path Conversion**: Line 37 (elegant regex-based)
-- **Processing**: Uses WSL + TensorFlow ✅
+- **Processing**: Uses WSL + TensorFlow âœ…
 
 ## Path Conversion Implementation
 
 ### Batch Files
 - Converts all drive letters (A-Z) to /mnt/ format
-- Handles uppercase → lowercase conversion for drive letters
+- Handles uppercase â†’ lowercase conversion for drive letters
 - Converts backslashes to forward slashes
 - **Lines**: 35 conversions total (comprehensive)
 
 ### PowerShell Scripts
-- Uses regex for cleaner conversion: `^([A-Z]):` → `/mnt/{lowercase}/`
+- Uses regex for cleaner conversion: `^([A-Z]):` â†’ `/mnt/{lowercase}/`
 - Single-line conversion with replace chaining
 - **More elegant** but functionally equivalent
 
 ## Why This Matters for VILA
 
 ### Requirements for VILA/MUSIQ Processing
-1. ✅ **TensorFlow 2.x**: Available in `~/.venvs/tf/`
-2. ✅ **Kaggle Hub**: Installed in WSL environment
-3. ✅ **GPU Support**: Available via WSL (if configured)
-4. ✅ **Model Loading**: MUSIQ (TF Hub) + VILA (Kaggle Hub)
+1. âœ… **TensorFlow 2.x**: Available in `~/.venvs/tf/`
+2. âœ… **Kaggle Hub**: Installed in WSL environment
+3. âœ… **GPU Support**: Available via WSL (if configured)
+4. âœ… **Model Loading**: MUSIQ (TF Hub) + VILA (Kaggle Hub)
 
 ### Why Gallery Generation Doesn't Need WSL
 - `gallery_generator.py` only uses standard Python libraries
@@ -78,7 +78,7 @@ All batch and PowerShell scripts are now using the correct WSL wrapper with Tens
 
 ### Test WSL Wrapper Directly
 ```powershell
-# From D:\Projects\image-scoring
+# From /path/to/image-scoring
 wsl bash -c "source ~/.venvs/tf/bin/activate && python --version"
 ```
 Expected: `Python 3.x.x`
@@ -86,12 +86,12 @@ Expected: `Python 3.x.x`
 ### Test VILA Integration
 ```powershell
 # Test imports and configuration
-wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python test_vila.py"
+wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python test_vila.py"
 ```
 Expected:
-- ✓ TensorFlow and kagglehub imported
-- ✓ VILA model registered
-- ✓ Model type and weights configured
+- âœ“ TensorFlow and kagglehub imported
+- âœ“ VILA model registered
+- âœ“ Model type and weights configured
 
 ### Test Full Processing
 ```batch
@@ -134,13 +134,13 @@ if %errorlevel% == 0 (
 
 ## Summary
 
-✅ **All scripts are correctly configured** to use the WSL TensorFlow environment for VILA model processing.
+âœ… **All scripts are correctly configured** to use the WSL TensorFlow environment for VILA model processing.
 
 **Key Points:**
-1. Image processing (batch_process_images.py) → **WSL + TensorFlow venv**
-2. Gallery generation (gallery_generator.py) → **Regular Python** (no TF needed)
-3. Path conversion → **Comprehensive** (supports all drive letters)
-4. Fallback → **Windows Python** (if WSL unavailable)
+1. Image processing (batch_process_images.py) â†’ **WSL + TensorFlow venv**
+2. Gallery generation (gallery_generator.py) â†’ **Regular Python** (no TF needed)
+3. Path conversion â†’ **Comprehensive** (supports all drive letters)
+4. Fallback â†’ **Windows Python** (if WSL unavailable)
 
 **Result:** VILA models will load and process correctly when using these scripts with proper Kaggle authentication.
 

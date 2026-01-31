@@ -29,8 +29,49 @@ if %errorlevel% == 0 (
     
     :end_parse
     
+    REM Get project root (scripts/batch -> project root)
+    for %%I in ("%~dp0..\..") do set "PROJECT_ROOT=%%~fI"
+    REM Convert to WSL path format
+    set "WSL_PATH=!PROJECT_ROOT:\=/!"
+    set "WSL_PATH=!WSL_PATH::=!"
+    set "WSL_PATH=/mnt/!WSL_PATH!"
+    for %%A in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
+        call set "WSL_PATH=%%WSL_PATH:%%A=%%A%%"
+    )
+    call :LowerCase WSL_PATH
+    
     REM Run test in WSL with TensorFlow virtual environment
-    wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python tests/test_model_sources.py !ARGS!"
+    wsl bash -c "source ~/.venvs/tf/bin/activate && cd !WSL_PATH! && python tests/test_model_sources.py !ARGS!"
+    goto :eof
+    
+:LowerCase
+    set "%~1=!%~1:A=a!"
+    set "%~1=!%~1:B=b!"
+    set "%~1=!%~1:C=c!"
+    set "%~1=!%~1:D=d!"
+    set "%~1=!%~1:E=e!"
+    set "%~1=!%~1:F=f!"
+    set "%~1=!%~1:G=g!"
+    set "%~1=!%~1:H=h!"
+    set "%~1=!%~1:I=i!"
+    set "%~1=!%~1:J=j!"
+    set "%~1=!%~1:K=k!"
+    set "%~1=!%~1:L=l!"
+    set "%~1=!%~1:M=m!"
+    set "%~1=!%~1:N=n!"
+    set "%~1=!%~1:O=o!"
+    set "%~1=!%~1:P=p!"
+    set "%~1=!%~1:Q=q!"
+    set "%~1=!%~1:R=r!"
+    set "%~1=!%~1:S=s!"
+    set "%~1=!%~1:T=t!"
+    set "%~1=!%~1:U=u!"
+    set "%~1=!%~1:V=v!"
+    set "%~1=!%~1:W=w!"
+    set "%~1=!%~1:X=x!"
+    set "%~1=!%~1:Y=y!"
+    set "%~1=!%~1:Z=z!"
+    goto :eof
 ) else (
     echo Using Windows Python environment for testing...
     echo Warning: TensorFlow may not be properly configured in Windows.

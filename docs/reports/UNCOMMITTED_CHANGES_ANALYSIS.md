@@ -1,4 +1,4 @@
-# Analysis and Summary of Uncommitted Changes
+﻿# Analysis and Summary of Uncommitted Changes
 
 **Generated:** 2025-01-29  
 **Scope:** All modified (M) and untracked (??) files per `git status`.
@@ -16,7 +16,7 @@ The changes implement a **multi-model, multi-source image quality assessment sys
 
 ---
 
-## 2. Modified Files — Summary
+## 2. Modified Files â€” Summary
 
 ### 2.1 Configuration & Ignore
 
@@ -43,7 +43,7 @@ The changes implement a **multi-model, multi-source image quality assessment sys
 - **`ImageJob`**: New `selected_models: List[str]` and `remote_scoring_threshold: float`.
 - **`ScoringWorker`**: Accepts `remote_clients`; fetches `job.selected_models` and `job.remote_scoring_threshold`; calls `run_all_models`; then **remote scoring**: if `score_general >= remote_scoring_threshold`, calls EveryPixel and/or SightEngine per selection, merges `score_everypixel_quality` / `score_sightengine_quality` and `remote_scores_json` into the result.
 - **`PrepWorker`** (hash/dedupe): Backfill logic generalized. Preserves *all* existing `score_*` values from DB into `external_scores` (with normalized scores). Skip logic made **model-aware**: required models derived from `job.selected_models` (local_models, everypixel_stock/ugc, sightengine, qalign, topiq, musiq, etc.); skip only when required scores + version + rating/label exist.
-- **`ResultWorker`**: Logs and uses EveryPixel/SightEngine in “used models” and score breakdown.
+- **`ResultWorker`**: Logs and uses EveryPixel/SightEngine in â€œused modelsâ€ and score breakdown.
 - **LIQE in pipeline**: `LiqeScorer` usage removed from pipeline; LIQE is invoked via `run_all_models` (MultiModelMUSIQ + wrappers).
 - **Debug logging**: Several `#region agent log` blocks logging to `.cursor/debug.log`. **Recommendation:** Remove or make conditional.
 
@@ -59,59 +59,59 @@ The changes implement a **multi-model, multi-source image quality assessment sys
 ### 2.6 Engine (`modules/engine.py`)
 
 - **`BatchImageProcessor`**: Constructor accepts `remote_clients`; `process_directory` and `process_list` accept `selected_models` and `remote_threshold`.
-- **Folder skip**: When `skip_existing` is True, folder skip is **disabled** if any selected model is not `local_models` (e.g. remotes or specific PyIQA models). Ensures we still walk into folders to run remote/specific models even when “local-only” would skip.
+- **Folder skip**: When `skip_existing` is True, folder skip is **disabled** if any selected model is not `local_models` (e.g. remotes or specific PyIQA models). Ensures we still walk into folders to run remote/specific models even when â€œlocal-onlyâ€ would skip.
 - **Workers**: `ScoringWorker` receives `remote_clients`; each `ImageJob` gets `selected_models` and `remote_scoring_threshold`.
 
-### 2.7 UI — App (`modules/ui/app.py`)
+### 2.7 UI â€” App (`modules/ui/app.py`)
 
-- **`DETAIL_OUTPUTS_COUNT`**: 19 → 20 (new `d_high_preview`).
-- **Status timer**: 1s → 2s to reduce load and avoid “Broken Connection” during heavy scoring.
+- **`DETAIL_OUTPUTS_COUNT`**: 19 â†’ 20 (new `d_high_preview`).
+- **Status timer**: 1s â†’ 2s to reduce load and avoid â€œBroken Connectionâ€ during heavy scoring.
 - **Detail outputs**: New `d_high_preview`; unpack order updated.
 - **Export / load**: Export and initial-load logic updated for `min_qalign`, `min_topiq`, `min_musiq`, `min_liqe`, and `stack_id`.
-- **Monitor loop**: `monitor_status_wrapper` wrapped in try/except with `_status_fallback` so one tab’s failure doesn’t kill the status connection.
+- **Monitor loop**: `monitor_status_wrapper` wrapped in try/except with `_status_fallback` so one tabâ€™s failure doesnâ€™t kill the status connection.
 
-### 2.8 UI — Common (`modules/ui/common.py`)
+### 2.8 UI â€” Common (`modules/ui/common.py`)
 
 - **`rerun_scoring_wrapper`** / **`rerun_keywords_wrapper`**: Return `gr.update(value=..., visible=True)` for the status component instead of a plain string, so the success/error message is shown reliably.
 - **`get_empty_details()`**: Prepends `gr.update(value=None)` for `d_high_preview`.
 
-### 2.9 UI — Navigation (`modules/ui/navigation.py`)
+### 2.9 UI â€” Navigation (`modules/ui/navigation.py`)
 
 - **`open_folder_in_gallery`**, **`open_stack_folder_in_gallery`**, **`open_stack_in_gallery`**: All updated to pass `min_qalign`, `min_topiq`, `min_musiq`, `min_liqe` through to `update_gallery_fn`.
 
-### 2.10 UI — Gallery (`modules/ui/tabs/gallery.py`)
+### 2.10 UI â€” Gallery (`modules/ui/tabs/gallery.py`)
 
 - **`update_gallery`** / **`get_gallery_data`**: New filter params `min_qalign`, `min_topiq`, `min_musiq`, `min_liqe`; passed to DB query.
 - **Sort dropdown**: New options: EveryPixel Quality, SightEngine Quality, Q-Align, TOPIQ, MUSIQ; LIQE retained.
 - **Filters**: New sliders Min Q-Align, Min TOPIQ, Min MUSIQ, Min LIQE.
-- **Advanced export**: `score_cols` extended with `score_qalign`, `score_topiq`, `score_musiq`, `score_everypixel_quality`, `score_sightengine_quality`; `metadata_cols` defined; **duplicate** `basic_cols` and `metadata_cols` assignments (lines 572–576). **Bug:** Remove duplicates.
+- **Advanced export**: `score_cols` extended with `score_qalign`, `score_topiq`, `score_musiq`, `score_everypixel_quality`, `score_sightengine_quality`; `metadata_cols` defined; **duplicate** `basic_cols` and `metadata_cols` assignments (lines 572â€“576). **Bug:** Remove duplicates.
 - **Detail panel**: New `d_high_preview` (full-res preview image); `display_details` receives `sort_dropdown` in addition to `current_paths`.
 - **Filter wiring**: `filter_inputs_base` includes the four new min-score sliders.
 
-**Potential bug:** `f_min_liqe` slider is `0.0–5.0`. LIQE (PyIQA) uses a 0–1 range. Consider `max=1.0` for consistency.
+**Potential bug:** `f_min_liqe` slider is `0.0â€“5.0`. LIQE (PyIQA) uses a 0â€“1 range. Consider `max=1.0` for consistency.
 
-### 2.11 UI — Scoring (`modules/ui/tabs/scoring.py`)
+### 2.11 UI â€” Scoring (`modules/ui/tabs/scoring.py`)
 
 - **`run_scoring_wrapper`**: Now takes `selected_models` and `remote_threshold`; passes them to `runner.start_batch`.
-- **New controls**: **Model selection** dropdown (`local_models`, `qalign`, `topiq`, `musiq`, `liqe`, `everypixel_ugc`, `everypixel_stock`, `sightengine`, multiselect) and **Remote threshold** slider (0–1, default 0.62) for “Min General Score for Remote APIs”.
+- **New controls**: **Model selection** dropdown (`local_models`, `qalign`, `topiq`, `musiq`, `liqe`, `everypixel_ugc`, `everypixel_stock`, `sightengine`, multiselect) and **Remote threshold** slider (0â€“1, default 0.62) for â€œMin General Score for Remote APIsâ€.
 - **Run button**: Wired to `model_selection` and `remote_threshold`.
 
 ### 2.12 Scripts & Lock
 
 | File | Changes |
 |------|---------|
-| **`scripts/python/run_all_musiq_models.py`** | Project-root path setup and imports for `QAlignScore`, `TopiqScore`, `MusiqScore`, `LiqeScore`; RAW conversion fixes (ExifTool JpgFromRaw/PreviewImage validation, size/black checks, rawpy fallback, `_is_image_valid`); PyIQA model loading (qalign, topiq, musiq, liqe) and `model_ranges`; LIQE range 1–5 → 0–1; `failed_predictions` only for actual inference failures; normalization fallbacks for EveryPixel/SightEngine; weighted summary; CLI `--models` extended (`qpt_v2`, `aesmamba`); one `#region agent log` block. |
+| **`scripts/python/run_all_musiq_models.py`** | Project-root path setup and imports for `QAlignScore`, `TopiqScore`, `MusiqScore`, `LiqeScore`; RAW conversion fixes (ExifTool JpgFromRaw/PreviewImage validation, size/black checks, rawpy fallback, `_is_image_valid`); PyIQA model loading (qalign, topiq, musiq, liqe) and `model_ranges`; LIQE range 1â€“5 â†’ 0â€“1; `failed_predictions` only for actual inference failures; normalization fallbacks for EveryPixel/SightEngine; weighted summary; CLI `--models` extended (`qpt_v2`, `aesmamba`); one `#region agent log` block. |
 | **`webui.lock`** | PID/port updated (running instance). No functional impact. |
 
 ---
 
-## 3. Untracked Files — Summary
+## 3. Untracked Files â€” Summary
 
 ### 3.1 New Modules (used by scoring/pipeline)
 
 | File | Purpose |
 |------|---------|
-| **`modules/liqe_wrapper.py`** | PyIQA-based LIQE wrapper; `LiqeScore` with `predict(image_path)` → 0–1. |
+| **`modules/liqe_wrapper.py`** | PyIQA-based LIQE wrapper; `LiqeScore` with `predict(image_path)` â†’ 0â€“1. |
 | **`modules/musiq_wrapper.py`** | PyIQA MUSIQ wrapper for MUSIQ-IAA. |
 | **`modules/qalign.py`** | PyIQA Q-Align wrapper; `QAlignScore`. |
 | **`modules/topiq.py`** | PyIQA TOPIQ-IAA wrapper; `TopiqScore`; optional CPU fallback on OOM. |
@@ -130,12 +130,9 @@ The changes implement a **multi-model, multi-source image quality assessment sys
 | File | Purpose |
 |------|---------|
 | **`check_thumb.py`** | Thumbnail checking utility. |
-| **`reproduce_crash.py`** | Crash reproduction script. |
-| **`simulate_check.py`** | Simulation/check helper. |
-| **`verify_fix_logic.py`** | Verification for fix logic. |
-| **`test_extraction.py`**, **`test_fix_extraction.py`** | Extraction tests. |
-| **`test_musiq_inference.py`** | MUSIQ inference tests. |
-| **`list_pyiqa_models.py`** | List PyIQA models. |
+| **`scripts/debug/reproduce_crash.py`** | Crash reproduction script. |
+| **`scripts/debug/verify_fix_logic.py`** | Verification for fix logic. |
+| **`scripts/utils/list_pyiqa_models.py`** | List PyIQA models. |
 | **`scripts/python/check_topiq_range.py`** | Check TOPIQ output range. |
 | **`scripts/unmark_folder.py`** | Unmark folder (e.g. scored flag). |
 
@@ -143,7 +140,7 @@ The changes implement a **multi-model, multi-source image quality assessment sys
 
 | File | Purpose |
 |------|---------|
-| **`extract_pdf.py`**, **`extract_pdf_new.py`** | PDF extraction scripts. |
+| **`scripts/utils/extract_pdf.py`**, **`scripts/utils/extract_pdf_new.py`** | PDF extraction scripts. |
 | **`pdf_content.txt`**, **`pdf_content_2024_2025.txt`** | Extracted PDF text. |
 
 ---
@@ -158,7 +155,7 @@ The changes implement a **multi-model, multi-source image quality assessment sys
 
 ### 4.2 Skip / Backfill Logic
 
-- **Folder skip**: Disabled when any non–local model is selected.
+- **Folder skip**: Disabled when any nonâ€“local model is selected.
 - **Per-image skip**: Required models derived from `selected_models`; skip only if all required scores exist, version matches, and rating/label present.
 - **Backfill**: All existing `score_*` values are preserved and passed as `external_scores` so only missing models are run.
 
@@ -182,13 +179,13 @@ The changes implement a **multi-model, multi-source image quality assessment sys
 ### 5.1 Remove or Gate Debug Logging
 
 - **Files:** `modules/db.py`, `modules/pipeline.py`, `modules/scoring.py`, `scripts/python/run_all_musiq_models.py` (and possibly `modules/ui/assets.py`).
-- **Issue:** `#region agent log` blocks write to `.cursor/debug.log` with hardcoded paths (`/mnt/d/...`, `d:\...`).
+- **Issue:** `#region agent log` blocks write to `.cursor/debug.log` with hardcoded paths (`/mnt/[drive]/...`, `d:\...`).
 - **Recommendation:** Remove before commit, or gate behind a debug flag and use a configurable path.
 
 ### 5.2 Gallery Bugs
 
 - **Duplicate `basic_cols` / `metadata_cols`** in `modules/ui/tabs/gallery.py` (Advanced export). Remove the duplicate lines.
-- **Min LIQE slider:** `max=5.0` vs LIQE 0–1. Consider `max=1.0` and `step=0.05` for consistency.
+- **Min LIQE slider:** `max=5.0` vs LIQE 0â€“1. Consider `max=1.0` and `step=0.05` for consistency.
 
 ### 5.3 Secrets and Config
 
@@ -201,8 +198,8 @@ The changes implement a **multi-model, multi-source image quality assessment sys
 ### 5.5 Untracked Code
 
 - **`modules/remote_scoring.py`**, **`modules/liqe_wrapper.py`**, **`modules/musiq_wrapper.py`**, **`modules/qalign.py`**, **`modules/topiq.py`** are **required** by the modified pipeline/scoring/scripts. Plan to add and commit them.
-- Prefer adding **tests** (e.g. `test_musiq_inference`, extraction tests) to the test suite rather than keeping them only as ad‑hoc scripts.
-- **`extract_pdf*.py`** and **`pdf_content*.txt`** look auxiliary; keep or add only if relevant to the project.
+- Prefer adding **tests** (e.g. `test_musiq_inference`, extraction tests) to the test suite rather than keeping them only as adâ€‘hoc scripts.
+- **`scripts/utils/extract_pdf*.py`** and **`pdf_content*.txt`** look auxiliary; keep or add only if relevant to the project.
 
 ---
 

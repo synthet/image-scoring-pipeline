@@ -1,7 +1,7 @@
-# Fullscreen Image Display Investigation
+﻿# Fullscreen Image Display Investigation
 
 **Date**: January 2026  
-**Status**: RESOLVED ✅  
+**Status**: RESOLVED âœ…  
 **Resolution**: See GRADIO_ROUTING_RESOLUTION.md
 
 ## Problem Statement
@@ -9,7 +9,7 @@
 When clicking the fullscreen button in the Gallery tab, the system displays a tiny internal Gradio thumbnail instead of the actual source image. The goal is to:
 
 1. Display the full-resolution source image (RAW or regular)
-2. Handle WSL↔Windows path conversion correctly
+2. Handle WSLâ†”Windows path conversion correctly
 3. Process RAW files on-the-fly (extract embedded JPEG or decode)
 4. Serve regular images directly from their source location
 
@@ -18,24 +18,24 @@ When clicking the fullscreen button in the Gallery tab, the system displays a ti
 ### Components
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Frontend (JavaScript)                     │
-│  - Intercept fullscreen button click                        │
-│  - Read DB path from hidden textbox                         │
-│  - Fetch full-res image from backend endpoint               │
-│  - Replace modal image src with ObjectURL                   │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              │ HTTP GET /source-image?path=...
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Backend (FastAPI Endpoint)                 │
-│  - Receive WSL path (/mnt/d/Photos/...)                    │
-│  - Convert to Windows path (D:\Photos\...)                  │
-│  - Check if RAW or regular image                            │
-│  - Extract JPEG from RAW or serve file directly             │
-│  - Return as HTTP response                                   │
-└─────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    Frontend (JavaScript)                     â”‚
+â”‚  - Intercept fullscreen button click                        â”‚
+â”‚  - Read DB path from hidden textbox                         â”‚
+â”‚  - Fetch full-res image from backend endpoint               â”‚
+â”‚  - Replace modal image src with ObjectURL                   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                              â”‚
+                              â”‚ HTTP GET /source-image?path=...
+                              â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                   Backend (FastAPI Endpoint)                 â”‚
+â”‚  - Receive WSL path (/mnt/d/Photos/...)                    â”‚
+â”‚  - Convert to Windows path (D:\Photos\...)                  â”‚
+â”‚  - Check if RAW or regular image                            â”‚
+â”‚  - Extract JPEG from RAW or serve file directly             â”‚
+â”‚  - Return as HTTP response                                   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### File Structure
@@ -47,7 +47,7 @@ When clicking the fullscreen button in the Gallery tab, the system displays a ti
 
 ## Investigation Timeline
 
-### Phase 1: Path Retrieval (SOLVED ✅)
+### Phase 1: Path Retrieval (SOLVED âœ…)
 
 **Issue**: JavaScript couldn't find the database file path
 
@@ -83,7 +83,7 @@ With CSS:
 {"location":"assets.py:getSelectedImagePath","message":"Found path in gallery-selected-path textbox","data":{"filePath":"/mnt/d/Photos/D90/2014/20140614_0410.NEF"}}
 ```
 
-### Phase 2: Frontend Implementation (COMPLETED ✅)
+### Phase 2: Frontend Implementation (COMPLETED âœ…)
 
 **Implementation**:
 1. Global variable `window.currentSelectedImagePath` to store path
@@ -117,7 +117,7 @@ With CSS:
 {"location":"assets.py:loadFullResolution","message":"Fetch response received","data":{"ok":false,"status":404}}
 ```
 
-### Phase 3: Backend Endpoint Registration (BLOCKED ❌)
+### Phase 3: Backend Endpoint Registration (BLOCKED âŒ)
 
 **Problem**: Endpoint returns 404 despite being registered
 
@@ -184,7 +184,7 @@ async def source_image_endpoint(path: str):
     # 1. URL decode
     file_path = urllib.parse.unquote(path)
     
-    # 2. Path conversion (WSL → Windows)
+    # 2. Path conversion (WSL â†’ Windows)
     resolved = utils.resolve_file_path(file_path)
     if not resolved:
         resolved = utils.convert_path_to_local(file_path)
@@ -223,7 +223,7 @@ async def source_image_endpoint(path: str):
 ### Path Conversion Logic
 
 **WSL to Windows**:
-- `/mnt/d/Photos/image.NEF` → `D:\Photos\image.NEF`
+- `/mnt/d/Photos/image.NEF` â†’ `D:\Photos\image.NEF`
 - Uses `utils.resolve_file_path()` or `utils.convert_path_to_local()`
 
 **Database Resolution**:
@@ -233,7 +233,7 @@ async def source_image_endpoint(path: str):
 
 ## Current Status
 
-### ✅ Working:
+### âœ… Working:
 - Frontend path retrieval from database
 - Frontend fullscreen button detection
 - Frontend modal image element detection  
@@ -242,13 +242,13 @@ async def source_image_endpoint(path: str):
 - Path conversion utilities
 - RAW image processing utilities
 
-### ✅ Resolved:
+### âœ… Resolved:
 - **Backend endpoint routing**: Solved using `gr.mount_gradio_app()` pattern
 - **Full implementation**: Frontend + backend working end-to-end
 - **RAW processing**: Embedded JPEG extraction working
-- **Path conversion**: WSL↔Windows conversion working
+- **Path conversion**: WSLâ†”Windows conversion working
 
-### 🎉 Final Status:
+### ðŸŽ‰ Final Status:
 **Feature fully functional** - Fullscreen button now displays full-resolution source images with proper RAW processing and path conversion.
 
 ## Environment
@@ -257,7 +257,7 @@ async def source_image_endpoint(path: str):
 - **Python**: 3.12
 - **Gradio**: Latest (2026 version)
 - **Server**: `http://127.0.0.1:7860`
-- **Codebase**: WSL path `/home/owner/projects/image-scoring`
+- **Codebase**: WSL path `/path/to/image-scoring`
 
 ## Next Steps
 

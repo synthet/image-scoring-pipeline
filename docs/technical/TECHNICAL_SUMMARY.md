@@ -1,4 +1,4 @@
-# Technical Summary: MUSIQ Image Scoring Project
+﻿# Technical Summary: MUSIQ Image Scoring Project
 
 ## 1. Project Overview
 **MUSIQ (Multi-scale Image Quality Transformer)** is a comprehensive image analysis tool that combines technical quality assessment (sharpness, noise, artifacts) with aesthetic scoring. It provides both a Command Line Interface (CLI) for batch processing and a Gradio-based WebUI for digital asset management.
@@ -84,7 +84,7 @@ The project utilizes a dual-framework approach forced by platform support:
     *   **System Libs**: `libgl1`, `libsm6`.
 *   **Integration**:
     *   **Workspace**: Code should live in WSL (`~/src/`) for performance.
-    *   **Files**: Access Windows data via `/mnt/d/`.
+    *   **Files**: Access Windows data via `/mnt/[drive]/`.
 
 ## 5. Key Modules
 *   **`modules/db.py`**: Handles database connections, complex cross-platform networking (WSL->Windows), and schema migrations.

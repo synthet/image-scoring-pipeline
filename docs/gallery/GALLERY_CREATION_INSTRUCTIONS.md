@@ -1,8 +1,8 @@
-# 📸 MUSIQ Image Gallery Creation Instructions
+﻿# ðŸ“¸ MUSIQ Image Gallery Creation Instructions
 
 This guide shows you how to create interactive HTML galleries for any folder of images using MUSIQ quality assessment models.
 
-## 🚀 Quick Start (One Command)
+## ðŸš€ Quick Start (One Command)
 
 ### For Any Folder:
 ```powershell
@@ -16,19 +16,19 @@ This guide shows you how to create interactive HTML galleries for any folder of 
 .\Create-Gallery.ps1 "C:\Users\YourName\Pictures\Recent"
 ```
 
-## 📋 Prerequisites
+## ðŸ“‹ Prerequisites
 
-### ✅ Required:
+### âœ… Required:
 - Windows 10/11 with PowerShell
 - WSL2 (Windows Subsystem for Linux) installed
 - Python 3.8+ in WSL environment
 - TensorFlow with GPU support (automatically configured)
 
-### 🔧 Optional:
+### ðŸ”§ Optional:
 - NVIDIA GPU for faster processing
 - Kaggle account for VILA model (see VILA setup below)
 
-## 🎯 What This Does
+## ðŸŽ¯ What This Does
 
 1. **Scans** your folder for images (JPG, PNG, RAW files, etc.)
 2. **Processes** each image with 4 MUSIQ quality models:
@@ -39,21 +39,21 @@ This guide shows you how to create interactive HTML galleries for any folder of 
 3. **Generates** an interactive HTML gallery
 4. **Opens** the gallery in your web browser
 
-## 📁 Supported Image Formats
+## ðŸ“ Supported Image Formats
 
 - **Standard**: JPG, JPEG, PNG, BMP, TIFF, TIF, WEBP
 - **RAW**: NEF, NRW, CR2, CR3, ARW, DNG, ORF, PEF, RAF, RW2, X3F
 
-## 🎨 Gallery Features
+## ðŸŽ¨ Gallery Features
 
 The generated gallery includes:
-- **📊 Interactive Sorting**: Sort by quality scores, filename, or date
-- **📈 Live Statistics**: Real-time score statistics
-- **🔍 Modal Viewing**: Click images for full-size view
-- **📱 Responsive Design**: Works on all devices
-- **⚡ Fast Loading**: No external dependencies
+- **ðŸ“Š Interactive Sorting**: Sort by quality scores, filename, or date
+- **ðŸ“ˆ Live Statistics**: Real-time score statistics
+- **ðŸ” Modal Viewing**: Click images for full-size view
+- **ðŸ“± Responsive Design**: Works on all devices
+- **âš¡ Fast Loading**: No external dependencies
 
-## 🔄 Step-by-Step Process
+## ðŸ”„ Step-by-Step Process
 
 ### Step 1: Prepare Your Images
 1. Put all your images in a single folder
@@ -63,7 +63,7 @@ The generated gallery includes:
 ### Step 2: Run Gallery Creation
 ```powershell
 # Navigate to the image-scoring project directory
-cd "D:\Projects\image-scoring"
+cd "/path/to/image-scoring"
 
 # Run the gallery creation script
 .\Create-Gallery.ps1 "D:\Photos\YourFolder"
@@ -81,7 +81,7 @@ cd "D:\Projects\image-scoring"
 - File saved as `gallery.html` in your image folder
 - Can be shared or viewed offline
 
-## 📊 Understanding the Scores
+## ðŸ“Š Understanding the Scores
 
 ### Quality Score Ranges:
 - **0.0 - 0.3**: Poor quality
@@ -96,7 +96,7 @@ cd "D:\Projects\image-scoring"
 - **KONIQ**: Konstanz image quality
 - **PAQ2PIQ**: Perceptual quality assessment
 
-## 🛠️ Troubleshooting
+## ðŸ› ï¸ Troubleshooting
 
 ### Common Issues:
 
@@ -128,7 +128,7 @@ wsl --distribution Ubuntu
 - Close other GPU-intensive applications
 - Restart WSL if needed
 
-## 🔧 Advanced Usage
+## ðŸ”§ Advanced Usage
 
 ### Custom Output Directory:
 ```powershell
@@ -148,7 +148,7 @@ python scripts/python/gallery_generator.py "D:\Photos\YourFolder"
 # Move images to subfolders of ~100 images each
 ```
 
-## 📈 Performance Tips
+## ðŸ“ˆ Performance Tips
 
 ### For Faster Processing:
 - Use GPU-enabled WSL environment
@@ -161,7 +161,7 @@ python scripts/python/gallery_generator.py "D:\Photos\YourFolder"
 - Avoid heavily compressed images
 - Process RAW files for best quality assessment
 
-## 🔄 Re-running on Same Folder
+## ðŸ”„ Re-running on Same Folder
 
 ### If Images Were Added:
 - New images will be processed automatically
@@ -177,7 +177,7 @@ Remove-Item "D:\Photos\YourFolder\*.json"
 .\Create-Gallery.ps1 "D:\Photos\YourFolder"
 ```
 
-## 📱 Sharing Your Gallery
+## ðŸ“± Sharing Your Gallery
 
 ### Local Sharing:
 - Copy the entire folder (images + gallery.html)
@@ -189,7 +189,7 @@ Remove-Item "D:\Photos\YourFolder\*.json"
 - Gallery works in any modern browser
 - Self-contained (no external dependencies)
 
-## 🎯 Example Workflows
+## ðŸŽ¯ Example Workflows
 
 ### Wedding Photos:
 ```powershell
@@ -212,7 +212,7 @@ Remove-Item "D:\Photos\YourFolder\*.json"
 .\Create-Gallery.ps1 "D:\Portfolio\Street"
 ```
 
-## 📞 Support
+## ðŸ“ž Support
 
 ### If You Need Help:
 1. Check this troubleshooting guide
@@ -227,8 +227,8 @@ Remove-Item "D:\Photos\YourFolder\*.json"
 
 ---
 
-## 🎉 You're Ready!
+## ðŸŽ‰ You're Ready!
 
 With these instructions, you can create beautiful, interactive galleries for any folder of images. The process is automated and handles everything from image processing to gallery generation.
 
-**Happy gallery creating!** 📸✨
+**Happy gallery creating!** ðŸ“¸âœ¨

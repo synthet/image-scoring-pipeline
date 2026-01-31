@@ -1,4 +1,4 @@
-# Model Source Testing Guide
+﻿# Model Source Testing Guide
 
 **Purpose**: Verify all TensorFlow Hub and Kaggle Hub model URLs are accessible and valid.
 
@@ -26,16 +26,16 @@ test_model_sources.bat
 .\Test-ModelSources.ps1
 
 # Direct Python (WSL)
-wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python test_model_sources.py"
+wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python test_model_sources.py"
 
 # Direct Python (Windows)
 python test_model_sources.py
 ```
 
 **Why Start Here:**
-- ✅ Fast (no downloads)
-- ✅ No authentication required
-- ✅ Tests most common source (TF Hub)
+- âœ… Fast (no downloads)
+- âœ… No authentication required
+- âœ… Tests most common source (TF Hub)
 
 ### Test Both Sources (Full Validation)
 
@@ -87,47 +87,47 @@ python test_model_sources.py --test-kaggle --verbose
 
 ```
 Testing imports...
-✓ TensorFlow: 2.15.0
-✓ TensorFlow Hub available
-✓ Kaggle Hub available
+âœ“ TensorFlow: 2.15.0
+âœ“ TensorFlow Hub available
+âœ“ Kaggle Hub available
 
 ======================================================================
 MODEL SOURCE AVAILABILITY TEST
 ======================================================================
-✓ Kaggle authentication found
+âœ“ Kaggle authentication found
 
 ======================================================================
 Testing Model Sources
 ======================================================================
 
-📦 Testing SPAQ model:
+ðŸ“¦ Testing SPAQ model:
   Testing TF Hub: https://tfhub.dev/google/musiq/spaq/1
-    TF Hub:     ✓ Accessible (signatures: ['serving_default'])
+    TF Hub:     âœ“ Accessible (signatures: ['serving_default'])
   Testing Kaggle Hub: google/musiq/tensorFlow2/spaq
-    Kaggle Hub: ✓ Accessible (cached at: /home/user/.cache/kagglehub...)
+    Kaggle Hub: âœ“ Accessible (cached at: /home/user/.cache/kagglehub...)
 
-📦 Testing AVA model:
+ðŸ“¦ Testing AVA model:
   Testing TF Hub: https://tfhub.dev/google/musiq/ava/1
-    TF Hub:     ✓ Accessible (signatures: ['serving_default'])
+    TF Hub:     âœ“ Accessible (signatures: ['serving_default'])
   Testing Kaggle Hub: google/musiq/tensorFlow2/ava
-    Kaggle Hub: ✓ Accessible (cached at: /home/user/.cache/kagglehub...)
+    Kaggle Hub: âœ“ Accessible (cached at: /home/user/.cache/kagglehub...)
 
-📦 Testing KONIQ model:
+ðŸ“¦ Testing KONIQ model:
     TF Hub:     N/A - Not available on TF Hub
   Testing Kaggle Hub: google/musiq/tensorFlow2/koniq-10k
-    Kaggle Hub: ✓ Accessible (cached at: /home/user/.cache/kagglehub...)
+    Kaggle Hub: âœ“ Accessible (cached at: /home/user/.cache/kagglehub...)
 
-📦 Testing PAQ2PIQ model:
+ðŸ“¦ Testing PAQ2PIQ model:
   Testing TF Hub: https://tfhub.dev/google/musiq/paq2piq/1
-    TF Hub:     ✓ Accessible (signatures: ['serving_default'])
+    TF Hub:     âœ“ Accessible (signatures: ['serving_default'])
   Testing Kaggle Hub: google/musiq/tensorFlow2/paq2piq
-    Kaggle Hub: ✓ Accessible (cached at: /home/user/.cache/kagglehub...)
+    Kaggle Hub: âœ“ Accessible (cached at: /home/user/.cache/kagglehub...)
 
-📦 Testing VILA model:
+ðŸ“¦ Testing VILA model:
   Testing TF Hub: https://tfhub.dev/google/vila/image/1
-    TF Hub:     ✓ Accessible (signatures: ['serving_default'])
+    TF Hub:     âœ“ Accessible (signatures: ['serving_default'])
   Testing Kaggle Hub: google/vila/tensorFlow2/image
-    Kaggle Hub: ✓ Accessible (cached at: /home/user/.cache/kagglehub...)
+    Kaggle Hub: âœ“ Accessible (cached at: /home/user/.cache/kagglehub...)
 
 ======================================================================
 SUMMARY
@@ -135,26 +135,26 @@ SUMMARY
 
 Model           TensorFlow Hub                 Kaggle Hub                    
 ----------------------------------------------------------------------
-✓ spaq          ✓                              ✓                             
-✓ ava           ✓                              ✓                             
-✓ koniq         N/A                            ✓                             
-✓ paq2piq       ✓                              ✓                             
-✓ vila          ✓                              ✓                             
+âœ“ spaq          âœ“                              âœ“                             
+âœ“ ava           âœ“                              âœ“                             
+âœ“ koniq         N/A                            âœ“                             
+âœ“ paq2piq       âœ“                              âœ“                             
+âœ“ vila          âœ“                              âœ“                             
 
 ======================================================================
 RECOMMENDATIONS
 ======================================================================
-✓ All models have at least one accessible source
-✓ Model loading should work with fallback mechanism
+âœ“ All models have at least one accessible source
+âœ“ Model loading should work with fallback mechanism
 
 ======================================================================
 FALLBACK MECHANISM STATUS
 ======================================================================
-✓ SPAQ       - Full fallback (TF Hub primary, Kaggle backup)
-✓ AVA        - Full fallback (TF Hub primary, Kaggle backup)
-⚠ KONIQ      - Kaggle only (no TF Hub available)
-✓ PAQ2PIQ    - Full fallback (TF Hub primary, Kaggle backup)
-✓ VILA       - Full fallback (TF Hub primary, Kaggle backup)
+âœ“ SPAQ       - Full fallback (TF Hub primary, Kaggle backup)
+âœ“ AVA        - Full fallback (TF Hub primary, Kaggle backup)
+âš  KONIQ      - Kaggle only (no TF Hub available)
+âœ“ PAQ2PIQ    - Full fallback (TF Hub primary, Kaggle backup)
+âœ“ VILA       - Full fallback (TF Hub primary, Kaggle backup)
 
 ======================================================================
 Test completed successfully!
@@ -164,18 +164,18 @@ Test completed successfully!
 ### Failed Test (Example)
 
 ```
-📦 Testing SPAQ model:
+ðŸ“¦ Testing SPAQ model:
   Testing TF Hub: https://tfhub.dev/google/musiq/spaq/1
-    TF Hub:     ✗ Network Error
+    TF Hub:     âœ— Network Error
   Testing Kaggle Hub: google/musiq/tensorFlow2/spaq
-    Kaggle Hub: ✗ Authentication Required
+    Kaggle Hub: âœ— Authentication Required
 
 ======================================================================
 RECOMMENDATIONS
 ======================================================================
-⚠ SPAQ: No accessible sources!
+âš  SPAQ: No accessible sources!
 
-⚠ Some models require Kaggle authentication
+âš  Some models require Kaggle authentication
   Run: mkdir -p ~/.kaggle && cp /path/to/kaggle.json ~/.kaggle/
   See: README_VILA.md for setup instructions
 ```
@@ -187,22 +187,22 @@ RECOMMENDATIONS
 ### TensorFlow Hub Tests
 
 For each TF Hub URL:
-1. ✅ URL accessibility
-2. ✅ Model can be loaded
-3. ✅ Model has expected signatures
-4. ❌ Network errors
-5. ❌ 404 Not Found errors
+1. âœ… URL accessibility
+2. âœ… Model can be loaded
+3. âœ… Model has expected signatures
+4. âŒ Network errors
+5. âŒ 404 Not Found errors
 
 ### Kaggle Hub Tests
 
 For each Kaggle Hub path:
-1. ✅ Path format validation
-2. ✅ Model can be downloaded (with `--test-kaggle`)
-3. ✅ Downloaded path exists
-4. ✅ Authentication works
-5. ❌ Authentication errors
-6. ❌ 404 Not Found errors
-7. ❌ Network errors
+1. âœ… Path format validation
+2. âœ… Model can be downloaded (with `--test-kaggle`)
+3. âœ… Downloaded path exists
+4. âœ… Authentication works
+5. âŒ Authentication errors
+6. âŒ 404 Not Found errors
+7. âŒ Network errors
 
 ---
 
@@ -224,7 +224,7 @@ For each Kaggle Hub path:
 
 **Solution**: Use WSL with TensorFlow environment
 ```bash
-wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python test_model_sources.py"
+wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python test_model_sources.py"
 ```
 
 ### "Kaggle Hub not available"
@@ -392,20 +392,20 @@ The test script uses emoji indicators:
 
 | Indicator | Meaning |
 |-----------|---------|
-| ✓ | Success - source is accessible |
-| ✗ | Error - source failed to load |
-| ⚠ | Warning - partial functionality |
+| âœ“ | Success - source is accessible |
+| âœ— | Error - source failed to load |
+| âš  | Warning - partial functionality |
 | N/A | Not applicable - source not available |
 
 ---
 
 ## Summary
 
-✅ **Purpose**: Verify all model URLs are accessible  
-✅ **Usage**: Simple command-line interface  
-✅ **Testing**: TF Hub + Kaggle Hub validation  
-✅ **Integration**: Works with existing infrastructure  
-✅ **Documentation**: Complete guide included  
+âœ… **Purpose**: Verify all model URLs are accessible  
+âœ… **Usage**: Simple command-line interface  
+âœ… **Testing**: TF Hub + Kaggle Hub validation  
+âœ… **Integration**: Works with existing infrastructure  
+âœ… **Documentation**: Complete guide included  
 
 **Recommendation**: Run `test_model_sources.py` before any major deployment or after environment changes to ensure all model sources are accessible.
 

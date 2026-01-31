@@ -1,8 +1,8 @@
-# Windows Scripts for MUSIQ GPU Runner
+﻿# Windows Scripts for MUSIQ GPU Runner
 
 This collection of Windows scripts makes it easy to run MUSIQ with GPU acceleration through WSL2 + Ubuntu. Choose the script that best fits your workflow!
 
-## 📁 Available Scripts
+## ðŸ“ Available Scripts
 
 ### 1. `run_musiq_gpu.bat` - Simple Command Line Runner
 **Best for**: Command line usage with single images
@@ -14,10 +14,10 @@ run_musiq_gpu.bat "sample.jpg"
 ```
 
 **Features:**
-- ✅ Simple command line interface
-- ✅ Automatic path conversion (Windows → WSL)
-- ✅ Error checking and validation
-- ✅ Clear output formatting
+- âœ… Simple command line interface
+- âœ… Automatic path conversion (Windows â†’ WSL)
+- âœ… Error checking and validation
+- âœ… Clear output formatting
 
 ---
 
@@ -30,12 +30,12 @@ run_musiq_advanced.bat
 ```
 
 **Features:**
-- ✅ Interactive menu system
-- ✅ Single image processing
-- ✅ Batch folder processing
-- ✅ GPU setup testing
-- ✅ Built-in help system
-- ✅ Error handling and validation
+- âœ… Interactive menu system
+- âœ… Single image processing
+- âœ… Batch folder processing
+- âœ… GPU setup testing
+- âœ… Built-in help system
+- âœ… Error handling and validation
 
 **Menu Options:**
 1. Process single image
@@ -65,12 +65,12 @@ run_musiq_advanced.bat
 ```
 
 **Features:**
-- ✅ PowerShell parameter support
-- ✅ Colored output for better readability
-- ✅ Advanced error handling
-- ✅ Batch processing with wildcards
-- ✅ Interactive mode fallback
-- ✅ Comprehensive help system
+- âœ… PowerShell parameter support
+- âœ… Colored output for better readability
+- âœ… Advanced error handling
+- âœ… Batch processing with wildcards
+- âœ… Interactive mode fallback
+- âœ… Comprehensive help system
 
 ---
 
@@ -82,15 +82,15 @@ run_musiq_advanced.bat
 2. Script automatically processes all dropped files
 
 **Features:**
-- ✅ Drag and drop interface
-- ✅ Multiple file support
-- ✅ Automatic file type validation
-- ✅ Batch processing of dropped files
-- ✅ Simple and intuitive
+- âœ… Drag and drop interface
+- âœ… Multiple file support
+- âœ… Automatic file type validation
+- âœ… Batch processing of dropped files
+- âœ… Simple and intuitive
 
 ---
 
-## 🚀 Quick Start Guide
+## ðŸš€ Quick Start Guide
 
 ### For Beginners (Easiest)
 1. **Drag and Drop**: Use `run_musiq_drag_drop.bat`
@@ -118,14 +118,14 @@ run_musiq_advanced.bat
 
 ---
 
-## 📋 Prerequisites
+## ðŸ“‹ Prerequisites
 
 Before using any script, ensure you have:
 
-- ✅ **WSL2** installed with Ubuntu
-- ✅ **NVIDIA GPU** with compatible driver
-- ✅ **TensorFlow GPU** environment set up in WSL2
-- ✅ **MUSIQ project** accessible at `/mnt/d/Projects/image-scoring`
+- âœ… **WSL2** installed with Ubuntu
+- âœ… **NVIDIA GPU** with compatible driver
+- âœ… **TensorFlow GPU** environment set up in WSL2
+- âœ… **MUSIQ project** accessible at `/path/to/image-scoring`
 
 ### Quick Prerequisites Check
 ```cmd
@@ -136,12 +136,12 @@ wsl --status
 wsl nvidia-smi
 
 # Test TensorFlow GPU setup
-wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python test_tf_gpu.py"
+wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python test_tf_gpu.py"
 ```
 
 ---
 
-## 🎯 Supported Image Formats
+## ðŸŽ¯ Supported Image Formats
 
 All scripts support these image formats:
 - **JPG/JPEG** - Most common format
@@ -151,7 +151,7 @@ All scripts support these image formats:
 
 ---
 
-## ⚡ Performance Expectations
+## âš¡ Performance Expectations
 
 | Method | Speed | Use Case |
 |--------|-------|----------|
@@ -160,7 +160,7 @@ All scripts support these image formats:
 
 ---
 
-## 🔧 Troubleshooting
+## ðŸ”§ Troubleshooting
 
 ### Common Issues
 
@@ -208,7 +208,7 @@ run_musiq_advanced.bat
 
 ---
 
-## 📊 Example Outputs
+## ðŸ“Š Example Outputs
 
 ### Successful GPU Processing
 ```
@@ -247,7 +247,7 @@ All files processed!
 
 ---
 
-## 🎉 Success!
+## ðŸŽ‰ Success!
 
 You now have multiple ways to run MUSIQ with GPU acceleration on Windows 11:
 
@@ -256,4 +256,4 @@ You now have multiple ways to run MUSIQ with GPU acceleration on Windows 11:
 - **Interactive menus** for guided operation
 - **PowerShell** for advanced users
 
-Choose the method that works best for your workflow and enjoy 6x faster image quality assessment! 🚀
+Choose the method that works best for your workflow and enjoy 6x faster image quality assessment! ðŸš€

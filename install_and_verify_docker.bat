@@ -18,16 +18,26 @@ echo You will be prompted for your sudo password.
 echo.
 pause
 
+REM Get project root dynamically
+setlocal enabledelayedexpansion
+for %%I in ("%~dp0") do set "PROJECT_ROOT=%%~fI"
+set "WSL_PATH=!PROJECT_ROOT:\=/!"
+set "WSL_PATH=!WSL_PATH::=!"
+set "WSL_PATH=/mnt/!WSL_PATH!"
+set "WSL_PATH=!WSL_PATH:/mnt/C=/mnt/c!"
+set "WSL_PATH=!WSL_PATH:/mnt/D=/mnt/d!"
+if "!WSL_PATH:~-1!"=="/" set "WSL_PATH=!WSL_PATH:~0,-1!"
+
 REM Make all scripts executable
 echo [INFO] Making scripts executable...
-wsl bash -c "cd /mnt/d/Projects/image-scoring && chmod +x scripts/*.sh"
+wsl bash -c "cd !WSL_PATH! && chmod +x scripts/*.sh"
 
 REM Step 1: Install Docker Engine
 echo.
 echo ============================================================
 echo  STEP 1: Installing Docker Engine
 echo ============================================================
-wsl bash -c "cd /mnt/d/Projects/image-scoring && ./scripts/install_docker_wsl.sh"
+wsl bash -c "cd !WSL_PATH! && ./scripts/install_docker_wsl.sh"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -41,7 +51,7 @@ echo.
 echo ============================================================
 echo  STEP 2: Configuring Docker (sudo-less access)
 echo ============================================================
-wsl bash -c "cd /mnt/d/Projects/image-scoring && ./scripts/setup_docker_postinstall.sh"
+wsl bash -c "cd !WSL_PATH! && ./scripts/setup_docker_postinstall.sh"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -53,7 +63,7 @@ echo.
 echo ============================================================
 echo  STEP 3: Installing NVIDIA Container Toolkit (GPU support)
 echo ============================================================
-wsl bash -c "cd /mnt/d/Projects/image-scoring && ./scripts/install_nvidia_docker.sh"
+wsl bash -c "cd !WSL_PATH! && ./scripts/install_nvidia_docker.sh"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -74,7 +84,7 @@ echo.
 echo ============================================================
 echo  STEP 5: Verifying Docker installation...
 echo ============================================================
-wsl bash -c "cd /mnt/d/Projects/image-scoring && ./scripts/verify_docker_wsl.sh"
+wsl bash -c "cd !WSL_PATH! && ./scripts/verify_docker_wsl.sh"
 
 echo.
 echo ============================================================

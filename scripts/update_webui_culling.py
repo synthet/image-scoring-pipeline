@@ -1,6 +1,6 @@
 import os
-
-file_path = r"d:\Projects\image-scoring\webui.py"
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+file_path = os.path.join(_PROJECT_ROOT, "webui.py")
 try:
     with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()

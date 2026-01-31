@@ -18,6 +18,17 @@ DB_FILE = "scoring_history.fdb"
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(_PROJECT_ROOT, DB_FILE)
 
+def _to_win_path(p_str: str) -> str:
+    """Convert a WSL /mnt/ path to a Windows drive path."""
+    if p_str.startswith("/mnt/"):
+        parts = p_str.split('/')
+        if len(parts) >= 3 and parts[1] == 'mnt':
+            drive = parts[2]
+            rest = "\\".join(parts[3:])
+            return f"{drive}:\\{rest}"
+    return p_str.replace("/", "\\")
+
+
 def _is_wsl() -> bool:
     # Conservative detection: WSL exports these env vars.
     return os.name != "nt" and bool(os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"))
@@ -169,14 +180,10 @@ def get_db():
              # We assume DB_FILE ("scoring_history.fdb") is in the simple root.
              # We need the ABSOLUTE WINDOWS PATH for the DSN.
              
-             win_path = r"d:\Projects\image-scoring\scoring_history.fdb" # Fallback
              try:
-                 cwd = os.getcwd()
-                 # Mapping for WSL /mnt/d/...
-                 if cwd.startswith("/mnt/d"):
-                     win_path = cwd.replace("/mnt/d", "d:").replace("/", "\\") + "\\" + DB_FILE
+                 win_path = _to_win_path(_PROJECT_ROOT) + "\\" + DB_FILE
                  # Mapping for Docker /app/... (Assuming it's mounted from Windows project root)
-                 elif is_docker and cwd == "/app":
+                 if is_docker and os.getcwd() == "/app":
                      # In docker, we can't easily guess the host path, so we use the fallback 
                      # or expect it to be passed via env?
                      # Let's keep the fallback but add a log message.
@@ -195,18 +202,10 @@ def get_db():
                  
                  # We need to launch firebird.exe -a on Windows
                  # Path assumption: relative to project or hardcoded fallback
-                 # We try to infer from current location: /mnt/d/Projects/image-scoring -> d:\Projects\image-scoring
-                 fb_exe_win = r"d:\Projects\image-scoring\Firebird\firebird.exe"
-                 
-                 try:
-                     # Attempt to construct path dynamically if we are in a known structure
-                     cwd = os.getcwd()
-                     if cwd.startswith("/mnt/d"):
-                         # /mnt/d/Projects/image-scoring -> d:\Projects\image-scoring
-                         base_win = cwd.replace("/mnt/d", "d:").replace("/", "\\")
-                         possible_exe = base_win + r"\Firebird\firebird.exe"
-                         fb_exe_win = possible_exe
-                 except: pass
+                 # We try to infer from current location: /mnt/x/path/to/project -> x:\\path\\to\\project
+                 # Use dynamic project root
+                 win_root = _to_win_path(_PROJECT_ROOT)
+                 fb_exe_win = os.path.join(win_root, "Firebird", "firebird.exe")
 
                  _launch_firebird_server_wsl(fb_exe_win)
                  time.sleep(3) # Wait for startup

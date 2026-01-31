@@ -1,4 +1,4 @@
-# Docker WSL2 Setup Guide
+﻿# Docker WSL2 Setup Guide
 
 This guide provides step-by-step instructions for installing and configuring Docker in WSL2 from scratch.
 
@@ -34,7 +34,7 @@ If you prefer to run each step manually:
 #### Step 1: Install Docker Engine
 
 ```bash
-cd /mnt/d/Projects/image-scoring
+cd /path/to/image-scoring
 chmod +x scripts/install_docker_wsl.sh
 ./scripts/install_docker_wsl.sh
 ```
@@ -69,14 +69,14 @@ chmod +x scripts/verify_docker_wsl.sh
 ```
 
 This will check:
-- ✅ WSL2 environment
-- ✅ Docker installation
-- ✅ Docker service status
-- ✅ Non-sudo Docker access
-- ✅ Container functionality
-- ✅ Docker Compose
-- ✅ GPU access (if NVIDIA toolkit installed)
-- ✅ Disk space
+- âœ… WSL2 environment
+- âœ… Docker installation
+- âœ… Docker service status
+- âœ… Non-sudo Docker access
+- âœ… Container functionality
+- âœ… Docker Compose
+- âœ… GPU access (if NVIDIA toolkit installed)
+- âœ… Disk space
 
 ## Quick Start
 
@@ -130,7 +130,7 @@ fix_nvidia_docker.bat
 
 Or from WSL:
 ```bash
-cd /mnt/d/Projects/image-scoring
+cd /path/to/image-scoring
 # Clean up
 sudo rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list
 sudo rm -f /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg

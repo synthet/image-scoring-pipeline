@@ -1,4 +1,4 @@
-# WSL2 + Ubuntu TensorFlow GPU Setup Guide
+﻿# WSL2 + Ubuntu TensorFlow GPU Setup Guide
 
 This guide will help you set up TensorFlow GPU support using WSL2 + Ubuntu, which is the recommended approach for Windows users.
 
@@ -134,7 +134,7 @@ Once setup is complete:
 1. **Navigate to your project in WSL:**
    ```bash
    # Your Windows project should be accessible at:
-   cd /mnt/d/Projects/image-scoring
+   cd /path/to/image-scoring
    ```
 
 2. **Activate the TensorFlow environment:**
@@ -182,8 +182,8 @@ Once setup is complete:
 
 | Implementation | Device | Speed | Status |
 |----------------|--------|-------|---------|
-| Windows Native | CPU | ~30ms | ✅ Working |
-| WSL2 + Ubuntu | GPU | ~5ms | ✅ Working (after setup) |
+| Windows Native | CPU | ~30ms | âœ… Working |
+| WSL2 + Ubuntu | GPU | ~5ms | âœ… Working (after setup) |
 
 ## Next Steps
 

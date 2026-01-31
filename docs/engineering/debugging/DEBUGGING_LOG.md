@@ -1,4 +1,4 @@
-# Debugging Session Log - Fullscreen Image Feature
+﻿# Debugging Session Log - Fullscreen Image Feature
 
 **Date**: January 17, 2026  
 **Session Duration**: ~3 hours  
@@ -136,7 +136,7 @@ Full res load error: Error: Network response was not ok
 [DEBUG] demo.app type: <class 'gradio.routes.App'>
 [DEBUG] demo.app has .get: True
 [DEBUG] FastAPI app routes before: 76
-[DEBUG] FastAPI app routes after: 79  ← Routes added!
+[DEBUG] FastAPI app routes after: 79  â† Routes added!
 ```
 
 **Hypothesis E**: REJECTED - Endpoints ARE registered
@@ -205,7 +205,7 @@ async def source_image_endpoint(path: str):
 
 **Conclusion**: **Functions are NEVER called despite routes being registered**
 
-**Current Hypothesis ⭐**: Gradio routing middleware intercepts ALL requests before FastAPI processes them, even though routes are technically registered in FastAPI app.
+**Current Hypothesis â­**: Gradio routing middleware intercepts ALL requests before FastAPI processes them, even though routes are technically registered in FastAPI app.
 
 **Status**: BLOCKED - Need to investigate Gradio routing internals
 
@@ -239,7 +239,7 @@ fetch('http://127.0.0.1:7242/ingest/...', {
 **Location**: `modules/ui/app.py` - endpoint functions
 
 **Added Logs**:
-- File writes to `d:\Projects\image-scoring\.cursor\debug.log`
+- File writes to `/path/to/image-scoring\.cursor\debug.log`
 - Console prints with `[DEBUG]` prefix
 - Exception logging with error details
 

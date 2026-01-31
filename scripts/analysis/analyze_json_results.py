@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Analyze JSON results from MUSIQ batch processing to find best and worst images.
 Searches through all JSON files in a directory and creates a comprehensive summary.
@@ -273,7 +273,7 @@ class JSONResultsAnalyzer:
         
         # Overall statistics
         overall = self.summary.get('overall_statistics', {})
-        print(f"\n📊 OVERALL STATISTICS")
+        print(f"\nðŸ“Š OVERALL STATISTICS")
         print(f"Total Images Analyzed: {self.summary.get('total_images', 0)}")
         print(f"Average Score: {overall.get('average_score', 'N/A')}")
         print(f"Score Range: {overall.get('min_score', 'N/A')} - {overall.get('max_score', 'N/A')}")
@@ -282,18 +282,18 @@ class JSONResultsAnalyzer:
         # Best and worst overall
         best_worst = self.summary.get('best_worst_images', {}).get('overall', {})
         if best_worst:
-            print(f"\n🏆 BEST OVERALL IMAGE")
+            print(f"\nðŸ† BEST OVERALL IMAGE")
             best = best_worst.get('best', {})
             print(f"  Image: {best.get('image_name', 'N/A')}")
             print(f"  Average Score: {best.get('average_normalized_score', 'N/A')}")
             
-            print(f"\n📉 WORST OVERALL IMAGE")
+            print(f"\nðŸ“‰ WORST OVERALL IMAGE")
             worst = best_worst.get('worst', {})
             print(f"  Image: {worst.get('image_name', 'N/A')}")
             print(f"  Average Score: {worst.get('average_normalized_score', 'N/A')}")
         
         # Model statistics
-        print(f"\n📈 MODEL STATISTICS")
+        print(f"\nðŸ“ˆ MODEL STATISTICS")
         model_stats = self.summary.get('model_statistics', {})
         for model, stats in model_stats.items():
             print(f"\n  {model.upper()}:")
@@ -305,7 +305,7 @@ class JSONResultsAnalyzer:
             print(f"    Normalized Range: {norm_scores.get('min', 'N/A')} - {norm_scores.get('max', 'N/A')}")
         
         # Best and worst by model
-        print(f"\n🎯 BEST & WORST BY MODEL")
+        print(f"\nðŸŽ¯ BEST & WORST BY MODEL")
         by_model = self.summary.get('best_worst_images', {}).get('by_model', {})
         for model, best_worst in by_model.items():
             print(f"\n  {model.upper()}:")
@@ -322,7 +322,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python analyze_json_results.py --directory "D:/Projects/image-scoring"
+  python analyze_json_results.py --directory "/path/to/image-scoring"
   python analyze_json_results.py --directory "D:/Photos/Export/2025" --output "my_analysis.json"
         """
     )

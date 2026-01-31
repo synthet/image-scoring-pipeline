@@ -1,4 +1,4 @@
-# Deployment Guide: Image Scoring Tool on Windows (WSL2)
+﻿# Deployment Guide: Image Scoring Tool on Windows (WSL2)
 
 This guide provides step-by-step instructions to deploy the Image Scoring tool on a fresh Windows 10/11 PC using WSL2 (Windows Subsystem for Linux), which is the recommended environment for GPU acceleration.
 
@@ -46,9 +46,9 @@ You can access your Windows files from WSL at `/mnt/c/` or `/mnt/d/`.
 It is recommended to keep the project on your Windows drive for easy access, or clone it directly into WSL for better filesystem performance.
 
 **Option A: Accessing existing Windows folder (Easiest)**
-Assuming project is at `D:\Projects\image-scoring`:
+Assuming project is at `/path/to/image-scoring`:
 ```bash
-cd /mnt/d/Projects/image-scoring
+cd /path/to/image-scoring
 ```
 
 **Option B: Cloning to WSL (Faster Performance)**

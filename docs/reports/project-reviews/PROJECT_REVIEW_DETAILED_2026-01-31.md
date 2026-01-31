@@ -1,4 +1,4 @@
-## Project review deep dive (topic-by-topic)
+﻿## Project review deep dive (topic-by-topic)
 
 **Project**: `image-scoring`  
 **Date**: 2026-01-31  
@@ -9,10 +9,10 @@ This document expands each topic individually with:
 - **Problem**: what is wrong/suboptimal
 - **Evidence**: where/how it shows up in this repo (verified)
 - **Impact**: why you should care
-- **Options**: multiple solution paths (quick → robust)
-- **Recommended approach**: what I’d do first
+- **Options**: multiple solution paths (quick â†’ robust)
+- **Recommended approach**: what Iâ€™d do first
 - **Implementation notes**: concrete changes/architecture ideas
-- **Test/verification**: how to prove it’s fixed
+- **Test/verification**: how to prove itâ€™s fixed
 
 ---
 
@@ -36,7 +36,7 @@ The server binds to all interfaces by default (`0.0.0.0`), exposing the UI and A
 ### Options
 - **Option A (fastest)**: Bind to `127.0.0.1` by default; require explicit config/env var for `0.0.0.0`.
 - **Option B**: Keep `0.0.0.0` but add API key/Basic Auth middleware.
-- **Option C**: Split “dev WebUI” (localhost) from “deployable API” (secure).
+- **Option C**: Split â€œdev WebUIâ€ (localhost) from â€œdeployable APIâ€ (secure).
 
 ### Recommended approach
 **Option A immediately**, then **Option B** for non-local usage.
@@ -77,7 +77,7 @@ The database layer uses default credentials (`sysdba`/`masterkey`) and assumes s
 
 ### Evidence
 - **Verified**: `modules/db.py` contains `connect(dsn, user='sysdba', password='masterkey')`.
-- **Verified**: `modules/db.py` constructs DSNs using hardcoded paths like `d:\Projects\image-scoring\...`.
+- **Verified**: `modules/db.py` constructs DSNs using hardcoded paths like `/path/to/image-scoring\...`.
 - **Verified**: Hardcoded `FB_DLL` path pointing to `..\Firebird\fbclient.dll`.
 
 ### Impact
@@ -326,7 +326,7 @@ The folder tree UI constructs HTML by concatenating strings without sanitization
 
 ### Evidence
 - **Verified**: `modules/ui_tree.py` line 41:
-  `content = f'<span ...>📁 {name}</span>'`
+  `content = f'<span ...>ðŸ“ {name}</span>'`
 - `name` comes from `os.path.basename`.
 
 ### Impact

@@ -18,7 +18,7 @@ description: Set up the WSL 2 environment for image scoring
 3. **Access Project**:
    WSL automatically mounts Windows drives. Navigate to your project (assuming D: drive):
    ```bash
-   cd /mnt/d/Projects/image-scoring
+   cd /path/to/image-scoring
    ```
 
 4. **Install System Dependencies (Inside WSL)**:
@@ -29,7 +29,7 @@ description: Set up the WSL 2 environment for image scoring
    ```
 
 5. **Setup Python Environment (Inside WSL)**:
-   Follow the [setup_env](file:///d:/Projects/image-scoring/.agent/workflows/setup_env.md) workflow inside the WSL terminal.
+   Follow the [setup_env](.agent/workflows/setup_env.md) workflow inside the WSL terminal.
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate

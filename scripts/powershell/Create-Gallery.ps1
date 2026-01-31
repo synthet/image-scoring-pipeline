@@ -2,7 +2,7 @@
 # Usage: .\Create-Gallery.ps1 "C:\Path\To\Your\Images"
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$InputFolder
 )
 
@@ -54,9 +54,15 @@ try {
     # Convert Windows path to WSL path
     $wslPath = $InputFolder -replace '^([A-Z]):', '/mnt/$($matches[1].ToLower())' -replace '\\', '/'
     
+    # Get project root dynamically (scripts/powershell -> project root)
+    $ProjectRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+    $WSLProjectDir = $ProjectRoot -replace '\\', '/' -replace '^([A-Za-z]):', '/mnt/$1'
+    $WSLProjectDir = $WSLProjectDir.ToLower()
+    
     # Run batch processing in WSL
-    wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python scripts/python/batch_process_images.py --input-dir '$wslPath' --output-dir '$wslPath'"
-} catch {
+    wsl bash -c "source ~/.venvs/tf/bin/activate && cd $WSLProjectDir && python scripts/python/batch_process_images.py --input-dir '$wslPath' --output-dir '$wslPath'"
+}
+catch {
     Write-Host "Using Windows Python environment for multi-model processing..." -ForegroundColor Green
     
     # Run batch processing in Windows
@@ -767,7 +773,8 @@ if (Test-Path $OutputFile) {
     Write-Host ""
     Write-Host "Gallery opened! You can now browse your images with quality scores." -ForegroundColor Green
     Write-Host "Images are sorted by weighted score from all available models." -ForegroundColor Cyan
-} else {
+}
+else {
     Write-Host ""
     Write-Host "❌ ERROR: Failed to create gallery" -ForegroundColor Red
     Write-Host "Please check that the folder contains JSON files with image data." -ForegroundColor Yellow

@@ -1,4 +1,4 @@
-# VILA Batch Files Usage Guide
+﻿# VILA Batch Files Usage Guide
 
 ## Overview
 
@@ -27,7 +27,7 @@ run_vila.bat "C:\Users\YourName\Pictures\photo.jpg"
 **Purpose**: Run VILA model by dragging and dropping an image file onto the batch file.
 
 **Usage**:
-1. Navigate to `D:\Projects\image-scoring\` in File Explorer
+1. Navigate to `/path/to/image-scoring\` in File Explorer
 2. Drag your image file onto `run_vila_drag_drop.bat`
 3. The batch file will automatically process the image
 4. Results will be displayed in the console window
@@ -41,20 +41,20 @@ run_vila.bat "C:\Users\YourName\Pictures\photo.jpg"
 
 ## Features
 
-### ✅ WSL Integration
+### âœ… WSL Integration
 Both batch files automatically:
 - Detect if WSL is available
 - Use WSL with TensorFlow virtual environment (`~/.venvs/tf/`)
 - Convert Windows paths to WSL paths (all drive letters A-Z)
 - Fall back to Windows Python if WSL is unavailable
 
-### ✅ Path Conversion
+### âœ… Path Conversion
 Handles all drive letters automatically:
-- `C:\Photos\image.jpg` → `/mnt/c/Photos/image.jpg`
-- `D:\Images\photo.png` → `/mnt/d/Images/photo.png`
-- `E:\Work\test.jpg` → `/mnt/e/Work/test.jpg`
+- `C:\Photos\image.jpg` â†’ `/mnt/c/Photos/image.jpg`
+- `D:\Images\photo.png` â†’ `/mnt/d/Images/photo.png`
+- `E:\Work\test.jpg` â†’ `/mnt/e/Work/test.jpg`
 
-### ✅ Error Handling
+### âœ… Error Handling
 - Checks if image file exists
 - Validates file path before processing
 - Provides helpful error messages
@@ -93,15 +93,15 @@ Press any key to exit...
 ## Prerequisites
 
 ### Required
-1. ✅ WSL installed and configured
-2. ✅ TensorFlow virtual environment at `~/.venvs/tf/`
-3. ✅ Kaggle authentication configured (`~/.kaggle/kaggle.json`)
+1. âœ… WSL installed and configured
+2. âœ… TensorFlow virtual environment at `~/.venvs/tf/`
+3. âœ… Kaggle authentication configured (`~/.kaggle/kaggle.json`)
 
 ### Setup Kaggle Authentication
 If you haven't set up Kaggle credentials yet:
 
 1. Create a Kaggle account at https://www.kaggle.com
-2. Go to Account Settings → API → Create New API Token
+2. Go to Account Settings â†’ API â†’ Create New API Token
 3. Download `kaggle.json`
 4. Place in WSL: `~/.kaggle/kaggle.json`
    ```bash
@@ -194,7 +194,7 @@ create_gallery.bat "D:\Photos\MyCollection"
 If you need JSON output from VILA:
 ```batch
 # Use the Python script directly
-wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python run_vila.py --image /mnt/d/Photos/image.jpg > output.txt"
+wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python run_vila.py --image /mnt/d/Photos/image.jpg > output.txt"
 ```
 
 ### Integration with Scripts
@@ -219,15 +219,15 @@ for %%f in (*.jpg) do (
 - **VILA Model Version**: v1 (google/vila/tensorFlow2/image)
 - **Script Version**: 2.1.1
 - **Last Updated**: 2025-10-09
-- **WSL Integration**: ✅ Enabled
-- **Path Conversion**: ✅ All drive letters supported
+- **WSL Integration**: âœ… Enabled
+- **Path Conversion**: âœ… All drive letters supported
 
 ## Next Steps
 
-1. ✅ Verify WSL is working: `wsl --version`
-2. ✅ Test VILA batch file: Drop an image onto `run_vila_drag_drop.bat`
-3. ✅ Check Kaggle auth if model fails to load
-4. ✅ For batch processing, use `create_gallery.bat` instead
+1. âœ… Verify WSL is working: `wsl --version`
+2. âœ… Test VILA batch file: Drop an image onto `run_vila_drag_drop.bat`
+3. âœ… Check Kaggle auth if model fails to load
+4. âœ… For batch processing, use `create_gallery.bat` instead
 
 ## Support
 
@@ -238,5 +238,5 @@ For issues or questions:
 
 ---
 
-**Quick Start**: Just drag your image onto `run_vila_drag_drop.bat`! 🎨
+**Quick Start**: Just drag your image onto `run_vila_drag_drop.bat`! ðŸŽ¨
 

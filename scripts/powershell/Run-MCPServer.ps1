@@ -2,11 +2,11 @@
 # Provides debugging tools for Cursor IDE
 
 param(
-    [switch]$Help
+  [switch]$Help
 )
 
 if ($Help) {
-    Write-Host @"
+  Write-Host @"
 Image Scoring MCP Server
 ========================
 
@@ -38,10 +38,10 @@ Configuration:
     "name": "image-scoring",
     "command": "python",
     "args": ["-m", "modules.mcp_server"],
-    "cwd": "d:\\Projects\\image-scoring"
+    "cwd": "/path/to/image-scoring"  // Replace with your project path
   }
 "@
-    exit 0
+  exit 0
 }
 
 # Change to project root
@@ -60,8 +60,8 @@ Write-Host ""
 # Check if mcp package is installed
 $mcpCheck = python -c "import mcp; print('ok')" 2>&1
 if ($mcpCheck -ne "ok") {
-    Write-Host "Warning: MCP SDK not installed. Installing..." -ForegroundColor Yellow
-    pip install mcp
+  Write-Host "Warning: MCP SDK not installed. Installing..." -ForegroundColor Yellow
+  pip install mcp
 }
 
 # Run the server

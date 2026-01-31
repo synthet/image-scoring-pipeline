@@ -1,4 +1,4 @@
-# Model Fallback Mechanism (Legacy)
+﻿# Model Fallback Mechanism (Legacy)
 
 > [!WARNING]
 > **Deprecated System**: This document describes the unified fallback mechanism (TFHub -> Kaggle) primarily designed for the **VILA** model. Since VILA has been disabled in v2.5.1, this mechanism is largely irrelevant for the current Hybrid (MUSIQ + LIQE) pipeline.
@@ -7,7 +7,7 @@
 
 **Version**: 2.2.0  
 **Date**: 2025-10-09  
-**Feature**: Unified TensorFlow Hub → Kaggle Hub fallback for all models
+**Feature**: Unified TensorFlow Hub â†’ Kaggle Hub fallback for all models
 
 ---
 
@@ -35,11 +35,11 @@ self.model_sources = {
 ```
 
 **Issues**:
-- ❌ If TF Hub was down, SPAQ/AVA/PAQ2PIQ would fail completely
-- ❌ KONIQ required Kaggle auth even though TF Hub might be available
-- ❌ VILA required Kaggle auth even though it's on TF Hub too
-- ❌ No redundancy or fallback options
-- ❌ Different loading logic for each source type
+- âŒ If TF Hub was down, SPAQ/AVA/PAQ2PIQ would fail completely
+- âŒ KONIQ required Kaggle auth even though TF Hub might be available
+- âŒ VILA required Kaggle auth even though it's on TF Hub too
+- âŒ No redundancy or fallback options
+- âŒ Different loading logic for each source type
 
 ---
 
@@ -79,51 +79,51 @@ self.model_sources = {
 ## Loading Logic Flow
 
 ```
-┌─────────────────────────────────────┐
-│   Model Loading Request             │
-└──────────────┬──────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│   Check TensorFlow Hub Available?   │
-└──────────────┬──────────────────────┘
-               │
-         ┌─────┴─────┐
-         │           │
-      YES│           │NO
-         │           │
-         ▼           ▼
-┌────────────────┐  ┌────────────────┐
-│ Try TF Hub     │  │ Skip TF Hub    │
-└────────┬───────┘  └────────┬───────┘
-         │                    │
-    ┌────┴────┐              │
-    │         │              │
-SUCCESS│   FAIL│              │
-    │         │              │
-    ▼         ▼              ▼
-┌────────┐  ┌──────────────────────┐
-│ DONE ✓ │  │ Check Kaggle Hub     │
-└────────┘  │ Available?           │
-            └──────────┬───────────┘
-                       │
-                 ┌─────┴─────┐
-                 │           │
-              YES│           │NO
-                 │           │
-                 ▼           ▼
-        ┌────────────────┐  ┌────────────────┐
-        │ Try Kaggle Hub │  │ FAIL ✗         │
-        └────────┬───────┘  │ No sources     │
-                 │          │ available      │
-            ┌────┴────┐     └────────────────┘
-            │         │
-        SUCCESS│   FAIL│
-            │         │
-            ▼         ▼
-        ┌────────┐  ┌────────┐
-        │ DONE ✓ │  │ FAIL ✗ │
-        └────────┘  └────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Model Loading Request             â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+               â”‚
+               â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Check TensorFlow Hub Available?   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+               â”‚
+         â”Œâ”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”
+         â”‚           â”‚
+      YESâ”‚           â”‚NO
+         â”‚           â”‚
+         â–¼           â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Try TF Hub     â”‚  â”‚ Skip TF Hub    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜
+         â”‚                    â”‚
+    â”Œâ”€â”€â”€â”€â”´â”€â”€â”€â”€â”              â”‚
+    â”‚         â”‚              â”‚
+SUCCESSâ”‚   FAILâ”‚              â”‚
+    â”‚         â”‚              â”‚
+    â–¼         â–¼              â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ DONE âœ“ â”‚  â”‚ Check Kaggle Hub     â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚ Available?           â”‚
+            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                       â”‚
+                 â”Œâ”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”
+                 â”‚           â”‚
+              YESâ”‚           â”‚NO
+                 â”‚           â”‚
+                 â–¼           â–¼
+        â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+        â”‚ Try Kaggle Hub â”‚  â”‚ FAIL âœ—         â”‚
+        â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚ No sources     â”‚
+                 â”‚          â”‚ available      â”‚
+            â”Œâ”€â”€â”€â”€â”´â”€â”€â”€â”€â”     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+            â”‚         â”‚
+        SUCCESSâ”‚   FAILâ”‚
+            â”‚         â”‚
+            â–¼         â–¼
+        â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”
+        â”‚ DONE âœ“ â”‚  â”‚ FAIL âœ— â”‚
+        â””â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -154,10 +154,10 @@ def load_model(self, model_name: str) -> bool:
             print(f"Loading {model_name.upper()} from TensorFlow Hub")
             model = hub.load(tfhub_url)
             self.models[model_name] = model
-            print(f"✓ {model_name.upper()} loaded successfully from TF Hub")
+            print(f"âœ“ {model_name.upper()} loaded successfully from TF Hub")
             return True
         except Exception as e:
-            print(f"⚠ TF Hub failed: {e}")
+            print(f"âš  TF Hub failed: {e}")
             print(f"  Falling back to Kaggle Hub...")
     
     # Fall back to Kaggle Hub
@@ -167,14 +167,14 @@ def load_model(self, model_name: str) -> bool:
             model_path = kagglehub.model_download(kaggle_path)
             model = tf.saved_model.load(model_path)
             self.models[model_name] = model
-            print(f"✓ {model_name.upper()} loaded successfully from Kaggle Hub")
+            print(f"âœ“ {model_name.upper()} loaded successfully from Kaggle Hub")
             return True
         except Exception as e:
-            print(f"✗ Failed to load from Kaggle Hub: {e}")
+            print(f"âœ— Failed to load from Kaggle Hub: {e}")
             return False
     
     # Both sources failed or unavailable
-    print(f"✗ No available sources succeeded")
+    print(f"âœ— No available sources succeeded")
     return False
 ```
 
@@ -184,34 +184,34 @@ def load_model(self, model_name: str) -> bool:
 
 | Model | TensorFlow Hub | Kaggle Hub | Fallback Benefit |
 |-------|----------------|------------|------------------|
-| **SPAQ** | ✅ Primary | ✅ Fallback | High - Works without auth |
-| **AVA** | ✅ Primary | ✅ Fallback | High - Works without auth |
-| **KONIQ** | ❌ Not available | ✅ Primary | Medium - Only on Kaggle |
-| **PAQ2PIQ** | ✅ Primary | ✅ Fallback | High - Works without auth |
-| **VILA** | ✅ Primary | ✅ Fallback | High - Works without auth |
+| **SPAQ** | âœ… Primary | âœ… Fallback | High - Works without auth |
+| **AVA** | âœ… Primary | âœ… Fallback | High - Works without auth |
+| **KONIQ** | âŒ Not available | âœ… Primary | Medium - Only on Kaggle |
+| **PAQ2PIQ** | âœ… Primary | âœ… Fallback | High - Works without auth |
+| **VILA** | âœ… Primary | âœ… Fallback | High - Works without auth |
 
 ---
 
 ## Benefits
 
-### 1. Improved Reliability ✅
+### 1. Improved Reliability âœ…
 - **Before**: Single point of failure per model
 - **After**: Automatic fallback if primary source fails
 
-### 2. Faster Loading ✅
+### 2. Faster Loading âœ…
 - **TF Hub** typically loads faster (CDN-backed)
 - **Kaggle Hub** used only when necessary
 
-### 3. No Authentication When Possible ✅
+### 3. No Authentication When Possible âœ…
 - **TF Hub**: No authentication required
 - **Kaggle Hub**: Authentication only used as fallback
 
-### 4. Better User Experience ✅
+### 4. Better User Experience âœ…
 - Clear status messages with emoji indicators
 - Users see which source was used
 - Transparent fallback process
 
-### 5. Future-Proof Architecture ✅
+### 5. Future-Proof Architecture âœ…
 - Easy to add more sources (local cache, mirrors, custom servers)
 - Consistent pattern for all models
 - Extensible design
@@ -223,38 +223,38 @@ def load_model(self, model_name: str) -> bool:
 ### Successful TF Hub Load
 ```
 Loading SPAQ model from TensorFlow Hub: https://tfhub.dev/google/musiq/spaq/1
-✓ SPAQ model loaded successfully from TensorFlow Hub
+âœ“ SPAQ model loaded successfully from TensorFlow Hub
 ```
 
 ### Fallback to Kaggle Hub
 ```
 Loading AVA model from TensorFlow Hub: https://tfhub.dev/google/musiq/ava/1
-⚠ TensorFlow Hub failed for AVA: Network error
+âš  TensorFlow Hub failed for AVA: Network error
   Falling back to Kaggle Hub...
 Loading AVA model from Kaggle Hub: google/musiq/tensorFlow2/ava
 Model downloaded to: /home/user/.cache/kagglehub/models/google/musiq/...
-✓ AVA model loaded successfully from Kaggle Hub
+âœ“ AVA model loaded successfully from Kaggle Hub
 ```
 
 ### KONIQ (Kaggle Hub only)
 ```
 Loading KONIQ model from Kaggle Hub: google/musiq/tensorFlow2/koniq-10k
 Model downloaded to: /home/user/.cache/kagglehub/models/google/musiq/...
-✓ KONIQ model loaded successfully from Kaggle Hub
+âœ“ KONIQ model loaded successfully from Kaggle Hub
 ```
 
 ### Complete Failure
 ```
 Loading CUSTOM model from TensorFlow Hub: https://tfhub.dev/google/custom/1
-⚠ TensorFlow Hub failed for CUSTOM: Model not found
+âš  TensorFlow Hub failed for CUSTOM: Model not found
   Falling back to Kaggle Hub...
 Loading CUSTOM model from Kaggle Hub: google/custom/tensorFlow2/model
-✗ Failed to load CUSTOM model from Kaggle Hub: 404 Not Found
+âœ— Failed to load CUSTOM model from Kaggle Hub: 404 Not Found
 
 Note: Kaggle Hub models require authentication.
 See docs/vila/README_VILA.md for Kaggle setup instructions.
 
-✗ Failed to load CUSTOM model: No available sources succeeded
+âœ— Failed to load CUSTOM model: No available sources succeeded
 ```
 
 ---
@@ -291,7 +291,7 @@ success = scorer.load_model("invalid_model")
 
 ```bash
 # Run comprehensive test
-wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python run_all_musiq_models.py --image test_image.jpg"
+wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python run_all_musiq_models.py --image test_image.jpg"
 
 # Expected output:
 # - Models load from TF Hub when possible
@@ -304,16 +304,16 @@ wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring
 ## Performance Comparison
 
 ### TensorFlow Hub (Primary)
-- **Speed**: ⭐⭐⭐⭐⭐ Fast (CDN-backed)
-- **Reliability**: ⭐⭐⭐⭐ High (Google infrastructure)
-- **Auth**: ✅ None required
-- **Cache**: ✅ Local cache in `~/.keras/`
+- **Speed**: â­â­â­â­â­ Fast (CDN-backed)
+- **Reliability**: â­â­â­â­ High (Google infrastructure)
+- **Auth**: âœ… None required
+- **Cache**: âœ… Local cache in `~/.keras/`
 
 ### Kaggle Hub (Fallback)
-- **Speed**: ⭐⭐⭐ Moderate (depends on region)
-- **Reliability**: ⭐⭐⭐⭐ High (Kaggle infrastructure)
-- **Auth**: ⚠️ Required (`kaggle.json`)
-- **Cache**: ✅ Local cache in `~/.cache/kagglehub/`
+- **Speed**: â­â­â­ Moderate (depends on region)
+- **Reliability**: â­â­â­â­ High (Kaggle infrastructure)
+- **Auth**: âš ï¸ Required (`kaggle.json`)
+- **Cache**: âœ… Local cache in `~/.cache/kagglehub/`
 
 ---
 
@@ -414,10 +414,10 @@ self.model_sources = {
 
 ## Summary
 
-✅ **Implemented**: Unified TFHub → Kaggle Hub fallback for all 5 models  
-✅ **Benefit**: Improved reliability without requiring authentication  
-✅ **Impact**: No breaking changes, fully backward compatible  
-✅ **Version**: 2.2.0 (minor version bump)  
+âœ… **Implemented**: Unified TFHub â†’ Kaggle Hub fallback for all 5 models  
+âœ… **Benefit**: Improved reliability without requiring authentication  
+âœ… **Impact**: No breaking changes, fully backward compatible  
+âœ… **Version**: 2.2.0 (minor version bump)  
 
-**Status**: Production Ready 🎉
+**Status**: Production Ready ðŸŽ‰
 

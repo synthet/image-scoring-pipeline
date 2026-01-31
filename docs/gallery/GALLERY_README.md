@@ -1,10 +1,10 @@
-# 🎨 MUSIQ Image Quality Gallery
+﻿# ðŸŽ¨ MUSIQ Image Quality Gallery
 
 An interactive HTML gallery for browsing and analyzing your images based on MUSIQ quality scores.
 
 ## Features
 
-### 📊 Multiple Sorting Options
+### ðŸ“Š Multiple Sorting Options
 - **Final Robust Score** - Combined weighted, median, and trimmed mean scores
 - **Weighted Score** - Model-weighted average (KONIQ: 35%, SPAQ: 30%, PAQ2PIQ: 25%, AVA: 10%)
 - **Median Score** - Robust to outliers
@@ -13,14 +13,14 @@ An interactive HTML gallery for browsing and analyzing your images based on MUSI
 - **Filename** - Alphabetical sorting
 - **Date** - Chronological sorting
 
-### 🎯 Interactive Features
+### ðŸŽ¯ Interactive Features
 - **Dropdown Sorting** - Switch between different quality metrics
 - **Ascending/Descending** - Choose sort order
 - **Click to Enlarge** - Full-size image viewing
 - **Responsive Design** - Works on desktop and mobile
 - **Real-time Statistics** - Live updates based on current sort
 
-### 📈 Statistics Display
+### ðŸ“ˆ Statistics Display
 - Total number of images
 - Average score for current metric
 - Best and worst scores
@@ -47,11 +47,11 @@ An interactive HTML gallery for browsing and analyzing your images based on MUSI
 
 ```
 D:\Photos\Export\2025\
-├── image_gallery.html          # Main gallery interface
-├── image_data.json            # Image data and scores
-├── *.jpg                      # Your images
-├── *.json                     # Individual image scores
-└── clusters/                  # Best images from each cluster
+â”œâ”€â”€ image_gallery.html          # Main gallery interface
+â”œâ”€â”€ image_data.json            # Image data and scores
+â”œâ”€â”€ *.jpg                      # Your images
+â”œâ”€â”€ *.json                     # Individual image scores
+â””â”€â”€ clusters/                  # Best images from each cluster
 ```
 
 ## Data Requirements
@@ -70,7 +70,7 @@ If you add new images or update scores, regenerate the data:
 python generate_gallery_data.py
 
 # Or from the project directory
-wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python generate_gallery_data.py"
+wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python generate_gallery_data.py"
 ```
 
 ## Score Interpretation

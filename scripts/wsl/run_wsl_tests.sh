@@ -12,7 +12,7 @@ set -euo pipefail
 #   VENV_DIR=~/.venvs/image-scoring-tests
 #   PYTEST_ARGS="-ra -m wsl"
 #   IMAGE_SCORING_TEST_RAW_FILE=/mnt/d/Photos/.../DSC_0001.NEF
-#   IMAGE_SCORING_TEST_THUMBNAIL=/mnt/d/Projects/image-scoring/thumbnails/....
+#   IMAGE_SCORING_TEST_THUMBNAIL=/path/to/image-scoring/thumbnails/....
 #   IMAGE_SCORING_RUN_NETWORK_TESTS=1
 #   IMAGE_SCORING_RUN_KAGGLE_DOWNLOADS=1
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **ImageGalleryViewer**: Moved to separate repository at [synthet/sharp-image-scoring](https://github.com/synthet/sharp-image-scoring)
+  - Extracted using `git subtree split` to preserve 21 commits of history
+  - Allows independent development lifecycle for the C#/.NET WPF application
+  - ImageGalleryViewer can still interface with the image-scoring Firebird database
+
 ### Added
 - **Docker deployment**: GPU-enabled Docker Desktop (WSL2) workflow via `Dockerfile`, `docker-compose.yml`, and `scripts/docker_entrypoint.sh`.
   - Automated installation scripts: `install_docker.bat`, `scripts/install_docker_wsl.sh`, `scripts/install_nvidia_docker.sh`
@@ -22,8 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test suite improvements**:
   - Pytest configuration (`pytest.ini`) with skip markers for dependencies
   - PowerShell test runner: `scripts/powershell/Run-WSLTests.ps1`
-  - Test database cleanup utility: `cleanup_test_dbs.py`
-  - Database debugging utilities: `debug_firebird.py`, `create_test_db.py`
+  - Test database cleanup utility: `scripts/utils/cleanup_test_dbs.py`
+  - Database debugging utilities: `scripts/debug/debug_firebird.py`, `scripts/utils/create_test_db.py`
 - **Documentation enhancements**:
   - Comprehensive Docker/WSL2 setup guide: `docs/DOCKER_WSL2_SETUP.md`
   - Docker setup technical guide: `docs/technical/DOCKER_SETUP.md`
@@ -31,12 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Project guide for AI agents: `.agent/PROJECT_GUIDE.md`
   - New documentation structure: `docs/ai/`, `docs/engineering/`, `docs/project/`, `docs/reports/`, `docs/testing/`, `docs/archive/`
 - **Utilities**:
-  - PDF extraction helpers (`extract_pdf.py`, `extract_pdf_new.py`)
-  - PyIQA model listing (`list_pyiqa_models.py`)
+  - PDF extraction helpers (`scripts/utils/extract_pdf.py`, `scripts/utils/extract_pdf_new.py`)
+  - PyIQA model listing (`scripts/utils/list_pyiqa_models.py`)
   - Script helpers (`scripts/python/check_topiq_range.py`, `scripts/unmark_folder.py`)
 - **Workflows**:
   - `/run_docker` - Launch Image Scoring application using Docker Compose (GPU-accelerated)
   - `/run_tests` - Run the image scoring test suite (Pytest)
+- **Portability**:
+  - Created [config.example.json](file:///d:/Projects/image-scoring/config.example.json) as a template for new installations.
+  - Replaced 50+ hardcoded path instances (e.g., `d:\Projects\image-scoring`) with generic placeholders across all documentation and guides.
 
 ### Changed
 - **Documentation structure**: Reorganized `docs/` into categorized sections with an updated index (`docs/README.md`).
@@ -46,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added Windows test skip markers (`@pytest.mark.skipif`)
   - Enhanced Firebird database compatibility in tests
   - Improved test isolation and cleanup
+- **Dynamic Pathing**:
+  - Implemented automatic project root detection in all Batch (`%~dp0`) and PowerShell (`$PSScriptRoot`) scripts.
+  - Added robust `_to_win_path` helper in `modules/db.py` for dynamic WSL-to-Windows drive mapping.
+  - Updated Python utility scripts in `scripts/` to use dynamic path resolution.
 - **Test suite**: Comprehensive test improvements for Windows compatibility
   - Added skip markers for CUDA, rawpy, and exiftool dependencies
   - Fixed test collection errors

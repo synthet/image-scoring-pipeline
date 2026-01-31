@@ -28,9 +28,9 @@ The MCP server is configured in `mcp_config.json`:
     "image-scoring": {
       "command": "python",
       "args": ["-m", "modules.mcp_server"],
-      "cwd": "d:\\Projects\\image-scoring",
+      "cwd": "/path/to/image-scoring",  // Replace with your project path
       "env": {
-        "PYTHONPATH": "d:\\Projects\\image-scoring"
+        "PYTHONPATH": "/path/to/image-scoring"  // Replace with your project path
       }
     }
   }

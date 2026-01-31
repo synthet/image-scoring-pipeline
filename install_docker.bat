@@ -11,8 +11,16 @@ echo  Docker WSL2 Installation Launcher
 echo ============================================================
 echo.
 
-REM Navigate to project directory in WSL
-set WSL_PROJECT_PATH=/mnt/d/Projects/image-scoring
+REM Navigate to project directory in WSL (dynamically detected)
+setlocal enabledelayedexpansion
+for %%I in ("%~dp0") do set "PROJECT_ROOT=%%~fI"
+set "WSL_PROJECT_PATH=!PROJECT_ROOT:\=/!"
+set "WSL_PROJECT_PATH=!WSL_PROJECT_PATH::=!"
+set "WSL_PROJECT_PATH=/mnt/!WSL_PROJECT_PATH!"
+set "WSL_PROJECT_PATH=!WSL_PROJECT_PATH:/mnt/C=/mnt/c!"
+set "WSL_PROJECT_PATH=!WSL_PROJECT_PATH:/mnt/D=/mnt/d!"
+REM Remove trailing slash if present
+if "!WSL_PROJECT_PATH:~-1!"=="/" set "WSL_PROJECT_PATH=!WSL_PROJECT_PATH:~0,-1!"
 
 echo [INFO] Preparing installation scripts...
 echo.

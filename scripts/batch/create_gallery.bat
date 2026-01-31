@@ -100,7 +100,20 @@ if %errorlevel% == 0 (
     set "WSL_PATH=!WSL_PATH:/mnt/X/=/mnt/x/!"
     set "WSL_PATH=!WSL_PATH:/mnt/Y/=/mnt/y/!"
     set "WSL_PATH=!WSL_PATH:/mnt/Z/=/mnt/z/!"
-    wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python scripts/python/batch_process_images.py --input-dir '!WSL_PATH!' --output-dir '!WSL_PATH!' --rate-nef"
+    REM Get project root (scripts/batch -> project root)
+    for %%I in ("%~dp0..\..") do set "PROJECT_ROOT=%%~fI"
+    REM Convert to WSL path format
+    set "WSL_PROJECT=!PROJECT_ROOT:\=/!"
+    set "WSL_PROJECT=!WSL_PROJECT::=!"
+    set "WSL_PROJECT=/mnt/!WSL_PROJECT!"
+    set "WSL_PROJECT=!WSL_PROJECT:/mnt/C=/mnt/c!"
+    set "WSL_PROJECT=!WSL_PROJECT:/mnt/D=/mnt/d!"
+    set "WSL_PROJECT=!WSL_PROJECT:/mnt/E=/mnt/e!"
+    set "WSL_PROJECT=!WSL_PROJECT:/mnt/F=/mnt/f!"
+    set "WSL_PROJECT=!WSL_PROJECT:/mnt/G=/mnt/g!"
+    set "WSL_PROJECT=!WSL_PROJECT:/mnt/H=/mnt/h!"
+    
+    wsl bash -c "source ~/.venvs/tf/bin/activate && cd !WSL_PROJECT! && python scripts/python/batch_process_images.py --input-dir '!WSL_PATH!' --output-dir '!WSL_PATH!' --rate-nef"
 ) else (
     echo Using Windows Python environment for multi-model processing...
     python "scripts\python\batch_process_images.py" --input-dir "%INPUT_FOLDER%" --output-dir "%INPUT_FOLDER%" --rate-nef

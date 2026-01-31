@@ -75,7 +75,7 @@ That's it! The Docker container includes all dependencies, CUDA support, and con
    source ~/.venvs/scoring/bin/activate
    
    # Navigate to project (adjust drive letter as needed)
-   cd /mnt/d/Projects/image-scoring
+   cd /path/to/image-scoring
    
    # Install dependencies
    pip install --upgrade pip

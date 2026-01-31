@@ -93,7 +93,7 @@ python3 -m musiq.run_predict_image \
 ### Using with WSL2 + GPU Setup
 ```bash
 # From Windows, using WSL
-wsl bash -c "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python scripts/python/run_all_musiq_models.py --image ./sample.jpg"
+wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python scripts/python/run_all_musiq_models.py --image ./sample.jpg"
 ```
 
 ## Model Variants

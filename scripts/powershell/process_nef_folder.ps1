@@ -34,8 +34,13 @@ if ($WSLPath -match '^([A-Z]):') {
 
 Write-Host "WSL Path: $WSLPath"
 
+# Get project root dynamically (scripts/powershell -> project root)
+$ProjectRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$WSLProjectDir = $ProjectRoot -replace '\\', '/' -replace '^([A-Za-z]):', '/mnt/$1'
+$WSLProjectDir = $WSLProjectDir.ToLower()
+
 # Run the batch processor in WSL
-$command = "source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python scripts/python/batch_process_images.py --input-dir '$WSLPath' --output-dir '$WSLPath' --rate-nef --skip-existing"
+$command = "source ~/.venvs/tf/bin/activate && cd $WSLProjectDir && python scripts/python/batch_process_images.py --input-dir '$WSLPath' --output-dir '$WSLPath' --rate-nef --skip-existing"
 wsl bash -c $command
 
 Write-Host ""
