@@ -13,6 +13,13 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
+pytestmark = [pytest.mark.wsl, pytest.mark.sample_data]
+
+if sys.platform.startswith("win"):
+    pytest.skip("WSL-only (RAW extraction relies on Linux tooling like dcraw/exiftool)", allow_module_level=True)
+
 # Add project root to path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
@@ -20,7 +27,7 @@ sys.path.insert(0, str(project_root))
 from modules import thumbnails
 
 
-def test_extraction_methods(nef_path: str):
+def run_extraction_methods(nef_path: str) -> bool:
     """Test all extraction methods on a NEF file."""
     print("=" * 70)
     print(f"Testing RAW extraction methods on: {nef_path}")
@@ -129,14 +136,32 @@ def test_extraction_methods(nef_path: str):
     return all_passed
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python tests/test_raw_extraction.py <path_to_nef_file>")
-        print("\nExample:")
-        print("  python tests/test_raw_extraction.py /mnt/d/Photos/Z8/DSC_6008.NEF")
-        sys.exit(1)
-    
-    nef_file = sys.argv[1]
-    success = test_extraction_methods(nef_file)
-    sys.exit(0 if success else 1)
+def test_extraction_methods_from_env():
+    """
+    Run RAW extraction tests against a user-provided RAW file.
+
+    Configure the file path via:
+      - IMAGE_SCORING_TEST_RAW_FILE=/mnt/d/Photos/.../DSC_0001.NEF
+    """
+    raw_file = os.environ.get("IMAGE_SCORING_TEST_RAW_FILE")
+    if not raw_file:
+        pytest.skip("Set IMAGE_SCORING_TEST_RAW_FILE to run RAW extraction tests")
+
+    if not os.path.exists(raw_file):
+        pytest.skip(f"RAW test file not found: {raw_file}")
+
+    assert run_extraction_methods(raw_file), "Extraction methods failed"
+
+
+
+def test_extraction_methods_pytest():
+    # Backwards compatible name; now driven by IMAGE_SCORING_TEST_RAW_FILE.
+    raw_file = os.environ.get("IMAGE_SCORING_TEST_RAW_FILE")
+    if not raw_file:
+        pytest.skip("Set IMAGE_SCORING_TEST_RAW_FILE to run RAW extraction tests")
+    if not os.path.exists(raw_file):
+        pytest.skip(f"RAW test file not found: {raw_file}")
+
+    assert run_extraction_methods(raw_file), "Extraction methods failed"
+
 

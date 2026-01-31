@@ -7,11 +7,14 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from modules.tagging import CaptionGenerator
+
+# from modules.tagging import CaptionGenerator
 
 class TestCaptioning(unittest.TestCase):
     def test_model_loading(self):
         print("Testing CaptionGenerator initialization...")
+        from modules.tagging import CaptionGenerator
+
         generator = CaptionGenerator(device='cpu') # Use CPU for test
         # We won't actually load the model in test to save time/bandwidth unless needed
         # But we can verify init works

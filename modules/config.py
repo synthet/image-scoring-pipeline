@@ -1,8 +1,10 @@
 import json
-import os
 import logging
+import os
+from pathlib import Path
 
-CONFIG_FILE = "config.json"
+BASE_DIR = Path(__file__).resolve().parent.parent
+CONFIG_FILE = BASE_DIR / "config.json"
 
 def load_config():
     """

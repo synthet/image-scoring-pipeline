@@ -44,3 +44,12 @@ The final "Representative Score" is a weighted average of 5 models:
 1.  **Technical First (75%)**: The primary goal is to filter technically flawed images (blurred, noisy, bad exposure). MUSIQ models (KONIQ, SPAQ, PAQ2PIQ) excel here.
 2.  **Aesthetic Second (25%)**: Once technical quality is assured, we use LIQE (15%) and AVA (10%) to judge composition and beauty. LIQE is significantly more advanced than AVA.
 3.  **VILA Removal**: VILA was removed from the active pipeline to improve system stability without sacrificing accuracy, as LIQE fills the semantic niche better.
+
+## Related Documents
+
+- [Docs index](../README.md)
+- [Current model weights](../reference/models/current_model_weights.md)
+- [Suggested scoring adjustments](../reports/suggested_scoring_adjustments.md)
+- [Multi-model scoring](README_MULTI_MODEL.md)
+- [Models summary](MODELS_SUMMARY.md)
+

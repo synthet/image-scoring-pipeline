@@ -1,21 +1,61 @@
-try:
-    from firebird.driver import connect, driver_config
-    print("Import Success: firebird.driver found")
-    
-    try:
-        # Just try to resolve the client library. 
-        # We don't have a running server yet, so connection might fail, 
-        # but if DLL is missing, it fails earlier.
-        # We try to connect to a dummy string to trigger library load
-        connect('localhost:dummy.fdb', user='sysdba', password='masterkey')
-    except Exception as e:
-        print(f"Connection/Library Error: {e}")
-        import ctypes
-        try:
-            ctypes.CDLL("libfbclient.so.2")
-            print("CTypes: libfbclient.so.2 found")
-        except:
-            print("CTypes: libfbclient.so.2 NOT found")
+"""
+WSL-only smoke test for Firebird client library availability.
 
-except ImportError:
-    print("Import Error: firebird-driver not installed")
+Historically this file executed code at import time; this version provides
+an actual pytest test and skips on Windows.
+"""
+
+import sys
+import ctypes
+import pytest
+import os
+
+pytestmark = [pytest.mark.wsl, pytest.mark.firebird]
+
+if sys.platform.startswith("win"):
+    pytest.skip("WSL-only (Firebird libfbclient.so check)", allow_module_level=True)
+
+
+def test_firebird_client_library_present():
+    firebird = pytest.importorskip("firebird.driver")
+
+    # We don't require a running Firebird server here; we only want to know the
+    # client library can be resolved/loaded inside WSL.
+    #
+    # Prefer an explicit override if provided, otherwise try common loader names.
+    candidates = []
+    override = os.environ.get("FIREBIRD_CLIENT_LIBRARY") or os.environ.get("FB_CLIENT_LIBRARY")
+    if override:
+        candidates.append(override)
+
+    # Common names (Firebird 3-5 typically expose SONAME as libfbclient.so.2).
+    candidates.extend(["libfbclient.so", "libfbclient.so.2"])
+
+    # Repo-extracted Firebird 5 client (matches project conventions).
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    candidates.append(
+        os.path.join(
+            repo_root,
+            "FirebirdLinux",
+            "Firebird-5.0.0.1306-0-linux-x64",
+            "opt",
+            "firebird",
+            "lib",
+            "libfbclient.so",
+        )
+    )
+
+    last_err = None
+    for c in candidates:
+        try:
+            ctypes.CDLL(c)
+            last_err = None
+            break
+        except OSError as e:
+            last_err = e
+
+    if last_err is not None:
+        pytest.fail(f"Firebird client library not found/loadable. Tried {candidates!r}. Last error: {last_err}")
+
+    # Basic sanity: module import succeeded.
+    assert hasattr(firebird, "connect")

@@ -213,3 +213,11 @@ def get_session_stats(session_id) -> dict
 - **Face Detection** - Prioritize expressions for portraits
 - **Capture One Support** - Additional XMP fields for C1
 - **Session Resume** - UI to continue previous sessions
+
+## Related Documents
+
+- [Docs index](../README.md)
+- [TODO / roadmap](../project/TODO.md)
+- [Stacks manual management](STACKS_MANUAL_MANAGEMENT.md)
+- [XMP](../../modules/xmp.py)
+

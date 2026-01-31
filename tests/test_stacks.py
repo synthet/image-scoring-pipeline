@@ -32,9 +32,31 @@ class TestStackOperations:
         """Set up test database with mock data."""
         # Use a temporary database for testing
         cls.original_db_path = db.DB_PATH
-        cls.temp_dir = tempfile.mkdtemp()
-        cls.test_db_path = os.path.join(cls.temp_dir, 'test_scoring.db')
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_stack')
+        if os.path.exists(cls.temp_dir):
+             shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        os.makedirs(cls.temp_dir, exist_ok=True)
+             
+        import time
+        timestamp = int(time.time())
+        cls.test_db_path = os.path.abspath(f"TEST_stacks_{timestamp}.fdb")
         db.DB_PATH = cls.test_db_path
+        
+        # Copy template database
+        template_db = os.path.abspath("template.fdb")
+        if not os.path.exists(template_db):
+             print(f"Error: Template DB not found at {template_db}")
+             raise Exception("Template DB missing")
+             
+        try:
+             # import shutil (Global import used)
+             import subprocess
+             cmd = f'copy "{template_db}" "{cls.test_db_path}"'
+             subprocess.run(cmd, shell=True, check=True)
+        except Exception as e:
+             print(f"Warning: Failed to copy DB in stacks test: {e}")
+             raise
         
         # Initialize database
         db.init_db()
@@ -47,6 +69,25 @@ class TestStackOperations:
         """Clean up test database."""
         db.DB_PATH = cls.original_db_path
         shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        try:
+             # Close connection explicitely
+             try: db.get_db().close()
+             except: pass
+             
+             import gc
+             gc.collect()
+             
+             if os.path.exists(cls.test_db_path):
+                 import time
+                 MAX_RETRIES = 5
+                 for i in range(MAX_RETRIES):
+                     try:
+                         os.remove(cls.test_db_path)
+                         break
+                     except PermissionError:
+                         if i < MAX_RETRIES - 1:
+                             time.sleep(0.5)
+        except: pass
     
     @classmethod
     def _create_test_images(cls):

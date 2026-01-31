@@ -301,6 +301,6 @@ Use runtime evidence over code inspection:
 ## Files for Review
 
 - `.cursor/debug.log` - Frontend execution logs
-- `docs/debugging/FULLSCREEN_IMAGE_INVESTIGATION.md` - Investigation summary
-- `docs/debugging/GRADIO_ROUTING_ISSUE.md` - Routing problem details
-- `docs/debugging/CODE_CHANGES_LOG.md` - All code modifications
+- `docs/engineering/debugging/FULLSCREEN_IMAGE_INVESTIGATION.md` - Investigation summary
+- `docs/engineering/debugging/GRADIO_ROUTING_ISSUE.md` - Routing problem details
+- `docs/engineering/debugging/CODE_CHANGES_LOG.md` - All code modifications

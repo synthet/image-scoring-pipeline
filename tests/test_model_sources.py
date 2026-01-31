@@ -11,29 +11,116 @@ import sys
 import argparse
 from typing import Dict, Optional, Tuple
 
+import pytest
+
+pytestmark = [pytest.mark.wsl, pytest.mark.network]
+
+# This module depends on TensorFlow tooling and is intended for WSL/Linux.
+if sys.platform.startswith("win"):
+    pytest.skip("WSL-only (TensorFlow/Kaggle model source checks)", allow_module_level=True)
+
+
 # Test imports
-print("Testing imports...")
-try:
-    import tensorflow as tf
-    print(f"✓ TensorFlow: {tf.__version__}")
-except ImportError as e:
-    print(f"✗ TensorFlow not available: {e}")
-    sys.exit(1)
+if __name__ == "__main__":
+    print("Testing imports...")
+    try:
+        import tensorflow as tf
+        print(f"✓ TensorFlow: {tf.__version__}")
+    except ImportError as e:
+        print(f"✗ TensorFlow not available: {e}")
+        sys.exit(1)
 
-try:
-    import tensorflow_hub as hub
-    print(f"✓ TensorFlow Hub available")
-except ImportError as e:
-    print(f"✗ TensorFlow Hub not available: {e}")
-    sys.exit(1)
+    try:
+        import tensorflow_hub as hub
+        print(f"✓ TensorFlow Hub available")
+    except ImportError as e:
+        print(f"✗ TensorFlow Hub not available: {e}")
+        sys.exit(1)
 
-try:
-    import kagglehub
-    print(f"✓ Kaggle Hub available")
-    KAGGLE_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠ Kaggle Hub not available: {e}")
-    KAGGLE_AVAILABLE = False
+    try:
+        import kagglehub
+        print(f"✓ Kaggle Hub available")
+        KAGGLE_AVAILABLE = True
+    except ImportError as e:
+        print(f"⚠ Kaggle Hub not available: {e}")
+        KAGGLE_AVAILABLE = False
+else:
+    # When imported by pytest, just try to import without exiting
+    try:
+        import tensorflow as tf
+        import tensorflow_hub as hub
+        import kagglehub
+        KAGGLE_AVAILABLE = True
+    except ImportError:
+        KAGGLE_AVAILABLE = False
+
+
+def _bool_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def test_model_sources_table_is_well_formed():
+    """Fast, no-network sanity check."""
+    assert isinstance(MODEL_SOURCES, dict)
+    assert MODEL_SOURCES, "MODEL_SOURCES should not be empty"
+
+    for model_name, src in MODEL_SOURCES.items():
+        assert isinstance(model_name, str) and model_name
+        assert isinstance(src, dict)
+        assert set(src.keys()) >= {"tfhub", "kaggle", "local"}
+
+
+@pytest.mark.parametrize(
+    "model_name,kaggle_path",
+    [(mn, src["kaggle"]) for mn, src in MODEL_SOURCES.items() if src.get("kaggle")],
+)
+def test_kaggle_paths_have_expected_format(model_name: str, kaggle_path: str):
+    """
+    Format-only test (no download).
+    Expected: org/model/framework/variant (>= 4 segments).
+    """
+    parts = kaggle_path.split("/")
+    assert len(parts) >= 4, f"{model_name}: invalid kaggle path format: {kaggle_path}"
+
+
+@pytest.mark.parametrize(
+    "model_name,url",
+    [(mn, src["tfhub"]) for mn, src in MODEL_SOURCES.items() if src.get("tfhub")],
+)
+def test_tfhub_urls_optional_network(model_name: str, url: str):
+    """
+    Optional network test.
+    Enable with: IMAGE_SCORING_RUN_NETWORK_TESTS=1
+    """
+    if not _bool_env("IMAGE_SCORING_RUN_NETWORK_TESTS"):
+        pytest.skip("Set IMAGE_SCORING_RUN_NETWORK_TESTS=1 to check TFHub URLs")
+
+    success, msg = check_tfhub_url(model_name, url)
+    assert success, msg
+
+
+@pytest.mark.parametrize(
+    "model_name,kaggle_path",
+    [(mn, src["kaggle"]) for mn, src in MODEL_SOURCES.items() if src.get("kaggle")],
+)
+def test_kaggle_paths_optional_download(model_name: str, kaggle_path: str):
+    """
+    Optional Kaggle download test (uses cache if present).
+    Enable with:
+      - IMAGE_SCORING_RUN_NETWORK_TESTS=1
+      - IMAGE_SCORING_RUN_KAGGLE_DOWNLOADS=1
+    """
+    if not _bool_env("IMAGE_SCORING_RUN_NETWORK_TESTS"):
+        pytest.skip("Set IMAGE_SCORING_RUN_NETWORK_TESTS=1 to check Kaggle paths")
+    if not _bool_env("IMAGE_SCORING_RUN_KAGGLE_DOWNLOADS"):
+        pytest.skip("Set IMAGE_SCORING_RUN_KAGGLE_DOWNLOADS=1 to download Kaggle models")
+    if not KAGGLE_AVAILABLE:
+        pytest.skip("kagglehub not installed")
+    if not check_kaggle_auth():
+        pytest.skip("Kaggle auth not configured (~/.kaggle/kaggle.json)")
+
+    success, msg = check_kaggle_path(model_name, kaggle_path, skip_download=False)
+    assert success, msg
 
 
 # Model sources (from run_all_musiq_models.py v2.3.0)
@@ -83,9 +170,9 @@ def check_kaggle_auth() -> bool:
     return False
 
 
-def test_tfhub_url(model_name: str, url: str) -> Tuple[bool, str]:
+def check_tfhub_url(model_name: str, url: str) -> Tuple[bool, str]:
     """
-    Test if a TensorFlow Hub URL is accessible.
+    Check if a TensorFlow Hub URL is accessible.
     
     Returns:
         (success, message)
@@ -96,6 +183,7 @@ def test_tfhub_url(model_name: str, url: str) -> Tuple[bool, str]:
     try:
         print(f"  Testing TF Hub: {url}")
         # Try to load model metadata (lighter than full model load)
+        import tensorflow_hub as hub
         model = hub.load(url)
         
         # Quick signature check
@@ -117,9 +205,9 @@ def test_tfhub_url(model_name: str, url: str) -> Tuple[bool, str]:
             return False, f"✗ Error: {error_msg[:50]}..."
 
 
-def test_kaggle_path(model_name: str, path: str, skip_download: bool = False) -> Tuple[bool, str]:
+def check_kaggle_path(model_name: str, path: str, skip_download: bool = False) -> Tuple[bool, str]:
     """
-    Test if a Kaggle Hub path is accessible.
+    Check if a Kaggle Hub path is accessible.
     
     Args:
         model_name: Name of the model
@@ -136,6 +224,7 @@ def test_kaggle_path(model_name: str, path: str, skip_download: bool = False) ->
         return False, "N/A - Not available on Kaggle Hub"
     
     try:
+        import kagglehub
         print(f"  Testing Kaggle Hub: {path}")
         
         if skip_download:
@@ -167,9 +256,9 @@ def test_kaggle_path(model_name: str, path: str, skip_download: bool = False) ->
             return False, f"✗ Error: {error_msg[:50]}..."
 
 
-def test_local_checkpoint(model_name: str, path: str) -> Tuple[bool, str]:
+def check_local_checkpoint(model_name: str, path: str) -> Tuple[bool, str]:
     """
-    Test if a local checkpoint exists and is accessible.
+    Check if a local checkpoint exists and is accessible.
     
     Args:
         model_name: Name of the model
@@ -207,9 +296,9 @@ def test_local_checkpoint(model_name: str, path: str) -> Tuple[bool, str]:
         return False, f"✗ Error: {error_msg[:50]}..."
 
 
-def test_all_sources(test_kaggle: bool = True, skip_kaggle_download: bool = False, test_local: bool = True):
+def check_all_sources(test_kaggle: bool = True, skip_kaggle_download: bool = False, test_local: bool = True):
     """
-    Test all model sources.
+    Check all model sources.
     
     Args:
         test_kaggle: Whether to test Kaggle Hub sources
@@ -249,7 +338,7 @@ def test_all_sources(test_kaggle: bool = True, skip_kaggle_download: bool = Fals
         # Test TensorFlow Hub
         tfhub_url = sources.get("tfhub")
         if tfhub_url:
-            success, message = test_tfhub_url(model_name, tfhub_url)
+            success, message = check_tfhub_url(model_name, tfhub_url)
             results[model_name]["tfhub"] = (success, message)
             print(f"    TF Hub:     {message}")
         else:
@@ -260,7 +349,7 @@ def test_all_sources(test_kaggle: bool = True, skip_kaggle_download: bool = Fals
         if test_kaggle:
             kaggle_path = sources.get("kaggle")
             if kaggle_path:
-                success, message = test_kaggle_path(model_name, kaggle_path, skip_kaggle_download)
+                success, message = check_kaggle_path(model_name, kaggle_path, skip_kaggle_download)
                 results[model_name]["kaggle"] = (success, message)
                 print(f"    Kaggle Hub: {message}")
             else:
@@ -274,7 +363,7 @@ def test_all_sources(test_kaggle: bool = True, skip_kaggle_download: bool = Fals
         if test_local:
             local_path = sources.get("local")
             if local_path:
-                success, message = test_local_checkpoint(model_name, local_path)
+                success, message = check_local_checkpoint(model_name, local_path)
                 results[model_name]["local"] = (success, message)
                 print(f"    Local:      {message}")
             else:
@@ -284,83 +373,7 @@ def test_all_sources(test_kaggle: bool = True, skip_kaggle_download: bool = Fals
             results[model_name]["local"] = (False, "Skipped")
             print(f"    Local:      Skipped")
     
-    # Summary
-    print("\n" + "=" * 70)
-    print("SUMMARY")
-    print("=" * 70)
-    
-    print("\n{:<10} {:<20} {:<20} {:<20}".format("Model", "TF Hub", "Kaggle Hub", "Local"))
-    print("-" * 70)
-    
-    for model_name, model_results in results.items():
-        tfhub_success, tfhub_msg = model_results["tfhub"]
-        kaggle_success, kaggle_msg = model_results["kaggle"]
-        local_success, local_msg = model_results["local"]
-        
-        tfhub_status = "✓" if tfhub_success else ("N/A" if tfhub_msg == "N/A" else "✗")
-        kaggle_status = "✓" if kaggle_success else ("N/A" if kaggle_msg in ["N/A", "Skipped"] else "✗")
-        local_status = "✓" if local_success else ("N/A" if local_msg in ["N/A", "Skipped"] else "✗")
-        
-        # Check if model has at least one working source
-        has_source = tfhub_success or kaggle_success or local_success
-        fallback_indicator = "✓" if has_source else "✗"
-        
-        print(f"{fallback_indicator} {model_name:<8} {tfhub_status:<20} {kaggle_status:<20} {local_status:<20}")
-    
-    # Recommendations
-    print("\n" + "=" * 70)
-    print("RECOMMENDATIONS")
-    print("=" * 70)
-    
-    all_accessible = True
-    needs_kaggle_auth = False
-    
-    for model_name, model_results in results.items():
-        tfhub_success, tfhub_msg = model_results["tfhub"]
-        kaggle_success, kaggle_msg = model_results["kaggle"]
-        local_success, local_msg = model_results["local"]
-        
-        if not tfhub_success and not kaggle_success and not local_success:
-            all_accessible = False
-            print(f"⚠ {model_name.upper()}: No accessible sources!")
-            if "Authentication Required" in kaggle_msg:
-                needs_kaggle_auth = True
-    
-    if all_accessible:
-        print("✓ All models have at least one accessible source")
-        print("✓ Model loading should work with fallback mechanism")
-    
-    if needs_kaggle_auth and not kaggle_auth:
-        print("\n⚠ Some models require Kaggle authentication")
-        print("  Run: mkdir -p ~/.kaggle && cp /path/to/kaggle.json ~/.kaggle/")
-        print("  See: README_VILA.md for setup instructions")
-    
-    # Fallback analysis
-    print("\n" + "=" * 70)
-    print("FALLBACK MECHANISM STATUS")
-    print("=" * 70)
-    
-    for model_name, model_results in results.items():
-        tfhub_success, _ = model_results["tfhub"]
-        kaggle_success, _ = model_results["kaggle"]
-        local_success, _ = model_results["local"]
-        
-        sources = []
-        if tfhub_success:
-            sources.append("TF Hub")
-        if kaggle_success:
-            sources.append("Kaggle")
-        if local_success:
-            sources.append("Local")
-        
-        if len(sources) >= 3:
-            print(f"✓ {model_name.upper():<10} - Triple fallback ({' → '.join(sources)})")
-        elif len(sources) == 2:
-            print(f"✓ {model_name.upper():<10} - Dual fallback ({' → '.join(sources)})")
-        elif len(sources) == 1:
-            print(f"⚠ {model_name.upper():<10} - Single source only ({sources[0]})")
-        else:
-            print(f"✗ {model_name.upper():<10} - No accessible sources!")
+    return results
 
 
 def main():
@@ -438,4 +451,5 @@ Note:
 
 if __name__ == "__main__":
     main()
+
 

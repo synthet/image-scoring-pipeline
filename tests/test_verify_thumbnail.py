@@ -8,17 +8,25 @@ from PIL import Image
 import numpy as np
 
 # Add project root to path
-# scripts is in d:\Projects\image-scoring\scripts
-# We are in d:\Projects\image-scoring\tests
-# We want to add d:\Projects\image-scoring to path
 project_root = str(Path(__file__).resolve().parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from scripts.python.run_all_musiq_models import MultiModelMUSIQ
+import pytest
+import base64
+
+pytestmark = [pytest.mark.wsl]
+
+if sys.platform.startswith("win"):
+    pytest.skip("WSL-only (TensorFlow/MUSIQ integration expected in WSL)", allow_module_level=True)
 
 def test_thumbnail_generation():
     print("Testing thumbnail generation...")
+    
+    try:
+        from scripts.python.run_all_musiq_models import MultiModelMUSIQ
+    except ImportError:
+        pytest.skip("Machine learning dependencies (TensorFlow) not available")
     
     # create dummy image
     img_path = "test_image.jpg"

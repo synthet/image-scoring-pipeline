@@ -1,38 +1,52 @@
-import sys
 import os
-from pathlib import Path
+import datetime
+
+import pytest
 from PIL import Image
 
-path = r"D:\Photos\Z6ii\28-400mm\2025\2025-11-18\DSC_6336.NEF"
+pytestmark = [pytest.mark.sample_data]
 
-print(f"Testing {path}")
-if not os.path.exists(path):
-    print("File not found!")
-    sys.exit(1)
 
-try:
-    with Image.open(path) as img:
-        print(f"Format: {img.format}")
-        print(f"Info keys: {img.info.keys()}")
-        
-        exif = img.getexif()
-        print(f"getexif() returned type: {type(exif)}")
-        if exif:
-            print(f"getexif() keys: {list(exif.keys())}")
-            # 306 = DateTime, 36867 = DateTimeOriginal
-            print(f"306 (DateTime): {exif.get(306)}")
-            print(f"36867 (DateTimeOriginal): {exif.get(36867)}")
-            
-        if hasattr(img, '_getexif'):
-            print("_getexif() exists")
-            pk = img._getexif()
-            if pk:
-                print(f"_getexif keys sample: {list(pk.keys())[:5]}")
-                print(f"_getexif 36867: {pk.get(36867)}")
-        
-except Exception as e:
-    print(f"Error: {e}")
+def _get_test_path() -> str | None:
+    # Prefer existing env vars used by other sample-data tests in this repo.
+    return (
+        os.environ.get("IMAGE_SCORING_TEST_RAW_FILE")
+        or os.environ.get("IMAGE_SCORING_TEST_PIL_EXIF_FILE")
+    )
 
-import datetime
-print(f"ctime: {datetime.datetime.fromtimestamp(os.path.getctime(path))}")
-print(f"mtime: {datetime.datetime.fromtimestamp(os.path.getmtime(path))}")
+
+def test_pil_exif_smoke():
+    """
+    Smoke-test that Pillow can open the sample file and that EXIF accessors don't crash.
+
+    This test is intentionally gated on a user-provided sample file path via env var(s),
+    because committing RAW files to the repo is not expected.
+    """
+    path = _get_test_path()
+    if not path:
+        pytest.skip(
+            "Set IMAGE_SCORING_TEST_RAW_FILE (or IMAGE_SCORING_TEST_PIL_EXIF_FILE) to run"
+        )
+    if not os.path.exists(path):
+        pytest.skip(f"Sample file not found: {path}")
+
+    try:
+        with Image.open(path) as img:
+            # Accessors should not raise
+            _ = img.format
+            _ = img.info
+
+            exif = img.getexif()
+            if exif:
+                _ = exif.get(306)  # DateTime
+                _ = exif.get(36867)  # DateTimeOriginal
+
+            # Some Pillow formats expose _getexif; this is optional.
+            if hasattr(img, "_getexif"):
+                _ = img._getexif()  # noqa: SLF001
+    except Exception as e:
+        pytest.fail(f"Pillow EXIF smoke test failed: {e}")
+
+    # Basic filesystem timestamps should be readable (platform-dependent semantics).
+    _ = datetime.datetime.fromtimestamp(os.path.getctime(path))
+    _ = datetime.datetime.fromtimestamp(os.path.getmtime(path))

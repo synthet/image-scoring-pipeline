@@ -54,12 +54,12 @@ All endpoints now have:
 
 ### 5. Documentation Files
 
-#### `docs/API.md`
+#### `docs/reference/api/API.md`
 - Human-readable API documentation
 - Examples in Python and cURL
 - Usage patterns
 
-#### `docs/API_SCHEMA_LLM.md`
+#### `docs/reference/api/API_SCHEMA_LLM.md`
 - Machine-readable schema description
 - Optimized for LLM agent consumption
 - Includes usage patterns and examples
@@ -136,8 +136,8 @@ status = requests.get("http://127.0.0.1:7860/api/scoring/status").json()
 
 1. `modules/api.py` - Enhanced with comprehensive descriptions
 2. `webui.py` - Added FastAPI metadata and OpenAPI configuration
-3. `docs/API.md` - Updated with schema access information
-4. `docs/API_SCHEMA_LLM.md` - New LLM-optimized documentation
+3. `docs/reference/api/API.md` - Updated with schema access information
+4. `docs/reference/api/API_SCHEMA_LLM.md` - New LLM-optimized documentation
 
 ## Testing
 
@@ -149,3 +149,10 @@ To verify the schema is accessible:
 4. Visit `http://127.0.0.1:7860/api/schema` for simplified schema
 
 All endpoints should be fully documented with descriptions, examples, and type information.
+
+## Related Documents
+
+- [Docs index](../../README.md)
+- [API reference](API.md)
+- [API schema for LLMs](API_SCHEMA_LLM.md)
+

@@ -3,6 +3,15 @@
 Test TensorFlow GPU in WSL2
 """
 
+import sys
+import pytest
+
+pytestmark = [pytest.mark.wsl]
+
+# This test is specifically for WSL/Linux TensorFlow GPU setup.
+if sys.platform.startswith("win"):
+    pytest.skip("WSL-only (Linux TensorFlow GPU test)", allow_module_level=True)
+
 import tensorflow as tf
 
 def test_tensorflow_gpu():

@@ -2,10 +2,14 @@
 import os
 import logging
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-from tensorflow.keras.preprocessing import image as keras_image
+
+import os
+import logging
+import numpy as np
+# Defer tensorflow imports to avoid slow startup/errors if not needed
+# import tensorflow as tf
+# from tensorflow.keras.applications import MobileNetV2
+# ...
 from sklearn.cluster import AgglomerativeClustering
 from modules import db
 from PIL import Image
@@ -77,6 +81,10 @@ class ClusteringEngine:
 
     def load_model(self):
         if self.model is None:
+            # Deferred import
+            import tensorflow as tf
+            from tensorflow.keras.applications import MobileNetV2
+            
             # Load MobileNetV2, exclude top layer, use global average pooling
             self.model = MobileNetV2(weights='imagenet', include_top=False, pooling='avg', input_shape=(224, 224, 3))
             logging.info("Clustering Model (MobileNetV2) loaded.")
@@ -128,6 +136,10 @@ class ClusteringEngine:
             for idx, path in zip(uncached_indices, uncached_paths):
                 try:
                     # Load image, resize to 224x224
+                    # Deferred import
+                    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+                    from tensorflow.keras.preprocessing import image as keras_image
+
                     img = keras_image.load_img(path, target_size=(224, 224))
                     x = keras_image.img_to_array(img)
                     x = preprocess_input(x)

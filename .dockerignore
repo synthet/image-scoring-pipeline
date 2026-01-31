@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv*
+.pytest_cache
+
+# Databases & Large Assets
+*.fdb
+*.db
+output/
+thumbnails/
+Firebird/
+FirebirdLinux/
+temp_test*/
+
+# IDE & Config
+.idea/
+.cursor/
+.vscode/
+.obsidian/
+image-scoring.code-workspace
+secrets.json
+webui.lock
+
+# Logs
+*.log
+test_output.log

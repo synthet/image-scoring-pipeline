@@ -41,12 +41,12 @@
 
 ### 2. Updated Documentation
 
-#### `docs/debugging/FULLSCREEN_IMAGE_INVESTIGATION.md`
+#### `docs/engineering/debugging/FULLSCREEN_IMAGE_INVESTIGATION.md`
 - Updated status from "In Progress" → "RESOLVED ✅"
 - Added resolution reference to GRADIO_ROUTING_RESOLUTION.md
 - Updated "Current Status" section to show full completion
 
-#### `docs/debugging/CODE_CHANGES_LOG.md`
+#### `docs/engineering/debugging/CODE_CHANGES_LOG.md`
 - Added "Debug Artifacts Cleanup" section
 - Documented all cleanup actions
 - Added verification commands
@@ -145,11 +145,11 @@ ls .cursor/debug.log
 
 ## Related Documentation
 
-- `docs/debugging/FULLSCREEN_IMAGE_INVESTIGATION.md` - Investigation timeline
-- `docs/debugging/GRADIO_ROUTING_ISSUE.md` - Routing problem details
-- `docs/debugging/GRADIO_ROUTING_RESOLUTION.md` - Solution implementation
-- `docs/debugging/CODE_CHANGES_LOG.md` - Code modifications log
-- `docs/debugging/DEBUGGING_LOG.md` - Debugging session transcript
+- `docs/engineering/debugging/FULLSCREEN_IMAGE_INVESTIGATION.md` - Investigation timeline
+- `docs/engineering/debugging/GRADIO_ROUTING_ISSUE.md` - Routing problem details
+- `docs/engineering/debugging/GRADIO_ROUTING_RESOLUTION.md` - Solution implementation
+- `docs/engineering/debugging/CODE_CHANGES_LOG.md` - Code modifications log
+- `docs/engineering/debugging/DEBUGGING_LOG.md` - Debugging session transcript
 
 ---
 

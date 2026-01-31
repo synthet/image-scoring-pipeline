@@ -1,6 +1,6 @@
 # TODO - Image Scoring Project
 
-Consolidated list of unfinished work items as of 2025-01-XX.
+Consolidated list of unfinished work items as of 2025-01.
 
 **Status**: All implementable code-based TODO items have been completed (4 major features). Remaining items are either manual testing tasks or require significant design/architecture work (AI-Assisted Mode, Web Worker).
 
@@ -71,19 +71,19 @@ End-to-end manual verification:
 ## 🟡 Medium Priority (Enhancements)
 
 ### RAW Preview Improvements
-- [x] **Pass file path via Gradio state** - Replace DOM scraping with proper state management ✅ (2025-01-XX)
+- [x] **Pass file path via Gradio state** - Replace DOM scraping with proper state management ✅ (2025-01)
 - [ ] **Web Worker for non-blocking decode** - Offload RAW processing to background thread
 - [ ] **LibRaw WASM Integration** - Full RAW decode capability (currently only embedded JPEG extraction)
 
 ### Culling Workflow Enhancements
 From `docs/technical/CULLING_FEATURE.md`:
 - [ ] **AI-Assisted Mode** - User picks with AI suggestions (currently only automated mode)
-- [x] **Session Resume UI** - Continue previous culling sessions ✅ (2025-01-XX)
+- [x] **Session Resume UI** - Continue previous culling sessions ✅ (2025-01)
 - [ ] **Face Detection** - Prioritize expressions for portrait photography
 - [ ] **Capture One Support** - Additional XMP fields for Capture One compatibility
 
 ### Model & Performance
-- [x] **Model Performance Benchmarking** - Track and display inference times ✅ (2025-01-XX)
+- [x] **Model Performance Benchmarking** - Track and display inference times ✅ (2025-01)
 - [ ] **Additional Vision-Language Models** - BLIP-2, LLaVA, InternVL integration
 
 ---
@@ -91,11 +91,11 @@ From `docs/technical/CULLING_FEATURE.md`:
 ## 🟢 Low Priority (Future Features)
 
 ### Export & Filtering
-- [x] **Advanced export options** - Custom column selection, filtering before export ✅ (2025-01-XX)
+- [x] **Advanced export options** - Custom column selection, filtering before export ✅ (2025-01)
 
 ### UI & UX
 - [ ] **Gallery themes and customization** - User-selectable color themes
-- [x] **Export format templates** - Preset export configurations ✅ (2025-01-XX)
+- [x] **Export format templates** - Preset export configurations ✅ (2025-01)
 - [ ] **Keyboard navigation** - Full keyboard support for gallery navigation
 
 ### Infrastructure
@@ -141,3 +141,14 @@ From `docs/technical/CULLING_FEATURE.md`:
 - Model weights configuration requires restart to take effect for new scoring jobs
 - Batch comparison limited to 4 images
 - Web Worker not yet implemented for RAW decode
+
+## Related Documents
+
+- [Docs index](../README.md)
+- [Current model weights](../reference/models/current_model_weights.md)
+- [Weighted scoring strategy](../technical/WEIGHTED_SCORING_STRATEGY.md)
+- [Culling feature](../technical/CULLING_FEATURE.md)
+- [In-browser RAW preview](../technical/INBROWSER_RAW_PREVIEW.md)
+- [WSL tests](../testing/WSL_TESTS.md)
+- [Project reviews](../reports/project-reviews/)
+

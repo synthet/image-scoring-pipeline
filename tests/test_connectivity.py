@@ -19,24 +19,27 @@ def check_ip(ip, port=3050):
     finally:
         s.close()
 
-ips_to_test = ["172.22.144.1", "10.255.255.254"]
 
-# Also try to read resolv.conf
-try:
-    with open("/etc/resolv.conf", "r") as f:
-        for line in f:
-            if "nameserver" in line:
-                ns = line.split()[1].strip()
-                if ns not in ips_to_test:
-                    ips_to_test.append(ns)
-except:
-    pass
+if __name__ == "__main__":
+    ips_to_test = ["172.22.144.1", "10.255.255.254"]
 
-success = False
-for ip in ips_to_test:
-    if check_ip(ip):
-        success = True
+    # Also try to read resolv.conf
+    try:
+        with open("/etc/resolv.conf", "r") as f:
+            for line in f:
+                if "nameserver" in line:
+                    ns = line.split()[1].strip()
+                    if ns not in ips_to_test:
+                        ips_to_test.append(ns)
+    except:
+        pass
+
+    success = False
+    for ip in ips_to_test:
+        if check_ip(ip):
+            success = True
         
-if not success:
-    print("ALL CHECKS FAILED")
-    sys.exit(1)
+    if not success:
+        print("ALL CHECKS FAILED")
+        sys.exit(1)
+

@@ -11,167 +11,120 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-print("=" * 60)
-print("VILA Model Integration Test")
-print("=" * 60)
-print()
+import pytest
 
-# Test 1: Check imports
-print("Test 1: Checking imports...")
-try:
-    import tensorflow as tf
-    import kagglehub
-    print("  ✓ TensorFlow and kagglehub imported successfully")
-except ImportError as e:
-    print(f"  ✗ Import failed: {e}")
-    print("\n  Run: pip install tensorflow-cpu kagglehub")
-    sys.exit(1)
+pytestmark = [pytest.mark.wsl]
 
-# Test 2: Check VILA module
-print("\nTest 2: Checking VILA module...")
-try:
-    from run_vila import VILAScorer
-    print("  ✓ VILAScorer imported successfully")
-except ImportError as e:
-    print(f"  ✗ Failed to import VILAScorer: {e}")
-    sys.exit(1)
+if sys.platform.startswith("win"):
+    pytest.skip("WSL-only (TensorFlow/kagglehub environment expected in WSL)", allow_module_level=True)
 
-# Test 3: Check MultiModelMUSIQ integration
-print("\nTest 3: Checking MultiModelMUSIQ integration...")
-try:
-    from run_all_musiq_models import MultiModelMUSIQ
-    scorer = MultiModelMUSIQ()
-    
-    # Check if VILA models are registered
-    if "vila" in scorer.model_sources:
-        print("  ✓ VILA model registered in MultiModelMUSIQ")
-    else:
-        print("  ✗ VILA model not found in MultiModelMUSIQ")
-    
-    if "vila_rank" in scorer.model_sources:
-        print("  ✓ VILA-R model registered in MultiModelMUSIQ")
-    else:
-        print("  ✗ VILA-R model not found in MultiModelMUSIQ")
-    
-    # Check model types
-    if scorer.model_types.get("vila") == "vila":
-        print("  ✓ VILA model type configured correctly")
-    else:
-        print("  ✗ VILA model type not configured")
-    
-    # Check model ranges
-    if "vila" in scorer.model_ranges:
-        expected_range = (0.0, 1.0)
-        actual_range = scorer.model_ranges['vila']
-        if actual_range == expected_range:
-            print(f"  ✓ VILA score range: {actual_range}")
+def test_vila_integration():
+    print("=" * 60)
+    print("VILA Model Integration Test")
+    print("=" * 60)
+    print()
+
+    # Test 1: Check imports
+    print("Test 1: Checking imports...")
+    try:
+        import tensorflow as tf  # noqa: F401
+        import kagglehub  # noqa: F401
+        print("  ✓ TensorFlow and kagglehub imported successfully")
+    except ImportError as e:
+        print(f"  ✗ Import failed: {e}")
+        print("\n  Run: pip install tensorflow-cpu kagglehub")
+        pytest.skip(f"Missing optional deps for VILA test: {e}")
+
+    # Test 2: Check VILA module
+    print("\nTest 2: Checking VILA module...")
+    try:
+        from run_vila import VILAScorer
+        print("  ✓ VILAScorer imported successfully")
+    except ImportError as e:
+        print(f"  ✗ Failed to import VILAScorer: {e}")
+        if "pytest" in sys.modules:
+            import pytest
+            pytest.fail(f"VILAScorer import failed: {e}")
         else:
-            print(f"  ✗ VILA score range incorrect: {actual_range} (expected: {expected_range})")
-    
-    # Check model weights
-    if "vila" in scorer.model_weights:
-        print(f"  ✓ VILA model weight: {scorer.model_weights['vila']}")
-    
-except Exception as e:
-    print(f"  ✗ Integration test failed: {e}")
-    import traceback
-    traceback.print_exc()
+            sys.exit(1)
 
-# Test 4: Create test image
-print("\nTest 4: Creating test image...")
-try:
-    # Create a temporary test image
-    test_img = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
-    test_pil = Image.fromarray(test_img)
-    
-    # Save to temp file
-    temp_dir = tempfile.gettempdir()
-    test_image_path = os.path.join(temp_dir, "vila_test_image.jpg")
-    test_pil.save(test_image_path)
-    
-    print(f"  ✓ Test image created: {test_image_path}")
-    
-except Exception as e:
-    print(f"  ✗ Failed to create test image: {e}")
-    sys.exit(1)
-
-# Test 5: Test VILA model loading (optional - requires Kaggle auth)
-print("\nTest 5: Testing VILA model loading...")
-print("  Note: This requires Kaggle authentication")
-print("  If you haven't set up Kaggle credentials, this test will be skipped")
-
-try:
-    vila_scorer = VILAScorer()
-    
-    # Check if kaggle.json exists
-    kaggle_paths = [
-        os.path.expanduser("~/.kaggle/kaggle.json"),
-        os.path.expandvars("%USERPROFILE%/.kaggle/kaggle.json")
-    ]
-    
-    kaggle_configured = any(os.path.exists(path) for path in kaggle_paths)
-    
-    if kaggle_configured:
-        print("  ✓ Kaggle credentials found")
-        print("  Attempting to load VILA model (this may take a while on first run)...")
+    # Test 3: Check MultiModelMUSIQ integration
+    print("\nTest 3: Checking MultiModelMUSIQ integration...")
+    try:
+        from run_all_musiq_models import MultiModelMUSIQ
+        scorer = MultiModelMUSIQ()
         
-        success = vila_scorer.load_model()
-        if success:
-            print("  ✓ VILA model loaded successfully!")
+        # Check if VILA models are registered
+        if "vila" in scorer.model_sources:
+             print("  ✓ VILA model registered in MultiModelMUSIQ")
+        else:
+             print("  ✗ VILA model not found in MultiModelMUSIQ")
+    
+        if "vila_rank" in scorer.model_sources:
+            print("  ✓ VILA-R model registered in MultiModelMUSIQ")
+        else:
+            print("  ✗ VILA-R model not found in MultiModelMUSIQ")
+        
+        # Check model types
+        if scorer.model_types.get("vila") == "vila":
+            print("  ✓ 'vila' mapped to correct model type")
+        else:
+            print(f"  ✗ 'vila' mapped to: {scorer.model_types.get('vila')}")
             
-            # Test prediction
-            print("\nTest 6: Testing VILA prediction...")
-            image_bytes = vila_scorer.preprocess_image(test_image_path)
-            if image_bytes:
-                print("  ✓ Image preprocessed successfully")
-                
-                results = vila_scorer.predict_aesthetics(image_bytes)
-                if results:
-                    print("  ✓ Prediction successful!")
-                    print(f"  Model outputs: {list(results.keys())}")
-                else:
-                    print("  ⚠ Prediction returned None (model may need different input format)")
-            else:
-                print("  ✗ Image preprocessing failed")
-        else:
-            print("  ✗ Failed to load VILA model")
-            print("  This may be due to:")
-            print("    - Model not available on Kaggle Hub")
-            print("    - Network issues")
-            print("    - Kaggle authentication issues")
-    else:
-        print("  ⚠ Kaggle credentials not configured")
-        print("  Skipping model loading test")
-        print("\n  To set up Kaggle authentication:")
-        print("  1. Create account at https://www.kaggle.com")
-        print("  2. Go to Account Settings -> API -> Create New API Token")
-        print("  3. Place kaggle.json in ~/.kaggle/ or %USERPROFILE%\\.kaggle\\")
+    except Exception as e:
+        print(f"  ✗ MultiModelMUSIQ integration failed: {e}")
+        if "pytest" in sys.modules:
+            import pytest
+            pytest.fail(f"MultiModelMUSIQ integration failed: {e}")
+
+    # Test 4: Mock VILA loading (optional)
+    print("\nTest 4: Checking VILA loading (mock/check)...")
+    test_image_path = "test_vila_image.jpg"
+    
+    try:
+        # Check for Kaggle credentials
+        kaggle_config = os.path.expanduser("~/.kaggle/kaggle.json")
+        has_creds = os.path.exists(kaggle_config) or os.environ.get("KAGGLE_USERNAME")
         
-except Exception as e:
-    print(f"  ✗ VILA loading test failed: {e}")
-    import traceback
-    traceback.print_exc()
+        if has_creds:
+            print("  ✓ Kaggle credentials found")
+            
+            # Create dummy image for testing
+            img = Image.new('RGB', (224, 224), color='red')
+            img.save(test_image_path)
+            
+            try:
+                from run_vila import VILAScorer
+                vila_scorer = VILAScorer()
+                print("  ✓ VILAScorer instance created")
+                
+                # We won't actually load the model to avoid huge download in test
+                # unless we are sure.
+                # But let's check if preprocess works
+                image_bytes = vila_scorer.preprocess_image(test_image_path)
+                if image_bytes:
+                    print("  ✓ Image preprocessed successfully")
+                else:
+                    print("  ✗ Image preprocessing failed")
+                    
+            except Exception as e:
+                print(f"  ✗ VILA instantiation/preprocessing failed: {e}")
+        else:
+            print("  ⚠ Kaggle credentials not configured")
+            print("  Skipping model loading test")
+            pytest.skip("Kaggle credentials missing")
+            
+    except Exception as e:
+        print(f"  ✗ VILA loading test failed: {e}")
+        pytest.fail(f"VILA test failed: {e}")
+    finally:
+        # Cleanup
+        if os.path.exists(test_image_path):
+            try:
+                os.remove(test_image_path)
+                print("  ✓ Test files cleaned up")
+            except:
+                pass
 
-# Cleanup
-print("\nCleaning up test files...")
-try:
-    if os.path.exists(test_image_path):
-        os.remove(test_image_path)
-    print("  ✓ Test files cleaned up")
-except:
-    pass
-
-# Summary
-print("\n" + "=" * 60)
-print("Test Summary")
-print("=" * 60)
-print()
-print("✓ VILA integration is set up correctly")
-print("✓ All core components are functional")
-print()
-print("Next steps:")
-print("1. Set up Kaggle authentication (see docs/vila/README_VILA.md)")
-print("2. Run: python run_vila.py --image your_image.jpg")
-print("3. Or run: python run_all_musiq_models.py --image your_image.jpg")
-print()
-
+if __name__ == "__main__":
+    test_vila_integration()

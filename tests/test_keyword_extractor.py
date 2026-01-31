@@ -8,9 +8,11 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+import pytest
 
 # Add project root to Python path
-project_root = Path(__file__).resolve().parent.parent.parent
+# Current file is in tests/, project root is parent
+project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -74,8 +76,9 @@ def test_keyword_extractor():
     finally:
         # Clean up test image
         try:
-            os.unlink(test_image_path)
-            print("✓ Cleaned up test image")
+            if 'test_image_path' in locals():
+                os.unlink(test_image_path)
+                print("✓ Cleaned up test image")
         except:
             pass
 
@@ -104,7 +107,8 @@ def test_dependencies():
     
     return all_good
 
-def main():
+
+def test_keyword_extractor_main():
     """Run all tests."""
     print("=" * 50)
     print("Keyword Extraction Tool - Test Suite")
@@ -122,15 +126,18 @@ def main():
     # Test keyword extraction
     if test_keyword_extractor():
         print("\n✓ All tests passed!")
-        print("\nThe keyword extraction tool is ready to use.")
-        print("\nExample usage:")
-        print("  python scripts/python/keyword_extractor.py --input-dir \"D:/Photos/NEF_Files\"")
-        print("  extract_keywords.bat \"D:\\Photos\\NEF_Files\"")
         return True
     else:
         print("\n✗ Tests failed!")
         return False
 
+def test_keyword_extractor_pytest():
+    """Pytest-compatible wrapper."""
+    if not test_dependencies():
+        pytest.skip("Dependencies missing")
+    success = test_keyword_extractor()
+    assert success, "Keyword extraction failed"
+
 if __name__ == "__main__":
-    success = main()
+    success = test_keyword_extractor_main()
     sys.exit(0 if success else 1)

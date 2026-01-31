@@ -13,10 +13,20 @@ project_root = str(Path(__file__).resolve().parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from scripts.python.run_all_musiq_models import MultiModelMUSIQ
+import pytest
+
+pytestmark = [pytest.mark.wsl]
+
+if sys.platform.startswith("win"):
+    pytest.skip("WSL-only (TensorFlow/MUSIQ integration expected in WSL)", allow_module_level=True)
 
 def test_smart_patching():
     print("Testing smart patching...")
+    
+    try:
+        from scripts.python.run_all_musiq_models import MultiModelMUSIQ
+    except ImportError:
+        pytest.skip("Machine learning dependencies (TensorFlow) not available")
     
     # Create temp directory
     temp_dir = tempfile.mkdtemp()

@@ -140,3 +140,12 @@ The normalized scores allow comparison across models:
 - PAQ2PIQ: 0.790 (normalized)
 
 **Average Normalized Score: 0.681** - This gives you a single overall quality rating across all models.
+
+## Related Documents
+
+- [Docs index](../README.md)
+- [Current model weights](../reference/models/current_model_weights.md)
+- [Weighted scoring strategy](WEIGHTED_SCORING_STRATEGY.md)
+- [Model fallback mechanism](MODEL_FALLBACK_MECHANISM.md)
+- [Model source testing](MODEL_SOURCE_TESTING.md)
+

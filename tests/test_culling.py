@@ -33,14 +33,38 @@ class TestCullingWorkflow:
         """Set up test database and fixtures."""
         # Use a temporary database
         cls.original_db_path = db.DB_PATH
-        cls.temp_dir = tempfile.mkdtemp()
-        cls.test_db_path = os.path.join(cls.temp_dir, 'test_culling.db')
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_cull')
+        if os.path.exists(cls.temp_dir):
+            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        os.makedirs(cls.temp_dir, exist_ok=True)
+        
+        import time
+        timestamp = int(time.time())
+        cls.test_db_path = os.path.abspath(f"TEST_culling_{timestamp}.fdb")
         cls.test_images_dir = os.path.join(cls.temp_dir, 'test_images')
         
-        db.DB_PATH = cls.test_db_path
-        os.makedirs(cls.test_images_dir, exist_ok=True)
+        # Copy template database
+        template_db = os.path.abspath("template.fdb")
+        if not os.path.exists(template_db):
+            print(f"Error: Template DB not found at {template_db}")
+            raise Exception("Template DB missing - run debug_firebird.py first")
+            
+        try:
+             # import shutil (Global import used) - Bypassing shutil due to crashes
+             import subprocess
+             # shutil.copy2(template_db, cls.test_db_path)
+             cmd = f'copy "{template_db}" "{cls.test_db_path}"'
+             subprocess.run(cmd, shell=True, check=True)
+             print(f"Copied template DB to {cls.test_db_path}")
+        except Exception as e:
+             print(f"Error copying template DB: {e}")
+             raise
         
-        # Initialize database
+        # CRITICAL: Override DB_PATH to use test database
+        db.DB_PATH = cls.test_db_path
+        
+        # Initialize DB with test path
         db.init_db()
         
         # Create test image fixtures
@@ -51,7 +75,32 @@ class TestCullingWorkflow:
         """Clean up test database and fixtures."""
         db.DB_PATH = cls.original_db_path
         shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        try:
+             # Close connection explicitely
+             try: db.get_db().close()
+             except: pass
+             
+             # Force garbage collection to release file handles
+             import gc
+             gc.collect()
+             
+             if os.path.exists(cls.test_db_path):
+                 print(f"Cleaning up {cls.test_db_path}")
+                 import time
+                 MAX_RETRIES = 5
+                 for i in range(MAX_RETRIES):
+                     try:
+                         os.remove(cls.test_db_path)
+                         break
+                     except PermissionError:
+                         if i < MAX_RETRIES - 1:
+                             time.sleep(0.5)
+                         else:
+                             print(f"Warning: Failed to cleanup DB after retries") 
+        except Exception as e:
+             print(f"Warning: Failed to cleanup DB: {e}")
     
+
     @classmethod
     def _create_test_images(cls):
         """Insert test images with scores for culling tests."""
@@ -61,9 +110,12 @@ class TestCullingWorkflow:
         # Create test folder
         c.execute("INSERT INTO folders (path) VALUES (?)", (cls.test_images_dir,))
         folder_id = c.lastrowid
+        conn.commit()
+        conn.close()
         
         # Create test images (3 groups of 3 similar images each)
         # Group 1: Wedding photos (similar timestamps, varying scores)
+
         test_images = [
             (f'{cls.test_images_dir}/wedding_001.jpg', 'wedding_001.jpg', 0.85, 0.80, 0.75, folder_id),
             (f'{cls.test_images_dir}/wedding_002.jpg', 'wedding_002.jpg', 0.92, 0.88, 0.85, folder_id),  # Best in group

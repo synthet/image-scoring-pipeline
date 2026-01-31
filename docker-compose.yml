@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  webui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: image-scoring:latest
+    container_name: image-scoring-webui
+    ports:
+      - "7860:7860"
+    environment:
+      - FIREBIRD_HOST=host.docker.internal
+      - DOCKER_CONTAINER=1
+    volumes:
+      - .:/app
+      # Mount Windows drives (adjust as needed)
+      # Note: when running `docker compose` from Windows (e.g. via .bat), prefer Windows paths.
+      - "D:/:/mnt/d"
+      - "E:/:/mnt/e"
+      - "F:/:/mnt/f"
+    # Make GPU usage work with non-Swarm `docker compose`
+    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

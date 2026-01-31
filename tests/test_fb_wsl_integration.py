@@ -1,20 +1,32 @@
-import sys
+"""
+WSL-only Firebird DB integration smoke test.
+
+This validates that `modules.db.get_db()` can connect and execute a simple query.
+Skips on Windows.
+"""
+
 import os
-sys.path.append(os.getcwd())
-try:
+import sys
+import pytest
+
+pytestmark = [pytest.mark.wsl, pytest.mark.firebird]
+
+if sys.platform.startswith("win"):
+    pytest.skip("WSL-only (Firebird integration smoke test)", allow_module_level=True)
+
+# Ensure repo root is on path (when invoked from tests/).
+sys.path.insert(0, os.getcwd())
+
+
+def test_firebird_db_connection_smoke():
     from modules import db
-    print("Module db imported")
-    
+
     conn = db.get_db()
-    print("Connection Successful!")
-    
-    cur = conn.cursor()
-    cur.execute("SELECT count(*) FROM images")
-    row = cur.fetchone()
-    print(f"Image Count: {row}")
-    conn.close()
-    
-except Exception as e:
-    print(f"Integration Error: {e}")
-    import traceback
-    traceback.print_exc()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM images")
+        row = cur.fetchone()
+        assert row is not None
+        assert isinstance(row[0], int)
+    finally:
+        conn.close()

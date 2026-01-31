@@ -131,16 +131,26 @@ def test_get_resolved_path_verified():
     image_id = row[0]
     conn.close()
     
-    # Insert an unverified path
-    db.resolve_windows_path(image_id, "/mnt/c/test.jpg", verify=False)
+    # Ensure any previous record for this image_id is gone
+    conn = db.get_db()
+    c = conn.cursor()
+    c.execute("DELETE FROM resolved_paths WHERE image_id = ?", (image_id,))
+    conn.commit()
+    conn.close()
+    
+    # Insert an unverified path using a definitely non-existent file
+    path = "C:\\this_file_should_not_exist_xyz_123.jpg"
+    db.resolve_windows_path(image_id, path, verify=False)
     
     # Should be retrievable with verified_only=False
     result = db.get_resolved_path(image_id, verified_only=False)
-    assert result is not None
+    assert result is not None, "Path should be retrievable when verified_only=False"
+    assert result == path
     
     # Should NOT be retrievable with verified_only=True (default)
+    # Since we didn't verify, and even if we did, the file doesn't exist
     result_verified = db.get_resolved_path(image_id, verified_only=True)
-    assert result_verified is None
+    assert result_verified is None, f"Expected None for unverified path, but got {result_verified}"
     
     TestResolvedPaths.teardown_class()
     print("✓ test_get_resolved_path_verified passed")

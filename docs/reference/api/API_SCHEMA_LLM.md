@@ -380,3 +380,10 @@ The OpenAPI schema includes:
 6. Operations are asynchronous unless noted as "blocking"
 7. Paths support both Windows and WSL formats automatically
 8. Empty string for `input_path` in tagging means "all images in database"
+
+## Related Documents
+
+- [Docs index](../../README.md)
+- [API reference](API.md)
+- [API schema implementation notes](API_SCHEMA_IMPLEMENTATION.md)
+

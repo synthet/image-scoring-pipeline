@@ -16,18 +16,66 @@ except ImportError:
 
 DB_FILE = "scoring_history.fdb"
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FB_DLL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Firebird", "fbclient.dll")
+DB_PATH = os.path.join(_PROJECT_ROOT, DB_FILE)
+
+def _is_wsl() -> bool:
+    # Conservative detection: WSL exports these env vars.
+    return os.name != "nt" and bool(os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"))
+
+
+def _resolve_firebird_client_library() -> str | None:
+    """
+    Choose a Firebird client library compatible with the current OS.
+
+    - Windows: prefer repo-bundled `Firebird/fbclient.dll`
+    - Linux/WSL: prefer repo-extracted `FirebirdLinux/.../libfbclient.so`, else fall back to
+      `libfbclient.so` / `libfbclient.so.2` via the dynamic loader.
+
+    Users can override with env var `FIREBIRD_CLIENT_LIBRARY`.
+    """
+    override = os.environ.get("FIREBIRD_CLIENT_LIBRARY") or os.environ.get("FB_CLIENT_LIBRARY")
+    if override:
+        return override
+
+    if os.name == "nt":
+        win_dll = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Firebird", "fbclient.dll")
+        if os.path.exists(win_dll):
+            return win_dll
+        return None
+
+    # Linux / WSL
+    base_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # project root
+    repo_linux_lib = os.path.join(
+        base_root,
+        "FirebirdLinux",
+        "Firebird-5.0.0.1306-0-linux-x64",
+        "opt",
+        "firebird",
+        "lib",
+        "libfbclient.so",
+    )
+    if os.path.exists(repo_linux_lib):
+        return repo_linux_lib
+
+    # Let the dynamic loader resolve these if installed system-wide / via LD_LIBRARY_PATH.
+    # Note: many distros expose the SONAME as libfbclient.so.2 even for newer versions.
+    return "libfbclient.so"
+
+
+FB_CLIENT_LIBRARY = _resolve_firebird_client_library()
 
 # Flags to prevent log spam
 _logged_wsl_info = False
 _logged_dsn = False
 
 # Configure driver if possible
-if connect and os.path.exists(FB_DLL):
+if connect and FB_CLIENT_LIBRARY:
     try:
         # driver_config might be available if imported
         from firebird.driver import driver_config
-        driver_config.server_defaults.host.client_library.value = FB_DLL
+        # Fix: client_library is a top-level config option in this driver version
+        if hasattr(driver_config, 'fb_client_library'):
+             driver_config.fb_client_library.value = FB_CLIENT_LIBRARY
     except: pass
 
 
@@ -58,24 +106,28 @@ def get_db():
                           os.environ["PATH"] += ";" + fb_path
 
              # Resolve DB path from project root so it works when cwd differs (e.g. MCP spawned from user home)
-             dsn = os.path.normpath(os.path.join(_PROJECT_ROOT, DB_FILE)) 
+             dsn = DB_PATH
+             # dsn = os.path.normpath(os.path.join(_PROJECT_ROOT, DB_FILE)) 
              
         else:
              # Linux/WSL
              if driver_config and connect:
-                 # Attempt to find the Linux library we just extracted
-                 # Path: FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib/libfbclient.so
-                 base_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # project root
-                 linux_lib = os.path.join(base_root, "FirebirdLinux", "Firebird-5.0.0.1306-0-linux-x64", "opt", "firebird", "lib", "libfbclient.so")
-                 
+                 # Ensure we never point at the Windows DLL on Linux/WSL.
+                 if hasattr(driver_config, "fb_client_library") and FB_CLIENT_LIBRARY:
+                     driver_config.fb_client_library.value = FB_CLIENT_LIBRARY
+
                  global _logged_wsl_info
-                 if os.path.exists(linux_lib):
+                 lib_dir = None
+                 if FB_CLIENT_LIBRARY and ("/" in FB_CLIENT_LIBRARY or "\\" in FB_CLIENT_LIBRARY) and os.path.exists(FB_CLIENT_LIBRARY):
+                     lib_dir = os.path.dirname(FB_CLIENT_LIBRARY)
+
+                 if lib_dir:
                      if not _logged_wsl_info:
-                         print(f"WSL Info: Ensure LD_LIBRARY_PATH includes {os.path.dirname(linux_lib)}")
+                         print(f"WSL Info: Ensure LD_LIBRARY_PATH includes {lib_dir}")
                          _logged_wsl_info = True
                  else:
                      if not _logged_wsl_info:
-                         print(f"Warning: Linux Firebird client lib not found at {linux_lib}")
+                         print(f"Warning: Linux Firebird client lib not found/resolvable (FB_CLIENT_LIBRARY={FB_CLIENT_LIBRARY!r})")
                          _logged_wsl_info = True
 
              # Must use TCP to Windows Host to avoid corruption and locking issues
@@ -83,7 +135,12 @@ def get_db():
              # 1. Try Env Var
              host_ip = os.environ.get("FIREBIRD_HOST")
              
-             # 2. Try Default Gateway (Most reliable for WSL2)
+             # 2. Check for Docker
+             is_docker = os.environ.get("DOCKER_CONTAINER") == "1"
+             if is_docker and not host_ip:
+                 host_ip = "host.docker.internal"
+
+             # 3. Try Default Gateway (Most reliable for WSL2)
              if not host_ip:
                  try:
                      import subprocess
@@ -94,7 +151,7 @@ def get_db():
                  except:
                      pass
 
-             # 3. Fallback to Resolv.conf
+             # 4. Fallback to Resolv.conf
              if not host_ip:
                  try:
                      with open("/etc/resolv.conf", "r") as f:
@@ -111,17 +168,19 @@ def get_db():
              # Need to map the path correctly. Firebird on Windows expects Windows path.
              # We assume DB_FILE ("scoring_history.fdb") is in the simple root.
              # We need the ABSOLUTE WINDOWS PATH for the DSN.
-             # Hardcoding the project root assumption for now or reading from env?
-             # Let's assume common D:\ structure if we can't detect.
-             
-             # Better: User can configure this. But let's try to construct it.
-             # If we are in /mnt/d/Projects/..., we can map back.
              
              win_path = r"d:\Projects\image-scoring\scoring_history.fdb" # Fallback
              try:
                  cwd = os.getcwd()
+                 # Mapping for WSL /mnt/d/...
                  if cwd.startswith("/mnt/d"):
                      win_path = cwd.replace("/mnt/d", "d:").replace("/", "\\") + "\\" + DB_FILE
+                 # Mapping for Docker /app/... (Assuming it's mounted from Windows project root)
+                 elif is_docker and cwd == "/app":
+                     # In docker, we can't easily guess the host path, so we use the fallback 
+                     # or expect it to be passed via env?
+                     # Let's keep the fallback but add a log message.
+                     pass
              except:
                  pass
                  
@@ -129,7 +188,8 @@ def get_db():
              dsn = f"inet://{host_ip}/{win_path}"
              
              # Auto-start Firebird Server if needed (WSL -> Windows)
-             if not _is_firebird_running(host_ip):
+             # Skip auto-start in Docker for now as it's more complex to reach host process
+             if not is_docker and not _is_firebird_running(host_ip):
                  if not _logged_dsn:
                      print(f"WSL: Firebird Server not detected on {host_ip}:3050. Attempting to start...")
                  

@@ -85,7 +85,7 @@ The image scoring system now implements a **triple fallback mechanism** for maxi
 ### Verification Test Output
 
 ```bash
-$ python test_model_sources.py --test-kaggle --skip-download
+$ python tests/test_model_sources.py --test-kaggle --skip-download
 
 ✓ All models have at least one accessible source
 ✓ Model loading should work with fallback mechanism
@@ -148,7 +148,7 @@ FALLBACK MECHANISM STATUS
 
 ### Currently Available
 
-All checkpoint files are present in `musiq_original/checkpoints/`:
+All checkpoint files are present in `models/checkpoints/`:
 
 ```
 ✓ spaq_ckpt.npz       (155.4 MB) - Ready
@@ -175,7 +175,7 @@ If you need to download checkpoints:
 
 ### Option 1: wget
 ```bash
-cd musiq_original/checkpoints/
+cd models/checkpoints/
 
 wget https://storage.googleapis.com/gresearch/musiq/spaq_ckpt.npz
 wget https://storage.googleapis.com/gresearch/musiq/ava_ckpt.npz
@@ -185,7 +185,7 @@ wget https://storage.googleapis.com/gresearch/musiq/paq2piq_ckpt.npz
 
 ### Option 2: gsutil (Google Cloud SDK)
 ```bash
-gsutil -m cp -r gs://gresearch/musiq/* musiq_original/checkpoints/
+gsutil -m cp -r gs://gresearch/musiq/* models/checkpoints/
 ```
 
 ### Option 3: Direct Browser Download
@@ -292,7 +292,7 @@ self.model_sources = {
     "spaq": {
         "tfhub": "https://tfhub.dev/google/musiq/spaq/1",
         "kaggle": "google/musiq/tensorFlow2/spaq",
-        "local": "musiq_original/checkpoints/spaq_ckpt.npz"
+        "local": "models/checkpoints/spaq_ckpt.npz"
     },
     # ... other models
 }
@@ -349,8 +349,8 @@ python test_model_sources.py --test-kaggle --skip-download
 
 ```bash
 # Check checkpoint files exist
-ls -lh musiq_original/checkpoints/*.npz
-ls -lh musiq_original/checkpoints/vila-tensorflow2-image-v1/
+ls -lh models/checkpoints/*.npz
+ls -lh models/checkpoints/vila-tensorflow2-image-v1/
 
 # Expected output:
 # spaq_ckpt.npz      155.4 MB
@@ -398,7 +398,7 @@ ls -lh musiq_original/checkpoints/vila-tensorflow2-image-v1/
 
 **Offline Setup**:
 1. Download all .npz checkpoints from Google Cloud Storage
-2. Place in `musiq_original/checkpoints/`
+2. Place in `models/checkpoints/`
 3. System works entirely offline
 4. Note: .npz loading pending full implementation
 
@@ -508,10 +508,11 @@ Triple fallback:
 
 ## Related Documents
 
-- [CHANGELOG.md](CHANGELOG.md) - Version 2.3.0 release notes
-- [MODEL_FALLBACK_MECHANISM.md](docs/technical/MODEL_FALLBACK_MECHANISM.md) - Dual fallback documentation
-- [MODEL_SOURCE_TESTING.md](docs/technical/MODEL_SOURCE_TESTING.md) - Testing guide
-- [CHECKPOINTS_INFO.md](musiq_original/checkpoints/CHECKPOINTS_INFO.md) - Checkpoint details
+- [Docs index](../README.md)
+- [CHANGELOG.md](../../CHANGELOG.md) - Version 2.3.0 release notes
+- [MODEL_FALLBACK_MECHANISM.md](MODEL_FALLBACK_MECHANISM.md) - Dual fallback documentation
+- [MODEL_SOURCE_TESTING.md](MODEL_SOURCE_TESTING.md) - Testing guide
+- [CHECKPOINTS_INFO.md](../../models/checkpoints/CHECKPOINTS_INFO.md) - Checkpoint details
 
 ---
 

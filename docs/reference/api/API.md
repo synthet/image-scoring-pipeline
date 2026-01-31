@@ -322,3 +322,11 @@ curl -X POST http://127.0.0.1:7860/api/scoring/stop
 - Paths are automatically converted between Windows and WSL formats when needed
 - Jobs run asynchronously - use status endpoints to monitor progress
 - The API uses the same runner instances as the web UI, so operations are synchronized
+
+## Related Documents
+
+- [Docs index](../../README.md)
+- [API schema for LLMs](API_SCHEMA_LLM.md)
+- [API schema implementation notes](API_SCHEMA_IMPLEMENTATION.md)
+- [MCP debugging tools](../../technical/MCP_DEBUGGING_TOOLS.md)
+
