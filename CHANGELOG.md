@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Image Loading**: Resolved critical issue where full-resolution images failed to load with `net::ERR_FILE_NOT_FOUND`.
+  - Refactored `modules/ui/assets.py` to use stable direct URL loading instead of fragile Blob URLs.
+  - Fixed a race condition in the loading spinner logic ("Stale ID") caused by concurrent click and mutation events.
+  - Added robust WSL-to-Windows path conversion for client-side fallbacks.
+
+### Added
+- **API**: Added `/api/raw-preview` endpoint (backend) for efficient RAW image preview generation and path resolution.
+
+## [Unreleased]
+
 ### Changed
 - **ImageGalleryViewer**: Moved to separate repository at [synthet/sharp-image-scoring](https://github.com/synthet/sharp-image-scoring)
   - Extracted using `git subtree split` to preserve 21 commits of history

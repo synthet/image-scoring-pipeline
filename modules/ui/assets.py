@@ -2293,62 +2293,61 @@ function initLazyFullResolution() {
     }
     
     function loadFullResolution(imgPath, previewId, imgElement) {
+        console.log(`[FullRes] Loading: ${imgPath} (ID: ${previewId})`);
         
-        // Cancel previous load
-        if (abortController) {
-            abortController.abort();
-            abortController = null;
+        // If previewId changed, check if we are still viewing the same image
+        if (previewId !== currentPreviewId) {
+            const currentPath = getSelectedImagePath();
+            if (imgPath === currentPath) {
+                 console.log(`[FullRes] ID changed (${previewId} vs ${currentPreviewId}) but path matches, proceeding.`);
+            } else {
+                 console.log(`[FullRes] Stale ID and path mismatch (Target: ${imgPath}, Curr: ${currentPath}), aborting`);
+                 return;
+            }
         }
         
-        // Cleanup previous ObjectURL to prevent memory leak
+        // Cleanup previous ObjectURL if it exists (legacy cleanup)
         if (previousObjectURL) {
             URL.revokeObjectURL(previousObjectURL);
             previousObjectURL = null;
         }
         
-        // If previewId changed, don't load (stale)
-        if (previewId !== currentPreviewId) {
-            return;
-        }
-        
-        abortController = new AbortController();
-        
         // Use the /source-image endpoint (not /api/ to avoid Gradio routing conflicts)
         // Handles both RAW and regular images with proper WSL path conversion
         const url = `/source-image?path=${encodeURIComponent(imgPath)}`;
-        
+        console.log(`[FullRes] Setting src to: ${url}`);
         
         showLoadingIndicator(imgElement);
         
-        fetch(url, { signal: abortController.signal })
-            .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
-                return response.blob();
-            })
-            .then(blob => {
-                if (previewId !== currentPreviewId) {
-                    // Changed, discard blob (no need to create ObjectURL just to revoke)
+        // Set up event handlers before setting src
+        imgElement.onload = () => {
+            console.log(`[FullRes] OnLoad fired for ID: ${previewId}`);
+            
+            // Check concurrency again with same relaxed logic
+            if (previewId !== currentPreviewId) {
+                const currentPath = getSelectedImagePath();
+                if (imgPath !== currentPath) {
+                    console.log(`[FullRes] OnLoad stale: user moved to new image (${currentPath}), ignoring.`);
+                     hideLoadingIndicator(imgElement); // Ensure spinner is gone
                     return;
                 }
-                
-                
-                const objectURL = URL.createObjectURL(blob);
-                previousObjectURL = objectURL;  // Track for cleanup
-                imgElement.onload = () => {
-                   hideLoadingIndicator(imgElement);
-                };
-                imgElement.src = objectURL;
-                
-                
-                // Cleanup controller
-                abortController = null;
-            })
-            .catch(err => {
-                if (err.name !== 'AbortError') {
-                    console.error('Full res load error:', err);
-                }
-                hideLoadingIndicator(imgElement);
-            });
+                 console.log(`[FullRes] OnLoad ID mistmatch but path OK`);
+            }
+            
+            hideLoadingIndicator(imgElement);
+            imgElement.dataset.fullResLoaded = 'true';
+            imgElement.dataset.fullResPath = imgPath;
+            console.log(`[FullRes] Success, spinner hidden`);
+        };
+        
+        imgElement.onerror = (e) => {
+            console.error('[FullRes] OnError fired:', e);
+            hideLoadingIndicator(imgElement);
+            // Don't set fullResLoaded so we can retry if needed
+        };
+        
+        // Direct assignment - lets browser handle caching and connection
+        imgElement.src = url;
     }
     
     function handlePreviewChange() {
@@ -2398,7 +2397,7 @@ function initLazyFullResolution() {
                 const srcPath = extractPathFromSrc(img.src);
                 
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2375',message:'Extracting path from src',data:{srcPath:srcPath?.substring(0,100),srcUrl:img.src?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
+                // fetch removed
                 // #endregion
                 
                 if (srcPath && srcPath !== path) {
@@ -2549,7 +2548,7 @@ function initLazyFullResolution() {
         monitoredImages.add(img);
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2512',message:'Monitoring new image element',data:{srcStart:img.src?.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
+        // fetch removed
         // #endregion
         
         // Create observer for this specific image
@@ -2562,7 +2561,7 @@ function initLazyFullResolution() {
                     if (newSrc === lastProcessedSrc) return;
                     
                     // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2528',message:'Image src changed',data:{newSrcStart:newSrc?.substring(0,50),isBlob:newSrc?.startsWith('blob:'),lastProcessed:lastProcessedSrc?.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
+                    // fetch removed
                     // #endregion
                     
                     lastProcessedSrc = newSrc;
@@ -2617,7 +2616,7 @@ function initLazyFullResolution() {
 
         if (e.key === 'ArrowRight') {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2542',message:'ArrowRight pressed',data:{inPreview:true},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H5'})}).catch(()=>{});
+            // fetch removed
             // #endregion
             
             // Find "Next" button in gallery and click it
@@ -2630,7 +2629,7 @@ function initLazyFullResolution() {
             }
         } else if (e.key === 'ArrowLeft') {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/0d47e7a6-1327-46c1-b76a-1069318aaa84',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assets.py:2556',message:'ArrowLeft pressed',data:{inPreview:true},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H5'})}).catch(()=>{});
+            // fetch removed
             // #endregion
             
             // Find "Previous" button in gallery and click it

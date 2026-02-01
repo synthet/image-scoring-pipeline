@@ -23,7 +23,9 @@ Endpoints:
         GET /api/health - Health check endpoint
 """
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi.responses import FileResponse
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import os
@@ -1108,6 +1110,81 @@ def create_api_router() -> APIRouter:
             message=message,
             data={"file_path": request.file_path}
         )
+    
+    @router.get(
+        "/raw-preview",
+        summary="Get RAW file preview",
+        description="""
+        Extracts or generates a JPEG preview for a RAW image file.
+        
+        This endpoint is optimized for performance:
+        - Tries to extract embedded JPEG preview first (fastest)
+        - Falls back to full RAW decode if needed
+        - Caches generated previews
+        - Returns a JPEG image directly
+        
+        **Query Parameters:**
+        - path: Full path to the specific image file (URL encoded)
+        """
+    )
+    async def get_raw_preview(path: str = Query(..., description="Full path to the image file")):
+        """Get or generate a preview for a RAW file."""
+        import urllib.parse
+        from modules import thumbnails
+        from modules import db
+        
+        decoded_path = urllib.parse.unquote(path)
+        
+        # specific handler for simple filenames (look up in DB)
+        if not os.path.exists(decoded_path) and not os.path.isabs(decoded_path):
+            try:
+                # Try to find file in database by filename
+                conn = db.get_db()
+                cursor = conn.cursor()
+                try:
+                    cursor.execute("SELECT file_path FROM images WHERE file_name = ?", (decoded_path,))
+                    row = cursor.fetchone()
+                    if row:
+                        decoded_path = row[0]
+                except Exception as e:
+                    print(f"Error looking up path for {decoded_path}: {e}")
+                finally:
+                    conn.close()
+            except Exception:
+                pass
+
+        if not os.path.exists(decoded_path):
+            # Try converting WSL path to Windows if running on Windows
+            if decoded_path.startswith('/mnt/'):
+                try:
+                    parts = decoded_path.split('/')
+                    if len(parts) > 2:
+                        drive = parts[2].upper()
+                        rest = os.sep.join(parts[3:])
+                        win_path = f"{drive}:{os.sep}{rest}"
+                        if os.path.exists(win_path):
+                            decoded_path = win_path
+                except:
+                    pass
+        
+        if not os.path.exists(decoded_path):
+             # Try appending to current working directory if just a relative path
+             abs_path = os.path.abspath(decoded_path)
+             if os.path.exists(abs_path):
+                 decoded_path = abs_path
+             else:
+                 raise HTTPException(status_code=404, detail=f"File not found: {decoded_path}")
+
+        try:
+            preview_path = thumbnails.generate_preview(decoded_path)
+            
+            if preview_path and os.path.exists(preview_path):
+                return FileResponse(preview_path, media_type="image/jpeg")
+            else:
+                 raise HTTPException(status_code=500, detail="Failed to generate preview")
+                 
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
     
     @router.get(
         "/jobs/recent",
