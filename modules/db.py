@@ -1553,6 +1553,142 @@ def get_all_folders():
     
     return [row['path'] for row in rows]
 
+
+def delete_folder_cache_entry(folder_path: str, delete_descendants: bool = True) -> dict:
+    """
+    Delete a folder record from the `folders` table (folder tree cache).
+
+    This is intended for removing stale/incorrect folder cache entries that appear
+    in the Folder Tree UI.
+
+    Behavior:
+    - Deletes the matching folder row(s) (supports Windows or WSL path input)
+    - Optionally deletes all descendant folders (via parent_id traversal)
+    - Clears `images.folder_id` for images referencing deleted folders
+    - Attempts to delete matching `cluster_progress` rows (best-effort)
+
+    Returns:
+        dict with keys: success (bool), message (str), deleted_folders (int)
+    """
+    if not folder_path or not str(folder_path).strip():
+        return {"success": False, "message": "No folder path provided.", "deleted_folders": 0}
+
+    # Prepare candidate path representations for lookup (DB may store WSL paths)
+    raw = str(folder_path).strip()
+    candidates: list[str] = []
+    try:
+        from modules import utils
+        # If it looks like a Windows path, convert to WSL (DB convention)
+        if ":" in raw or "\\" in raw:
+            wsl = utils.convert_path_to_wsl(raw)
+            if wsl and wsl != raw:
+                candidates.append(wsl)
+            candidates.append(os.path.normpath(raw))
+        else:
+            candidates.append(raw)
+    except Exception:
+        candidates.append(raw)
+
+    # De-dup candidates while keeping order
+    seen = set()
+    candidates = [p for p in candidates if not (p in seen or seen.add(p))]
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Find starting folder IDs
+        start_ids: list[int] = []
+        start_paths: list[str] = []
+        for cand in candidates:
+            try:
+                c.execute("SELECT id, path FROM folders WHERE path = ?", (cand,))
+                row = c.fetchone()
+                if row:
+                    start_ids.append(int(row[0]))
+                    start_paths.append(str(row[1]))
+            except Exception:
+                continue
+
+        if not start_ids:
+            return {"success": False, "message": f"Folder not found in cache: {raw}", "deleted_folders": 0}
+
+        # Traverse descendants by parent_id to get full delete set
+        ids_to_delete: list[int] = []
+        paths_to_delete: list[str] = []
+
+        queue = list(dict.fromkeys(start_ids))
+        while queue:
+            batch_ids = queue[:200]
+            queue = queue[200:]
+
+            # Add current batch
+            for _id in batch_ids:
+                if _id not in ids_to_delete:
+                    ids_to_delete.append(_id)
+
+            # Collect their paths
+            placeholders = ",".join(["?"] * len(batch_ids))
+            c.execute(f"SELECT id, path FROM folders WHERE id IN ({placeholders})", tuple(batch_ids))
+            for r in c.fetchall() or []:
+                try:
+                    _p = str(r[1])
+                    if _p not in paths_to_delete:
+                        paths_to_delete.append(_p)
+                except Exception:
+                    pass
+
+            if not delete_descendants:
+                continue
+
+            # Find children
+            c.execute(f"SELECT id FROM folders WHERE parent_id IN ({placeholders})", tuple(batch_ids))
+            child_rows = c.fetchall() or []
+            for r in child_rows:
+                try:
+                    cid = int(r[0])
+                    if cid not in ids_to_delete and cid not in queue:
+                        queue.append(cid)
+                except Exception:
+                    continue
+
+        if not ids_to_delete:
+            return {"success": False, "message": f"Nothing to delete for: {raw}", "deleted_folders": 0}
+
+        # Clear image folder_id references first (avoid dangling references)
+        placeholders = ",".join(["?"] * len(ids_to_delete))
+        c.execute(f"UPDATE images SET folder_id = NULL WHERE folder_id IN ({placeholders})", tuple(ids_to_delete))
+
+        # Best-effort cleanup for cluster_progress rows
+        try:
+            if paths_to_delete:
+                cp_ph = ",".join(["?"] * len(paths_to_delete))
+                c.execute(f"DELETE FROM cluster_progress WHERE folder_path IN ({cp_ph})", tuple(paths_to_delete))
+        except Exception:
+            pass
+
+        # Delete folders (children first to be safe if FK constraints are added later)
+        for fid in reversed(ids_to_delete):
+            c.execute("DELETE FROM folders WHERE id = ?", (fid,))
+
+        conn.commit()
+        return {
+            "success": True,
+            "message": f"Deleted {len(ids_to_delete)} folder cache record(s).",
+            "deleted_folders": len(ids_to_delete),
+        }
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logging.error(f"delete_folder_cache_entry failed for {folder_path}: {e}")
+        return {"success": False, "message": f"Error deleting folder cache entry: {e}", "deleted_folders": 0}
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 def get_images_by_folder(folder_path):
     """
     Returns all images located immediately in the specified folder using folder_id.
