@@ -631,6 +631,97 @@ def image_exists(file_path, current_version=None):
         return True
     return False
 
+def get_resolved_path(image_id, verified_only=False):
+    """
+    Get the resolved Windows path for an image from the database.
+    
+    Args:
+        image_id: The ID of the image
+        verified_only: If True, only return paths that have been verified (is_verified=1)
+    
+    Returns:
+        The resolved windows path string, or None if not found/verified
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        query = "SELECT windows_path FROM resolved_paths WHERE image_id = ?"
+        if verified_only:
+            query += " AND is_verified = 1"
+            
+        c.execute(query, (image_id,))
+        row = c.fetchone()
+        if row:
+            return row[0] # row['windows_path']
+        return None
+    finally:
+        conn.close()
+
+def get_resolved_paths_batch(image_ids):
+    """
+    Get resolved Windows paths for a batch of image IDs.
+    Returns a dictionary mapping image_id -> windows_path.
+    Only returns verified paths.
+    """
+    if not image_ids:
+        return {}
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Firebird handles IN clause limits usually 1500. 50 is fine.
+        placeholders = ','.join(['?'] * len(image_ids))
+        query = f"SELECT image_id, windows_path FROM resolved_paths WHERE image_id IN ({placeholders}) AND is_verified = 1"
+        
+        c.execute(query, tuple(image_ids))
+        rows = c.fetchall()
+        
+        result = {}
+        for row in rows:
+            # Handle row/tuple. Index 0=image_id, 1=windows_path
+            # Assuming fetchall returns tuples or Row objects accessible by index
+            iid = row[0]
+            curr_path = row[1]
+            result[iid] = curr_path
+            
+        return result
+    finally:
+        conn.close()
+
+def verify_resolved_path(image_id):
+    """
+    Mark a resolved path as verified.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("UPDATE resolved_paths SET is_verified = 1, last_checked = CURRENT_TIMESTAMP, verification_date = CURRENT_TIMESTAMP WHERE image_id = ?", (image_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+def add_resolved_path(image_id, windows_path):
+    """
+    Add or update a resolved path for an image.
+    Marks it as verified since it's verified by the caller (utils.resolve_file_path).
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Check if exists to decide update vs insert (Firebird 3+ has UPDATE OR INSERT)
+        # Using standard approach for compatibility
+        c.execute("SELECT id FROM resolved_paths WHERE image_id = ?", (image_id,))
+        row = c.fetchone()
+        
+        if row:
+            c.execute("UPDATE resolved_paths SET windows_path = ?, is_verified = 1, last_checked = CURRENT_TIMESTAMP, verification_date = CURRENT_TIMESTAMP WHERE image_id = ?", (windows_path, image_id))
+        else:
+            c.execute("INSERT INTO resolved_paths (image_id, windows_path, is_verified, verification_date, last_checked) VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", (image_id, windows_path))
+            
+        conn.commit()
+    finally:
+        conn.close()
+
 def init_db():
     """
     Initialize the database with retries to handle transient locking/IO errors.
@@ -1821,12 +1912,97 @@ def get_stack_ids_for_image_ids(image_ids):
         conn.close()
 
 
-def delete_image(file_path):
+def delete_image(file_path, delete_related: bool = True):
+    """
+    Remove an image record from the database.
+
+    Note: This does NOT delete the image file on disk.
+    It does clean up dependent rows (culling picks / resolved paths / file paths) and
+    repairs stack metadata (best_image_id / empty stacks) when possible.
+
+    Returns: (success: bool, message: str)
+    """
+    if not file_path:
+        return False, "No file path provided"
+
     conn = get_db()
     c = conn.cursor()
-    c.execute("DELETE FROM images WHERE file_path = ?", (file_path,))
-    conn.commit()
-    conn.close()
+    try:
+        # Look up image id + stack + thumbnail_path for cleanup
+        c.execute("SELECT id, stack_id, thumbnail_path FROM images WHERE file_path = ?", (file_path,))
+        row = c.fetchone()
+        if not row:
+            return False, "Image not found in DB"
+
+        image_id = row["id"] if "id" in row.keys() else row[0]
+        stack_id = row["stack_id"] if "stack_id" in row.keys() else row[1]
+        thumbnail_path = row["thumbnail_path"] if "thumbnail_path" in row.keys() else row[2]
+
+        # Remove dependent rows first (no FKs defined, so do it manually)
+        if delete_related:
+            try:
+                c.execute("DELETE FROM culling_picks WHERE image_id = ?", (image_id,))
+            except Exception:
+                pass
+            try:
+                c.execute("DELETE FROM resolved_paths WHERE image_id = ?", (image_id,))
+            except Exception:
+                pass
+            try:
+                c.execute("DELETE FROM file_paths WHERE image_id = ?", (image_id,))
+            except Exception:
+                pass
+
+        # Delete the image row
+        c.execute("DELETE FROM images WHERE id = ?", (image_id,))
+
+        # Stack cleanup: delete empty stacks and keep best_image_id valid
+        if stack_id is not None:
+            try:
+                c.execute("SELECT COUNT(*) FROM images WHERE stack_id = ?", (stack_id,))
+                remaining = c.fetchone()[0]
+
+                if remaining == 0:
+                    c.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
+                else:
+                    # If this image was the cover, recalculate best_image_id
+                    c.execute("SELECT best_image_id FROM stacks WHERE id = ?", (stack_id,))
+                    best_row = c.fetchone()
+                    best_id = best_row[0] if best_row else None
+                    if best_id == image_id:
+                        c.execute(
+                            """
+                            UPDATE stacks SET best_image_id = (
+                                SELECT id FROM images
+                                WHERE stack_id = ?
+                                ORDER BY score_general DESC NULLS LAST
+                                FETCH FIRST 1 ROWS ONLY
+                            ) WHERE id = ?
+                            """,
+                            (stack_id, stack_id),
+                        )
+            except Exception:
+                # Don't fail deletion just because stack repair fails
+                pass
+
+        conn.commit()
+
+        # Best-effort: also remove thumbnail file if it exists locally
+        # (keeps thumbnails folder from accumulating orphans)
+        if thumbnail_path:
+            try:
+                # Import lazily to avoid circular deps
+                from modules import utils as _utils
+
+                local_thumb = _utils.convert_path_to_local(thumbnail_path)
+                if local_thumb and os.path.exists(local_thumb):
+                    os.remove(local_thumb)
+            except Exception:
+                pass
+
+        return True, f"Removed DB record for: {file_path}"
+    finally:
+        conn.close()
 
 def backup_database(max_backups=5):
     """

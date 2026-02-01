@@ -1374,6 +1374,8 @@ def create_mcp_sse_app(mount_path: str = "/mcp"):
             )
 
     routes = [
+        # Accept both with and without trailing slash to avoid client redirect issues
+        Route("/sse", endpoint=handle_sse),
         Route("/sse/", endpoint=handle_sse),
         Mount("/messages/", app=transport.handle_post_message),
     ]

@@ -6,6 +6,7 @@ import platform
 import time
 from modules import db, config, utils
 from modules.ui import common
+from modules import debug
 
 IS_WINDOWS = (platform.system() == 'Windows')
 
@@ -18,37 +19,35 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
     date_range = (start_date, end_date) if (start_date or end_date) else None
     
     try:
-
-
         wsl_folder = utils.convert_path_to_wsl(folder) if folder else None
         
-        t_db0 = time.perf_counter()
-        rows = db.get_images_paginated(
-            page, page_size, sort_by, sort_order, 
-            rating_filter, label_filter, keyword_filter, 
-            min_score_general=min_gen, 
-            min_score_aesthetic=min_aes, 
-            min_score_technical=min_tech, 
-            date_range=date_range,
-            folder_path=wsl_folder,
-            stack_id=stack_id
-        )
-        t_db1 = time.perf_counter()
+        rows = []
+        with debug.PerformanceTimer("Gallery DB Query"):
+            rows = db.get_images_paginated(
+                page, page_size, sort_by, sort_order, 
+                rating_filter, label_filter, keyword_filter, 
+                min_score_general=min_gen, 
+                min_score_aesthetic=min_aes, 
+                min_score_technical=min_tech, 
+                date_range=date_range,
+                folder_path=wsl_folder,
+                stack_id=stack_id
+            )
 
         
-        t_cnt0 = time.perf_counter()
-        total_count = db.get_image_count(
-            rating_filter=rating_filter,
-            label_filter=label_filter,
-            keyword_filter=keyword_filter,
-            min_score_general=min_gen, 
-            min_score_aesthetic=min_aes, 
-            min_score_technical=min_tech, 
-            date_range=date_range,
-            folder_path=wsl_folder,
-            stack_id=stack_id
-        )
-        t_cnt1 = time.perf_counter()
+
+        with debug.PerformanceTimer("Gallery Count Query"):
+            total_count = db.get_image_count(
+                rating_filter=rating_filter,
+                label_filter=label_filter,
+                keyword_filter=keyword_filter,
+                min_score_general=min_gen, 
+                min_score_aesthetic=min_aes, 
+                min_score_technical=min_tech, 
+                date_range=date_range,
+                folder_path=wsl_folder,
+                stack_id=stack_id
+            )
 
         
         total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
@@ -56,47 +55,79 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
         images = []
         raw_paths = []
 
-        t_loop0 = time.perf_counter()
-        resolve_ms_total = 0.0
-        resolve_ms_max = 0.0
-        used_thumb = 0
-        resolved_ok = 0
-        resolved_none = 0
-        
-        for row in rows:
-            file_path = row['file_path']
-            raw_paths.append(file_path)
+        with debug.PerformanceTimer(f"Process {len(rows)} Rows"):
+            resolve_ms_total = 0.0
+            resolve_ms_max = 0.0
+            used_thumb = 0
+            resolved_ok = 0
+            resolved_none = 0
             
-            # Use thumbnail if available, with resolved_path fallback
-            thumb_path = row['thumbnail_path']
-            image_id = row['id'] if 'id' in row.keys() else None
-            t_r0 = time.perf_counter()
-            if thumb_path:
-                used_thumb += 1
-                p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
-            else:
-                p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
-            t_r1 = time.perf_counter()
-            dt_ms = (t_r1 - t_r0) * 1000
-            resolve_ms_total += dt_ms
-            if dt_ms > resolve_ms_max:
-                resolve_ms_max = dt_ms
-            if p:
-                resolved_ok += 1
-            else:
-                resolved_none += 1
+            # 1. Collect IDs for batch resolution
+            image_ids = [row['id'] for row in rows if 'id' in row.keys() and row['id']]
+            
+            # 2. Batch fetch resolved paths
+            resolved_map = {}
+            if image_ids:
+                try:
+                    resolved_map = db.get_resolved_paths_batch(image_ids)
+                except Exception as e:
+                    print(f"Batch resolve error: {e}")
+            
+            for row in rows:
+                file_path = row['file_path']
+                raw_paths.append(file_path)
+                image_id = row['id'] if 'id' in row.keys() else None
                 
-            # Create label with score
-            score = row['score_general']
-            score_str = f"{score:.2f}" if score is not None else "N/A"
-            label = f"{row['file_name']}\nGen: {score_str}"
-            
-            images.append((p, label))
+                # Use thumbnail if available, with resolved_path fallback
+                thumb_path = row['thumbnail_path']
+                
+                t_r0 = time.perf_counter()
+                
+                # Optimized Resolution Logic
+                p = None
+                
+                # Try Batch Map First (Fastest - Memory/DB Cache)
+                if image_id and image_id in resolved_map:
+                    cached_path = resolved_map[image_id]
+                    # Validate path format to avoid cached garbage
+                    # 1. Reject paths with mixed separators (e.g. /mnt/.../D:\...)
+                    # 2. Allow /mnt/ paths for WSL
+                    # 3. Allow drive letter paths for Windows
+                    if cached_path:
+                        is_malformed = '\\' in cached_path and '/' in cached_path
+                        if not is_malformed:
+                             p = cached_path
+                
+                if not p:
+                    # Fallback to slow legacy resolve
+                    if thumb_path:
+                        used_thumb += 1
+                        p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
+                    else:
+                        p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
+
+                t_r1 = time.perf_counter()
+                
+                dt_ms = (t_r1 - t_r0) * 1000
+                resolve_ms_total += dt_ms
+                if dt_ms > resolve_ms_max:
+                    resolve_ms_max = dt_ms
+                if p:
+                    resolved_ok += 1
+                else:
+                    resolved_none += 1
+                    
+                # Create label with score
+                score = row['score_general']
+                score_str = f"{score:.2f}" if score is not None else "N/A"
+                label = f"{row['file_name']}\nGen: {score_str}"
+                
+                images.append((p, label))
             
         page_label = f"Page {page} of {total_pages} ({total_count} images)"
 
-        t1 = time.perf_counter()
-        t_loop1 = time.perf_counter()
+        debug.log_metric("Avg Resolve Time", f"{resolve_ms_total/len(rows):.2f}" if len(rows)>0 else "0", "ms")
+        debug.log_metric("Max Resolve Time", f"{resolve_ms_max:.2f}", "ms")
 
         
         return images, page_label, total_pages, raw_paths
@@ -418,6 +449,41 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
     def display_details_wrapper(evt, raw_paths):
         return display_details(evt, raw_paths)
 
+    def remove_from_db_and_refresh(details, page, sort_by, sort_order, rating_filter, label_filter, keyword_filter, min_gen, min_aes, min_tech, start_date, end_date, folder=None, stack_id=None):
+        """
+        Remove selected image from DB (does not delete the file), then refresh the gallery.
+        Returns outputs matching: [current_page, gallery, page_label, current_paths] + detail_outputs
+        """
+        msg = "❌ No image selected"
+        try:
+            if details and isinstance(details, dict):
+                file_path = details.get('file_path')
+                if file_path:
+                    success, db_msg = db.delete_image(file_path)
+                    msg = f"✅ {db_msg}" if success else f"❌ {db_msg}"
+                else:
+                    msg = "❌ Invalid image data (missing file_path)"
+        except Exception as e:
+            msg = f"❌ Failed to remove from DB: {e}"
+
+        # Refresh gallery and clamp page if needed after deletion
+        images, label, total_pages, raw_paths = get_gallery_data(
+            page, PAGE_SIZE, sort_by, sort_order, rating_filter, label_filter, keyword_filter,
+            min_gen, min_aes, min_tech, start_date, end_date, folder, stack_id
+        )
+        if page > total_pages:
+            page = total_pages
+            images, label, total_pages, raw_paths = get_gallery_data(
+                page, PAGE_SIZE, sort_by, sort_order, rating_filter, label_filter, keyword_filter,
+                min_gen, min_aes, min_tech, start_date, end_date, folder, stack_id
+            )
+
+        cleared = common.get_empty_details()
+        # Reuse fix_status textbox to show the result message
+        cleared[15] = gr.update(value=msg, visible=True)
+
+        return [page, images, label, raw_paths] + cleared
+
     # Re-declare display_details locally or import? 
     # I already defined `display_details` at module level.
     
@@ -540,6 +606,7 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
                     fix_btn = gr.Button("🔧 Fix Data", variant="secondary", size="sm", visible=False)
                     rerun_score_btn = gr.Button("🔄 Re-Run Scoring", variant="secondary", size="sm", visible=False)
                     rerun_tags_btn = gr.Button("🏷️ Re-Run Keywords", variant="secondary", size="sm", visible=False)
+                    remove_db_btn = gr.Button("🗑️ Remove from DB", variant="stop", visible=True, size="sm")
                     delete_btn = gr.Button("🗑️ Delete NEF", variant="stop", visible=False, size="sm")
                 
                 fix_status = gr.Textbox(label="Status", visible=False)
@@ -647,6 +714,12 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
             fn=common.delete_nef, 
             inputs=[image_details],
             outputs=[delete_status, delete_btn] # msg, visibility
+        )
+
+        remove_db_btn.click(
+            fn=remove_from_db_and_refresh,
+            inputs=[image_details, current_page] + filter_inputs_base,
+            outputs=[current_page, gallery, page_label, current_paths] + detail_outputs
         )
         
         # Export

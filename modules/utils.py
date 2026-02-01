@@ -12,6 +12,7 @@ try:
     import exifread
 except ImportError:
     exifread = None
+from modules import debug
 
 # Cache exiftool path to avoid repeated shutil.which checks
 # Cache exiftool path to avoid repeated shutil.which checks
@@ -232,6 +233,12 @@ def resolve_file_path(db_path, image_id=None):
     if out is None and os.path.exists(db_path):
         strat = "as_is"
         out = db_path
+        # Cache this success if we have an ID
+        if image_id:
+             try:
+                 from modules import db
+                 db.add_resolved_path(image_id, out)
+             except: pass
     
     # Strategy 3: Convert using platform-aware conversion
     converted = convert_path_to_local(db_path)
@@ -239,6 +246,12 @@ def resolve_file_path(db_path, image_id=None):
         strat = "converted"
         converted_len = len(converted) if isinstance(converted, str) else None
         out = converted
+        # Cache this success if we have an ID
+        if image_id:
+             try:
+                 from modules import db
+                 db.add_resolved_path(image_id, out)
+             except: pass
     
     # Strategy 4: If we have image_id, try unverified resolved path
     if out is None and image_id:
@@ -264,6 +277,8 @@ def resolve_file_path(db_path, image_id=None):
 
     total_ms = (time.perf_counter() - t0) * 1000
 
+    if total_ms > 100: # Log only if slow (>100ms)
+        debug.log_metric(f"Slow Resolve ({strat})", f"{total_ms:.2f}", "ms")
 
     return out
 

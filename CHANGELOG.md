@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Extracted using `git subtree split` to preserve 21 commits of history
   - Allows independent development lifecycle for the C#/.NET WPF application
   - ImageGalleryViewer can still interface with the image-scoring Firebird database
+  
+### Performance
+- **Gallery Optimization**:
+  - Implemented batch path resolution to reduce gallery load times from ~4.5s to ~0.1s.
+  - Added caching for resolved file paths to bypass repetitive OS filesystem checks.
+  - Optimized path resolution logic to handle both WSL (/mnt/...) and Windows paths correctly.
 
 ### Added
 - **Docker deployment**: GPU-enabled Docker Desktop (WSL2) workflow via `Dockerfile`, `docker-compose.yml`, and `scripts/docker_entrypoint.sh`.

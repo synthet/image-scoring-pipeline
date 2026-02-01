@@ -24,6 +24,30 @@ class SuppressGradioQueueFilter(logging.Filter):
         return True
 
 def main():
+    # Load config to check for debug mode
+    try:
+        from modules import config
+        app_config = config.load_config()
+        debug_mode = app_config.get('debug', False)
+        
+        # Configure logging
+        log_level = logging.DEBUG if debug_mode else logging.INFO
+        logging.basicConfig(
+            level=log_level,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler("webui.log", mode='a')
+            ]
+        )
+        
+        if debug_mode:
+            print("🐞 Debug mode enabled. Performance metrics will be logged to webui.log")
+            logging.getLogger("image_scoring.performance").setLevel(logging.DEBUG)
+    except Exception as e:
+        print(f"Error configuring logging: {e}")
+        debug_mode = False
+
     # Cache platform check
     is_windows = platform.system() == "Windows"
     
@@ -108,10 +132,17 @@ def main():
     demo, runner, tagging_runner = app_module.create_ui()
     
     # Setup MCP server if enabled
+    mcp_sse_app = None
     if mcp_available and mcp_enabled:
         mcp_server.set_runners(runner, tagging_runner)
-        mcp_server.start_mcp_server_background()
-        print("MCP Server: Started in background for debugging access")
+        try:
+            # Expose MCP over HTTP/SSE so Cursor can connect via:
+            #   http://localhost:7860/mcp/sse
+            # NOTE: we mount *after* Gradio is mounted; gr.mount_gradio_app()
+            # may wrap/replace the FastAPI app instance.
+            mcp_sse_app = mcp_server.create_mcp_sse_app(mount_path="/mcp")
+        except Exception as e:
+            print(f"MCP Server: Failed to mount SSE endpoint: {e}")
     
     # Define allowed paths
     allowed_paths = [os.path.abspath("."), os.path.abspath("thumbnails")]
@@ -129,6 +160,11 @@ def main():
     # This creates a completely new routing structure where Gradio sits at /
     # and our custom endpoints sit at /source-image etc.
     app = gr.mount_gradio_app(app, demo, path="/", allowed_paths=allowed_paths, favicon_path="static/favicon.ico")
+    
+    # Mount MCP SSE endpoints (if enabled) onto the final app instance.
+    if mcp_sse_app is not None:
+        app.mount("/mcp", mcp_sse_app)
+        print("MCP Server: SSE endpoint mounted at /mcp/sse")
     
     # Apply logging filter to suppress repetitive Gradio queue polling messages
     logging.getLogger("uvicorn.access").addFilter(SuppressGradioQueueFilter())
