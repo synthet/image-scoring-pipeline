@@ -8,14 +8,9 @@ from firebird.driver import connect
 FB_DLL = os.path.abspath(os.path.join("Firebird", "fbclient.dll"))
 FB_DIR = os.path.dirname(FB_DLL)
 
-def test_create_db_basic():
-    print(f"FB_DLL: {FB_DLL}")
-    print(f"FB_DIR: {FB_DIR}")
-
-    if not os.path.exists(FB_DLL):
-        pytest.fail("fbclient.dll not found")
-
-    # DB Path
+@pytest.fixture
+def basic_db_path():
+    """Fixture that creates and cleans up a basic Firebird database."""
     import time
     import gc
     timestamp = int(time.time())
@@ -34,12 +29,39 @@ def test_create_db_basic():
     # Run isql
     res = subprocess.run([ISQL_EXE, '-q'], input=cmd.encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     
-    print(f"ISQL Return Code: {res.returncode}")
-    print(f"ISQL Stdout: {res.stdout.decode()}")
-    print(f"ISQL Stderr: {res.stderr.decode()}")
-    
     if res.returncode != 0:
         pytest.fail(f"ISQL Failed: {res.stderr.decode()}")
+        
+    if not os.path.exists(db_path):
+         pytest.fail("DB File was not created")
+
+    yield db_path
+
+    # Teardown
+    # Force garbage collection to release file handles
+    gc.collect()
+    
+    # Retry removal with delays for Windows file locking
+    for attempt in range(5):
+        try:
+            if os.path.exists(db_path):
+                 os.remove(db_path)
+            print("Cleaned up DB")
+            break
+        except Exception as e:
+            if attempt < 4:
+                time.sleep(0.5)
+            else:
+                print(f"Cleanup failed after 5 attempts: {e}")
+
+def test_create_db_basic(basic_db_path):
+    print(f"FB_DLL: {FB_DLL}")
+    print(f"FB_DIR: {FB_DIR}")
+
+    if not os.path.exists(FB_DLL):
+        pytest.fail("fbclient.dll not found")
+
+    db_path = basic_db_path
         
     assert os.path.exists(db_path), "DB File should exist"
     
@@ -54,22 +76,3 @@ def test_create_db_basic():
         con.close()
     except Exception as e:
         pytest.fail(f"Connect failed: {e}")
-    finally:
-        if os.path.exists(db_path):
-             try:
-                 con.close() 
-             except: pass
-             
-             # Force garbage collection to release file handles
-             gc.collect()
-             
-             # Retry removal with delays for Windows file locking
-             for attempt in range(5):
-                 try:
-                     time.sleep(0.5)
-                     os.remove(db_path)
-                     print("Cleaned up DB")
-                     break
-                 except Exception as e:
-                     if attempt == 4:
-                         print(f"Cleanup failed after 5 attempts: {e}")

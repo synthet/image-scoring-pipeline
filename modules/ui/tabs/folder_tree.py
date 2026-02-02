@@ -43,6 +43,16 @@ def create_tab(app_config):
         # Folder Tree is for quick preview; use "Open in Gallery" for full browsing
         rows = rows[:PAGE_SIZE]
         
+        
+        # OPTIMIZATION: Batch resolve paths
+        image_ids = [row.get('id') for row in rows if row.get('id')]
+        resolved_map = {}
+        if image_ids:
+            try:
+                resolved_map = db.get_resolved_paths_batch(image_ids)
+            except:
+                pass
+
         results = []
         for row in rows:
             p = row['file_path']
@@ -53,7 +63,20 @@ def create_tab(app_config):
             thumb_path = row.get('thumbnail_path')
             
             image_id = row.get('id')
-            if thumb_path:
+            
+            # Optimized Resolution Logic
+            resolved_p = None
+            if image_id and image_id in resolved_map:
+                cached_path = resolved_map[image_id]
+                # Validate path (allow /mnt for WSL, reject mixed separators)
+                if cached_path:
+                    is_malformed = '\\' in cached_path and '/' in cached_path
+                    if not is_malformed:
+                        resolved_p = cached_path
+            
+            if resolved_p:
+                p = resolved_p
+            elif thumb_path:
                 p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
             else:
                 p = utils.resolve_file_path(p, image_id) or utils.convert_path_to_local(p)
@@ -73,6 +96,19 @@ def create_tab(app_config):
         msg = db.rebuild_folder_cache()
         return ui_tree.get_tree_html(), msg
 
+    def delete_folder_cache_wrapper(folder, confirmed):
+        if not confirmed:
+            return ui_tree.get_tree_html(), "⚠️ Check confirmation to delete the selected folder from DB cache.", "", []
+        if not folder:
+            return ui_tree.get_tree_html(), "⚠️ No folder selected.", "", []
+
+        result = db.delete_folder_cache_entry(folder_path=folder, delete_descendants=True)
+        if not result.get("success"):
+            return ui_tree.get_tree_html(), f"❌ {result.get('message', 'Delete failed')}", folder, []
+
+        # Clear selection + gallery preview after successful delete
+        return ui_tree.get_tree_html(), f"🗑️ {result.get('message', 'Deleted')}", "", []
+
     with gr.TabItem("Folder Tree", id="folder_tree"):
         # Row 1: Action Bar
         with gr.Row():
@@ -80,6 +116,8 @@ def create_tab(app_config):
             t_open_gallery_btn = gr.Button("📸 Open in Gallery", variant="primary", size="sm", scale=1)
             t_open_stacks_btn = gr.Button("📚 Open in Stacks", variant="secondary", size="sm", scale=1)
             t_open_keywords_btn = gr.Button("🏷️ Open in Keywords", variant="secondary", size="sm", scale=1)
+            t_delete_confirm = gr.Checkbox(label="Confirm", value=False, scale=0, min_width=90)
+            t_delete_btn = gr.Button("🗑️ Remove from DB", variant="stop", size="sm", scale=0, min_width=160)
         
         # Row 2: Main Content - Tree | Gallery (equal width)
         with gr.Row(equal_height=True):
@@ -119,6 +157,12 @@ def create_tab(app_config):
             fn=refresh_tree_wrapper,
             inputs=[],
             outputs=[t_tree_view, t_status]
+        )
+
+        t_delete_btn.click(
+            fn=delete_folder_cache_wrapper,
+            inputs=[t_selected_path, t_delete_confirm],
+            outputs=[t_tree_view, t_status, t_selected_path, t_gallery]
         )
         
         t_selected_path.change(

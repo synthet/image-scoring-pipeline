@@ -16,7 +16,7 @@ project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-def test_keyword_extractor():
+def run_keyword_extraction_test():
     """Test the keyword extraction tool with a sample image."""
     
     # Check if we can import the required modules
@@ -49,6 +49,7 @@ def test_keyword_extractor():
     try:
         # Test keyword extraction
         print("Testing keyword extraction...")
+        # Use CPU to avoid GPU issues during quick tests
         extractor = KeywordExtractor(device="cpu", confidence_threshold=0.01)
         
         result = extractor.extract_keywords(test_image_path)
@@ -82,7 +83,7 @@ def test_keyword_extractor():
         except:
             pass
 
-def test_dependencies():
+def check_dependencies():
     """Test if all required dependencies are available."""
     print("Testing dependencies...")
     
@@ -101,21 +102,21 @@ def test_dependencies():
         try:
             __import__(module)
             print(f"✓ {name} is available")
-        except ImportError:
-            print(f"✗ {name} is not available")
+        except (ImportError, Exception) as e:
+            print(f"✗ {name} is not available: {e}")
             all_good = False
     
     return all_good
 
 
-def test_keyword_extractor_main():
+def main():
     """Run all tests."""
     print("=" * 50)
     print("Keyword Extraction Tool - Test Suite")
     print("=" * 50)
     
     # Test dependencies first
-    if not test_dependencies():
+    if not check_dependencies():
         print("\n✗ Dependency test failed. Please install missing dependencies:")
         print("pip install -r requirements/requirements_keyword_extraction.txt")
         print("python -m spacy download en_core_web_sm")
@@ -124,7 +125,7 @@ def test_keyword_extractor_main():
     print("\n" + "=" * 50)
     
     # Test keyword extraction
-    if test_keyword_extractor():
+    if run_keyword_extraction_test():
         print("\n✓ All tests passed!")
         return True
     else:
@@ -133,11 +134,11 @@ def test_keyword_extractor_main():
 
 def test_keyword_extractor_pytest():
     """Pytest-compatible wrapper."""
-    if not test_dependencies():
+    if not check_dependencies():
         pytest.skip("Dependencies missing")
-    success = test_keyword_extractor()
+    success = run_keyword_extraction_test()
     assert success, "Keyword extraction failed"
 
 if __name__ == "__main__":
-    success = test_keyword_extractor_main()
+    success = main()
     sys.exit(0 if success else 1)

@@ -70,6 +70,21 @@ def refresh_stacks_wrapper(input_path, sort_by, sort_order, progress=gr.Progress
             progress(1.0, desc="No stacks found")
             return [], []
         
+        # OPTIMIZATION: Batch resolve cover images
+        cover_image_ids = []
+        for row in rows:
+            try:
+                if row['cover_path']:
+                    iid = row.get('best_image_id')
+                    if iid: cover_image_ids.append(iid)
+            except: pass
+            
+        resolved_map = {}
+        if cover_image_ids:
+             try:
+                 resolved_map = db.get_resolved_paths_batch(cover_image_ids)
+             except: pass
+
         for i, row in enumerate(rows):
             if total_rows > 0:
                 progress((i + 1) / total_rows, desc=f"Loading stacks... {i + 1}/{total_rows}")
@@ -83,7 +98,19 @@ def refresh_stacks_wrapper(input_path, sort_by, sort_order, progress=gr.Progress
 
                 if cover:
                     image_id = row.get('best_image_id') if hasattr(row, 'get') else None
-                    local_cover = utils.resolve_file_path(cover, image_id) or utils.convert_path_to_local(cover) or cover
+                    
+                    # Optimized Resolution Logic
+                    local_cover = None
+                    if image_id and image_id in resolved_map:
+                        cached_path = resolved_map[image_id]
+                        if cached_path:
+                            is_malformed = '\\' in cached_path and '/' in cached_path
+                            if not is_malformed:
+                                local_cover = cached_path
+                                
+                    if not local_cover:
+                         local_cover = utils.resolve_file_path(cover, image_id) or utils.convert_path_to_local(cover) or cover
+                         
                     if local_cover and os.path.exists(local_cover):
                         results.append((local_cover, label))
                         stack_ids.append(s_id)
@@ -137,6 +164,14 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
     }
     score_col, score_label = score_map.get(sort_by, ('score_general', 'Gen'))
     
+    # OPTIMIZATION: Batch resolve stack content images
+    stack_image_ids = [row['id'] for row in images if row['file_path']]
+    resolved_map = {}
+    if stack_image_ids:
+        try:
+            resolved_map = db.get_resolved_paths_batch(stack_image_ids)
+        except: pass
+    
     for row in images:
         file_path = row['file_path']
         if not file_path:
@@ -157,6 +192,14 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
                 p = utils.resolve_file_path(thumb, image_id) or utils.convert_path_to_local(thumb)
             else:
                 p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
+
+            # Optimized Resolution Logic
+            if image_id and image_id in resolved_map:
+                cached_path = resolved_map[image_id]
+                if cached_path:
+                    is_malformed = '\\' in cached_path and '/' in cached_path
+                    if not is_malformed:
+                        p = cached_path
         
         # Get the selected score
         score = row[score_col] if score_col in row.keys() else None

@@ -1,0 +1,147 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0 -- D:\Projects\image-scoring\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\Projects\image-scoring
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 5 items
+
+tests/test_stacks.py::test_create_stack_from_images_minimum FAILED       [ 20%]
+tests/test_stacks.py::test_create_stack_sets_best_image FAILED           [ 40%]
+tests/test_stacks.py::test_remove_cleans_up_empty_stack FAILED           [ 60%]
+tests/test_stacks.py::test_remove_recalculates_best_image FAILED         [ 80%]
+tests/test_stacks.py::test_path_lookup_fallback FAILED                   [100%]
+
+================================== FAILURES ===================================
+____________________ test_create_stack_from_images_minimum ____________________
+
+    def test_create_stack_from_images_minimum():
+        """Test that creating a stack with < 2 images fails."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'test_stacks.TestStackOperations'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database with mock data."""
+        # Use a temporary database for testing
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_stack')
+        if os.path.exists(cls.temp_dir):
+>            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+             ^^^^^^
+E            UnboundLocalError: cannot access local variable 'shutil' where it is not associated with a value
+
+tests\test_stacks.py:38: UnboundLocalError
+______________________ test_create_stack_sets_best_image ______________________
+
+    def test_create_stack_sets_best_image():
+        """Test that best_image_id is set to the image with highest score_general."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:187: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'test_stacks.TestStackOperations'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database with mock data."""
+        # Use a temporary database for testing
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_stack')
+        if os.path.exists(cls.temp_dir):
+>            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+             ^^^^^^
+E            UnboundLocalError: cannot access local variable 'shutil' where it is not associated with a value
+
+tests\test_stacks.py:38: UnboundLocalError
+______________________ test_remove_cleans_up_empty_stack ______________________
+
+    def test_remove_cleans_up_empty_stack():
+        """Test that removing all images from a stack deletes the stack."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:229: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'test_stacks.TestStackOperations'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database with mock data."""
+        # Use a temporary database for testing
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_stack')
+        if os.path.exists(cls.temp_dir):
+>            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+             ^^^^^^
+E            UnboundLocalError: cannot access local variable 'shutil' where it is not associated with a value
+
+tests\test_stacks.py:38: UnboundLocalError
+_____________________ test_remove_recalculates_best_image _____________________
+
+    def test_remove_recalculates_best_image():
+        """Test that removing the best image recalculates best_image_id."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:267: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'test_stacks.TestStackOperations'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database with mock data."""
+        # Use a temporary database for testing
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_stack')
+        if os.path.exists(cls.temp_dir):
+>            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+             ^^^^^^
+E            UnboundLocalError: cannot access local variable 'shutil' where it is not associated with a value
+
+tests\test_stacks.py:38: UnboundLocalError
+__________________________ test_path_lookup_fallback __________________________
+
+    def test_path_lookup_fallback():
+        """Test that path lookup falls back to basename when exact path fails."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:315: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'test_stacks.TestStackOperations'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database with mock data."""
+        # Use a temporary database for testing
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_stack')
+        if os.path.exists(cls.temp_dir):
+>            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+             ^^^^^^
+E            UnboundLocalError: cannot access local variable 'shutil' where it is not associated with a value
+
+tests\test_stacks.py:38: UnboundLocalError
+=========================== short test summary info ===========================
+FAILED tests/test_stacks.py::test_create_stack_from_images_minimum - UnboundL...
+FAILED tests/test_stacks.py::test_create_stack_sets_best_image - UnboundLocal...
+FAILED tests/test_stacks.py::test_remove_cleans_up_empty_stack - UnboundLocal...
+FAILED tests/test_stacks.py::test_remove_recalculates_best_image - UnboundLoc...
+FAILED tests/test_stacks.py::test_path_lookup_fallback - UnboundLocalError: c...
+============================== 5 failed in 0.21s ==============================

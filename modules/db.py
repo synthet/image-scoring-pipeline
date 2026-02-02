@@ -217,8 +217,12 @@ def get_db():
 
 
         # Basic connection
+        print(f"DEBUG: connect function: {connect}")
+        import traceback
+    
         conn = connect(dsn, user='sysdba', password='masterkey')
-        
+        print(f"DEBUG: get_db dsn={dsn} conn={conn} type={type(conn)}")
+        print(f"DEBUG: get_db dsn={dsn} conn={conn}")
         # Emulate sqlite3.Row behavior (Access by name)
         # Firebird cursors return tuples. We can wrap.
         # Actually firebird-driver can return rows as dictionaries if configured?
@@ -338,7 +342,9 @@ def get_db():
         return FirebirdConnectionProxy(conn)
 
     except Exception as e:
-
+        print(f"FATAL: get_db failed: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 
@@ -728,6 +734,11 @@ def init_db():
     """
     # Firebird: We assume DB is created via migration script.
     # Just check connection to ensure embedded driver is working.
+def init_db():
+    if os.environ.get('SKIP_DB_INIT'):
+        print("DEBUG: SKIP_DB_INIT set, skipping DDL.")
+        return
+
     try:
         conn = get_db()
         conn.close()
@@ -743,7 +754,9 @@ def _table_exists(cursor, table_name):
         "SELECT 1 FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = ? AND RDB$SYSTEM_FLAG = 0",
         (table_name.upper(),)
     )
-    return cursor.fetchone() is not None
+    result = cursor.fetchone() is not None
+    print(f"DEBUG: Table {table_name}: {result}")
+    return result
 
 def _index_exists(cursor, index_name):
     """Check if an index exists in Firebird database."""
@@ -767,6 +780,7 @@ def _init_db_impl():
             completed_at TIMESTAMP,
             log BLOB SUB_TYPE TEXT
         )''')
+        conn.commit()
     
     # Images table
     if not _table_exists(c, 'IMAGES'):
@@ -785,14 +799,19 @@ def _init_db_impl():
             scores_json BLOB SUB_TYPE TEXT,
             created_at TIMESTAMP
         )''')
+        conn.commit()
+        # Refresh cursor after commit just in case
+        c = conn.cursor()
     
     
     # Check for missing columns (Schema Migration)
     # Check for missing columns (Schema Migration)
     c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'IMAGES'")
     columns = [row[0].strip().lower() for row in c.fetchall()]
+    print(f"DEBUG: Found IMAGES columns: {columns}")
     
     if "file_type" not in columns:
+        print("DEBUG: Adding file_type column")
         c.execute("ALTER TABLE images ADD file_type TEXT")
     
     if "thumbnail_path" not in columns:
@@ -817,6 +836,8 @@ def _init_db_impl():
         c.execute("ALTER TABLE images ADD folder_id INTEGER")
         if not _index_exists(c, 'IDX_FOLDER_ID'):
             c.execute("CREATE INDEX idx_folder_id ON images(folder_id)")
+            
+    conn.commit()
 
 
     # Stacks table
@@ -827,6 +848,7 @@ def _init_db_impl():
             best_image_id INTEGER,
             created_at TIMESTAMP
         )''')
+        conn.commit()
     
     # Folders table
     if not _table_exists(c, 'FOLDERS'):
@@ -838,6 +860,7 @@ def _init_db_impl():
             is_keywords_processed INTEGER DEFAULT 0,
             created_at TIMESTAMP
         )''')
+        conn.commit()
     
     # Check For Folders Columns
     c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'FOLDERS'")
@@ -850,12 +873,15 @@ def _init_db_impl():
     if "is_keywords_processed" not in folder_cols:
          try: c.execute("ALTER TABLE folders ADD is_keywords_processed INTEGER DEFAULT 0")
          except: pass
+    
+    conn.commit()
 
     if not _table_exists(c, 'CLUSTER_PROGRESS'):
         c.execute('''CREATE TABLE cluster_progress (
-            folder_path VARCHAR(4000) NOT NULL PRIMARY KEY,
+            folder_path VARCHAR(512) NOT NULL PRIMARY KEY,
             last_run TIMESTAMP
         )''')
+        conn.commit()
 
     # Culling Sessions table - tracks culling workflow runs
     if not _table_exists(c, 'CULLING_SESSIONS'):
@@ -872,6 +898,7 @@ def _init_db_impl():
             created_at TIMESTAMP,
             completed_at TIMESTAMP
         )''')
+        conn.commit()
 
     # Culling Picks table - stores pick/reject decisions per session
     if not _table_exists(c, 'CULLING_PICKS'):
@@ -885,12 +912,15 @@ def _init_db_impl():
             is_best_in_group SMALLINT DEFAULT 0,
             created_at TIMESTAMP
         )''')
+        conn.commit()
     
     # Index for fast lookup
     if not _index_exists(c, 'IDX_CULLING_PICKS_SESSION'):
         c.execute("CREATE INDEX idx_culling_picks_session ON culling_picks(session_id)")
     if not _index_exists(c, 'IDX_CULLING_PICKS_IMAGE'):
         c.execute("CREATE INDEX idx_culling_picks_image ON culling_picks(image_id)")
+    
+    conn.commit()
 
 
 
@@ -909,7 +939,7 @@ def _init_db_impl():
 
     # Migration for Weighted Scores and Version
     if "model_version" not in columns:
-        c.execute("ALTER TABLE images ADD model_version TEXT")
+        c.execute("ALTER TABLE images ADD model_version VARCHAR(255)")
     if "score_technical" not in columns:
         c.execute("ALTER TABLE images ADD score_technical REAL")
     if "score_aesthetic" not in columns:
@@ -921,11 +951,11 @@ def _init_db_impl():
     if "rating" not in columns:
         c.execute("ALTER TABLE images ADD rating INTEGER")
     if "label" not in columns:
-        c.execute("ALTER TABLE images ADD label TEXT")
+        c.execute("ALTER TABLE images ADD label VARCHAR(50)")
 
     # Migration for Deduplication
     if "image_hash" not in columns:
-        c.execute("ALTER TABLE images ADD image_hash TEXT")
+        c.execute("ALTER TABLE images ADD image_hash VARCHAR(128)")
         if not _index_exists(c, 'IDX_IMAGE_HASH'):
             c.execute("CREATE INDEX idx_image_hash ON images(image_hash)")
 
@@ -1193,6 +1223,9 @@ def resolve_windows_path(image_id, wsl_path, verify=True):
         if os.path.exists(windows_path):
             is_verified = 1
             verification_date = now
+
+    if image_id is None:
+        return windows_path
     
     conn = get_db()
     c = conn.cursor()
@@ -3229,6 +3262,12 @@ def create_culling_session(folder_path, mode='automated'):
         conn.commit()
         return session_id
     except Exception as e:
+        import sys
+        print(f"FATAL: Failed to create culling session: {e}", file=sys.stderr)
+        try:
+             print(f"SQL Code: {e.sql_code}", file=sys.stderr)
+             print(f"GDS Codes: {e.gds_codes}", file=sys.stderr)
+        except: pass
         logging.error(f"Failed to create culling session: {e}")
         return None
     finally:

@@ -1,0 +1,536 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0 -- D:\Projects\image-scoring\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\Projects\image-scoring
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 5 items
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "D:\Projects\image-scoring\.venv\Scripts\pytest.exe\__main__.py", line 7, in <module>
+    sys.exit(console_main())
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\config\__init__.py", line 223, in console_main
+    code = main()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\config\__init__.py", line 199, in main
+    ret: ExitCode | int = config.hook.pytest_cmdline_main(config=config)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\main.py", line 365, in pytest_cmdline_main
+    return wrap_session(config, _main)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\main.py", line 318, in wrap_session
+    session.exitstatus = doit(config, session) or 0
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\main.py", line 372, in _main
+    config.hook.pytest_runtestloop(session=session)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\main.py", line 396, in pytest_runtestloop
+    item.config.hook.pytest_runtest_protocol(item=item, nextitem=nextitem)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\runner.py", line 118, in pytest_runtest_protocol
+    runtestprotocol(item, nextitem=nextitem)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\runner.py", line 131, in runtestprotocol
+    rep = call_and_report(item, "setup", log)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\runner.py", line 244, in call_and_report
+    call = CallInfo.from_call(
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\runner.py", line 353, in from_call
+    result: TResult | None = func()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\runner.py", line 245, in <lambda>
+    lambda: runtest_hook(item=item, **kwds),
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\runner.py", line 165, in pytest_runtest_setup
+    item.session._setupstate.setup(item)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\runner.py", line 523, in setup
+    col.setup()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\python.py", line 1723, in setup
+    self._request._fillfixtures()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\fixtures.py", line 707, in _fillfixtures
+    item.funcargs[argname] = self.getfixturevalue(argname)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\fixtures.py", line 539, in getfixturevalue
+    fixturedef = self._get_active_fixturedef(argname)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\fixtures.py", line 627, in _get_active_fixturedef
+    fixturedef.execute(request=subrequest)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\fixtures.py", line 1110, in execute
+    result: FixtureValue = ihook.pytest_fixture_setup(
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\fixtures.py", line 1202, in pytest_fixture_setup
+    result = call_fixture_func(fixturefunc, request, kwargs)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\fixtures.py", line 908, in call_fixture_func
+    fixture_result = next(generator)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\python.py", line 801, in xunit_setup_class_fixture
+    _call_with_optional_argument(func, cls)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\python.py", line 729, in _call_with_optional_argument
+    func(arg)
+  File "D:\Projects\image-scoring\tests\test_culling.py", line 79, in setup_class
+    cls._create_test_images()
+  File "D:\Projects\image-scoring\tests\test_culling.py", line 115, in _create_test_images
+    conn = db.get_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 222, in get_db
+    traceback.print_stack()
+tests/test_culling.py::TestCullingWorkflow::test_create_session Configured test FB driver: D:\Projects\image-scoring\Firebird\fbclient.dll
+DEBUG: SKIP_DB_INIT set, skipping DDL.
+DEBUG: connect function: <function connect at 0x000001FEBB5636A0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_culling_37c73fbf1be24c98a1239cf061539822.fdb conn=Connection[1] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_culling_37c73fbf1be24c98a1239cf061539822.fdb conn=Connection[1]
+ERROR
+tests/test_culling.py::TestCullingWorkflow::test_import_images ERROR
+tests/test_culling.py::TestCullingWorkflow::test_auto_pick ERROR
+tests/test_culling.py::TestCullingWorkflow::test_export_xmp ERROR
+tests/test_culling.py::TestCullingWorkflow::test_full_workflow ERROR
+
+=================================== ERRORS ====================================
+__________ ERROR at setup of TestCullingWorkflow.test_create_session __________
+
+cls = <class 'test_culling.TestCullingWorkflow'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database and fixtures."""
+        # Use a temporary database
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_cull')
+        if os.path.exists(cls.temp_dir):
+            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        os.makedirs(cls.temp_dir, exist_ok=True)
+    
+        # Configure Firebird Driver
+        from firebird.driver import driver_config
+        if hasattr(driver_config, 'fb_client_library'):
+             fb_dll = os.path.abspath(os.path.join(os.path.dirname(db.__file__), "..", "Firebird", "fbclient.dll"))
+             if os.path.exists(fb_dll):
+                 driver_config.fb_client_library.value = fb_dll
+                 print(f"Configured test FB driver: {fb_dll}")
+    
+        cls.test_db_path = os.path.abspath(f"TEST_culling_{uuid.uuid4().hex}.fdb")
+        cls.test_images_dir = os.path.join(cls.temp_dir, 'test_images')
+    
+        # Copy template DB
+        # Run scripts/debug/debug_firebird.py to create template if missing
+        template_db = "template.fdb"
+        if not os.path.exists(template_db):
+             raise Exception("Template DB missing - run scripts/debug/debug_firebird.py first")
+    
+        try:
+             if os.path.exists(cls.test_db_path):
+                 os.remove(cls.test_db_path)
+             shutil.copy2(template_db, cls.test_db_path)
+        except Exception as e:
+             print(f"Error copying template DB: {e}")
+             raise
+    
+    
+        # CRITICAL: Override DB_PATH to use test database
+        db.DB_PATH = cls.test_db_path
+    
+        # Skip DDL - Template is seeded
+        os.environ['SKIP_DB_INIT'] = '1'
+    
+        # Initialize DB with test path
+        db.init_db()
+    
+        # Create test image fixtures
+>       cls._create_test_images()
+
+tests\test_culling.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_culling.py:119: in _create_test_images
+    c.execute("INSERT INTO folders (path) VALUES (?)", (cls.test_images_dir,))
+modules\db.py:270: in execute
+    return self._cur.execute(query, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:4067: in execute
+    self._execute(operation, parameters)
+.venv\Lib\site-packages\firebird\driver\core.py:3937: in _execute
+    self._stmt = self._connection._prepare(operation, self._transaction)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:1853: in _prepare
+    stmt = self._att.prepare(tra._tra, sql, self.__sql_dialect)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\interfaces.py:1167: in prepare
+    self._check()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <firebird.driver.interfaces.iAttachment object at 0x000001FEFD517CD0>
+
+    def _check(self) -> None:
+        state = self.status.get_state()
+        if StateFlag.ERRORS in state:
+>           raise self.__report(DatabaseError, self.status.get_errors())
+E           firebird.driver.types.DatabaseError: Dynamic SQL Error
+E           -SQL error code = -204
+E           -Table unknown
+E           -FOLDERS
+E           -At line 1, column 13
+
+.venv\Lib\site-packages\firebird\driver\interfaces.py:141: DatabaseError
+__________ ERROR at setup of TestCullingWorkflow.test_import_images ___________
+
+cls = <class 'test_culling.TestCullingWorkflow'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database and fixtures."""
+        # Use a temporary database
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_cull')
+        if os.path.exists(cls.temp_dir):
+            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        os.makedirs(cls.temp_dir, exist_ok=True)
+    
+        # Configure Firebird Driver
+        from firebird.driver import driver_config
+        if hasattr(driver_config, 'fb_client_library'):
+             fb_dll = os.path.abspath(os.path.join(os.path.dirname(db.__file__), "..", "Firebird", "fbclient.dll"))
+             if os.path.exists(fb_dll):
+                 driver_config.fb_client_library.value = fb_dll
+                 print(f"Configured test FB driver: {fb_dll}")
+    
+        cls.test_db_path = os.path.abspath(f"TEST_culling_{uuid.uuid4().hex}.fdb")
+        cls.test_images_dir = os.path.join(cls.temp_dir, 'test_images')
+    
+        # Copy template DB
+        # Run scripts/debug/debug_firebird.py to create template if missing
+        template_db = "template.fdb"
+        if not os.path.exists(template_db):
+             raise Exception("Template DB missing - run scripts/debug/debug_firebird.py first")
+    
+        try:
+             if os.path.exists(cls.test_db_path):
+                 os.remove(cls.test_db_path)
+             shutil.copy2(template_db, cls.test_db_path)
+        except Exception as e:
+             print(f"Error copying template DB: {e}")
+             raise
+    
+    
+        # CRITICAL: Override DB_PATH to use test database
+        db.DB_PATH = cls.test_db_path
+    
+        # Skip DDL - Template is seeded
+        os.environ['SKIP_DB_INIT'] = '1'
+    
+        # Initialize DB with test path
+        db.init_db()
+    
+        # Create test image fixtures
+>       cls._create_test_images()
+
+tests\test_culling.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_culling.py:119: in _create_test_images
+    c.execute("INSERT INTO folders (path) VALUES (?)", (cls.test_images_dir,))
+modules\db.py:270: in execute
+    return self._cur.execute(query, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:4067: in execute
+    self._execute(operation, parameters)
+.venv\Lib\site-packages\firebird\driver\core.py:3937: in _execute
+    self._stmt = self._connection._prepare(operation, self._transaction)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:1853: in _prepare
+    stmt = self._att.prepare(tra._tra, sql, self.__sql_dialect)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\interfaces.py:1167: in prepare
+    self._check()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <firebird.driver.interfaces.iAttachment object at 0x000001FEFD517CD0>
+
+    def _check(self) -> None:
+        state = self.status.get_state()
+        if StateFlag.ERRORS in state:
+>           raise self.__report(DatabaseError, self.status.get_errors())
+E           firebird.driver.types.DatabaseError: Dynamic SQL Error
+E           -SQL error code = -204
+E           -Table unknown
+E           -FOLDERS
+E           -At line 1, column 13
+
+.venv\Lib\site-packages\firebird\driver\interfaces.py:141: DatabaseError
+____________ ERROR at setup of TestCullingWorkflow.test_auto_pick _____________
+
+cls = <class 'test_culling.TestCullingWorkflow'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database and fixtures."""
+        # Use a temporary database
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_cull')
+        if os.path.exists(cls.temp_dir):
+            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        os.makedirs(cls.temp_dir, exist_ok=True)
+    
+        # Configure Firebird Driver
+        from firebird.driver import driver_config
+        if hasattr(driver_config, 'fb_client_library'):
+             fb_dll = os.path.abspath(os.path.join(os.path.dirname(db.__file__), "..", "Firebird", "fbclient.dll"))
+             if os.path.exists(fb_dll):
+                 driver_config.fb_client_library.value = fb_dll
+                 print(f"Configured test FB driver: {fb_dll}")
+    
+        cls.test_db_path = os.path.abspath(f"TEST_culling_{uuid.uuid4().hex}.fdb")
+        cls.test_images_dir = os.path.join(cls.temp_dir, 'test_images')
+    
+        # Copy template DB
+        # Run scripts/debug/debug_firebird.py to create template if missing
+        template_db = "template.fdb"
+        if not os.path.exists(template_db):
+             raise Exception("Template DB missing - run scripts/debug/debug_firebird.py first")
+    
+        try:
+             if os.path.exists(cls.test_db_path):
+                 os.remove(cls.test_db_path)
+             shutil.copy2(template_db, cls.test_db_path)
+        except Exception as e:
+             print(f"Error copying template DB: {e}")
+             raise
+    
+    
+        # CRITICAL: Override DB_PATH to use test database
+        db.DB_PATH = cls.test_db_path
+    
+        # Skip DDL - Template is seeded
+        os.environ['SKIP_DB_INIT'] = '1'
+    
+        # Initialize DB with test path
+        db.init_db()
+    
+        # Create test image fixtures
+>       cls._create_test_images()
+
+tests\test_culling.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_culling.py:119: in _create_test_images
+    c.execute("INSERT INTO folders (path) VALUES (?)", (cls.test_images_dir,))
+modules\db.py:270: in execute
+    return self._cur.execute(query, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:4067: in execute
+    self._execute(operation, parameters)
+.venv\Lib\site-packages\firebird\driver\core.py:3937: in _execute
+    self._stmt = self._connection._prepare(operation, self._transaction)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:1853: in _prepare
+    stmt = self._att.prepare(tra._tra, sql, self.__sql_dialect)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\interfaces.py:1167: in prepare
+    self._check()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <firebird.driver.interfaces.iAttachment object at 0x000001FEFD517CD0>
+
+    def _check(self) -> None:
+        state = self.status.get_state()
+        if StateFlag.ERRORS in state:
+>           raise self.__report(DatabaseError, self.status.get_errors())
+E           firebird.driver.types.DatabaseError: Dynamic SQL Error
+E           -SQL error code = -204
+E           -Table unknown
+E           -FOLDERS
+E           -At line 1, column 13
+
+.venv\Lib\site-packages\firebird\driver\interfaces.py:141: DatabaseError
+____________ ERROR at setup of TestCullingWorkflow.test_export_xmp ____________
+
+cls = <class 'test_culling.TestCullingWorkflow'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database and fixtures."""
+        # Use a temporary database
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_cull')
+        if os.path.exists(cls.temp_dir):
+            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        os.makedirs(cls.temp_dir, exist_ok=True)
+    
+        # Configure Firebird Driver
+        from firebird.driver import driver_config
+        if hasattr(driver_config, 'fb_client_library'):
+             fb_dll = os.path.abspath(os.path.join(os.path.dirname(db.__file__), "..", "Firebird", "fbclient.dll"))
+             if os.path.exists(fb_dll):
+                 driver_config.fb_client_library.value = fb_dll
+                 print(f"Configured test FB driver: {fb_dll}")
+    
+        cls.test_db_path = os.path.abspath(f"TEST_culling_{uuid.uuid4().hex}.fdb")
+        cls.test_images_dir = os.path.join(cls.temp_dir, 'test_images')
+    
+        # Copy template DB
+        # Run scripts/debug/debug_firebird.py to create template if missing
+        template_db = "template.fdb"
+        if not os.path.exists(template_db):
+             raise Exception("Template DB missing - run scripts/debug/debug_firebird.py first")
+    
+        try:
+             if os.path.exists(cls.test_db_path):
+                 os.remove(cls.test_db_path)
+             shutil.copy2(template_db, cls.test_db_path)
+        except Exception as e:
+             print(f"Error copying template DB: {e}")
+             raise
+    
+    
+        # CRITICAL: Override DB_PATH to use test database
+        db.DB_PATH = cls.test_db_path
+    
+        # Skip DDL - Template is seeded
+        os.environ['SKIP_DB_INIT'] = '1'
+    
+        # Initialize DB with test path
+        db.init_db()
+    
+        # Create test image fixtures
+>       cls._create_test_images()
+
+tests\test_culling.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_culling.py:119: in _create_test_images
+    c.execute("INSERT INTO folders (path) VALUES (?)", (cls.test_images_dir,))
+modules\db.py:270: in execute
+    return self._cur.execute(query, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:4067: in execute
+    self._execute(operation, parameters)
+.venv\Lib\site-packages\firebird\driver\core.py:3937: in _execute
+    self._stmt = self._connection._prepare(operation, self._transaction)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:1853: in _prepare
+    stmt = self._att.prepare(tra._tra, sql, self.__sql_dialect)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\interfaces.py:1167: in prepare
+    self._check()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <firebird.driver.interfaces.iAttachment object at 0x000001FEFD517CD0>
+
+    def _check(self) -> None:
+        state = self.status.get_state()
+        if StateFlag.ERRORS in state:
+>           raise self.__report(DatabaseError, self.status.get_errors())
+E           firebird.driver.types.DatabaseError: Dynamic SQL Error
+E           -SQL error code = -204
+E           -Table unknown
+E           -FOLDERS
+E           -At line 1, column 13
+
+.venv\Lib\site-packages\firebird\driver\interfaces.py:141: DatabaseError
+__________ ERROR at setup of TestCullingWorkflow.test_full_workflow ___________
+
+cls = <class 'test_culling.TestCullingWorkflow'>
+
+    @classmethod
+    def setup_class(cls):
+        """Set up test database and fixtures."""
+        # Use a temporary database
+        cls.original_db_path = db.DB_PATH
+        # Use local temp dir to avoid Firebird permission issues in AppData
+        cls.temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_cull')
+        if os.path.exists(cls.temp_dir):
+            shutil.rmtree(cls.temp_dir, ignore_errors=True)
+        os.makedirs(cls.temp_dir, exist_ok=True)
+    
+        # Configure Firebird Driver
+        from firebird.driver import driver_config
+        if hasattr(driver_config, 'fb_client_library'):
+             fb_dll = os.path.abspath(os.path.join(os.path.dirname(db.__file__), "..", "Firebird", "fbclient.dll"))
+             if os.path.exists(fb_dll):
+                 driver_config.fb_client_library.value = fb_dll
+                 print(f"Configured test FB driver: {fb_dll}")
+    
+        cls.test_db_path = os.path.abspath(f"TEST_culling_{uuid.uuid4().hex}.fdb")
+        cls.test_images_dir = os.path.join(cls.temp_dir, 'test_images')
+    
+        # Copy template DB
+        # Run scripts/debug/debug_firebird.py to create template if missing
+        template_db = "template.fdb"
+        if not os.path.exists(template_db):
+             raise Exception("Template DB missing - run scripts/debug/debug_firebird.py first")
+    
+        try:
+             if os.path.exists(cls.test_db_path):
+                 os.remove(cls.test_db_path)
+             shutil.copy2(template_db, cls.test_db_path)
+        except Exception as e:
+             print(f"Error copying template DB: {e}")
+             raise
+    
+    
+        # CRITICAL: Override DB_PATH to use test database
+        db.DB_PATH = cls.test_db_path
+    
+        # Skip DDL - Template is seeded
+        os.environ['SKIP_DB_INIT'] = '1'
+    
+        # Initialize DB with test path
+        db.init_db()
+    
+        # Create test image fixtures
+>       cls._create_test_images()
+
+tests\test_culling.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_culling.py:119: in _create_test_images
+    c.execute("INSERT INTO folders (path) VALUES (?)", (cls.test_images_dir,))
+modules\db.py:270: in execute
+    return self._cur.execute(query, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:4067: in execute
+    self._execute(operation, parameters)
+.venv\Lib\site-packages\firebird\driver\core.py:3937: in _execute
+    self._stmt = self._connection._prepare(operation, self._transaction)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\core.py:1853: in _prepare
+    stmt = self._att.prepare(tra._tra, sql, self.__sql_dialect)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\firebird\driver\interfaces.py:1167: in prepare
+    self._check()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <firebird.driver.interfaces.iAttachment object at 0x000001FEFD517CD0>
+
+    def _check(self) -> None:
+        state = self.status.get_state()
+        if StateFlag.ERRORS in state:
+>           raise self.__report(DatabaseError, self.status.get_errors())
+E           firebird.driver.types.DatabaseError: Dynamic SQL Error
+E           -SQL error code = -204
+E           -Table unknown
+E           -FOLDERS
+E           -At line 1, column 13
+
+.venv\Lib\site-packages\firebird\driver\interfaces.py:141: DatabaseError
+=========================== short test summary info ===========================
+ERROR tests/test_culling.py::TestCullingWorkflow::test_create_session - fireb...
+ERROR tests/test_culling.py::TestCullingWorkflow::test_import_images - firebi...
+ERROR tests/test_culling.py::TestCullingWorkflow::test_auto_pick - firebird.d...
+ERROR tests/test_culling.py::TestCullingWorkflow::test_export_xmp - firebird....
+ERROR tests/test_culling.py::TestCullingWorkflow::test_full_workflow - firebi...
+============================== 5 errors in 2.33s ==============================

@@ -57,9 +57,30 @@ try:
         if os.path.exists(DB_PATH):
              print("DB File exists")
              # Try to connect to verify
-             con = connect(DB_PATH, user='SYSDBA', password='masterkey')
-             print("Successfully connected to DB")
-             con.close()
+             # con = connect(DB_PATH, user='SYSDBA', password='masterkey')
+             # print("Successfully connected to DB")
+             # con.close()
+             
+             # Pre-seed schema
+             print("Pre-seeding schema...")
+             # Add project root to sys.path
+             sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+             from modules import db
+             
+             # Use TCP connection for seeding to ensure server handles it
+             # Wait, db.py default for Windows is file path.
+             # We should force TCP or just let it use Embedded if it works for single thread?
+             # Let's try forcing TCP just to be consistent.
+             db.DB_PATH = DB_PATH
+
+             try:
+                 db.init_db()
+                 print("Schema seeding SUCCESS")
+             except Exception as init_e:
+                 print(f"Schema seeding FAILED: {init_e}")
+                 import traceback
+                 traceback.print_exc()
+
         else:
              print("DB File NOT created")
 

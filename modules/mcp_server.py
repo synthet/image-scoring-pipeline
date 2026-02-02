@@ -124,7 +124,7 @@ def get_database_stats() -> dict:
         
         # Images by rating
         c.execute("""
-            SELECT rating, COUNT(*) as count 
+            SELECT rating, COUNT(*) as cnt 
             FROM images 
             GROUP BY rating 
             ORDER BY rating
@@ -133,10 +133,10 @@ def get_database_stats() -> dict:
         
         # Images by label
         c.execute("""
-            SELECT COALESCE(label, 'None') as lbl, COUNT(*) as count 
+            SELECT COALESCE(label, 'None') as lbl, COUNT(*) as cnt 
             FROM images 
             GROUP BY label 
-            ORDER BY count DESC
+            ORDER BY cnt DESC
         """)
         stats["by_label"] = {row[0]: row[1] for row in c.fetchall()}
         
@@ -150,7 +150,7 @@ def get_database_stats() -> dict:
                     WHEN score_general < 0.8 THEN '0.6-0.8'
                     ELSE '0.8-1.0'
                 END as range,
-                COUNT(*) as count
+                COUNT(*) as cnt
             FROM images
             WHERE score_general IS NOT NULL
             GROUP BY range
@@ -190,7 +190,7 @@ def get_database_stats() -> dict:
         
         # Jobs summary
         c.execute("""
-            SELECT status, COUNT(*) as count 
+            SELECT status, COUNT(*) as cnt 
             FROM jobs 
             GROUP BY status
         """)

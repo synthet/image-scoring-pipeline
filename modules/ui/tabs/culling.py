@@ -137,6 +137,21 @@ def resume_culling_session(session_id):
     # Sort groups by ID (or we could use another metric, but ID is stable)
     regular_groups.sort(key=lambda x: x['group_id'])
     
+    # OPTIMIZATION: Batch resolve paths for ALL images in session
+    all_image_ids = []
+    # Collect from regular groups
+    for g in regular_groups:
+        all_image_ids.extend([img.get('id') for img in g['images'] if img.get('id')])
+    # Collect from singles
+    if singles_group:
+        all_image_ids.extend([img.get('id') for img in singles_group['images'] if img.get('id')])
+        
+    resolved_map = {}
+    if all_image_ids:
+        try:
+            resolved_map = db.get_resolved_paths_batch(all_image_ids)
+        except: pass
+    
     # Process regular groups
     for group in regular_groups:
         gid = group['group_id']
@@ -155,11 +170,11 @@ def resume_culling_session(session_id):
         
         # Add to gallery with borders
         for img in picks:
-             _add_to_gallery(gallery_items, all_paths, img, gid, 'green', 'PICK')
+             _add_to_gallery(gallery_items, all_paths, img, gid, 'green', 'PICK', resolved_map)
         for img in rejects:
-             _add_to_gallery(gallery_items, all_paths, img, gid, 'red', 'REJECT')
+             _add_to_gallery(gallery_items, all_paths, img, gid, 'red', 'REJECT', resolved_map)
         for img in others:
-             _add_to_gallery(gallery_items, all_paths, img, gid, 'gray', 'UNREVIEWED')
+             _add_to_gallery(gallery_items, all_paths, img, gid, 'gray', 'UNREVIEWED', resolved_map)
              
     # Process Singles (Gray border)
     if singles_group:
@@ -177,7 +192,7 @@ def resume_culling_session(session_id):
                  color = 'red' # Rejects are always red?
                  status = 'SINGLE REJECT'
                  
-            _add_to_gallery(gallery_items, all_paths, img, 0, color, status)
+            _add_to_gallery(gallery_items, all_paths, img, 0, color, status, resolved_map)
             
     # Stats
     total = session.get('total_images', 0)
@@ -185,16 +200,28 @@ def resume_culling_session(session_id):
     
     return msg, gallery_items, session_id, all_paths
 
-def _add_to_gallery(gallery_list, path_list, img_data, group_id, color, status):
+def _add_to_gallery(gallery_list, path_list, img_data, group_id, color, status, resolved_map=None):
     """Helper to process image and add to gallery list."""
     file_path = img_data.get('file_path')
     thumb = img_data.get('thumbnail_path') or file_path
     
     # Resolve paths for display
     image_id = img_data.get('id')
-    if thumb:
+    
+    # Optimized Resolution Logic
+    resolved_p = None
+    if image_id and resolved_map and image_id in resolved_map:
+        cached_path = resolved_map[image_id]
+        if cached_path:
+            is_malformed = '\\' in cached_path and '/' in cached_path
+            if not is_malformed:
+                resolved_p = cached_path
+
+    if resolved_p:
+        thumb = resolved_p
+    elif thumb:
         thumb = utils.resolve_file_path(thumb, image_id) or utils.convert_path_to_local(thumb)
-    if not thumb and file_path:
+    elif not thumb and file_path:
         thumb = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
     
     # Create label

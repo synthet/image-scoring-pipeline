@@ -1,0 +1,368 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0 -- D:\Projects\image-scoring\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\Projects\image-scoring
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 12 items
+
+tests/test_gpu.py::test_gpu PASSED                                       [  8%]
+tests/test_gpu.py::test_musiq_gpu PASSED                                 [ 16%]
+tests/test_gpu.py::test_gpu_functional FAILED                            [ 25%]
+tests/test_gpu.py::test_musiq_gpu_functional FAILED                      [ 33%]
+tests/test_stacks.py::test_create_stack_from_images_minimum FAILED       [ 41%]
+tests/test_stacks.py::test_create_stack_sets_best_image FAILED           [ 50%]
+tests/test_stacks.py::test_remove_cleans_up_empty_stack FAILED           [ 58%]
+tests/test_stacks.py::test_remove_recalculates_best_image FAILED         [ 66%]
+tests/test_stacks.py::test_path_lookup_fallback FAILED                   [ 75%]
+tests/test_keyword_extractor.py::test_dependencies PASSED                [ 83%]
+tests/test_keyword_extractor.py::test_keyword_extractor_main PASSED      [ 91%]
+tests/test_keyword_extractor.py::test_keyword_extractor_pytest SKIPPED   [100%]
+
+================================== FAILURES ===================================
+_____________________________ test_gpu_functional _____________________________
+
+    def test_gpu_functional():
+        """Test GPU functionality with assertions."""
+        import pytest
+        try:
+            import tensorflow as tf
+        except ImportError:
+            pytest.skip("TensorFlow not installed")
+    
+        success = test_gpu()
+        # On GitHub Actions or non-GPU envs, this might fail if we enforce it.
+        # But for this user who expects GPU, we assert.
+        if not success:
+            # Check if we should skip instead of fail (e.g. if explicitly running in no-gpu mode)
+            # But 'test_gpu_functional' implies we expect it to work.
+            pass
+>       assert success, "GPU test failed"
+E       AssertionError: GPU test failed
+E       assert False
+
+tests\test_gpu.py:89: AssertionError
+---------------------------- Captured stdout call -----------------------------
+
+Testing GPU functionality...
+No GPUs detected
+__________________________ test_musiq_gpu_functional __________________________
+
+    def test_musiq_gpu_functional():
+        """Test MUSIQ GPU implementation with assertions."""
+        import pytest
+        try:
+            import tensorflow as tf
+        except ImportError:
+            pytest.skip("Machine learning dependencies not installed")
+    
+        success = test_musiq_gpu()
+>       assert success, "MUSIQ GPU test failed"
+E       AssertionError: MUSIQ GPU test failed
+E       assert False
+
+tests\test_gpu.py:100: AssertionError
+---------------------------- Captured stdout call -----------------------------
+\n=== MUSIQ GPU Test ===\n\u274c No GPU available for MUSIQ
+____________________ test_create_stack_from_images_minimum ____________________
+
+    def test_create_stack_from_images_minimum():
+        """Test that creating a stack with < 2 images fails."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:151: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:69: in setup_class
+    cls._create_test_images()
+tests\test_stacks.py:104: in _create_test_images
+    folder_id = c.lastrowid
+                ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <modules.db.get_db.<locals>.FirebirdCursorProxy object at 0x0000017881E77450>
+name = 'lastrowid'
+
+    def __getattr__(self, name):
+>       return getattr(self._cur, name)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'Cursor' object has no attribute 'lastrowid'
+
+modules\db.py:292: AttributeError
+---------------------------- Captured stdout call -----------------------------
+DEBUG: connect function: <function connect at 0x000001783A224860>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010591.fdb conn=Connection[1] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010591.fdb conn=Connection[1]
+DEBUG: connect function: <function connect at 0x000001783A224860>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010591.fdb conn=Connection[2] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010591.fdb conn=Connection[2]
+DEBUG: Table JOBS: True
+DEBUG: Table IMAGES: True
+DEBUG: Found IMAGES columns: ['id', 'job_id', 'file_path', 'file_name', 'file_type', 'score', 'keywords', 'title', 'description', 'metadata', 'thumbnail_path', 'scores_json', 'created_at', 'stack_id', 'folder_id', 'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe', 'model_version', 'score_technical', 'score_aesthetic', 'score_general', 'rating', 'label', 'image_hash', 'burst_uuid']
+DEBUG: Table STACKS: True
+DEBUG: Table FOLDERS: True
+DEBUG: Table CLUSTER_PROGRESS: True
+DEBUG: Table CULLING_SESSIONS: True
+DEBUG: Table CULLING_PICKS: True
+DEBUG: Table FILE_PATHS: True
+DEBUG: Table RESOLVED_PATHS: True
+DEBUG: connect function: <function connect at 0x000001783A224860>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010591.fdb conn=Connection[3] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010591.fdb conn=Connection[3]
+DEBUG: connect function: <function connect at 0x000001783A224860>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010591.fdb conn=Connection[4] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010591.fdb conn=Connection[4]
+______________________ test_create_stack_sets_best_image ______________________
+
+    def test_create_stack_sets_best_image():
+        """Test that best_image_id is set to the image with highest score_general."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:175: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:69: in setup_class
+    cls._create_test_images()
+tests\test_stacks.py:104: in _create_test_images
+    folder_id = c.lastrowid
+                ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <modules.db.get_db.<locals>.FirebirdCursorProxy object at 0x0000017881E05110>
+name = 'lastrowid'
+
+    def __getattr__(self, name):
+>       return getattr(self._cur, name)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'Cursor' object has no attribute 'lastrowid'
+
+modules\db.py:292: AttributeError
+---------------------------- Captured stdout call -----------------------------
+DEBUG: connect function: <function connect at 0x000001783A224860>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010592.fdb conn=Connection[5] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010592.fdb conn=Connection[5]
+DEBUG: connect function: <function connect at 0x000001783A224860>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010592.fdb conn=Connection[6] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010592.fdb conn=Connection[6]
+DEBUG: Table JOBS: True
+DEBUG: Table IMAGES: True
+DEBUG: Found IMAGES columns: ['id', 'job_id', 'file_path', 'file_name', 'file_type', 'score', 'keywords', 'title', 'description', 'metadata', 'thumbnail_path', 'scores_json', 'created_at', 'stack_id', 'folder_id', 'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe', 'model_version', 'score_technical', 'score_aesthetic', 'score_general', 'rating', 'label', 'image_hash', 'burst_uuid']
+DEBUG: Table STACKS: True
+DEBUG: Table FOLDERS: True
+DEBUG: Table CLUSTER_PROGRESS: True
+DEBUG: Table CULLING_SESSIONS: True
+DEBUG: Table CULLING_PICKS: True
+DEBUG: Table FILE_PATHS: True
+DEBUG: Table RESOLVED_PATHS: True
+DEBUG: connect function: <function connect at 0x000001783A224860>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010592.fdb conn=Connection[7] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010592.fdb conn=Connection[7]
+DEBUG: connect function: <function connect at 0x000001783A224860>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010592.fdb conn=Connection[8] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_1770010592.fdb conn=Connection[8]
+______________________ test_remove_cleans_up_empty_stack ______________________
+
+    def test_remove_cleans_up_empty_stack():
+        """Test that removing all images from a stack deletes the stack."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:217: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:60: in setup_class
+    shutil.copy2(template_db, cls.test_db_path)
+C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+src = 'D:\\Projects\\image-scoring\\TEMPLATE.FDB'
+dst = 'D:\\Projects\\image-scoring\\TEST_stacks_1770010592.fdb'
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+            with open(src, 'rb') as fsrc:
+                try:
+>                   with open(dst, 'wb') as fdst:
+                         ^^^^^^^^^^^^^^^
+E                   PermissionError: [Errno 13] Permission denied: 'D:\\Projects\\image-scoring\\TEST_stacks_1770010592.fdb'
+
+C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\shutil.py:258: PermissionError
+---------------------------- Captured stdout call -----------------------------
+Warning: Failed to copy DB in stacks test: [Errno 13] Permission denied: 'D:\\Projects\\image-scoring\\TEST_stacks_1770010592.fdb'
+_____________________ test_remove_recalculates_best_image _____________________
+
+    def test_remove_recalculates_best_image():
+        """Test that removing the best image recalculates best_image_id."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:255: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:60: in setup_class
+    shutil.copy2(template_db, cls.test_db_path)
+C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+src = 'D:\\Projects\\image-scoring\\TEMPLATE.FDB'
+dst = 'D:\\Projects\\image-scoring\\TEST_stacks_1770010592.fdb'
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+            with open(src, 'rb') as fsrc:
+                try:
+>                   with open(dst, 'wb') as fdst:
+                         ^^^^^^^^^^^^^^^
+E                   PermissionError: [Errno 13] Permission denied: 'D:\\Projects\\image-scoring\\TEST_stacks_1770010592.fdb'
+
+C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\shutil.py:258: PermissionError
+---------------------------- Captured stdout call -----------------------------
+Warning: Failed to copy DB in stacks test: [Errno 13] Permission denied: 'D:\\Projects\\image-scoring\\TEST_stacks_1770010592.fdb'
+__________________________ test_path_lookup_fallback __________________________
+
+    def test_path_lookup_fallback():
+        """Test that path lookup falls back to basename when exact path fails."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:303: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:60: in setup_class
+    shutil.copy2(template_db, cls.test_db_path)
+C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\shutil.py:448: in copy2
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+src = 'D:\\Projects\\image-scoring\\TEMPLATE.FDB'
+dst = 'D:\\Projects\\image-scoring\\TEST_stacks_1770010592.fdb'
+
+    def copyfile(src, dst, *, follow_symlinks=True):
+        """Copy data from src to dst in the most efficient way possible.
+    
+        If follow_symlinks is not set and src is a symbolic link, a new
+        symlink will be created instead of copying the file it points to.
+    
+        """
+        sys.audit("shutil.copyfile", src, dst)
+    
+        if _samefile(src, dst):
+            raise SameFileError("{!r} and {!r} are the same file".format(src, dst))
+    
+        file_size = 0
+        for i, fn in enumerate([src, dst]):
+            try:
+                st = _stat(fn)
+            except OSError:
+                # File most likely does not exist
+                pass
+            else:
+                # XXX What about other special files? (sockets, devices...)
+                if stat.S_ISFIFO(st.st_mode):
+                    fn = fn.path if isinstance(fn, os.DirEntry) else fn
+                    raise SpecialFileError("`%s` is a named pipe" % fn)
+                if _WINDOWS and i == 0:
+                    file_size = st.st_size
+    
+        if not follow_symlinks and _islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+            with open(src, 'rb') as fsrc:
+                try:
+>                   with open(dst, 'wb') as fdst:
+                         ^^^^^^^^^^^^^^^
+E                   PermissionError: [Errno 13] Permission denied: 'D:\\Projects\\image-scoring\\TEST_stacks_1770010592.fdb'
+
+C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\shutil.py:258: PermissionError
+---------------------------- Captured stdout call -----------------------------
+Warning: Failed to copy DB in stacks test: [Errno 13] Permission denied: 'D:\\Projects\\image-scoring\\TEST_stacks_1770010592.fdb'
+============================== warnings summary ===============================
+tests/test_gpu.py::test_gpu
+  D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\python.py:170: PytestReturnNotNoneWarning: Test functions should return None, but tests/test_gpu.py::test_gpu returned <class 'bool'>.
+  Did you mean to use `assert` instead of `return`?
+  See https://docs.pytest.org/en/stable/how-to/assert.html#return-not-none for more information.
+    warnings.warn(
+
+tests/test_gpu.py::test_musiq_gpu
+  D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\python.py:170: PytestReturnNotNoneWarning: Test functions should return None, but tests/test_gpu.py::test_musiq_gpu returned <class 'bool'>.
+  Did you mean to use `assert` instead of `return`?
+  See https://docs.pytest.org/en/stable/how-to/assert.html#return-not-none for more information.
+    warnings.warn(
+
+tests/test_keyword_extractor.py::test_dependencies
+  D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\python.py:170: PytestReturnNotNoneWarning: Test functions should return None, but tests/test_keyword_extractor.py::test_dependencies returned <class 'bool'>.
+  Did you mean to use `assert` instead of `return`?
+  See https://docs.pytest.org/en/stable/how-to/assert.html#return-not-none for more information.
+    warnings.warn(
+
+tests/test_keyword_extractor.py::test_keyword_extractor_main
+  D:\Projects\image-scoring\.venv\Lib\site-packages\_pytest\python.py:170: PytestReturnNotNoneWarning: Test functions should return None, but tests/test_keyword_extractor.py::test_keyword_extractor_main returned <class 'bool'>.
+  Did you mean to use `assert` instead of `return`?
+  See https://docs.pytest.org/en/stable/how-to/assert.html#return-not-none for more information.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_gpu.py::test_gpu_functional - AssertionError: GPU test failed
+FAILED tests/test_gpu.py::test_musiq_gpu_functional - AssertionError: MUSIQ G...
+FAILED tests/test_stacks.py::test_create_stack_from_images_minimum - Attribut...
+FAILED tests/test_stacks.py::test_create_stack_sets_best_image - AttributeErr...
+FAILED tests/test_stacks.py::test_remove_cleans_up_empty_stack - PermissionEr...
+FAILED tests/test_stacks.py::test_remove_recalculates_best_image - Permission...
+FAILED tests/test_stacks.py::test_path_lookup_fallback - PermissionError: [Er...
+============= 7 failed, 4 passed, 1 skipped, 4 warnings in 4.97s ==============

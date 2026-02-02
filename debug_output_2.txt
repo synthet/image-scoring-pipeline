@@ -1,0 +1,72 @@
+  File "D:\Projects\image-scoring\scripts\debug\debug_firebird.py", line 77, in <module>
+    db.init_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 743, in init_db
+    conn = get_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 222, in get_db
+    traceback.print_stack()
+  File "D:\Projects\image-scoring\scripts\debug\debug_firebird.py", line 77, in <module>
+    db.init_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 746, in init_db
+    _init_db_impl()
+  File "D:\Projects\image-scoring\modules\db.py", line 770, in _init_db_impl
+    conn = get_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 222, in get_db
+    traceback.print_stack()
+ERROR:root:Firebird connection failed: unsuccessful metadata update
+-key size exceeds implementation restriction for index "RDB$PRIMARY5". Please run migrate_to_firebird.py first.
+Traceback (most recent call last):
+  File "D:\Projects\image-scoring\scripts\debug\debug_firebird.py", line 77, in <module>
+    db.init_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 746, in init_db
+    _init_db_impl()
+  File "D:\Projects\image-scoring\modules\db.py", line 884, in _init_db_impl
+    conn.commit()
+  File "D:\Projects\image-scoring\modules\db.py", line 254, in commit
+    self._conn.commit()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 2047, in commit
+    self.main_transaction.commit(retaining=retaining)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 2692, in commit
+    self._tra.commit()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 501, in commit
+    self._check()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 141, in _check
+    raise self.__report(DatabaseError, self.status.get_errors())
+firebird.driver.types.DatabaseError: unsuccessful metadata update
+-key size exceeds implementation restriction for index "RDB$PRIMARY5"
+FB_DLL: D:\Projects\image-scoring\Firebird\fbclient.dll
+FB_DIR: D:\Projects\image-scoring\Firebird
+Inspecting driver_config structure:
+Set fb_client_library
+Creating DB at: D:\Projects\image-scoring\template.fdb using D:\Projects\image-scoring\Firebird\isql.exe
+ISQL success
+DB File exists
+Pre-seeding schema...
+DEBUG: connect function: <function connect at 0x000002A5BEF63E20>
+DEBUG: get_db dsn=D:\Projects\image-scoring\template.fdb conn=Connection[1] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\template.fdb conn=Connection[1]
+DEBUG: connect function: <function connect at 0x000002A5BEF63E20>
+DEBUG: get_db dsn=D:\Projects\image-scoring\template.fdb conn=Connection[2] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\template.fdb conn=Connection[2]
+DEBUG: Table JOBS: False
+DEBUG: Table IMAGES: False
+DEBUG: Found IMAGES columns: ['id', 'job_id', 'file_path', 'file_name', 'file_type', 'score', 'keywords', 'title', 'description', 'metadata', 'thumbnail_path', 'scores_json', 'created_at']
+DEBUG: Table STACKS: False
+DEBUG: Table FOLDERS: False
+DEBUG: Table CLUSTER_PROGRESS: False
+Schema seeding FAILED: unsuccessful metadata update
+-key size exceeds implementation restriction for index "RDB$PRIMARY5"
+Exception ignored in: <function Connection.__del__ at 0x000002A5BEF62700>
+Traceback (most recent call last):
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 1800, in __del__
+    self._close()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 1831, in _close
+    self.main_transaction._finish(DefaultAction.ROLLBACK)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 2630, in _finish
+    self.rollback()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 2714, in rollback
+    self._tra.rollback()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 506, in rollback
+    self._check()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 141, in _check
+    raise self.__report(DatabaseError, self.status.get_errors())
+firebird.driver.types.DatabaseError: connection shutdown

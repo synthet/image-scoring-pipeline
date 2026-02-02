@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed a race condition in the loading spinner logic ("Stale ID") caused by concurrent click and mutation events.
   - Added robust WSL-to-Windows path conversion for client-side fallbacks.
 
+### Fixed
+- **Unit Tests**: Fixed critical failures in `test_gpu.py`, `test_stacks.py`, and `test_keyword_extractor.py`.
+- **Database Cleanup**: Resolved persistent `TEST_*.fdb` file leaks in test suite.
+- **Firebird Tests**: Fixed connection handling and path normalization in `test_firebird_basic.py` and `test_culling.py`.
+
 ### Added
 - **API**: Added `/api/raw-preview` endpoint (backend) for efficient RAW image preview generation and path resolution.
 

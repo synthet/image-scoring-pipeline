@@ -1,0 +1,286 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0 -- D:\Projects\image-scoring\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\Projects\image-scoring
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 5 items
+
+tests/test_stacks.py::test_create_stack_from_images_minimum FAILED       [ 20%]
+tests/test_stacks.py::test_create_stack_sets_best_image FAILED           [ 40%]
+tests/test_stacks.py::test_remove_cleans_up_empty_stack FAILED           [ 60%]
+tests/test_stacks.py::test_remove_recalculates_best_image FAILED         [ 80%]
+tests/test_stacks.py::test_path_lookup_fallback FAILED                   [100%]
+
+================================== FAILURES ===================================
+____________________ test_create_stack_from_images_minimum ____________________
+
+    def test_create_stack_from_images_minimum():
+        """Test that creating a stack with < 2 images fails."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:162: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:80: in setup_class
+    cls._create_test_images()
+tests\test_stacks.py:115: in _create_test_images
+    folder_id = c.lastrowid
+                ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <modules.db.get_db.<locals>.FirebirdCursorProxy object at 0x000001ABD5EC20D0>
+name = 'lastrowid'
+
+    def __getattr__(self, name):
+>       return getattr(self._cur, name)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'Cursor' object has no attribute 'lastrowid'
+
+modules\db.py:292: AttributeError
+---------------------------- Captured stdout call -----------------------------
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_3d94c162.fdb conn=Connection[1] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_3d94c162.fdb conn=Connection[1]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_3d94c162.fdb conn=Connection[2] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_3d94c162.fdb conn=Connection[2]
+DEBUG: Table JOBS: True
+DEBUG: Table IMAGES: True
+DEBUG: Found IMAGES columns: ['id', 'job_id', 'file_path', 'file_name', 'file_type', 'score', 'keywords', 'title', 'description', 'metadata', 'thumbnail_path', 'scores_json', 'created_at', 'stack_id', 'folder_id', 'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe', 'model_version', 'score_technical', 'score_aesthetic', 'score_general', 'rating', 'label', 'image_hash', 'burst_uuid']
+DEBUG: Table STACKS: True
+DEBUG: Table FOLDERS: True
+DEBUG: Table CLUSTER_PROGRESS: True
+DEBUG: Table CULLING_SESSIONS: True
+DEBUG: Table CULLING_PICKS: True
+DEBUG: Table FILE_PATHS: True
+DEBUG: Table RESOLVED_PATHS: True
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_3d94c162.fdb conn=Connection[3] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_3d94c162.fdb conn=Connection[3]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_3d94c162.fdb conn=Connection[4] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_3d94c162.fdb conn=Connection[4]
+______________________ test_create_stack_sets_best_image ______________________
+
+    def test_create_stack_sets_best_image():
+        """Test that best_image_id is set to the image with highest score_general."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:186: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:80: in setup_class
+    cls._create_test_images()
+tests\test_stacks.py:115: in _create_test_images
+    folder_id = c.lastrowid
+                ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <modules.db.get_db.<locals>.FirebirdCursorProxy object at 0x000001ABD5EBA350>
+name = 'lastrowid'
+
+    def __getattr__(self, name):
+>       return getattr(self._cur, name)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'Cursor' object has no attribute 'lastrowid'
+
+modules\db.py:292: AttributeError
+---------------------------- Captured stdout call -----------------------------
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_fc3575d5.fdb conn=Connection[5] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_fc3575d5.fdb conn=Connection[5]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_fc3575d5.fdb conn=Connection[6] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_fc3575d5.fdb conn=Connection[6]
+DEBUG: Table JOBS: True
+DEBUG: Table IMAGES: True
+DEBUG: Found IMAGES columns: ['id', 'job_id', 'file_path', 'file_name', 'file_type', 'score', 'keywords', 'title', 'description', 'metadata', 'thumbnail_path', 'scores_json', 'created_at', 'stack_id', 'folder_id', 'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe', 'model_version', 'score_technical', 'score_aesthetic', 'score_general', 'rating', 'label', 'image_hash', 'burst_uuid']
+DEBUG: Table STACKS: True
+DEBUG: Table FOLDERS: True
+DEBUG: Table CLUSTER_PROGRESS: True
+DEBUG: Table CULLING_SESSIONS: True
+DEBUG: Table CULLING_PICKS: True
+DEBUG: Table FILE_PATHS: True
+DEBUG: Table RESOLVED_PATHS: True
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_fc3575d5.fdb conn=Connection[7] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_fc3575d5.fdb conn=Connection[7]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_fc3575d5.fdb conn=Connection[8] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_fc3575d5.fdb conn=Connection[8]
+______________________ test_remove_cleans_up_empty_stack ______________________
+
+    def test_remove_cleans_up_empty_stack():
+        """Test that removing all images from a stack deletes the stack."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:228: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:80: in setup_class
+    cls._create_test_images()
+tests\test_stacks.py:115: in _create_test_images
+    folder_id = c.lastrowid
+                ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <modules.db.get_db.<locals>.FirebirdCursorProxy object at 0x000001ABD5F838D0>
+name = 'lastrowid'
+
+    def __getattr__(self, name):
+>       return getattr(self._cur, name)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'Cursor' object has no attribute 'lastrowid'
+
+modules\db.py:292: AttributeError
+---------------------------- Captured stdout call -----------------------------
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_452efe28.fdb conn=Connection[9] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_452efe28.fdb conn=Connection[9]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_452efe28.fdb conn=Connection[10] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_452efe28.fdb conn=Connection[10]
+DEBUG: Table JOBS: True
+DEBUG: Table IMAGES: True
+DEBUG: Found IMAGES columns: ['id', 'job_id', 'file_path', 'file_name', 'file_type', 'score', 'keywords', 'title', 'description', 'metadata', 'thumbnail_path', 'scores_json', 'created_at', 'stack_id', 'folder_id', 'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe', 'model_version', 'score_technical', 'score_aesthetic', 'score_general', 'rating', 'label', 'image_hash', 'burst_uuid']
+DEBUG: Table STACKS: True
+DEBUG: Table FOLDERS: True
+DEBUG: Table CLUSTER_PROGRESS: True
+DEBUG: Table CULLING_SESSIONS: True
+DEBUG: Table CULLING_PICKS: True
+DEBUG: Table FILE_PATHS: True
+DEBUG: Table RESOLVED_PATHS: True
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_452efe28.fdb conn=Connection[11] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_452efe28.fdb conn=Connection[11]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_452efe28.fdb conn=Connection[12] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_452efe28.fdb conn=Connection[12]
+_____________________ test_remove_recalculates_best_image _____________________
+
+    def test_remove_recalculates_best_image():
+        """Test that removing the best image recalculates best_image_id."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:266: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:80: in setup_class
+    cls._create_test_images()
+tests\test_stacks.py:115: in _create_test_images
+    folder_id = c.lastrowid
+                ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <modules.db.get_db.<locals>.FirebirdCursorProxy object at 0x000001ABD5F79310>
+name = 'lastrowid'
+
+    def __getattr__(self, name):
+>       return getattr(self._cur, name)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'Cursor' object has no attribute 'lastrowid'
+
+modules\db.py:292: AttributeError
+---------------------------- Captured stdout call -----------------------------
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_053f32a0.fdb conn=Connection[13] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_053f32a0.fdb conn=Connection[13]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_053f32a0.fdb conn=Connection[14] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_053f32a0.fdb conn=Connection[14]
+DEBUG: Table JOBS: True
+DEBUG: Table IMAGES: True
+DEBUG: Found IMAGES columns: ['id', 'job_id', 'file_path', 'file_name', 'file_type', 'score', 'keywords', 'title', 'description', 'metadata', 'thumbnail_path', 'scores_json', 'created_at', 'stack_id', 'folder_id', 'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe', 'model_version', 'score_technical', 'score_aesthetic', 'score_general', 'rating', 'label', 'image_hash', 'burst_uuid']
+DEBUG: Table STACKS: True
+DEBUG: Table FOLDERS: True
+DEBUG: Table CLUSTER_PROGRESS: True
+DEBUG: Table CULLING_SESSIONS: True
+DEBUG: Table CULLING_PICKS: True
+DEBUG: Table FILE_PATHS: True
+DEBUG: Table RESOLVED_PATHS: True
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_053f32a0.fdb conn=Connection[15] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_053f32a0.fdb conn=Connection[15]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_053f32a0.fdb conn=Connection[16] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_053f32a0.fdb conn=Connection[16]
+__________________________ test_path_lookup_fallback __________________________
+
+    def test_path_lookup_fallback():
+        """Test that path lookup falls back to basename when exact path fails."""
+        test = TestStackOperations()
+>       test.setup_class()
+
+tests\test_stacks.py:314: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_stacks.py:80: in setup_class
+    cls._create_test_images()
+tests\test_stacks.py:115: in _create_test_images
+    folder_id = c.lastrowid
+                ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <modules.db.get_db.<locals>.FirebirdCursorProxy object at 0x000001ABD5EF5910>
+name = 'lastrowid'
+
+    def __getattr__(self, name):
+>       return getattr(self._cur, name)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'Cursor' object has no attribute 'lastrowid'
+
+modules\db.py:292: AttributeError
+---------------------------- Captured stdout call -----------------------------
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_54c31ade.fdb conn=Connection[17] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_54c31ade.fdb conn=Connection[17]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_54c31ade.fdb conn=Connection[18] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_54c31ade.fdb conn=Connection[18]
+DEBUG: Table JOBS: True
+DEBUG: Table IMAGES: True
+DEBUG: Found IMAGES columns: ['id', 'job_id', 'file_path', 'file_name', 'file_type', 'score', 'keywords', 'title', 'description', 'metadata', 'thumbnail_path', 'scores_json', 'created_at', 'stack_id', 'folder_id', 'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe', 'model_version', 'score_technical', 'score_aesthetic', 'score_general', 'rating', 'label', 'image_hash', 'burst_uuid']
+DEBUG: Table STACKS: True
+DEBUG: Table FOLDERS: True
+DEBUG: Table CLUSTER_PROGRESS: True
+DEBUG: Table CULLING_SESSIONS: True
+DEBUG: Table CULLING_PICKS: True
+DEBUG: Table FILE_PATHS: True
+DEBUG: Table RESOLVED_PATHS: True
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_54c31ade.fdb conn=Connection[19] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_54c31ade.fdb conn=Connection[19]
+DEBUG: connect function: <function connect at 0x000001ABD5E9BCE0>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_54c31ade.fdb conn=Connection[20] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\TEST_stacks_54c31ade.fdb conn=Connection[20]
+=========================== short test summary info ===========================
+FAILED tests/test_stacks.py::test_create_stack_from_images_minimum - Attribut...
+FAILED tests/test_stacks.py::test_create_stack_sets_best_image - AttributeErr...
+FAILED tests/test_stacks.py::test_remove_cleans_up_empty_stack - AttributeErr...
+FAILED tests/test_stacks.py::test_remove_recalculates_best_image - AttributeE...
+FAILED tests/test_stacks.py::test_path_lookup_fallback - AttributeError: 'Cur...
+============================== 5 failed in 1.24s ==============================
+Exception ignored in: <function Cursor.__del__ at 0x000001ABD5EA8180>
+Traceback (most recent call last):
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 3361, in __del__
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 4103, in close
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 3041, in free
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 865, in free
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 141, in _check
+firebird.driver.types.DatabaseError: connection shutdown
+Exception ignored in: <function Connection.__del__ at 0x000001ABD5E9A5C0>
+Traceback (most recent call last):
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 1800, in __del__
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 1831, in _close
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 2630, in _finish
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 2714, in rollback
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 506, in rollback
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 141, in _check
+firebird.driver.types.DatabaseError: connection shutdown
+Exception ignored in: <function Statement.__del__ at 0x000001ABD5EA28E0>
+Traceback (most recent call last):
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 3022, in __del__
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 3041, in free
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 865, in free
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 141, in _check
+firebird.driver.types.DatabaseError: connection shutdown

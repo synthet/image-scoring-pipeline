@@ -1,0 +1,54 @@
+  File "D:\Projects\image-scoring\scripts\debug\debug_firebird.py", line 77, in <module>
+    db.init_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 743, in init_db
+    conn = get_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 222, in get_db
+    traceback.print_stack()
+  File "D:\Projects\image-scoring\scripts\debug\debug_firebird.py", line 77, in <module>
+    db.init_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 746, in init_db
+    _init_db_impl()
+  File "D:\Projects\image-scoring\modules\db.py", line 770, in _init_db_impl
+    conn = get_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 222, in get_db
+    traceback.print_stack()
+ERROR:root:Firebird connection failed: 'NoneType' object has no attribute 'commit'. Please run migrate_to_firebird.py first.
+Traceback (most recent call last):
+  File "D:\Projects\image-scoring\scripts\debug\debug_firebird.py", line 77, in <module>
+    db.init_db()
+  File "D:\Projects\image-scoring\modules\db.py", line 746, in init_db
+    _init_db_impl()
+  File "D:\Projects\image-scoring\modules\db.py", line 803, in _init_db_impl
+    conn.commit()
+  File "D:\Projects\image-scoring\modules\db.py", line 254, in commit
+    self._conn.commit()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 2047, in commit
+    self.main_transaction.commit(retaining=retaining)
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 2692, in commit
+    self._tra.commit()
+    ^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'commit'
+FB_DLL: D:\Projects\image-scoring\Firebird\fbclient.dll
+FB_DIR: D:\Projects\image-scoring\Firebird
+Inspecting driver_config structure:
+Set fb_client_library
+Creating DB at: D:\Projects\image-scoring\template.fdb using D:\Projects\image-scoring\Firebird\isql.exe
+ISQL success
+DB File exists
+Pre-seeding schema...
+DEBUG: connect function: <function connect at 0x0000022934143E20>
+DEBUG: get_db dsn=D:\Projects\image-scoring\template.fdb conn=Connection[1] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\template.fdb conn=Connection[1]
+DEBUG: connect function: <function connect at 0x0000022934143E20>
+DEBUG: get_db dsn=D:\Projects\image-scoring\template.fdb conn=Connection[2] type=<class 'firebird.driver.core.Connection'>
+DEBUG: get_db dsn=D:\Projects\image-scoring\template.fdb conn=Connection[2]
+DEBUG: Table JOBS: False
+DEBUG: Table IMAGES: False
+Schema seeding FAILED: 'NoneType' object has no attribute 'commit'
+Exception ignored in: <function Connection.__del__ at 0x0000022934142700>
+Traceback (most recent call last):
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\core.py", line 1802, in __del__
+    self._att.detach()
+  File "D:\Projects\image-scoring\.venv\Lib\site-packages\firebird\driver\interfaces.py", line 1264, in detach
+    self.vtable.detach(self, self.status)
+OSError: exception: access violation writing 0x0000000000000024

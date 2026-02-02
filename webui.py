@@ -52,7 +52,8 @@ def main():
     is_windows = platform.system() == "Windows"
     
     # MCP Server Integration (optional - for Cursor debugging)
-    mcp_enabled = os.environ.get('ENABLE_MCP_SERVER', '0') == '1'
+    # Default ON for local development; set ENABLE_MCP_SERVER=0 to disable.
+    mcp_enabled = os.environ.get('ENABLE_MCP_SERVER', '1') == '1'
     mcp_available = False
     try:
         from modules import mcp_server
@@ -60,6 +61,12 @@ def main():
     except ImportError:
         pass
     
+    print(f"MCP Server: enabled={mcp_enabled} available={mcp_available}")
+    if mcp_enabled and not mcp_available:
+        print("MCP Server: not available (missing dependency). Install with: pip install mcp")
+    
+    mcp_mount_error: str | None = None
+
     # Create Main FastAPI App with comprehensive OpenAPI documentation
     app = FastAPI(
         title="Image Scoring WebUI API",
@@ -127,6 +134,15 @@ def main():
             }
         ]
     )
+
+    @app.get("/mcp-status")
+    def mcp_status():
+        return {
+            "enabled": mcp_enabled,
+            "available": mcp_available,
+            "mount_error": mcp_mount_error,
+            "expected_sse_url": "http://127.0.0.1:7860/mcp/sse",
+        }
     
     # Create UI and initialize engines (Gradio App)
     demo, runner, tagging_runner = app_module.create_ui()
@@ -142,6 +158,7 @@ def main():
             # may wrap/replace the FastAPI app instance.
             mcp_sse_app = mcp_server.create_mcp_sse_app(mount_path="/mcp")
         except Exception as e:
+            mcp_mount_error = str(e)
             print(f"MCP Server: Failed to mount SSE endpoint: {e}")
     
     # Define allowed paths
@@ -156,15 +173,21 @@ def main():
     # Configure server endpoints using the FastAPI app directly
     app_module.setup_server_endpoints(app, runner, tagging_runner)
     
+    # Mount MCP SSE endpoints (if enabled) onto the final app instance.
+    # MUST be mounted BEFORE Gradio to avoid being shadowed by Gradio's catch-all route at /
+    if mcp_sse_app is not None:
+        app.mount("/mcp", mcp_sse_app)
+        print("MCP Server: SSE endpoint mounted at /mcp/sse")
+        try:
+            has_mcp_mount = any(getattr(r, "path", None) == "/mcp" for r in app.routes)
+            print(f"MCP Server: mount_registered={has_mcp_mount}")
+        except Exception:
+            pass
+
     # Mount Gradio App onto FastAPI
     # This creates a completely new routing structure where Gradio sits at /
     # and our custom endpoints sit at /source-image etc.
     app = gr.mount_gradio_app(app, demo, path="/", allowed_paths=allowed_paths, favicon_path="static/favicon.ico")
-    
-    # Mount MCP SSE endpoints (if enabled) onto the final app instance.
-    if mcp_sse_app is not None:
-        app.mount("/mcp", mcp_sse_app)
-        print("MCP Server: SSE endpoint mounted at /mcp/sse")
     
     # Apply logging filter to suppress repetitive Gradio queue polling messages
     logging.getLogger("uvicorn.access").addFilter(SuppressGradioQueueFilter())
