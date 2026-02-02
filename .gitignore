@@ -130,6 +130,14 @@ SCORING_HISTORY.FDB
 TEST_*.fdb
 *.FDB
 *.fdb
+# Added cleanup patterns
+debug_output*.txt
+test_output*.log
+verify_result*.txt
+verify_stacks*.txt
+test_run.log
+test_verification*.log
+
 
 backups/
 .venv_wsl/

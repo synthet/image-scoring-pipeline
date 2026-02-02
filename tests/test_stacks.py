@@ -43,38 +43,45 @@ def test_db():
     test_db_path = os.path.abspath(f"TEST_stacks_{unique_id}.fdb")
     db.DB_PATH = test_db_path
     
-    # Copy template database
+    # Create valid empty Firebird DB using isql
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    template_db = os.path.join(project_root, "TEMPLATE.FDB")
+    fb_dir = os.path.join(project_root, "Firebird")
+    isql_exe = os.path.join(fb_dir, "isql.exe")
     
-    if not os.path.exists(template_db):
-         template_db = os.path.join(project_root, "template.fdb")
-    
-    if not os.path.exists(template_db):
-         pytest.fail("Template DB missing (TEMPLATE.FDB)")
-         
-    try:
-         # Ensure destination directory exists
-         os.makedirs(os.path.dirname(test_db_path), exist_ok=True)
-         shutil.copy2(template_db, test_db_path)
-         # Remove read-only if present
-         import stat
-         os.chmod(test_db_path, stat.S_IWRITE)
-    except Exception as e:
-         pytest.fail(f"Failed to copy DB: {e}")
-    
-    # Initialize database
+    if os.path.exists(isql_exe):
+        import subprocess
+        # Use full path for DB to avoid ambiguity
+        db_path_arg = test_db_path
+        cmd = f"CREATE DATABASE '{db_path_arg}' user 'SYSDBA' password 'masterkey'; EXIT;"
+        
+        env = os.environ.copy()
+        env["FIREBIRD"] = fb_dir
+        
+        try:
+            subprocess.run([isql_exe, '-q'], input=cmd.encode(), stderr=subprocess.PIPE, env=env, check=True)
+        except subprocess.CalledProcessError as e:
+            pytest.fail(f"Failed to create test database: {e.stderr.decode()}")
+    else:
+        pytest.fail(f"Firebird isql.exe not found at {isql_exe}")
+
+    # Initialize Schema
     try:
         db.init_db()
         _create_test_images()
     except Exception as e:
-        # If setup fails, try to cleanup immediately
+        # Cleanup if init fails
         db.DB_PATH = original_db_path
+        try: 
+            if db._local.conn: db._local.conn.close()
+        except: pass
         try: os.remove(test_db_path)
         except: pass
-        pytest.fail(f"Failed to initialize DB: {e}")
-        
+        pytest.fail(f"Failed to initialize DB schema: {e}")
+         
     yield
+    
+    # Teardown
+    db.DB_PATH = original_db_path
     
     # Teardown
     db.DB_PATH = original_db_path

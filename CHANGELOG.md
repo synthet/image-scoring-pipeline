@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unit Tests**: Fixed critical failures in `test_gpu.py`, `test_stacks.py`, and `test_keyword_extractor.py`.
 - **Database Cleanup**: Resolved persistent `TEST_*.fdb` file leaks in test suite.
 - **Firebird Tests**: Fixed connection handling and path normalization in `test_firebird_basic.py` and `test_culling.py`.
+- **Test Artifacts**: Fixed issue where tests left behind `TEMPLATE.FDB`, `verify_result.txt`, and other artifacts.
+  - Refactored `tests/test_stacks.py` to use a fresh dynamic database instead of copying `TEMPLATE.FDB`.
+  - Added cleanup logic to `tests/verify_culling_fix.py` and updated `.gitignore`.
 
 ### Added
 - **API**: Added `/api/raw-preview` endpoint (backend) for efficient RAW image preview generation and path resolution.

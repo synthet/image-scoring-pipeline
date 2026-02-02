@@ -94,6 +94,13 @@ def verify_fix():
                 print(f"Cleaned up {db_path}")
             except Exception as e:
                 print(f"Warning: Could not remove {db_path}: {e}")
+        
+        # Cleanup result file
+        if os.path.exists("verify_result.txt"):
+             try:
+                 os.remove("verify_result.txt")
+                 print("Cleaned up verify_result.txt")
+             except: pass
         pass
 
     return True
