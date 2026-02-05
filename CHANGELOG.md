@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Refactored `modules/ui/assets.py` to use stable direct URL loading instead of fragile Blob URLs.
   - Fixed a race condition in the loading spinner logic ("Stale ID") caused by concurrent click and mutation events.
   - Added robust WSL-to-Windows path conversion for client-side fallbacks.
+- **Gallery Scrolling**: Fixed double scrollbars and scrolling glitches in Electron Gallery.
+  - Removed conflicting `overflow` and `padding` styles between layout and virtualized grid.
+  - Fixed keyboard navigation focus management.
+- **Gallery Pagination**: Fixed infinite scroll issue where loading stopped at 50 images.
+  - Resolved style conflict in `ItemContainer` that broke virtualization integrity.
 
 ### Fixed
 - **Unit Tests**: Fixed critical failures in `test_gpu.py`, `test_stacks.py`, and `test_keyword_extractor.py`.
@@ -22,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added cleanup logic to `tests/verify_culling_fix.py` and updated `.gitignore`.
 
 ### Added
+- **Electron Gallery**: Enhanced debug infrastructure.
+  - Added `session_*.log` recording for user interactions and errors.
+  - Implemented detailed logging for `useImages` data fetching and `GalleryGrid` rendering verification.
 - **API**: Added `/api/raw-preview` endpoint (backend) for efficient RAW image preview generation and path resolution.
 
 ## [Unreleased]
