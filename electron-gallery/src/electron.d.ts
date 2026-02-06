@@ -9,6 +9,12 @@ declare global {
             getImageDetails: (id: number) => Promise<any>;
             getFolders: () => Promise<any[]>;
             log: (level: string, message: string, data?: any) => Promise<boolean>;
+            extractNefPreview: (filePath: string) => Promise<{
+                success: boolean;
+                buffer?: number[];
+                fallback?: boolean;
+                error?: string;
+            }>;
         };
     };
 }

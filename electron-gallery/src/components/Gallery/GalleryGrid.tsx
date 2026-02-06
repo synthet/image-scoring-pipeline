@@ -21,6 +21,8 @@ interface GalleryGridProps {
     onEndReached?: () => void;
     subfolders?: Folder[];
     onSelectFolder?: (folder: Folder) => void;
+    onNavigateToParent?: () => void;
+    viewerOpen?: boolean;
 }
 
 const ItemContainer = React.forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
@@ -58,8 +60,20 @@ const ItemWrapper = React.forwardRef<HTMLDivElement, any>(({ children, ...props 
     </div>
 ));
 
-export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEndReached, subfolders, onSelectFolder }) => {
+export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEndReached, subfolders, onSelectFolder, onNavigateToParent, viewerOpen = false }) => {
     const containerRef = useRef<HTMLDivElement>(null);
+
+    // Escape key handler for parent navigation (only when viewer is closed)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Only handle Escape if viewer is NOT open
+            if (e.key === 'Escape' && onNavigateToParent && !viewerOpen) {
+                onNavigateToParent();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onNavigateToParent, viewerOpen]);
 
     useEffect(() => {
         const el = containerRef.current;

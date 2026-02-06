@@ -85,6 +85,7 @@ logs/
 test_images/
 output/
 results/
+test_quality_results/
 *.jpg
 *.jpeg
 *.png

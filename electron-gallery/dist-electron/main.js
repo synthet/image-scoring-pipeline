@@ -42,6 +42,7 @@ const fs_1 = __importDefault(require("fs"));
 const os_1 = __importDefault(require("os"));
 const electron_is_dev_1 = __importDefault(require("electron-is-dev"));
 const db = __importStar(require("./db"));
+const nefExtractor_1 = require("./nefExtractor");
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // if (require('electron-squirrel-startup')) {
 //     app.quit();
@@ -59,7 +60,7 @@ function createWindow() {
             preload: path_1.default.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
-            webSecurity: false // Temporary for dev, strictly not needed if protocol is correct, but helpful for local setup
+            webSecurity: true // Enable web security (media:// protocol is already registered as privileged)
         },
     });
     if (electron_is_dev_1.default) {
@@ -106,11 +107,18 @@ electron_1.app.whenReady().then(() => {
     });
     electron_1.ipcMain.handle('db:get-image-details', async (_, id) => {
         try {
-            return await db.getImageDetails(id);
+            console.log(`[Main] Getting image details for ID: ${id}`);
+            const result = await db.getImageDetails(id);
+            console.log(`[Main] Image details result:`, result ? 'Data received' : 'NULL returned');
+            if (result) {
+                console.log(`[Main] Image details keys:`, Object.keys(result));
+            }
+            return result;
         }
         catch (e) {
-            console.error('DB Error (details):', e);
-            return null;
+            console.error('[Main] DB Error (details):', e);
+            console.error('[Main] Error stack:', e.stack);
+            throw e; // Re-throw so the error reaches the renderer
         }
     });
     electron_1.ipcMain.handle('db:get-folders', async () => {
@@ -164,6 +172,54 @@ electron_1.app.whenReady().then(() => {
             return [];
         }
     });
+    electron_1.ipcMain.handle('nef:extract-preview', async (_, filePath) => {
+        try {
+            console.log(`[Main] NEF preview requested for: ${filePath}`);
+            // Convert WSL path to Windows path if needed
+            let convertedPath = filePath;
+            if (process.platform === 'win32' && filePath.match(/^\/mnt\/[a-zA-Z]\//)) {
+                // /mnt/d/foo -> D:/foo
+                convertedPath = filePath.replace(/^\/mnt\/([a-zA-Z])\//, '$1:/');
+                console.log(`[Main] Converted WSL path: ${filePath} -> ${convertedPath}`);
+            }
+            // Check if file is actually a NEF file
+            const ext = path_1.default.extname(convertedPath).toLowerCase();
+            if (ext !== '.nef') {
+                console.log(`[Main] Skipping non-NEF file (${ext}), returning fallback`);
+                // Return file buffer for client-side processing (might be JPG, etc.)
+                const fileBuffer = await fs_1.default.promises.readFile(convertedPath);
+                return {
+                    success: false,
+                    fallback: true,
+                    buffer: Array.from(new Uint8Array(fileBuffer))
+                };
+            }
+            // Tier 1: Try exiftool-vendored extraction
+            const buffer = await nefExtractor_1.nefExtractor.extractPreview(convertedPath);
+            if (buffer) {
+                // Success! Return the JPEG buffer
+                return {
+                    success: true,
+                    buffer: Array.from(new Uint8Array(buffer))
+                };
+            }
+            // Tier 1 failed, return file buffer for client-side fallback
+            console.log('[Main] Tier 1 failed, falling back to client-side extraction');
+            const fileBuffer = await fs_1.default.promises.readFile(convertedPath);
+            return {
+                success: false,
+                fallback: true,
+                buffer: Array.from(new Uint8Array(fileBuffer))
+            };
+        }
+        catch (e) {
+            console.error('[Main] NEF extraction error:', e);
+            return {
+                success: false,
+                error: e.message
+            };
+        }
+    });
     electron_1.ipcMain.handle('debug:log', async (_, { level, message, data, timestamp }) => {
         const logDir = electron_1.app.getPath('userData');
         const dateStr = new Date().toISOString().split('T')[0];
@@ -184,7 +240,9 @@ electron_1.app.whenReady().then(() => {
         }
     });
 });
-electron_1.app.on('window-all-closed', () => {
+electron_1.app.on('window-all-closed', async () => {
+    // Cleanup exiftool resources
+    await nefExtractor_1.nefExtractor.cleanup();
     if (process.platform !== 'darwin') {
         electron_1.app.quit();
     }

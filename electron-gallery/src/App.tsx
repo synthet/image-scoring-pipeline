@@ -19,6 +19,7 @@ function App() {
   const [selectedFolderId, setSelectedFolderId] = useState<number | undefined>(undefined);
   const [filters, setFilters] = useState<FilterState>({ minRating: 0 });
   const [openingImage, setOpeningImage] = useState<any | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
 
   const { images, loadMore } = useImages(50, selectedFolderId, filters);
 
@@ -27,7 +28,35 @@ function App() {
   };
 
   const handleImageClick = (image: any) => {
+    const index = images.findIndex(img => img.id === image.id);
+    setCurrentImageIndex(index >= 0 ? index : 0);
     setOpeningImage(image);
+  };
+
+  const handleNavigateImage = (newIndex: number) => {
+    if (newIndex >= 0 && newIndex < images.length) {
+      setCurrentImageIndex(newIndex);
+      setOpeningImage(images[newIndex]);
+    }
+  };
+
+  const handleNavigateToParent = () => {
+    if (!selectedFolderId) return;
+
+    // Find parent of current folder
+    const findParent = (nodes: Folder[], targetId: number, parentId?: number): number | undefined => {
+      for (const node of nodes) {
+        if (node.id === targetId) return parentId;
+        if (node.children) {
+          const result = findParent(node.children, targetId, node.id);
+          if (result !== undefined) return result;
+        }
+      }
+      return undefined;
+    };
+
+    const parentId = findParent(folders, selectedFolderId);
+    setSelectedFolderId(parentId);
   };
 
   const closeViewer = () => {
@@ -62,6 +91,8 @@ function App() {
             images={images}
             onSelect={handleImageClick}
             onEndReached={loadMore}
+            onNavigateToParent={handleNavigateToParent}
+            viewerOpen={!!openingImage}
             subfolders={folders.flatMap(f => {
               const find = (nodes: Folder[]): Folder | undefined => {
                 for (const node of nodes) {
@@ -73,11 +104,17 @@ function App() {
                 }
               };
               return find([f])?.children || [];
-            })} // Removed [0] as flatMap already returns the flattened array of children
+            })}
             onSelectFolder={handleSelectFolder}
           />
           {openingImage && (
-            <ImageViewer image={openingImage} onClose={closeViewer} />
+            <ImageViewer
+              image={openingImage}
+              onClose={closeViewer}
+              allImages={images}
+              currentIndex={currentImageIndex}
+              onNavigate={handleNavigateImage}
+            />
           )}
         </div>
       }
@@ -85,4 +122,4 @@ function App() {
   );
 }
 
-export default App
+export default App;

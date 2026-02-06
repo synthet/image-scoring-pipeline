@@ -5,6 +5,34 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.0] - 2026-02-06
+
+### Added
+- **Electron Gallery Navigation**: Comprehensive navigation features for improved user experience.
+  - Arrow key navigation in image viewer (Left/Right for previous/next image, Escape to return to grid).
+  - Escape key navigation in grid view to return to parent folder.
+  - Full database field display in image viewer panel.
+- **NEF Extraction Diagnostics**: Added multi-tier NEF preview extraction system and diagnostic tools.
+  - 3-tier extraction strategy: ExifTool-vendored, TIFF SubIFD Parser, and Marker Scan fallback.
+  - New diagnostic scripts in `scripts/` for testing NEF extraction tiers.
+  - Enhanced `nefExtractor.ts` for robust preview extraction from Nikon RAW files.
+  - Diagnostic documentation: `NEF_EXTRACTION_DIAGNOSIS.md`.
+
+### Fixed
+- **Database Compatibility**: Resolved Electron app database errors.
+  - Fixed "Table unknown, RESOLVED_PATHS" error by removing references to obsolete table.
+  - Fixed "Column unknown, FP.PATH_TYPE" error in folder path queries.
+  - Updated database queries for compatibility with refactored schema.
+- **Logger Cleanup**: Reduced log verbosity in Electron Gallery.
+  - Modified `Logger.ts` to reduce excessive console output.
+  - Addressed Electron security warnings for `webSecurity` and Content-Security-Policy.
+
+### Changed
+- **Electron Gallery UI**: Enhanced viewer and grid components.
+  - Updated `ImageViewer.tsx` to display all database metadata fields.
+  - Improved `GalleryGrid.tsx` keyboard navigation and escape key handling.
+  - Enhanced NEF preview handling in `nefViewer.ts` with better error handling.
+
 ## [3.12.0] - 2026-02-06
 
 ### Fixed

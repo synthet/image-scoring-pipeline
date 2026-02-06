@@ -86,7 +86,7 @@ async function getImages(options = {}) {
     const sql = `
         SELECT 
             i.id, 
-            COALESCE(rp.windows_path, i.file_path) as file_path, 
+            COALESCE(fp.path, i.file_path) as file_path, 
             i.file_name, 
             i.score_general, 
             i.rating, 
@@ -94,7 +94,7 @@ async function getImages(options = {}) {
             i.created_at, 
             i.thumbnail_path
         FROM images i
-        LEFT JOIN resolved_paths rp ON i.id = rp.image_id
+        LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
         ${whereClause}
         ORDER BY i.score_general DESC
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -104,30 +104,69 @@ async function getImages(options = {}) {
 async function getImageDetails(id) {
     const sql = `
         SELECT 
-            i.*,
+            i.id,
+            i.job_id,
+            i.file_path,
+            i.file_name,
+            i.file_type,
+            i.score,
+            i.score_general,
+            i.score_technical,
+            i.score_aesthetic,
+            i.score_spaq,
+            i.score_ava,
+            i.score_koniq,
+            i.score_paq2piq,
+            i.score_liqe,
+            i.keywords,
+            i.title,
+            i.description,
+            i.metadata,
+            i.thumbnail_path,
+            i.scores_json,
+            i.model_version,
+            i.rating,
+            i.label,
+            i.image_hash,
+            i.folder_id,
+            i.stack_id,
+            i.created_at,
+            i.burst_uuid,
             fp.path as win_path
         FROM images i
         LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
         WHERE i.id = ?
     `;
     const rows = await query(sql, [id]);
+    if (!rows || rows.length === 0) {
+        return null;
+    }
     const image = rows[0];
-    if (image) {
-        // Convert BLOBs to strings if they are buffers
-        const blobFields = ['KEYWORDS', 'DESCRIPTION', 'METADATA', 'SCORES_JSON'];
-        for (const field of blobFields) {
-            // Firebird node driver returns numeric BLOBs as byte buffers usually
-            // but node-firebird might return them as Buffers if we are lucky
-            // or we need to handle them. 
-            // In the query function we see no special hadling.
-            // Let's assume they come as Strings or Buffers.
-            const lowerField = field.toLowerCase();
-            if (image[lowerField] && Buffer.isBuffer(image[lowerField])) {
-                image[lowerField] = image[lowerField].toString('utf8');
+    // Ultra-aggressive serialization: Convert EVERYTHING to JSON and parse back
+    // This ensures absolutely no Firebird-specific or Node.js-specific objects remain
+    const stringified = JSON.stringify(image, (key, value) => {
+        // Custom replacer to handle special types
+        if (Buffer.isBuffer(value)) {
+            return value.toString('utf8');
+        }
+        if (value instanceof Date) {
+            return value.toISOString();
+        }
+        if (value === undefined) {
+            return null;
+        }
+        // For any other object, try to stringify it
+        if (value && typeof value === 'object' && !(value instanceof Array)) {
+            try {
+                return JSON.parse(JSON.stringify(value));
+            }
+            catch {
+                return String(value);
             }
         }
-    }
-    return image;
+        return value;
+    });
+    return JSON.parse(stringified);
 }
 async function getFolders() {
     return query('SELECT id, path, parent_id, is_fully_scored FROM folders ORDER BY path ASC');

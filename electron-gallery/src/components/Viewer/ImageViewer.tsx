@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, Star, FileText, Calendar, Tag } from 'lucide-react';
+import { X, Star, FileText } from 'lucide-react';
 
 interface Image {
     id: number;
@@ -15,6 +15,9 @@ interface Image {
 interface ImageViewerProps {
     image: Image;
     onClose: () => void;
+    allImages?: Image[];
+    currentIndex?: number;
+    onNavigate?: (newIndex: number) => void;
 }
 
 const isWebSafe = (filename: string) => {
@@ -28,15 +31,73 @@ const isRaw = (filename: string) => {
 };
 
 
-export const ImageViewer: React.FC<ImageViewerProps> = ({ image, onClose }) => {
+const ScoreBar = ({ label, value, color = '#ff9800' }: { label: string, value: number, color?: string }) => (
+    <div style={{ marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>
+            <span>{label}</span>
+            <span>{Math.round(value * 100)}%</span>
+        </div>
+        <div style={{ height: 4, background: '#333', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ width: `${value * 100}%`, height: '100%', background: color }} />
+        </div>
+    </div>
+);
+
+export const ImageViewer: React.FC<ImageViewerProps> = ({
+    image: initialImage,
+    onClose,
+    allImages = [],
+    currentIndex = 0,
+    onNavigate
+}) => {
+    const [image, setImage] = React.useState<any>(initialImage);
+    const [detailsLoaded, setDetailsLoaded] = React.useState(false);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') {
+                onClose();
+            } else if (e.key === 'ArrowLeft' && onNavigate && currentIndex > 0) {
+                onNavigate(currentIndex - 1);
+            } else if (e.key === 'ArrowRight' && onNavigate && allImages && currentIndex < allImages.length - 1) {
+                onNavigate(currentIndex + 1);
+            }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [onClose]);
+    }, [onClose, onNavigate, currentIndex, allImages]);
+
+    // Update image when navigating
+    useEffect(() => {
+        if (allImages && allImages[currentIndex]) {
+            setImage(allImages[currentIndex]);
+            setDetailsLoaded(false);
+        }
+    }, [currentIndex, allImages]);
+
+    // Fetch full details
+    useEffect(() => {
+        let active = true;
+        const fetchDetails = async () => {
+            if (!window.electron) return;
+            try {
+                console.log('[ImageViewer] Fetching details for image ID:', image.id);
+                const details = await window.electron.getImageDetails(image.id);
+                console.log('[ImageViewer] Received details:', details);
+                if (active && details) {
+                    setImage(details);
+                    setDetailsLoaded(true);
+                    console.log('[ImageViewer] Details loaded successfully');
+                } else {
+                    console.warn('[ImageViewer] No details returned or component unmounted');
+                }
+            } catch (e) {
+                console.error("Failed to fetch image details:", e);
+            }
+        };
+        fetchDetails();
+        return () => { active = false; };
+    }, [image.id]);
 
     const [previewSrc, setPreviewSrc] = React.useState<string>('');
     const [loading, setLoading] = React.useState(false);
@@ -53,41 +114,24 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ image, onClose }) => {
             setPreviewSrc('');
 
             try {
+                // Use win_path if available (from detailed fetch), else fallback to file_path
+                const pathSchema = image.win_path || image.file_path;
+
                 // Case 1: Web safe image - use direct path
                 if (isWebSafe(image.file_name)) {
-                    if (active) setPreviewSrc(`media://${image.file_path}`);
+                    if (active) setPreviewSrc(`media://${pathSchema}`);
                     return;
                 }
 
                 // Case 2: RAW image - try to extract/decode
                 if (isRaw(image.file_name)) {
-                    // Try to fetch the file data
                     try {
-                        const response = await fetch(`media://${image.file_path}`);
-                        if (!response.ok) throw new Error(`Failed to load file: ${response.statusText}`);
-
-                        const buffer = await response.arrayBuffer();
-
-                        // Try fast embedded JPEG first
+                        // Use new extractWithFallback method which:
+                        // 1. Tries server-side exiftool extraction (best for Z9/Z6/Z8)
+                        // 2. Falls back to client-side TIFF SubIFD parsing
+                        // 3. Falls back to JPEG marker scanning
                         const { nefViewer } = await import('../../utils/nefViewer');
-                        let blob = await nefViewer.extractEmbeddedJpeg(buffer);
-
-                        // If no embedded JPEG, try full decode (slow)
-                        if (!blob) {
-                            console.log('No embedded JPEG, trying full decode...');
-                            const imageData = await nefViewer.decodeRaw(buffer);
-                            if (imageData) {
-                                // Convert ImageData to Blob (via Canvas)
-                                const canvas = document.createElement('canvas');
-                                canvas.width = imageData.width;
-                                canvas.height = imageData.height;
-                                const ctx = canvas.getContext('2d');
-                                if (ctx) {
-                                    ctx.putImageData(imageData, 0, 0);
-                                    blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg'));
-                                }
-                            }
-                        }
+                        const blob = await nefViewer.extractWithFallback(pathSchema);
 
                         if (blob && active) {
                             objectUrl = URL.createObjectURL(blob);
@@ -166,6 +210,23 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ image, onClose }) => {
                     <X size={24} />
                 </button>
 
+                {/* Image Position Indicator */}
+                {allImages && allImages.length > 1 && (
+                    <div style={{
+                        position: 'absolute',
+                        top: 20,
+                        right: 20,
+                        background: 'rgba(0,0,0,0.7)',
+                        padding: '8px 16px',
+                        borderRadius: 4,
+                        color: '#ccc',
+                        fontSize: '0.9em',
+                        zIndex: 10
+                    }}>
+                        {currentIndex + 1} / {allImages.length}
+                    </div>
+                )}
+
                 {loading ? (
                     <div style={{ color: '#aaa' }}>Loading preview...</div>
                 ) : src ? (
@@ -194,9 +255,26 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ image, onClose }) => {
                     <h2 style={{ fontSize: '1.2em', margin: '0 0 10px 0', wordBreak: 'break-all' }}>{image.file_name}</h2>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#aaa', fontSize: '0.9em' }}>
                         <FileText size={14} />
-                        <span style={{ wordBreak: 'break-all' }}>{image.file_path}</span>
+                        <span style={{ wordBreak: 'break-all' }}>{image.win_path || image.file_path}</span>
+                    </div>
+                    <div style={{ marginTop: 5, fontSize: '0.8em', color: '#666' }}>
+                        {dateStr}
                     </div>
                 </div>
+
+                {image.title && (
+                    <div>
+                        <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>TITLE</div>
+                        <div style={{ fontSize: '1em' }}>{image.title}</div>
+                    </div>
+                )}
+
+                {image.description && (
+                    <div>
+                        <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>DESCRIPTION</div>
+                        <div style={{ fontSize: '0.9em', color: '#ccc', whiteSpace: 'pre-wrap' }}>{image.description}</div>
+                    </div>
+                )}
 
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0', borderTop: '1px solid #333', borderBottom: '1px solid #333' }}>
                     <div style={{ flex: 1 }}>
@@ -227,21 +305,123 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ image, onClose }) => {
                     </div>
                 </div>
 
-                <div>
-                    <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 8 }}>DETAILS</div>
-                    <div style={{ fontSize: '0.9em', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Calendar size={14} color="#888" />
-                            <span>{dateStr}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Tag size={14} color="#888" />
-                            <span>ID: {image.id}</span>
-                        </div>
+                {!detailsLoaded && (
+                    <div style={{ borderTop: '1px solid #333', paddingTop: 15, color: '#888', fontSize: '0.85em', fontStyle: 'italic' }}>
+                        Loading detailed information...
                     </div>
-                </div>
+                )}
 
-                {/* Placeholder for tags/keywords if we implemented them */}
+                {detailsLoaded && (
+                    <>
+                        {/* Scores Section */}
+                        <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
+                            <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 15, color: '#ddd' }}>Model Scores</div>
+
+                            <ScoreBar label="General" value={image.score_general} color="#ff5722" />
+                            <ScoreBar label="Technical" value={image.score_technical} />
+                            <ScoreBar label="Aesthetic" value={image.score_aesthetic} />
+
+                            {image.score_spaq > 0 && <ScoreBar label="SPAQ" value={image.score_spaq} />}
+                            {image.score_ava > 0 && <ScoreBar label="AVA" value={image.score_ava} />}
+                            {image.score_koniq > 0 && <ScoreBar label="KonIQ" value={image.score_koniq} />}
+                            {image.score_paq2piq > 0 && <ScoreBar label="PaQ2PiQ" value={image.score_paq2piq} />}
+                            {image.score_liqe > 0 && <ScoreBar label="LIQE" value={image.score_liqe} />}
+                        </div>
+
+                        {/* Keywords / Tags */}
+                        {image.keywords && (
+                            <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
+                                <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 8 }}>KEYWORDS</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                    {image.keywords.split(',').map((tag: string, i: number) => (
+                                        <span key={i} style={{
+                                            background: '#333',
+                                            padding: '2px 8px',
+                                            borderRadius: 4,
+                                            fontSize: '0.8em',
+                                            color: '#ccc'
+                                        }}>
+                                            {tag.trim()}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Technical Info */}
+                        <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
+                            <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Technical Info</div>
+                            <div style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {image.file_type && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>File Type:</span>
+                                        <span style={{ fontFamily: 'monospace' }}>{image.file_type}</span>
+                                    </div>
+                                )}
+                                {image.image_hash && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                        <span style={{ color: '#888' }}>Hash (SHA256):</span>
+                                        <span style={{ fontFamily: 'monospace', fontSize: '0.75em', wordBreak: 'break-all', color: '#999' }}>
+                                            {image.image_hash}
+                                        </span>
+                                    </div>
+                                )}
+                                {image.model_version && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>Model Version:</span>
+                                        <span>{image.model_version}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Stack/Burst Info */}
+                        {(image.stack_id || image.burst_uuid) && (
+                            <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
+                                <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Stack/Burst</div>
+                                <div style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {image.stack_id && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: '#888' }}>Stack ID:</span>
+                                            <span>{image.stack_id}</span>
+                                        </div>
+                                    )}
+                                    {image.burst_uuid && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <span style={{ color: '#888' }}>Burst UUID:</span>
+                                            <span style={{ fontFamily: 'monospace', fontSize: '0.75em', wordBreak: 'break-all', color: '#999' }}>
+                                                {image.burst_uuid}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Database IDs */}
+                        <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
+                            <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Database Info</div>
+                            <div style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: '#888' }}>Image ID:</span>
+                                    <span>{image.id}</span>
+                                </div>
+                                {image.job_id && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>Job ID:</span>
+                                        <span>{image.job_id}</span>
+                                    </div>
+                                )}
+                                {image.folder_id && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#888' }}>Folder ID:</span>
+                                        <span>{image.folder_id}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

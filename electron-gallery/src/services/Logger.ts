@@ -16,10 +16,11 @@ export class Logger {
     }
 
     private static log(level: string, message: string, data?: any) {
-        // Log to console for dev
+        // Log to console for dev (only WARN and ERROR to reduce noise)
         if (level === 'ERROR') console.error(message, data);
         else if (level === 'WARN') console.warn(message, data);
-        else console.log(`[${level}] ${message}`, data);
+        // Suppress INFO and DEBUG from console to reduce noise
+        // else console.log(`[${level}] ${message}`, data);
 
         // Send to Electron backend
         if (window.electron && window.electron.log) {
