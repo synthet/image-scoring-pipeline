@@ -129,6 +129,7 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
         debug.log_metric("Avg Resolve Time", f"{resolve_ms_total/len(rows):.2f}" if len(rows)>0 else "0", "ms")
         debug.log_metric("Max Resolve Time", f"{resolve_ms_max:.2f}", "ms")
 
+        print(f"DEBUG: get_gallery_data - Rows: {len(rows)}, Total Count: {total_count}, Images: {len(images)}, Raw Paths: {len(raw_paths)}")
         
         return images, page_label, total_pages, raw_paths
         
@@ -396,6 +397,8 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
             min_gen, min_aes, min_tech, start_date, end_date, folder, stack_id
         )
         
+        print(f"DEBUG: update_gallery - Returning {len(images)} images and {len(raw_paths)} raw_paths")
+
         # Details cleared must match detail_outputs list
         # We need a predictable list of default values for all detail outputs
         # List order: [res_info, gen_label, weighted_label, models_label, details_state, delete_btn, title, desc, keywords, rating, label, save_status, current_path, culling_html, fix_btn, fix_status, rerun_score_btn, rerun_tags_btn, selected_index]

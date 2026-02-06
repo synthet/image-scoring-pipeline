@@ -69,6 +69,11 @@ def get_tree_html(selected_path=None):
             norm = os.path.normpath(local_p)
             
             if os.name == 'nt':
+                 # Enforce drive letter Start (e.g. C:\ or D:\)
+                 # This filters out \mnt, \, and relative paths which appear when using WSL paths on Windows
+                 if len(norm) < 2 or norm[1] != ':':
+                     continue
+
                  # Check if normalized path starts with \mnt or is just \
                  if norm.startswith('\\mnt') or norm == '\\':
                      continue

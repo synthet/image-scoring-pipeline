@@ -6,6 +6,7 @@ declare global {
             ping: () => Promise<string>;
             getImageCount: () => Promise<number | { error: string }>;
             getImages: (options?: { limit?: number; offset?: number; folderId?: number }) => Promise<any[]>;
+            getImageDetails: (id: number) => Promise<any>;
             getFolders: () => Promise<any[]>;
             log: (level: string, message: string, data?: any) => Promise<boolean>;
         };

@@ -26,6 +26,7 @@ const TreeNode: React.FC<{ node: FolderType; onSelect: (f: FolderType) => void; 
         <div>
             <div
                 onClick={handleClick}
+                onDoubleClick={handleToggle}
                 style={{
                     paddingLeft: depth * 16 + 4,
                     paddingRight: 8,

@@ -75,9 +75,64 @@ app.whenReady().then(() => {
         }
     });
 
+    ipcMain.handle('db:get-image-details', async (_, id) => {
+        try {
+            return await db.getImageDetails(id);
+        } catch (e: any) {
+            console.error('DB Error (details):', e);
+            return null;
+        }
+    });
+
     ipcMain.handle('db:get-folders', async () => {
         try {
-            return await db.getFolders();
+            const rawFolders = await db.getFolders();
+
+            // Helper to convert paths (similar to python modules/utils.py)
+            const convertPathToLocal = (p: string) => {
+                const isWindows = process.platform === 'win32';
+                if (isWindows) {
+                    const pStr = p.replace(/\\/g, '/');
+                    if (pStr.startsWith('/mnt/')) {
+                        // /mnt/d/foo -> parts=["", "mnt", "d", "foo"]
+                        const parts = pStr.split('/');
+                        if (parts.length > 2 && parts[2].length === 1) {
+                            const drive = parts[2].toUpperCase();
+                            const rest = parts.slice(3).join('/');
+                            // Handle root of drive case /mnt/d -> D:/
+                            return `${drive}:/${rest}`;
+                        }
+                    }
+                }
+                return p;
+            };
+
+            const processed = rawFolders.map((f: any) => {
+                return { ...f, path: convertPathToLocal(f.path) };
+            }).filter((f: any) => {
+                if (process.platform === 'win32') {
+                    // Only keep paths that look like drive paths (C:/...)
+                    // Filter out /mnt, /, ., or relative paths
+                    // Must start with X:
+                    const isDrivePath = /^[a-zA-Z]:/.test(f.path);
+                    if (!isDrivePath) return false;
+
+                    // Filter out strict WSL artifacts if they somehow passed (unlikely if regex matches)
+                    if (f.path.startsWith('/mnt') || f.path === '/' || f.path === '.') return false;
+
+                    return true;
+                }
+                return true;
+            });
+
+            // Deduplicate by path (if multiple DB entries map to same local path)
+            // But we need to keep IDs. 
+            // If we have duplicates, we might have issues with parent_id linkage?
+            // For now, let's just return the processed list. The frontend uses IDs.
+            // If ID 1 maps to D:/ and ID 2 maps to D:/, and ID 3 parent is 1...
+            // It should be fine.
+
+            return processed;
         } catch (e: any) {
             console.error('DB Error:', e);
             return [];

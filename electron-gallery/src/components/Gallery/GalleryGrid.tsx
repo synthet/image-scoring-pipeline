@@ -12,10 +12,15 @@ interface Image {
     label: string | null;
 }
 
+import type { Folder } from '../Tree/treeUtils';
+import { Folder as FolderIcon } from 'lucide-react';
+
 interface GalleryGridProps {
     images: Image[];
     onSelect?: (image: Image) => void;
     onEndReached?: () => void;
+    subfolders?: Folder[];
+    onSelectFolder?: (folder: Folder) => void;
 }
 
 const ItemContainer = React.forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
@@ -53,7 +58,7 @@ const ItemWrapper = React.forwardRef<HTMLDivElement, any>(({ children, ...props 
     </div>
 ));
 
-export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEndReached }) => {
+export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEndReached, subfolders, onSelectFolder }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -148,6 +153,44 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEn
         log('atBottomStateChange', { atBottom, totalCount: images.length }, 'A');
         // #endregion
     }, [images.length]);
+
+    if (images.length === 0 && subfolders && subfolders.length > 0) {
+        return (
+            <div style={{ padding: 20, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {subfolders.map(folder => (
+                    <div
+                        key={folder.id}
+                        onClick={() => onSelectFolder?.(folder)}
+                        style={{
+                            width: 120,
+                            height: 100,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: '#252526',
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                            color: '#ccc'
+                        }}
+                        className="hover:bg-gray-700"
+                    >
+                        <FolderIcon size={48} fill="#e8bf6a" color="#e8bf6a" />
+                        <span style={{
+                            marginTop: 8,
+                            fontSize: 12,
+                            textAlign: 'center',
+                            wordBreak: 'break-word',
+                            maxWidth: '100%',
+                            padding: '0 4px'
+                        }}>
+                            {folder.title}
+                        </span>
+                    </div>
+                ))}
+            </div>
+        );
+    }
 
     return (
         <div

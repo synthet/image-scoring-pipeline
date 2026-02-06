@@ -58,7 +58,24 @@ function App() {
       }
       content={
         <div style={{ height: '100%', overflow: 'hidden' }}>
-          <GalleryGrid images={images} onSelect={handleImageClick} onEndReached={loadMore} />
+          <GalleryGrid
+            images={images}
+            onSelect={handleImageClick}
+            onEndReached={loadMore}
+            subfolders={folders.flatMap(f => {
+              const find = (nodes: Folder[]): Folder | undefined => {
+                for (const node of nodes) {
+                  if (node.id === selectedFolderId) return node;
+                  if (node.children) {
+                    const found = find(node.children);
+                    if (found) return found;
+                  }
+                }
+              };
+              return find([f])?.children || [];
+            })} // Removed [0] as flatMap already returns the flattened array of children
+            onSelectFolder={handleSelectFolder}
+          />
           {openingImage && (
             <ImageViewer image={openingImage} onClose={closeViewer} />
           )}

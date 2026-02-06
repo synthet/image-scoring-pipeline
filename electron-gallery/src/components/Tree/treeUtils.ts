@@ -16,6 +16,9 @@ export function buildFolderTree(folders: any[]): Folder[] {
         // Extract folder name from path (Windows or Linux)
         const name = f.path ? f.path.split(/[/\\]/).pop() || f.path : 'Unknown';
 
+        // Skip "." folders or root artifacts if necessary
+        if (name === '.') return;
+
         map.set(f.id, { ...f, title: name, children: [] });
     });
 

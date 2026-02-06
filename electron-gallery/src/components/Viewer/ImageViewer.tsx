@@ -9,13 +9,24 @@ interface Image {
     rating: number;
     label: string | null;
     created_at?: string;
-    // Add other fields if needed from DB
+    thumbnail_path?: string;
 }
 
 interface ImageViewerProps {
     image: Image;
     onClose: () => void;
 }
+
+const isWebSafe = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+};
+
+const isRaw = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return ['nef', 'nrw', 'cr2', 'cr3', 'arw', 'orf', 'rw2', 'dng'].includes(ext);
+};
+
 
 export const ImageViewer: React.FC<ImageViewerProps> = ({ image, onClose }) => {
 
@@ -27,9 +38,92 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ image, onClose }) => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [onClose]);
 
-    // Construct media URL
-    // Ensure file_path is valid for media:// protocol
-    const src = image.file_path ? `media://${image.file_path}` : '';
+    const [previewSrc, setPreviewSrc] = React.useState<string>('');
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
+
+    // Load image effect
+    useEffect(() => {
+        let active = true;
+        let objectUrl: string | null = null;
+
+        const loadImage = async () => {
+            setLoading(true);
+            setError(null);
+            setPreviewSrc('');
+
+            try {
+                // Case 1: Web safe image - use direct path
+                if (isWebSafe(image.file_name)) {
+                    if (active) setPreviewSrc(`media://${image.file_path}`);
+                    return;
+                }
+
+                // Case 2: RAW image - try to extract/decode
+                if (isRaw(image.file_name)) {
+                    // Try to fetch the file data
+                    try {
+                        const response = await fetch(`media://${image.file_path}`);
+                        if (!response.ok) throw new Error(`Failed to load file: ${response.statusText}`);
+
+                        const buffer = await response.arrayBuffer();
+
+                        // Try fast embedded JPEG first
+                        const { nefViewer } = await import('../../utils/nefViewer');
+                        let blob = await nefViewer.extractEmbeddedJpeg(buffer);
+
+                        // If no embedded JPEG, try full decode (slow)
+                        if (!blob) {
+                            console.log('No embedded JPEG, trying full decode...');
+                            const imageData = await nefViewer.decodeRaw(buffer);
+                            if (imageData) {
+                                // Convert ImageData to Blob (via Canvas)
+                                const canvas = document.createElement('canvas');
+                                canvas.width = imageData.width;
+                                canvas.height = imageData.height;
+                                const ctx = canvas.getContext('2d');
+                                if (ctx) {
+                                    ctx.putImageData(imageData, 0, 0);
+                                    blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+                                }
+                            }
+                        }
+
+                        if (blob && active) {
+                            objectUrl = URL.createObjectURL(blob);
+                            setPreviewSrc(objectUrl);
+                            return;
+                        }
+                    } catch (err) {
+                        console.error('Failed to process RAW file:', err);
+                        // Fallthrough to thumbnail
+                    }
+                }
+
+                // Case 3: Fallback to thumbnail (server generated) or show error
+                if (image.thumbnail_path && active) {
+                    setPreviewSrc(`media://${image.thumbnail_path}`);
+                } else if (active) {
+                    setError('No preview available');
+                }
+
+            } catch (err) {
+                console.error('Image loading error:', err);
+                if (active) setError('Failed to load image');
+            } finally {
+                if (active) setLoading(false);
+            }
+        };
+
+        loadImage();
+
+        return () => {
+            active = false;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+    }, [image]);
+
+    const src = previewSrc;
 
     // Format date
     const dateStr = image.created_at ? new Date(image.created_at).toLocaleString() : 'Unknown';
@@ -72,14 +166,16 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ image, onClose }) => {
                     <X size={24} />
                 </button>
 
-                {src ? (
+                {loading ? (
+                    <div style={{ color: '#aaa' }}>Loading preview...</div>
+                ) : src ? (
                     <img
                         src={src}
                         alt={image.file_name}
                         style={{ maxWidth: '95%', maxHeight: '95%', objectFit: 'contain', boxShadow: '0 0 20px rgba(0,0,0,0.5)' }}
                     />
                 ) : (
-                    <div style={{ color: '#666' }}>Image not found</div>
+                    <div style={{ color: '#666' }}>{error || 'Image not found'}</div>
                 )}
             </div>
 

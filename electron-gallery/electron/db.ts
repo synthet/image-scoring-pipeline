@@ -99,13 +99,52 @@ export async function getImages(options: ImageQueryOptions = {}): Promise<any[]>
 
     const sql = `
         SELECT 
-            id, file_path, file_name, score_general, rating, label, created_at, thumbnail_path
-        FROM images
+            i.id, 
+            COALESCE(rp.windows_path, i.file_path) as file_path, 
+            i.file_name, 
+            i.score_general, 
+            i.rating, 
+            i.label, 
+            i.created_at, 
+            i.thumbnail_path
+        FROM images i
+        LEFT JOIN resolved_paths rp ON i.id = rp.image_id
         ${whereClause}
-        ORDER BY score_general DESC
+        ORDER BY i.score_general DESC
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     `;
     return query(sql, params);
+}
+
+export async function getImageDetails(id: number): Promise<any> {
+    const sql = `
+        SELECT 
+            i.*,
+            fp.path as win_path
+        FROM images i
+        LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
+        WHERE i.id = ?
+    `;
+    const rows = await query(sql, [id]);
+    const image = rows[0];
+
+    if (image) {
+        // Convert BLOBs to strings if they are buffers
+        const blobFields = ['KEYWORDS', 'DESCRIPTION', 'METADATA', 'SCORES_JSON'];
+        for (const field of blobFields) {
+            // Firebird node driver returns numeric BLOBs as byte buffers usually
+            // but node-firebird might return them as Buffers if we are lucky
+            // or we need to handle them. 
+            // In the query function we see no special hadling.
+            // Let's assume they come as Strings or Buffers.
+            const lowerField = field.toLowerCase();
+            if (image[lowerField] && Buffer.isBuffer(image[lowerField])) {
+                image[lowerField] = image[lowerField].toString('utf8');
+            }
+        }
+    }
+
+    return image;
 }
 
 export async function getFolders(): Promise<any[]> {

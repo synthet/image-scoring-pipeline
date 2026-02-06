@@ -6,7 +6,7 @@ def reset_sequences():
     conn = db.get_db()
     c = conn.cursor()
     
-    tables = ['JOBS', 'IMAGES', 'FOLDERS', 'STACKS', 'FILE_PATHS', 'RESOLVED_PATHS']
+    tables = ['JOBS', 'IMAGES', 'FOLDERS', 'STACKS', 'FILE_PATHS']
     
     try:
         for table in tables:

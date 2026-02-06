@@ -14,6 +14,8 @@ except ImportError:
     # Fallback/Mock for linting if package missing
     connect = None 
 
+import shutil
+
 DB_FILE = "scoring_history.fdb"
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(_PROJECT_ROOT, DB_FILE)
@@ -109,15 +111,18 @@ def get_db():
              # we might need to point client_library again if not in PATH.
              
              # Setup config
-             if driver_config and connect:
-                 fb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Firebird")
-                 if os.path.exists(fb_path):
-                      os.environ["FIREBIRD"] = fb_path
-                      if fb_path not in os.environ["PATH"]:
-                          os.environ["PATH"] += ";" + fb_path
+             # if driver_config and connect:
+             #    fb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Firebird")
+             #    if os.path.exists(fb_path):
+             #         os.environ["FIREBIRD"] = fb_path
+             #         if fb_path not in os.environ["PATH"]:
+             #             os.environ["PATH"] += ";" + fb_path
 
              # Resolve DB path from project root so it works when cwd differs (e.g. MCP spawned from user home)
              dsn = DB_PATH
+             print(f"DEBUG: get_db connecting to DSN: {dsn}")
+             if hasattr(driver_config, 'fb_client_library'):
+                 print(f"DEBUG: Client Lib: {driver_config.fb_client_library.value}")
              # dsn = os.path.normpath(os.path.join(_PROJECT_ROOT, DB_FILE)) 
              
         else:
@@ -219,10 +224,17 @@ def get_db():
         # Basic connection
         print(f"DEBUG: connect function: {connect}")
         import traceback
-    
-        conn = connect(dsn, user='sysdba', password='masterkey')
-        print(f"DEBUG: get_db dsn={dsn} conn={conn} type={type(conn)}")
-        print(f"DEBUG: get_db dsn={dsn} conn={conn}")
+        try:
+            print(f"DEBUG: get_db attempting connect to dsn={dsn}")
+            conn = connect(dsn, user='sysdba', password='masterkey', charset='UTF8')
+            print(f"DEBUG: get_db success. conn={conn}")
+        except Exception as e:
+             print(f"DEBUG: get_db connect failed: {e}")
+             traceback.print_exc()
+             raise e
+        
+        # print(f"DEBUG: get_db dsn={dsn} conn={conn} type={type(conn)}")
+        # print(f"DEBUG: get_db dsn={dsn} conn={conn}")
         # Emulate sqlite3.Row behavior (Access by name)
         # Firebird cursors return tuples. We can wrap.
         # Actually firebird-driver can return rows as dictionaries if configured?
@@ -637,103 +649,6 @@ def image_exists(file_path, current_version=None):
         return True
     return False
 
-def get_resolved_path(image_id, verified_only=False):
-    """
-    Get the resolved Windows path for an image from the database.
-    
-    Args:
-        image_id: The ID of the image
-        verified_only: If True, only return paths that have been verified (is_verified=1)
-    
-    Returns:
-        The resolved windows path string, or None if not found/verified
-    """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        query = "SELECT windows_path FROM resolved_paths WHERE image_id = ?"
-        if verified_only:
-            query += " AND is_verified = 1"
-            
-        c.execute(query, (image_id,))
-        row = c.fetchone()
-        if row:
-            return row[0] # row['windows_path']
-        return None
-    finally:
-        conn.close()
-
-def get_resolved_paths_batch(image_ids):
-    """
-    Get resolved Windows paths for a batch of image IDs.
-    Returns a dictionary mapping image_id -> windows_path.
-    Only returns verified paths.
-    """
-    if not image_ids:
-        return {}
-
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        # Firebird handles IN clause limits usually 1500. 50 is fine.
-        placeholders = ','.join(['?'] * len(image_ids))
-        query = f"SELECT image_id, windows_path FROM resolved_paths WHERE image_id IN ({placeholders}) AND is_verified = 1"
-        
-        c.execute(query, tuple(image_ids))
-        rows = c.fetchall()
-        
-        result = {}
-        for row in rows:
-            # Handle row/tuple. Index 0=image_id, 1=windows_path
-            # Assuming fetchall returns tuples or Row objects accessible by index
-            iid = row[0]
-            curr_path = row[1]
-            result[iid] = curr_path
-            
-        return result
-    finally:
-        conn.close()
-
-def verify_resolved_path(image_id):
-    """
-    Mark a resolved path as verified.
-    """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute("UPDATE resolved_paths SET is_verified = 1, last_checked = CURRENT_TIMESTAMP, verification_date = CURRENT_TIMESTAMP WHERE image_id = ?", (image_id,))
-        conn.commit()
-    finally:
-        conn.close()
-
-def add_resolved_path(image_id, windows_path):
-    """
-    Add or update a resolved path for an image.
-    Marks it as verified since it's verified by the caller (utils.resolve_file_path).
-    """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        # Check if exists to decide update vs insert (Firebird 3+ has UPDATE OR INSERT)
-        # Using standard approach for compatibility
-        c.execute("SELECT id FROM resolved_paths WHERE image_id = ?", (image_id,))
-        row = c.fetchone()
-        
-        if row:
-            c.execute("UPDATE resolved_paths SET windows_path = ?, is_verified = 1, last_checked = CURRENT_TIMESTAMP, verification_date = CURRENT_TIMESTAMP WHERE image_id = ?", (windows_path, image_id))
-        else:
-            c.execute("INSERT INTO resolved_paths (image_id, windows_path, is_verified, verification_date, last_checked) VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", (image_id, windows_path))
-            
-        conn.commit()
-    finally:
-        conn.close()
-
-def init_db():
-    """
-    Initialize the database with retries to handle transient locking/IO errors.
-    """
-    # Firebird: We assume DB is created via migration script.
-    # Just check connection to ensure embedded driver is working.
 def init_db():
     if os.environ.get('SKIP_DB_INIT'):
         print("DEBUG: SKIP_DB_INIT set, skipping DDL.")
@@ -766,6 +681,27 @@ def _index_exists(cursor, index_name):
     )
     return cursor.fetchone() is not None
 
+def _backup_db():
+    """Create a timestamped backup of the database."""
+    if not os.path.exists(DB_PATH):
+        return
+        
+    try:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{DB_PATH}.{timestamp}.bak"
+        print(f"Creating DB backup: {backup_path}")
+        shutil.copy2(DB_PATH, backup_path)
+    except Exception as e:
+        print(f"Warning: Failed to create DB backup: {e}")
+
+def _constraint_exists(cursor, constraint_name):
+    """Check if a constraint exists in Firebird database."""
+    cursor.execute(
+        "SELECT 1 FROM RDB$RELATION_CONSTRAINTS WHERE RDB$CONSTRAINT_NAME = ?",
+        (constraint_name.upper(),)
+    )
+    return cursor.fetchone() is not None
+
 def _init_db_impl():
     conn = get_db()
     c = conn.cursor()
@@ -780,7 +716,8 @@ def _init_db_impl():
             completed_at TIMESTAMP,
             log BLOB SUB_TYPE TEXT
         )''')
-        conn.commit()
+        try: conn.commit()
+        except: pass
     
     # Images table
     if not _table_exists(c, 'IMAGES'):
@@ -799,46 +736,25 @@ def _init_db_impl():
             scores_json BLOB SUB_TYPE TEXT,
             created_at TIMESTAMP
         )''')
-        conn.commit()
-        # Refresh cursor after commit just in case
+        try: conn.commit()
+        except: pass
         c = conn.cursor()
     
-    
-    # Check for missing columns (Schema Migration)
     # Check for missing columns (Schema Migration)
     c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'IMAGES'")
     columns = [row[0].strip().lower() for row in c.fetchall()]
-    print(f"DEBUG: Found IMAGES columns: {columns}")
     
     if "file_type" not in columns:
-        print("DEBUG: Adding file_type column")
-        c.execute("ALTER TABLE images ADD file_type TEXT")
-    
+        try: c.execute("ALTER TABLE images ADD file_type VARCHAR(20)")
+        except: pass
+
     if "thumbnail_path" not in columns:
-        c.execute("ALTER TABLE images ADD thumbnail_path TEXT")
+        try: c.execute("ALTER TABLE images ADD thumbnail_path VARCHAR(4000)")
+        except: pass
         
     if "scores_json" not in columns:
-        c.execute("ALTER TABLE images ADD scores_json TEXT")
-
-
-    # Migration for Stacks
-    if "stack_id" not in columns:
-        c.execute("ALTER TABLE images ADD stack_id INTEGER")
-        if not _index_exists(c, 'IDX_STACK_ID'):
-            c.execute("CREATE INDEX idx_stack_id ON images(stack_id)")
-    
-    # Composite index for efficient cover image lookup in stacks (stack_id + score for ordering)
-    # Moved index creation to end
-
-
-    # Migration for Folders
-    if "folder_id" not in columns:
-        c.execute("ALTER TABLE images ADD folder_id INTEGER")
-        if not _index_exists(c, 'IDX_FOLDER_ID'):
-            c.execute("CREATE INDEX idx_folder_id ON images(folder_id)")
-            
-    conn.commit()
-
+        try: c.execute("ALTER TABLE images ADD scores_json BLOB SUB_TYPE TEXT")
+        except: pass
 
     # Stacks table
     if not _table_exists(c, 'STACKS'):
@@ -848,7 +764,8 @@ def _init_db_impl():
             best_image_id INTEGER,
             created_at TIMESTAMP
         )''')
-        conn.commit()
+        try: conn.commit()
+        except: pass
     
     # Folders table
     if not _table_exists(c, 'FOLDERS'):
@@ -860,30 +777,34 @@ def _init_db_impl():
             is_keywords_processed INTEGER DEFAULT 0,
             created_at TIMESTAMP
         )''')
-        conn.commit()
+        try: conn.commit()
+        except: pass
     
     # Check For Folders Columns
-    c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'FOLDERS'")
-    folder_cols = [row[0].strip().lower() for row in c.fetchall()]
+    if _table_exists(c, 'FOLDERS'):
+        c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'FOLDERS'")
+        folder_cols = [row[0].strip().lower() for row in c.fetchall()]
 
-    if "is_fully_scored" not in folder_cols:
-         try: c.execute("ALTER TABLE folders ADD is_fully_scored INTEGER DEFAULT 0")
-         except: pass
+        if "is_fully_scored" not in folder_cols:
+             try: c.execute("ALTER TABLE folders ADD is_fully_scored INTEGER DEFAULT 0")
+             except: pass
 
-    if "is_keywords_processed" not in folder_cols:
-         try: c.execute("ALTER TABLE folders ADD is_keywords_processed INTEGER DEFAULT 0")
-         except: pass
-    
-    conn.commit()
+        if "is_keywords_processed" not in folder_cols:
+             try: c.execute("ALTER TABLE folders ADD is_keywords_processed INTEGER DEFAULT 0")
+             except: pass
+        
+        try: conn.commit()
+        except: pass
 
     if not _table_exists(c, 'CLUSTER_PROGRESS'):
         c.execute('''CREATE TABLE cluster_progress (
             folder_path VARCHAR(512) NOT NULL PRIMARY KEY,
             last_run TIMESTAMP
         )''')
-        conn.commit()
+        try: conn.commit()
+        except: pass
 
-    # Culling Sessions table - tracks culling workflow runs
+    # Culling Sessions table
     if not _table_exists(c, 'CULLING_SESSIONS'):
         c.execute('''CREATE TABLE culling_sessions (
             id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -898,9 +819,10 @@ def _init_db_impl():
             created_at TIMESTAMP,
             completed_at TIMESTAMP
         )''')
-        conn.commit()
+        try: conn.commit()
+        except: pass
 
-    # Culling Picks table - stores pick/reject decisions per session
+    # Culling Picks table
     if not _table_exists(c, 'CULLING_PICKS'):
         c.execute('''CREATE TABLE culling_picks (
             id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -912,112 +834,151 @@ def _init_db_impl():
             is_best_in_group SMALLINT DEFAULT 0,
             created_at TIMESTAMP
         )''')
-        conn.commit()
+        try: conn.commit()
+        except: pass
     
     # Index for fast lookup
     if not _index_exists(c, 'IDX_CULLING_PICKS_SESSION'):
-        c.execute("CREATE INDEX idx_culling_picks_session ON culling_picks(session_id)")
+        try: c.execute("CREATE INDEX idx_culling_picks_session ON culling_picks(session_id)")
+        except: pass
     if not _index_exists(c, 'IDX_CULLING_PICKS_IMAGE'):
-        c.execute("CREATE INDEX idx_culling_picks_image ON culling_picks(image_id)")
+        try: c.execute("CREATE INDEX idx_culling_picks_image ON culling_picks(image_id)")
+        except: pass
     
-    conn.commit()
-
-
-
-
-    # Migration for individual scores
-    if "score_spaq" not in columns:
-        c.execute("ALTER TABLE images ADD score_spaq REAL")
-    if "score_ava" not in columns:
-        c.execute("ALTER TABLE images ADD score_ava REAL")
-    if "score_koniq" not in columns:
-        c.execute("ALTER TABLE images ADD score_koniq REAL")
-    if "score_paq2piq" not in columns:
-        c.execute("ALTER TABLE images ADD score_paq2piq REAL")
-    if "score_liqe" not in columns:
-        c.execute("ALTER TABLE images ADD score_liqe REAL")
-
-    # Migration for Weighted Scores and Version
-    if "model_version" not in columns:
-        c.execute("ALTER TABLE images ADD model_version VARCHAR(255)")
-    if "score_technical" not in columns:
-        c.execute("ALTER TABLE images ADD score_technical REAL")
-    if "score_aesthetic" not in columns:
-        c.execute("ALTER TABLE images ADD score_aesthetic REAL")
-    if "score_general" not in columns:
-        c.execute("ALTER TABLE images ADD score_general REAL")
-
-    # Migration for Filtering
-    if "rating" not in columns:
-        c.execute("ALTER TABLE images ADD rating INTEGER")
-    if "label" not in columns:
-        c.execute("ALTER TABLE images ADD label VARCHAR(50)")
-
-    # Migration for Deduplication
-    if "image_hash" not in columns:
-        c.execute("ALTER TABLE images ADD image_hash VARCHAR(128)")
-        if not _index_exists(c, 'IDX_IMAGE_HASH'):
-            c.execute("CREATE INDEX idx_image_hash ON images(image_hash)")
-
-    # Migration for BurstUUID (Apple burst photos grouping)
-    if "burst_uuid" not in columns:
-        c.execute("ALTER TABLE images ADD burst_uuid VARCHAR(64)")
-        if not _index_exists(c, 'IDX_BURST_UUID'):
-            c.execute("CREATE INDEX idx_burst_uuid ON images(burst_uuid)")
-
-    # Migration for Multi-Path (File Paths Table)
-    if not _table_exists(c, 'FILE_PATHS'):
-        c.execute('''CREATE TABLE file_paths (
-            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-            image_id INTEGER,
-            path VARCHAR(4000),
-            last_seen TIMESTAMP
-        )''')
-
-    # Migration for Resolved Paths (Windows paths for native viewer)
-    if not _table_exists(c, 'RESOLVED_PATHS'):
-        c.execute('''CREATE TABLE resolved_paths (
-            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-            image_id INTEGER NOT NULL,
-            windows_path VARCHAR(4000) NOT NULL,
-            is_verified INTEGER DEFAULT 0,
-            verification_date TIMESTAMP,
-            last_checked TIMESTAMP
-        )''')
-    if not _index_exists(c, 'IDX_RESOLVED_PATHS_IMAGE'):
-        c.execute("CREATE INDEX idx_resolved_paths_image ON resolved_paths(image_id)")
-    # Note: Indexes on windows_path removed - VARCHAR(4000) exceeds Firebird index key size limit
-
-    
-    conn.commit()
-    conn.close()
-
-
-    # Separate connection for migrations to handle errors gracefully
-    conn = get_db()
-    c = conn.cursor()
-    
-    try:
-        c.execute("ALTER TABLE images ADD title TEXT")
-    except Exception:
-        pass
-
-    try:
-        c.execute("ALTER TABLE images ADD description TEXT")
-    except Exception:
-        pass
-
-    try:
-        c.execute("ALTER TABLE folders ADD is_fully_scored INTEGER DEFAULT 0")
-    except Exception:
-        pass
-
-    # Create composite index if not exists (Attempt at end to ensure columns exist)
-    try:
-        if not _index_exists(c, 'IDX_STACK_SCORE_GENERAL'):
-            c.execute("CREATE INDEX idx_stack_score_general ON images(stack_id, score_general)")
+    try: conn.commit()
     except: pass
+    
+    # Additional migrations (Scores etc)
+    if not _index_exists(c, 'IDX_STACK_ID') and "stack_id" in columns:
+        try: c.execute("CREATE INDEX idx_stack_id ON images(stack_id)")
+        except: pass
+    if not _index_exists(c, 'IDX_FOLDER_ID') and "folder_id" in columns:
+        try: c.execute("CREATE INDEX idx_folder_id ON images(folder_id)")
+        except: pass
+
+    
+    c = conn.cursor()
+    print("DEBUG: _init_db_impl started, checking for backup...")
+    try:
+        # Check if migration needed (e.g. missing columns or old tables)
+        migration_needed = False
         
+        # Check if RESOLVED_PATHS exists
+        if _table_exists(c, 'RESOLVED_PATHS'):
+             print("DEBUG: RESOLVED_PATHS exists, migration needed.")
+             migration_needed = True
+        else:
+             print("DEBUG: RESOLVED_PATHS not found.")
+             
+        # Check if FILE_PATHS needs columns
+        print("DEBUG: Checking FILE_PATHS columns...")
+        c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'FILE_PATHS'")
+        fp_cols = [row[0].strip().lower() for row in c.fetchall()]
+        print(f"DEBUG: FILE_PATHS columns: {fp_cols}")
+        
+        if "path_type" not in fp_cols or "is_verified" not in fp_cols:
+             migration_needed = True
+
+        if migration_needed:
+             print("Database migration required. Starting backup...")
+             # Close conn to release lock for backup
+             conn.close()
+             print("DEBUG: Closed conn for backup.")
+             _backup_db()
+             # Re-open
+             print("DEBUG: Re-opening DB after backup.")
+             conn = get_db()
+             c = conn.cursor()
+
+        # --- 1. Refactor FILE_PATHS & Merge RESOLVED_PATHS ---
+        
+        # Add columns to FILE_PATHS if missing
+        # Re-fetch columns in case we reopened? No, we have fp_cols but we need to check again if we want to be safe or just use logic.
+        # But wait, if we closed conn, we need to re-fetch?
+        # Yes, if we use fp_cols variable it is fine.
+        
+        print("DEBUG: Starting Schema updates...")
+        c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'FILE_PATHS'")
+        fp_cols = [row[0].strip().lower() for row in c.fetchall()]
+        
+        if "path_type" not in fp_cols:
+             print("Migrating FILE_PATHS: Adding path_type...")
+             c.execute("ALTER TABLE file_paths ADD path_type VARCHAR(10) DEFAULT 'WSL'")
+             conn.commit()
+             c = conn.cursor() # Refresh cursor
+             
+             print("Migrating FILE_PATHS: Updating path_type default...")
+             c.execute("UPDATE file_paths SET path_type = 'WSL'") 
+             conn.commit()
+             c = conn.cursor()
+        
+        if "is_verified" not in fp_cols:
+             print("Migrating FILE_PATHS: Adding is_verified...")
+             c.execute("ALTER TABLE file_paths ADD is_verified SMALLINT DEFAULT 0")
+             conn.commit()
+             c = conn.cursor()
+        if "verification_date" not in fp_cols:
+             print("Migrating FILE_PATHS: Adding verification_date...")
+             c.execute("ALTER TABLE file_paths ADD verification_date TIMESTAMP")
+             conn.commit()
+             c = conn.cursor()
+
+        # Migrate RESOLVED_PATHS -> FILE_PATHS
+        if _table_exists(c, 'RESOLVED_PATHS'):
+             print("Migrating RESOLVED_PATHS -> FILE_PATHS...")
+             # Move data
+             c.execute("""
+                INSERT INTO file_paths (image_id, path, path_type, is_verified, verification_date, last_seen)
+                SELECT image_id, windows_path, 'WIN', is_verified, verification_date, last_checked 
+                FROM resolved_paths
+             """)
+             # Drop old table
+             c.execute("DROP TABLE resolved_paths")
+
+        # --- 2. Enforce Integirty (Foreign Keys) ---
+
+        # FK_FILE_PATHS_IMAGES
+        if not _constraint_exists(c, 'FK_FILE_PATHS_IMAGES'):
+             print("Applying FK_FILE_PATHS_IMAGES...")
+             c.execute("DELETE FROM file_paths WHERE image_id NOT IN (SELECT id FROM images)")
+             conn.commit()
+             c.execute("ALTER TABLE file_paths ADD CONSTRAINT fk_file_paths_images FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE")
+
+        # FK_IMAGES_FOLDERS
+        if not _constraint_exists(c, 'FK_IMAGES_FOLDERS') and _table_exists(c, 'FOLDERS'):
+             print("Applying FK_IMAGES_FOLDERS...")
+             # Set invalid folder_ids to NULL
+             c.execute("UPDATE images SET folder_id = NULL WHERE folder_id NOT IN (SELECT id FROM folders)")
+             c.execute("ALTER TABLE images ADD CONSTRAINT fk_images_folders FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE SET NULL")
+
+        # FK_FOLDERS_PARENT
+        if not _constraint_exists(c, 'FK_FOLDERS_PARENT') and _table_exists(c, 'FOLDERS'):
+             print("Applying FK_FOLDERS_PARENT...")
+             c.execute("UPDATE folders SET parent_id = NULL WHERE parent_id NOT IN (SELECT id FROM folders)")
+             # Prevent self-reference issues? Parent must exist.
+             c.execute("ALTER TABLE folders ADD CONSTRAINT fk_folders_parent FOREIGN KEY (parent_id) REFERENCES folders(id) ON DELETE CASCADE")
+
+        # FK_CULLING_PICKS
+        if _table_exists(c, 'CULLING_PICKS'):
+             if not _constraint_exists(c, 'FK_CULLING_PICKS_IMAGES'):
+                 print("Applying FK_CULLING_PICKS_IMAGES...")
+                 c.execute("DELETE FROM culling_picks WHERE image_id NOT IN (SELECT id FROM images)")
+                 c.execute("ALTER TABLE culling_picks ADD CONSTRAINT fk_culling_picks_images FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE")
+             
+             if not _constraint_exists(c, 'FK_CULLING_PICKS_SESSIONS') and _table_exists(c, 'CULLING_SESSIONS'):
+                 print("Applying FK_CULLING_PICKS_SESSIONS...")
+                 c.execute("DELETE FROM culling_picks WHERE session_id NOT IN (SELECT id FROM culling_sessions)")
+                 c.execute("ALTER TABLE culling_picks ADD CONSTRAINT fk_culling_picks_sessions FOREIGN KEY (session_id) REFERENCES culling_sessions(id) ON DELETE CASCADE")
+
+        # Index on path_type
+        if _table_exists(c, 'FILE_PATHS') and not _index_exists(c, 'IDX_FILE_PATHS_IMG_TYPE'):
+             c.execute("CREATE INDEX idx_file_paths_img_type ON file_paths(image_id, path_type)")
+
+    except Exception as e:
+        print(f"Migration error: {e}")
+        import traceback
+        traceback.print_exc()
+
     conn.commit()
     conn.close()
 
@@ -1141,15 +1102,19 @@ def update_image_folder_id(image_hash=None, image_id=None):
         except: pass
 
 def register_image_path(image_id, path):
-
     """
-    Registers a path for a given image ID.
+    Registers a path for a given image ID (default type='WSL').
     """
     conn = get_db()
     c = conn.cursor()
     try:
-        c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?) MATCHING (image_id, path)", 
-                  (image_id, path, datetime.datetime.now()))
+        # Default logic: merge into matches.
+        # This function typically called from scoring (Linux/WSL)
+        path_type = 'WSL'
+        
+        # Check if already exists?
+        c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, path_type, last_seen) VALUES (?, ?, ?, ?) MATCHING (image_id, path)", 
+                  (image_id, path, path_type, datetime.datetime.now()))
         conn.commit()
     except Exception as e:
         logging.error(f"Failed to register path {path} for image {image_id}: {e}")
@@ -1197,15 +1162,7 @@ def _convert_to_windows_path(path):
 
 def resolve_windows_path(image_id, wsl_path, verify=True):
     """
-    Resolves a WSL/Unix path to Windows format and stores in resolved_paths.
-    
-    Args:
-        image_id: The image ID in the database
-        wsl_path: The path to convert (WSL or any format)
-        verify: If True, verify file exists (Windows only)
-    
-    Returns:
-        The Windows path if successful, None if conversion fails
+    Resolves a WSL/Unix path to Windows format and stores in file_paths (type='WIN').
     """
     import platform
     
@@ -1230,12 +1187,17 @@ def resolve_windows_path(image_id, wsl_path, verify=True):
     conn = get_db()
     c = conn.cursor()
     try:
-        c.execute('''
-            UPDATE OR INSERT INTO resolved_paths 
-            (image_id, windows_path, is_verified, verification_date, last_checked)
-            VALUES (?, ?, ?, ?, ?)
-            MATCHING (image_id, windows_path)
-        ''', (image_id, windows_path, is_verified, verification_date, now))
+        # Check existing 'WIN' path
+        c.execute("SELECT id FROM file_paths WHERE image_id = ? AND path_type = 'WIN'", (image_id,))
+        row = c.fetchone()
+        
+        if row:
+             c.execute("UPDATE file_paths SET path = ?, is_verified = ?, verification_date = ?, last_seen = ? WHERE id = ?", 
+                       (windows_path, is_verified, verification_date, now, row[0]))
+        else:
+             c.execute("INSERT INTO file_paths (image_id, path, path_type, is_verified, verification_date, last_seen) VALUES (?, ?, 'WIN', ?, ?, ?)",
+                       (image_id, windows_path, is_verified, verification_date, now))
+                       
         conn.commit()
         return windows_path
     except Exception as e:
@@ -1247,29 +1209,16 @@ def resolve_windows_path(image_id, wsl_path, verify=True):
 
 def get_resolved_path(image_id, verified_only=True):
     """
-    Returns the Windows path for an image from resolved_paths.
-    
-    Args:
-        image_id: The image ID
-        verified_only: If True, only return paths that have been verified to exist
-    
-    Returns:
-        The Windows path if found, None otherwise
+    Returns the Windows path for an image from file_paths (type='WIN').
     """
     conn = get_db()
     c = conn.cursor()
     
+    query = "SELECT path FROM file_paths WHERE image_id = ? AND path_type = 'WIN'"
     if verified_only:
-        c.execute(
-            "SELECT windows_path FROM resolved_paths WHERE image_id = ? AND is_verified = 1",
-            (image_id,)
-        )
-    else:
-        c.execute(
-            "SELECT windows_path FROM resolved_paths WHERE image_id = ?",
-            (image_id,)
-        )
-    
+        query += " AND is_verified = 1"
+        
+    c.execute(query, (image_id,))
     row = c.fetchone()
     conn.close()
     return row[0] if row else None
@@ -1278,10 +1227,6 @@ def get_resolved_path(image_id, verified_only=True):
 def verify_resolved_path(image_id):
     """
     Verifies that a resolved path still exists on disk.
-    Updates the is_verified flag accordingly.
-    
-    Returns:
-        True if path exists and is verified, False otherwise
     """
     import platform
     import os
@@ -1291,7 +1236,7 @@ def verify_resolved_path(image_id):
     
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT id, windows_path FROM resolved_paths WHERE image_id = ?", (image_id,))
+    c.execute("SELECT id, path FROM file_paths WHERE image_id = ? AND path_type = 'WIN'", (image_id,))
     row = c.fetchone()
     
     if not row:
@@ -1302,22 +1247,41 @@ def verify_resolved_path(image_id):
     windows_path = row[1]
     now = datetime.datetime.now()
     
-    if os.path.exists(windows_path):
-        c.execute(
-            "UPDATE resolved_paths SET is_verified = 1, verification_date = ?, last_checked = ? WHERE id = ?",
-            (now, now, rp_id)
-        )
-        conn.commit()
+    exists = os.path.exists(windows_path)
+    
+    # Update status
+    c.execute("UPDATE file_paths SET is_verified = ?, verification_date = ?, last_seen = ? WHERE id = ?",
+              (1 if exists else 0, now if exists else None, now, rp_id))
+    
+    conn.commit()
+    conn.close()
+    return exists
+
+def get_resolved_paths_batch(image_ids):
+    """
+    Get resolved Windows paths for a batch of image IDs.
+    Returns a dictionary mapping image_id -> windows_path.
+    Only returns verified paths.
+    """
+    if not image_ids:
+        return {}
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        placeholders = ','.join(['?'] * len(image_ids))
+        query = f"SELECT image_id, path FROM file_paths WHERE image_id IN ({placeholders}) AND path_type = 'WIN' AND is_verified = 1"
+        
+        c.execute(query, tuple(image_ids))
+        rows = c.fetchall()
+        
+        result = {}
+        for row in rows:
+            result[row[0]] = row[1]
+            
+        return result
+    finally:
         conn.close()
-        return True
-    else:
-        c.execute(
-            "UPDATE resolved_paths SET is_verified = 0, verification_date = NULL, last_checked = ? WHERE id = ?",
-            (now, rp_id)
-        )
-        conn.commit()
-        conn.close()
-        return False
 
 def get_folder_by_id(folder_id):
     conn = get_db()
