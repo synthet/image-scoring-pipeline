@@ -538,6 +538,128 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
     finally:
         conn.close()
 
+def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
+    """
+    Get paginated images AND total count in a SINGLE database query using window functions.
+    This is more efficient than calling get_images_paginated() and get_image_count() separately.
+    
+    Returns:
+        tuple: (rows, total_count) where rows is list of image records and total_count is int
+    """
+    # Load page_size from config if not provided
+    if page_size is None:
+        from modules import config
+        ui_config = config.get_config_section('ui')
+        page_size = ui_config.get('gallery_page_size', 50)
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Ensure integers
+    try: page = int(page)
+    except: page = 1
+    try: page_size = int(page_size)
+    except: page_size = 50
+    
+    offset = (page - 1) * page_size
+    if offset < 0: offset = 0
+    
+    # Build base query with window function for count
+    # COUNT(*) OVER() gives us total count without a separate query
+    query = "SELECT *, COUNT(*) OVER() as total_count FROM images"
+    params = []
+    conditions = []
+    
+    # Rating filter
+    if rating_filter:
+        placeholders = ','.join(['?'] * len(rating_filter))
+        conditions.append(f"rating IN ({placeholders})")
+        params.extend(rating_filter)
+    
+    # Label filter    
+    if label_filter:
+        clean_labels = [l for l in label_filter if l != "None"]
+        has_none = "None" in label_filter
+        
+        lbl_conds = []
+        if clean_labels:
+            placeholders = ','.join(['?'] * len(clean_labels))
+            lbl_conds.append(f"label IN ({placeholders})")
+            params.extend(clean_labels)
+            
+        if has_none:
+            lbl_conds.append("(label IS NULL OR label = '')")
+            
+        if lbl_conds:
+            conditions.append(f"({' OR '.join(lbl_conds)})")
+    
+    # Keyword filter
+    if keyword_filter and keyword_filter.strip():
+        conditions.append("keywords LIKE ?")
+        params.append(f"%{keyword_filter.strip()}%")
+    
+    # Score Filters
+    if min_score_general > 0:
+        conditions.append("score_general >= ?")
+        params.append(min_score_general)
+    
+    if min_score_aesthetic > 0:
+        conditions.append("score_aesthetic >= ?")
+        params.append(min_score_aesthetic)
+
+    if min_score_technical > 0:
+        conditions.append("score_technical >= ?")
+        params.append(min_score_technical)
+
+    # Date Filter
+    if date_range:
+        start_date, end_date = date_range
+        if start_date:
+            conditions.append("CAST(created_at AS DATE) >= CAST(? AS DATE)")
+            params.append(start_date)
+        if end_date:
+            conditions.append("CAST(created_at AS DATE) <= CAST(? AS DATE)")
+            params.append(end_date)
+    
+    # Folder filter
+    if folder_path:
+        folder_id = get_or_create_folder(folder_path)
+        conditions.append("folder_id = ?")
+        params.append(folder_id)
+
+    # Stack filter
+    if stack_id:
+        conditions.append("stack_id = ?")
+        params.append(stack_id)
+
+    # Add WHERE clause if we have conditions
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    
+    # Add ORDER BY and pagination
+    query += f" ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+    params.extend([offset, page_size])
+    
+    try:
+        c.execute(query, tuple(params))
+        rows = c.fetchall()
+        
+        # Extract total_count from first row (all rows will have same count due to window function)
+        total_count = 0
+        if rows:
+            # Get total_count from first row
+            total_count = rows[0]['total_count'] if 'total_count' in rows[0].keys() else rows[0][-1]
+            # Convert to int if needed
+            total_count = int(total_count) if total_count else 0
+        
+        return rows, total_count
+        
+    except Exception as e:
+        print(f"ERROR in get_images_paginated_with_count: {e}")
+        raise
+    finally:
+        conn.close()
+
 def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     """
     Returns a list of file_paths matching the filters (No pagination).

@@ -10,6 +10,10 @@ interface Image {
     score_general: number;
     rating: number;
     label: string | null;
+    created_at?: string;
+    title?: string;
+    description?: string;
+    keywords?: string;
 }
 
 import type { Folder } from '../Tree/treeUtils';

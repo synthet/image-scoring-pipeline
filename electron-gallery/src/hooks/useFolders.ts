@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { buildFolderTree } from '../components/Tree/treeUtils';
-import type { Folder } from '../components/Tree/treeUtils';
 
 export function useFolders() {
     const [flatFolders, setFlatFolders] = useState<any[]>([]);

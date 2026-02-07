@@ -21,26 +21,13 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
     try:
         wsl_folder = utils.convert_path_to_wsl(folder) if folder else None
         
+        # OPTIMIZATION: Use combined query to get rows AND count in single DB round-trip
         rows = []
-        with debug.PerformanceTimer("Gallery DB Query"):
-            rows = db.get_images_paginated(
+        total_count = 0
+        with debug.PerformanceTimer("Gallery Combined DB Query"):
+            rows, total_count = db.get_images_paginated_with_count(
                 page, page_size, sort_by, sort_order, 
                 rating_filter, label_filter, keyword_filter, 
-                min_score_general=min_gen, 
-                min_score_aesthetic=min_aes, 
-                min_score_technical=min_tech, 
-                date_range=date_range,
-                folder_path=wsl_folder,
-                stack_id=stack_id
-            )
-
-        
-
-        with debug.PerformanceTimer("Gallery Count Query"):
-            total_count = db.get_image_count(
-                rating_filter=rating_filter,
-                label_filter=label_filter,
-                keyword_filter=keyword_filter,
                 min_score_general=min_gen, 
                 min_score_aesthetic=min_aes, 
                 min_score_technical=min_tech, 
@@ -61,6 +48,9 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
             used_thumb = 0
             resolved_ok = 0
             resolved_none = 0
+            cache_hits = 0
+            cache_misses = 0
+            fallback_calls = 0
             
             # 1. Collect IDs for batch resolution
             image_ids = [row['id'] for row in rows if 'id' in row.keys() and row['id']]
@@ -69,7 +59,8 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
             resolved_map = {}
             if image_ids:
                 try:
-                    resolved_map = db.get_resolved_paths_batch(image_ids)
+                    with debug.PerformanceTimer("Batch Path Resolution"):
+                        resolved_map = db.get_resolved_paths_batch(image_ids)
                 except Exception as e:
                     print(f"Batch resolve error: {e}")
             
@@ -83,10 +74,11 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
                 
                 t_r0 = time.perf_counter()
                 
-                # Optimized Resolution Logic
+                # OPTIMIZED Resolution Logic
                 p = None
+                used_cache = False
                 
-                # Try Batch Map First (Fastest - Memory/DB Cache)
+                # Strategy 1: Try Batch Cache First (Fastest - Memory/DB Cache)
                 if image_id and image_id in resolved_map:
                     cached_path = resolved_map[image_id]
                     # Validate path format to avoid cached garbage
@@ -96,10 +88,14 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
                     if cached_path:
                         is_malformed = '\\' in cached_path and '/' in cached_path
                         if not is_malformed:
-                             p = cached_path
+                            p = cached_path
+                            used_cache = True
+                            cache_hits += 1
                 
+                # Strategy 2: Fallback to resolve_file_path (Slower)
                 if not p:
-                    # Fallback to slow legacy resolve
+                    cache_misses += 1
+                    fallback_calls += 1
                     if thumb_path:
                         used_thumb += 1
                         p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
@@ -112,6 +108,11 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
                 resolve_ms_total += dt_ms
                 if dt_ms > resolve_ms_max:
                     resolve_ms_max = dt_ms
+                
+                # Log slow resolutions for debugging
+                if dt_ms > 20 and not used_cache:
+                    debug.log_metric(f"Slow Resolve: {row['file_name']}", f"{dt_ms:.1f}", "ms")
+                
                 if p:
                     resolved_ok += 1
                 else:
@@ -126,8 +127,11 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
             
         page_label = f"Page {page} of {total_pages} ({total_count} images)"
 
+        # Performance Metrics
         debug.log_metric("Avg Resolve Time", f"{resolve_ms_total/len(rows):.2f}" if len(rows)>0 else "0", "ms")
         debug.log_metric("Max Resolve Time", f"{resolve_ms_max:.2f}", "ms")
+        debug.log_metric("Cache Hit Rate", f"{cache_hits}/{len(rows)} ({100*cache_hits/len(rows):.1f}%)" if len(rows)>0 else "0/0", "")
+        debug.log_metric("Fallback Calls", f"{fallback_calls}", "")
 
         print(f"DEBUG: get_gallery_data - Rows: {len(rows)}, Total Count: {total_count}, Images: {len(images)}, Raw Paths: {len(raw_paths)}")
         
@@ -311,7 +315,11 @@ def display_details(raw_paths, evt: gr.SelectData = None, forced_index=None):
         # Prepare Visual Outputs
         filename = details.get('file_name', os.path.basename(file_path))
         created = details.get('created_at', 'Unknown')
-        res_info = f"**File:** `{filename}`\n\n**Date:** {created}"
+        
+        # Convert path for display (WSL -> Windows if needed)
+        display_path = utils.convert_path_to_local(file_path)
+        
+        res_info = f"**File:** `{filename}`\n\n**Path:** `{display_path}`\n\n**Date:** {created}"
         
         gen_score = details.get('score_general')
         gen_score = float(gen_score) if gen_score is not None else 0.0
@@ -590,9 +598,9 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
                 d_score_models = gr.Label(label="Models")
                 d_culling_status = gr.HTML(value='<div style="display: none;"></div>')
                 
-                with gr.Accordion("✏️ Edit Metadata", open=False):
-                    d_title = gr.Textbox(label="Title")
-                    d_desc = gr.Textbox(label="Description")
+                with gr.Accordion("ℹ️ Image Details", open=False):
+                    d_title = gr.Textbox(label="Title", interactive=False)
+                    d_desc = gr.Textbox(label="Description", interactive=False)
                     # Use our custom color map so keyword chips aren't pastel-light (unreadable with white text)
                     d_keywords = gr.HighlightedText(
                         label="Keywords",
@@ -600,9 +608,9 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
                         color_map=common.KEYWORD_COLOR_MAP,
                     )
                     with gr.Row():
-                        d_rating = gr.Dropdown(choices=["0", "1", "2", "3", "4", "5"], label="Rating")
-                        d_label = gr.Dropdown(choices=["None", "Red", "Yellow", "Green", "Blue", "Purple"], label="Label")
-                    save_btn = gr.Button("💾 Save")
+                        d_rating = gr.Dropdown(choices=["0", "1", "2", "3", "4", "5"], label="Rating", interactive=False)
+                        d_label = gr.Dropdown(choices=["None", "Red", "Yellow", "Green", "Blue", "Purple"], label="Label", interactive=False)
+                    save_btn = gr.Button("💾 Save", visible=False)
                     save_status = gr.Label(visible=False)
 
                 with gr.Row():
