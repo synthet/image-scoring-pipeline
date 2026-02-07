@@ -5,6 +5,18 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.1] - 2026-02-07
+
+### Changed
+- **Build Updates**: Updated Electron Gallery compiled assets and dependencies.
+  - Rebuilt Electron app with latest NEF extraction improvements.
+  - Updated database migration scripts for path resolution.
+
+### Removed
+- **Cleanup**: Removed obsolete debug and test output files.
+  - Deleted temporary debug output files (`debug_output*.txt`, `output*.txt`).
+  - Removed old test result files (`test_results.txt`, `verify_*.txt`).
+
 ## [3.13.0] - 2026-02-06
 
 ### Added

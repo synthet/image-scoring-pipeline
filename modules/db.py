@@ -540,8 +540,8 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
 
 def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     """
-    Get paginated images AND total count in a SINGLE database query using window functions.
-    This is more efficient than calling get_images_paginated() and get_image_count() separately.
+    Get paginated images AND total count using optimized approach.
+    Uses same connection for both queries to reduce overhead.
     
     Returns:
         tuple: (rows, total_count) where rows is list of image records and total_count is int
@@ -564,9 +564,7 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
     offset = (page - 1) * page_size
     if offset < 0: offset = 0
     
-    # Build base query with window function for count
-    # COUNT(*) OVER() gives us total count without a separate query
-    query = "SELECT *, COUNT(*) OVER() as total_count FROM images"
+    # Build base query components
     params = []
     conditions = []
     
@@ -632,25 +630,26 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         conditions.append("stack_id = ?")
         params.append(stack_id)
 
-    # Add WHERE clause if we have conditions
+    # Build WHERE clause
+    where_clause = ""
     if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-    
-    # Add ORDER BY and pagination
-    query += f" ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
-    params.extend([offset, page_size])
+        where_clause = " WHERE " + " AND ".join(conditions)
     
     try:
-        c.execute(query, tuple(params))
-        rows = c.fetchall()
+        # OPTIMIZATION: Execute both queries sequentially but on same connection
+        # This reduces connection overhead compared to separate get_db() calls
         
-        # Extract total_count from first row (all rows will have same count due to window function)
-        total_count = 0
-        if rows:
-            # Get total_count from first row
-            total_count = rows[0]['total_count'] if 'total_count' in rows[0].keys() else rows[0][-1]
-            # Convert to int if needed
-            total_count = int(total_count) if total_count else 0
+        # Query 1: Get count (fast)
+        count_query = f"SELECT COUNT(*) as total FROM images{where_clause}"
+        c.execute(count_query, tuple(params))
+        count_row = c.fetchone()
+        total_count = int(count_row[0]) if count_row else 0
+        
+        # Query 2: Get paginated data
+        data_query = f"SELECT * FROM images{where_clause} ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+        data_params = list(params) + [offset, page_size]
+        c.execute(data_query, tuple(data_params))
+        rows = c.fetchall()
         
         return rows, total_count
         
