@@ -5,6 +5,7 @@ import re
 import datetime
 import shutil
 import subprocess
+import threading
 from PIL import Image, ImageOps, ExifTags
 import json
 import time
@@ -16,7 +17,20 @@ from modules import debug
 
 # Cache exiftool path to avoid repeated shutil.which checks
 # Cache exiftool path to avoid repeated shutil.which checks
+# Cache exiftool path to avoid repeated shutil.which checks
 _EXIFTOOL_PATH = shutil.which("exiftool")
+
+# Thread-local storage for request-scoped caching
+_thread_local = threading.local()
+
+def set_batch_path_cache(cache):
+    """Set the batch path cache for the current thread."""
+    _thread_local.path_cache = cache
+
+def clear_batch_path_cache():
+    """Clear the batch path cache for the current thread."""
+    if hasattr(_thread_local, 'path_cache'):
+        del _thread_local.path_cache
 
 
 def read_burst_uuid(image_path: str, metadata_json: str = None) -> str | None:
@@ -213,6 +227,14 @@ def resolve_file_path(db_path, image_id=None):
     converted_len = None
     db_ms = 0.0
     out = None
+
+    # Strategy 0: Check thread-local batch cache (Performance Optimization)
+    if image_id and hasattr(_thread_local, 'path_cache'):
+        # Batch cache is populated by gallery.py using get_resolved_paths_batch
+        # It contains only verified paths, so we can return immediately
+        cached = _thread_local.path_cache.get(image_id)
+        if cached:
+            return cached
 
     # Strategy 1: Check resolved_paths table if image_id is provided
     if image_id:

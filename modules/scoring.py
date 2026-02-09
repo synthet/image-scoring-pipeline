@@ -399,11 +399,12 @@ class ScoringRunner:
             elif gen >= 0.55: rating = 3
             elif gen >= 0.40: rating = 2
             
-            # Label Calculation
-            label = "Yellow" # Default Maybe
+            # Label Calculation (matches determine_lightroom_label)
+            # Red=Reject, Purple=Aesthetic beats tech, Blue=Portfolio, Green=Reference, Yellow=Maybe
+            label = "Yellow"
             if tech < 0.40: label = "Red"
-            elif aes > 0.75 and tech < 0.55: label = "Purple"
-            elif aes > 0.70 and tech > 0.70: label = "Blue"
+            elif tech < 0.65 and aes > tech and aes > 0.48: label = "Purple"
+            elif aes > 0.55 and tech > 0.65: label = "Blue"
             elif tech > 0.65: label = "Green"
             
             # 4. Update Database

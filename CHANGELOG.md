@@ -5,6 +5,29 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.0] - 2026-02-08
+
+### Added
+- **Firebird MCP Server**: Dedicated Model Context Protocol server for direct Firebird database administration and inspection (`firebird-admin`).
+- **Keyword Filtering**: Added support for keyword-based image filtering in the Electron Gallery.
+  - Implemented `getKeywords` in backend to extract unique tags from BLOB fields.
+  - Added keyword dropdown to the gallery UI for multi-tag search.
+- **Sorting Enhancements**: Added comprehensive sorting options (Date, Rating, Technical/Aesthetic/General Scores, Filename) with ASC/DESC support in Electron Gallery.
+- **Diagnostic Tools**: New utilities for image hash investigation (`find_hash_path.py`) and Firebird connectivity testing.
+
+### Fixed
+- **Tree View Root Duplication**: Resolved issue where multiple root nodes appeared in the Electron folder tree due to inconsistent path normalization.
+- **Database Path Resolution**: Improved Windows/WSL path mapping in Electron backend queries.
+- **MCP Configuration**: Corrected `mcp_config.json` schema and properties to ensure compatibility with Antigravity and other MCP clients.
+- **Schema Loading**: Fixed 404 error when loading MCP config schema from remote sources.
+
+### Changed
+- **Electron UI Polish**: 
+  - Updated score display to user-friendly percentages (e.g., "98%" instead of "0.98").
+  - Simplified technical metadata panel into a readable "Image Details" view including file type and SHA256 hash.
+  - Improved layout and responsiveness of the gallery header and navigation components.
+- **Gradio Performance**: Re-implemented SQL window functions and thread-local batch caching for significantly faster gallery rendering in the Python WebUI.
+
 ## [3.13.1] - 2026-02-07
 
 ### Changed

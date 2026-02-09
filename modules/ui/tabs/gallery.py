@@ -61,69 +61,70 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
                 try:
                     with debug.PerformanceTimer("Batch Path Resolution"):
                         resolved_map = db.get_resolved_paths_batch(image_ids)
+                        # Set thread-local cache for any downstream utils.resolve_file_path calls
+                        utils.set_batch_path_cache(resolved_map)
                 except Exception as e:
                     print(f"Batch resolve error: {e}")
             
-            for row in rows:
-                file_path = row['file_path']
-                raw_paths.append(file_path)
-                image_id = row['id'] if 'id' in row.keys() else None
-                
-                # Use thumbnail if available, with resolved_path fallback
-                thumb_path = row['thumbnail_path']
-                
-                t_r0 = time.perf_counter()
-                
-                # OPTIMIZED Resolution Logic
-                p = None
-                used_cache = False
-                
-                # Strategy 1: Try Batch Cache First (Fastest - Memory/DB Cache)
-                if image_id and image_id in resolved_map:
-                    cached_path = resolved_map[image_id]
-                    # Validate path format to avoid cached garbage
-                    # 1. Reject paths with mixed separators (e.g. /mnt/.../D:\...)
-                    # 2. Allow /mnt/ paths for WSL
-                    # 3. Allow drive letter paths for Windows
-                    if cached_path:
-                        is_malformed = '\\' in cached_path and '/' in cached_path
-                        if not is_malformed:
+            try:
+                for row in rows:
+                    file_path = row['file_path']
+                    raw_paths.append(file_path)
+                    image_id = row['id'] if 'id' in row.keys() else None
+                    
+                    # Use thumbnail if available, with resolved_path fallback
+                    thumb_path = row['thumbnail_path']
+                    
+                    t_r0 = time.perf_counter()
+                    
+                    # OPTIMIZED Resolution Logic
+                    p = None
+                    used_cache = False
+                    
+                    # Strategy 1: Try Batch Cache First (Fastest - Memory/DB Cache)
+                    if image_id and image_id in resolved_map:
+                        cached_path = resolved_map[image_id]
+                        # Validation is now handled in db.get_resolved_paths_batch
+                        if cached_path:
                             p = cached_path
                             used_cache = True
                             cache_hits += 1
-                
-                # Strategy 2: Fallback to resolve_file_path (Slower)
-                if not p:
-                    cache_misses += 1
-                    fallback_calls += 1
-                    if thumb_path:
-                        used_thumb += 1
-                        p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
-                    else:
-                        p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
-
-                t_r1 = time.perf_counter()
-                
-                dt_ms = (t_r1 - t_r0) * 1000
-                resolve_ms_total += dt_ms
-                if dt_ms > resolve_ms_max:
-                    resolve_ms_max = dt_ms
-                
-                # Log slow resolutions for debugging
-                if dt_ms > 20 and not used_cache:
-                    debug.log_metric(f"Slow Resolve: {row['file_name']}", f"{dt_ms:.1f}", "ms")
-                
-                if p:
-                    resolved_ok += 1
-                else:
-                    resolved_none += 1
                     
-                # Create label with score
-                score = row['score_general']
-                score_str = f"{score:.2f}" if score is not None else "N/A"
-                label = f"{row['file_name']}\nGen: {score_str}"
-                
-                images.append((p, label))
+                    # Strategy 2: Fallback to resolve_file_path (Slower)
+                    if not p:
+                        cache_misses += 1
+                        fallback_calls += 1
+                        if thumb_path:
+                            used_thumb += 1
+                            p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
+                        else:
+                            p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
+
+                    t_r1 = time.perf_counter()
+                    
+                    dt_ms = (t_r1 - t_r0) * 1000
+                    resolve_ms_total += dt_ms
+                    if dt_ms > resolve_ms_max:
+                        resolve_ms_max = dt_ms
+                    
+                    # Log slow resolutions for debugging
+                    if dt_ms > 20 and not used_cache:
+                        debug.log_metric(f"Slow Resolve: {row['file_name']}", f"{dt_ms:.1f}", "ms")
+                    
+                    if p:
+                        resolved_ok += 1
+                    else:
+                        resolved_none += 1
+                        
+                    # Create label with score
+                    score = row['score_general']
+                    score_str = f"{score:.2f}" if score is not None else "N/A"
+                    label = f"{row['file_name']}\nGen: {score_str}"
+                    
+                    images.append((p, label))
+            finally:
+                # Ensure cache is cleared
+                utils.clear_batch_path_cache()
             
         page_label = f"Page {page} of {total_pages} ({total_count} images)"
 

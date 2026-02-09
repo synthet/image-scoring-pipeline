@@ -6,6 +6,8 @@ interface Image {
     file_path: string;
     file_name: string;
     score_general: number;
+    score_technical: number;
+    score_aesthetic: number;
     rating: number;
     label: string | null;
     created_at?: string;
@@ -289,7 +291,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
                     <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '0.8em', color: '#888', marginBottom: 4 }}>SCORE</div>
-                        <div style={{ fontSize: '1.1em', fontWeight: 'bold' }}>{image.score_general?.toFixed(1) || '0.0'}</div>
+                        <div style={{ fontSize: '1.1em', fontWeight: 'bold' }}>
+                            {image.score_general ? `${Math.round(image.score_general * 100)}%` : '0%'}
+                        </div>
                     </div>
                 </div>
 
@@ -348,32 +352,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             </div>
                         )}
 
-                        {/* Technical Info */}
-                        <div style={{ borderTop: '1px solid #333', paddingTop: 15 }}>
-                            <div style={{ fontSize: '0.9em', fontWeight: 'bold', marginBottom: 10, color: '#ddd' }}>Technical Info</div>
-                            <div style={{ fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {image.file_type && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: '#888' }}>File Type:</span>
-                                        <span style={{ fontFamily: 'monospace' }}>{image.file_type}</span>
-                                    </div>
-                                )}
-                                {image.image_hash && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                        <span style={{ color: '#888' }}>Hash (SHA256):</span>
-                                        <span style={{ fontFamily: 'monospace', fontSize: '0.75em', wordBreak: 'break-all', color: '#999' }}>
-                                            {image.image_hash}
-                                        </span>
-                                    </div>
-                                )}
-                                {image.model_version && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: '#888' }}>Model Version:</span>
-                                        <span>{image.model_version}</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
 
                         {/* Stack/Burst Info */}
                         {(image.stack_id || image.burst_uuid) && (

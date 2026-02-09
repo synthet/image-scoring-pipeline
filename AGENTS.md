@@ -211,6 +211,7 @@ All tools are available when:
 
 - **[MCP Tools Reference](.agent/mcp_tools_reference.md)** - Quick reference guide for AI agents
 - **[MCP Debugging Tools](docs/technical/MCP_DEBUGGING_TOOLS.md)** - Detailed documentation
+- **[DB Schema](docs/technical/DB_SCHEMA.md)** - Firebird database schema reference
 - **[AI Edit Spec](.agent/ai_edit_spec.md)** - Guidelines for AI agents editing code
 
 ## Example Agent Interactions

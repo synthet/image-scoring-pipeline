@@ -41,17 +41,42 @@ export function useImageCount() {
     return { count, loading };
 }
 
+export function useKeywords() {
+    const [keywords, setKeywords] = useState<string[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!window.electron) return;
+        window.electron.getKeywords().then(res => {
+            if (Array.isArray(res)) setKeywords(res);
+            setLoading(false);
+        });
+    }, []);
+
+    return { keywords, loading };
+}
+
 export function useImages(pageSize: number = 50, folderId?: number, filters?: any) {
     const [images, setImages] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [offset, setOffset] = useState(0);
 
+    const [totalCount, setTotalCount] = useState(0);
+
     // Reset when folder or filters change
     useEffect(() => {
         setImages([]);
         setOffset(0);
         setHasMore(true);
+
+        // Fetch total count for current filters
+        if (window.electron) {
+            const options = { folderId, ...filters };
+            window.electron.getImageCount(options).then((c: any) => {
+                if (typeof c === 'number') setTotalCount(c);
+            });
+        }
     }, [folderId, JSON.stringify(filters)]);
 
     // Fetch function
@@ -123,5 +148,5 @@ export function useImages(pageSize: number = 50, folderId?: number, filters?: an
     // We explicitly depend on the reset conditions. 
     // When the top effect resets offset to 0, this effect fires.
 
-    return { images, loading, hasMore, loadMore };
+    return { images, loading, hasMore, loadMore, totalCount };
 }

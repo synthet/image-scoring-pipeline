@@ -57,21 +57,8 @@ export async function query<T = any>(sql: string, params: any[] = []): Promise<T
     });
 }
 
-export async function getImageCount(): Promise<number> {
-    const rows = await query<{ count: number }>('SELECT COUNT(*) as "count" FROM images');
-    return rows[0]?.count || 0;
-}
-
-export interface ImageQueryOptions {
-    limit?: number;
-    offset?: number;
-    folderId?: number;
-    minRating?: number;
-    colorLabel?: string;
-}
-
-export async function getImages(options: ImageQueryOptions = {}): Promise<any[]> {
-    const { limit = 50, offset = 0, folderId, minRating, colorLabel } = options;
+export async function getImageCount(options: ImageQueryOptions = {}): Promise<number> {
+    const { folderId, minRating, colorLabel, keyword } = options;
     const params: any[] = [];
     const whereParts: string[] = [];
 
@@ -90,7 +77,65 @@ export async function getImages(options: ImageQueryOptions = {}): Promise<any[]>
         params.push(colorLabel);
     }
 
+    if (keyword) {
+        whereParts.push('keywords LIKE ?');
+        params.push(`%${keyword}%`);
+    }
+
     const whereClause = whereParts.length > 0 ? 'WHERE ' + whereParts.join(' AND ') : '';
+
+    const rows = await query<{ count: number }>(`SELECT COUNT(*) as "count" FROM images ${whereClause}`, params);
+    return rows[0]?.count || 0;
+}
+
+export interface ImageQueryOptions {
+    limit?: number;
+    offset?: number;
+    folderId?: number;
+    minRating?: number;
+    colorLabel?: string;
+    keyword?: string;
+    sortBy?: string;
+    order?: 'ASC' | 'DESC';
+}
+
+export async function getImages(options: ImageQueryOptions = {}): Promise<any[]> {
+    const { limit = 50, offset = 0, folderId, minRating, colorLabel, keyword, sortBy = 'score_general', order = 'DESC' } = options;
+    const params: any[] = [];
+    const whereParts: string[] = [];
+
+    if (folderId) {
+        whereParts.push('folder_id = ?');
+        params.push(folderId);
+    }
+
+    if (minRating !== undefined && minRating > 0) {
+        whereParts.push('rating >= ?');
+        params.push(minRating);
+    }
+
+    if (colorLabel) {
+        whereParts.push('label = ?');
+        params.push(colorLabel);
+    }
+
+    if (keyword) {
+        whereParts.push('keywords LIKE ?');
+        params.push(`%${keyword}%`);
+    }
+
+    const whereClause = whereParts.length > 0 ? 'WHERE ' + whereParts.join(' AND ') : '';
+
+    // Validate sort column to prevent SQL injection
+    const allowedSortColumns = [
+        'id', 'created_at', 'score_general', 'score_technical', 'score_aesthetic',
+        'score_spaq', 'score_ava', 'score_koniq', 'score_paq2piq', 'score_liqe',
+        'rating', 'file_name'
+    ];
+
+    // Default to score_general if invalid
+    const sortColumn = allowedSortColumns.includes(sortBy) ? `i.${sortBy}` : 'i.score_general';
+    const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
 
     // Note: Offset/Limit in Firebird 3+ is OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     // But we need to put params in order. WHERE params come first.
@@ -110,10 +155,62 @@ export async function getImages(options: ImageQueryOptions = {}): Promise<any[]>
         FROM images i
         LEFT JOIN file_paths fp ON i.id = fp.image_id AND fp.path_type = 'WIN'
         ${whereClause}
-        ORDER BY i.score_general DESC
+        ORDER BY ${sortColumn} ${sortOrder}
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     `;
     return query(sql, params);
+}
+
+export async function getKeywords(): Promise<string[]> {
+    // CAST to VARCHAR is safer for Node drivers than BLOBs for string data
+    // Use 8191 as safe max for UTF8 in Firebird
+    let sql = `SELECT CAST(keywords AS VARCHAR(8191)) as keywords FROM images WHERE keywords IS NOT NULL AND keywords <> ''`;
+
+    console.log('[DB] Executing getKeywords SQL:', sql);
+
+    try {
+        let rows = await query<any>(sql);
+        console.log(`[DB] getKeywords returned ${rows.length} rows`);
+
+        // Fallback if CAST returns nothing but plain query might work (unlikely but safe)
+        if (rows.length === 0) {
+            console.log('[DB] CAST query returned 0 rows. Retrying with raw BLOB query...');
+            sql = `SELECT keywords FROM images WHERE keywords IS NOT NULL AND keywords <> ''`;
+            rows = await query<any>(sql);
+            console.log(`[DB] Fallback query returned ${rows.length} rows`);
+        }
+
+        const uniqueKeywords = new Set<string>();
+
+        for (const row of rows) {
+            // Check keys case-insensitively
+            // If explicit alias is used (AS keywords), usually it respects that.
+            const val = row.keywords || row.KEYWORDS || row.KEYWORDS_1;
+
+            let kwStr = '';
+            if (val) {
+                if (Buffer.isBuffer(val)) {
+                    kwStr = val.toString('utf8');
+                } else if (typeof val === 'string') {
+                    kwStr = val;
+                }
+            }
+
+            if (kwStr) {
+                // Assume comma separated
+                const parts = kwStr.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                parts.forEach(p => uniqueKeywords.add(p));
+            }
+        }
+
+        const result = Array.from(uniqueKeywords).sort();
+        console.log(`[DB] Found ${result.length} unique keywords`);
+        return result;
+    } catch (e) {
+        console.error('[DB] getKeywords failed:', e);
+        // Fallback: Return empty array
+        return [];
+    }
 }
 
 export async function getImageDetails(id: number): Promise<any> {

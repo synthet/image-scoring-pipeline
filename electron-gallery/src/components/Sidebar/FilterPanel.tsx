@@ -3,6 +3,9 @@ import React from 'react';
 export interface FilterState {
     minRating: number;
     colorLabel?: string;
+    keyword?: string;
+    sortBy?: string;
+    order?: 'ASC' | 'DESC';
 }
 
 interface FilterPanelProps {
@@ -50,18 +53,24 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange }) =
                 <div style={{ fontSize: '12px', color: '#888', marginBottom: 5 }}>Color Label</div>
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                     <button onClick={() => handleColorChange(undefined)} style={{ padding: '4px 8px', fontSize: 11, background: !filters.colorLabel ? '#555' : '#333', border: 'none', borderRadius: 4, color: '#ddd', cursor: 'pointer' }}>All</button>
-                    {['Red', 'Yellow', 'Green', 'Blue', 'Purple'].map(c => (
+                    {[
+                        { id: 'Red', color: '#e53935', tooltip: 'Red: Reject (technical failure)' },
+                        { id: 'Yellow', color: '#fdd835', tooltip: 'Yellow: Maybe (the middle)' },
+                        { id: 'Green', color: '#43a047', tooltip: 'Green: Reference shot (high technical)' },
+                        { id: 'Blue', color: '#1e88e5', tooltip: 'Blue: Portfolio shot (high aesthetic & sharp)' },
+                        { id: 'Purple', color: '#8e24aa', tooltip: 'Purple: Creative/moody (aesthetic beats technical)' },
+                    ].map(({ id, color, tooltip }) => (
                         <button
-                            key={c}
-                            onClick={() => handleColorChange(c === filters.colorLabel ? undefined : c)}
+                            key={id}
+                            onClick={() => handleColorChange(id === filters.colorLabel ? undefined : id)}
                             style={{
                                 width: 24, height: 24,
                                 borderRadius: '50%',
-                                background: c === 'Red' ? '#e53935' : c === 'Yellow' ? '#fdd835' : c === 'Green' ? '#43a047' : c === 'Blue' ? '#1e88e5' : '#8e24aa',
-                                border: filters.colorLabel === c ? '2px solid white' : '2px solid transparent',
+                                background: color,
+                                border: filters.colorLabel === id ? '2px solid white' : '2px solid transparent',
                                 cursor: 'pointer'
                             }}
-                            title={c}
+                            title={tooltip}
                         />
                     ))}
                 </div>

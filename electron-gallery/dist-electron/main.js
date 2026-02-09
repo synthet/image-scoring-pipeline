@@ -87,9 +87,9 @@ electron_1.app.whenReady().then(() => {
     createWindow();
     // IPC Handlers
     electron_1.ipcMain.handle('ping', () => 'pong');
-    electron_1.ipcMain.handle('db:get-image-count', async () => {
+    electron_1.ipcMain.handle('db:get-image-count', async (_, options) => {
         try {
-            return await db.getImageCount();
+            return await db.getImageCount(options);
         }
         catch (e) {
             console.error('DB Error:', e);
@@ -119,6 +119,15 @@ electron_1.app.whenReady().then(() => {
             console.error('[Main] DB Error (details):', e);
             console.error('[Main] Error stack:', e.stack);
             throw e; // Re-throw so the error reaches the renderer
+        }
+    });
+    electron_1.ipcMain.handle('db:get-keywords', async () => {
+        try {
+            return await db.getKeywords();
+        }
+        catch (e) {
+            console.error('DB Error (keywords):', e);
+            return [];
         }
     });
     electron_1.ipcMain.handle('db:get-folders', async () => {

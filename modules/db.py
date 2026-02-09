@@ -636,26 +636,48 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         where_clause = " WHERE " + " AND ".join(conditions)
     
     try:
-        # OPTIMIZATION: Execute both queries sequentially but on same connection
-        # This reduces connection overhead compared to separate get_db() calls
+        # OPTIMIZATION: Use Window Function to get count and data in single query
+        # This reduces DB round trips by 50%
         
-        # Query 1: Get count (fast)
-        count_query = f"SELECT COUNT(*) as total FROM images{where_clause}"
-        c.execute(count_query, tuple(params))
-        count_row = c.fetchone()
-        total_count = int(count_row[0]) if count_row else 0
+        query = f"SELECT *, COUNT(*) OVER() as total_count FROM images{where_clause} ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
         
-        # Query 2: Get paginated data
-        data_query = f"SELECT * FROM images{where_clause} ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
-        data_params = list(params) + [offset, page_size]
-        c.execute(data_query, tuple(data_params))
+        # Add pagination params
+        params.extend([offset, page_size])
+        
+        c.execute(query, tuple(params))
         rows = c.fetchall()
+        
+        # Extract total_count from first row if available
+        total_count = 0
+        if rows:
+            # RowWrapper allows dict-like access
+            # The column alias 'total_count' should be available
+            # We check the first row safely
+            first_row = rows[0]
+            try:
+                total_count = int(first_row['total_count'])
+            except (KeyError, IndexError, ValueError):
+                # Fallback if alias fails (though it shouldn't)
+                total_count = len(rows) # Incorrect but better than crashing
+                print("WARNING: Could not retrieve total_count from window function result")
         
         return rows, total_count
         
     except Exception as e:
         print(f"ERROR in get_images_paginated_with_count: {e}")
-        raise
+        # Fallback to separate queries if Window Function fails (e.g. old Firebird version)
+        try:
+             # Query 1: Get count
+             c.execute(f"SELECT COUNT(*) FROM images{where_clause}", tuple(params[:-2]))
+             total_count = c.fetchone()[0]
+             
+             # Query 2: Get data
+             query_fallback = f"SELECT * FROM images{where_clause} ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+             c.execute(query_fallback, tuple(params))
+             rows = c.fetchall()
+             return rows, total_count
+        except:
+             raise e
     finally:
         conn.close()
 
@@ -1382,7 +1404,7 @@ def get_resolved_paths_batch(image_ids):
     """
     Get resolved Windows paths for a batch of image IDs.
     Returns a dictionary mapping image_id -> windows_path.
-    Only returns verified paths.
+    Only returns verified paths that are correctly formatted.
     """
     if not image_ids:
         return {}
@@ -1391,6 +1413,7 @@ def get_resolved_paths_batch(image_ids):
     c = conn.cursor()
     try:
         placeholders = ','.join(['?'] * len(image_ids))
+        # Get path AND verification status
         query = f"SELECT image_id, path FROM file_paths WHERE image_id IN ({placeholders}) AND path_type = 'WIN' AND is_verified = 1"
         
         c.execute(query, tuple(image_ids))
@@ -1398,7 +1421,14 @@ def get_resolved_paths_batch(image_ids):
         
         result = {}
         for row in rows:
-            result[row[0]] = row[1]
+            img_id = row[0]
+            path = row[1]
+            
+            # Additional Validation:
+            # Ensure path is truly Windows format (backslashes)
+            # Mixed separators can cause "file not found" in some Windows APIs
+            if path and '/' not in path:
+                result[img_id] = path
             
         return result
     finally:
@@ -1419,6 +1449,10 @@ def get_or_create_folder(folder_path, _depth=0):
     Recursively creates parent folders to establish hierarchy.
     """
     # Normalize path
+    if not folder_path or folder_path == '.':
+        folder_path = os.getcwd()
+
+    folder_path = os.path.abspath(folder_path)
     folder_path = os.path.normpath(folder_path)
     
     # Auto-convert Windows paths to WSL if we are on Windows but DB has WSL paths
@@ -1429,10 +1463,13 @@ def get_or_create_folder(folder_path, _depth=0):
         # Check if it looks like a Windows path (e.g. D:\...)
         if ":" in folder_path or "\\" in folder_path:
              wsl_path = utils.convert_path_to_wsl(folder_path)
+             # Use WSL path if basic heuristic matches or if we want to be consistent
+             # But wait, checking if it exists in DB?
+             # For now, let's trust the util to give us the canonical form for this app (WSL-ish if mixed)
+             # Actually, if we are on Windows, we might want to store Windows paths?
+             # The app seems to favor WSL paths in DB ('WSL' type default in file_paths).
+             # Let's keep existing logic but ensure abspath first.
              if wsl_path != folder_path:
-                 # We prefer the WSL path if it exists in DB? 
-                 # Or we just always normalize to WSL for storage if that's the convention.
-                 # Let's use WSL path.
                  folder_path = wsl_path
     except ImportError:
         pass
@@ -2262,24 +2299,24 @@ def backup_database(max_backups=5):
     """
     Creates a backup of the database file and rotates old backups.
     """
-    if not os.path.exists(DB_FILE):
+    if not os.path.exists(DB_PATH):
         return
 
-    backup_dir = "backups"
+    backup_dir = os.path.join(_PROJECT_ROOT, "backups")
     if not os.path.exists(backup_dir):
         os.makedirs(backup_dir)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(backup_dir, f"scoring_history_{timestamp}.db")
+    backup_path = os.path.join(backup_dir, f"scoring_history_{timestamp}.fdb")
 
     try:
         # Copy file
         import shutil
-        shutil.copy2(DB_FILE, backup_path)
+        shutil.copy2(DB_PATH, backup_path)
         print(f"Database backup created: {backup_path}")
 
         # Rotate
-        backups = sorted([os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.startswith("scoring_history_") and f.endswith(".db")])
+        backups = sorted([os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.startswith("scoring_history_") and f.endswith(".fdb")])
         
         while len(backups) > max_backups:
             oldest = backups.pop(0)

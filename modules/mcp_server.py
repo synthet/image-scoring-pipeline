@@ -632,9 +632,9 @@ def get_error_summary() -> dict:
         """)
         summary["images_with_empty_paths"] = c.fetchone()[0]
         
-        # Recent failed jobs with error messages
+        # Recent failed jobs with log excerpt
         c.execute("""
-            SELECT id, job_type, status, error_message, created_at
+            SELECT id, input_path, status, log, created_at
             FROM jobs
             WHERE status = 'failed'
             ORDER BY created_at DESC

@@ -59,7 +59,30 @@ ENABLE_MCP_SERVER=1 python webui.py
 
 ## Available Tools
 
-### Database Tools
+### Firebird Admin Tools (New)
+*Requires `firebird-admin` MCP server.*
+
+#### `list_tables`
+List all user tables in the database (excludes system tables).
+
+#### `get_table_schema`
+Get detailed schema information for a specific table.
+
+**Parameters:**
+- `table_name` - Name of the table
+
+#### `run_sql`
+Execute raw SQL queries. 
+**WARNING**: Supports both READ and WRITE operations. Use with caution.
+
+**Parameters:**
+- `query` - SQL query string
+- `params` - Optional list of parameters
+
+#### `get_firebird_version`
+Get the Firebird database engine version.
+
+### Database Tools (Standard)
 
 #### `get_database_stats`
 Get comprehensive database statistics including:

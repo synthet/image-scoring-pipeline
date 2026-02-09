@@ -58,9 +58,9 @@ app.whenReady().then(() => {
     // IPC Handlers
     ipcMain.handle('ping', () => 'pong');
 
-    ipcMain.handle('db:get-image-count', async () => {
+    ipcMain.handle('db:get-image-count', async (_, options) => {
         try {
-            return await db.getImageCount();
+            return await db.getImageCount(options);
         } catch (e: any) {
             console.error('DB Error:', e);
             return { error: e.message };
@@ -89,6 +89,15 @@ app.whenReady().then(() => {
             console.error('[Main] DB Error (details):', e);
             console.error('[Main] Error stack:', e.stack);
             throw e; // Re-throw so the error reaches the renderer
+        }
+    });
+
+    ipcMain.handle('db:get-keywords', async () => {
+        try {
+            return await db.getKeywords();
+        } catch (e: any) {
+            console.error('DB Error (keywords):', e);
+            return [];
         }
     });
 

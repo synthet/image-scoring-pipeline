@@ -151,7 +151,11 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({ images, onSelect, onEn
                         {img.file_name}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                        <span>{img.score_general > 0 ? img.score_general.toFixed(1) : '-'}</span>
+                        <span>
+                            {img.score_general > 0
+                                ? `${Math.round(img.score_general * 100)}%`
+                                : '-'}
+                        </span>
                         {/* Add more metadata here */}
                     </div>
                 </div>
