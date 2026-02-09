@@ -21,7 +21,6 @@ from modules.ui.tabs import (
     scoring as scoring_tab, 
     tagging as tagging_tab, 
     folder_tree, 
-    gallery as gallery_tab, 
     stacks as stacks_tab, 
     settings as settings_tab,
     culling as culling_tab
@@ -30,10 +29,7 @@ from modules.ui.tabs import (
 # Cache platform check
 IS_WINDOWS = platform.system() == "Windows"
 
-# Component count constants (must match common.get_empty_details())
-DETAIL_OUTPUTS_COUNT = 19  # From common.get_empty_details()
-GALLERY_SIGNAL_COUNT = 4   # current_page, gallery, page_label, current_paths
-TOTAL_LOAD_OUTPUTS = DETAIL_OUTPUTS_COUNT + GALLERY_SIGNAL_COUNT  # 23
+
 
 def create_ui():
     """Main function to build the WebUI."""
@@ -58,74 +54,45 @@ def create_ui():
         gr.Markdown("# Image Scoring WebUI")
         
         # Shared States
-        # IMPORTANT: All gr.State modifications must be done via Gradio events to maintain
-        # synchronization across tabs. Direct assignment (e.g., state.value = new_value) will
-        # not trigger UI updates and can cause desynchronization.
-        #
-        # State components:
-        # - current_page: Current page number in gallery (int)
-        # - current_paths: List of file paths currently displayed in gallery (List[str])
-        # - image_details: Dictionary containing metadata for currently selected image (dict)
-        # - current_folder_state: Currently filtered folder path or None (str | None)
-        current_page = gr.State(value=1)
-        current_paths = gr.State(value=[])
-        image_details = gr.State(value={})
-        current_folder_state = gr.State(value=None)
-        current_stack_state = gr.State(value=None)
-        
-        # Polling Timer for status
+        # Status Polling Timer
         status_timer = gr.Timer(value=1.0)
+
         
         with gr.Tabs() as main_tabs:
-            # 1. Scoring Tab
-            scoring_components = scoring_tab.create_tab(runner, app_config)
-            
-            # 2. Keywords Tab
-            tagging_components = tagging_tab.create_tab(tagging_runner, app_config)
-            
-            # 3. Gallery Tab
-            gallery_components = gallery_tab.create_tab(
-                (current_page, current_paths, image_details), 
-                current_folder_state, 
-                current_stack_state,
-                runner, 
-                tagging_runner, 
-                app_config
-            )
-            
-            gallery = gallery_components['gallery']
-            folder_context_group = gallery_components['folder_context_group']
-            folder_display = gallery_components['folder_display']
-            page_label = gallery_components['page_label']
-            detail_outputs = gallery_components['detail_outputs']
-            filter_inputs = gallery_components['filter_inputs']
-            update_gallery = gallery_components['update_gallery_fn']
-            
-            # Unpack detail outputs for wiring
-            (res_info, d_score_gen, d_score_weighted, d_score_models, d_details_state, 
-             delete_btn, d_title, d_desc, d_keywords, d_rating, d_label, save_status, 
-             gallery_selected_path, d_culling_status, fix_btn, fix_status, 
-             rerun_score_btn, rerun_tags_btn, current_selection_index) = detail_outputs
-
-            # 4. Folder Tree Tab
+            # 1. Folder Tree Tab (Default)
             folder_tree_components = folder_tree.create_tab(app_config)
             
-            # 5. Stacks Tab
+            # 2. Scoring Tab
+            scoring_components = scoring_tab.create_tab(runner, app_config)
+            
+            # 3. Keywords Tab
+            tagging_components = tagging_tab.create_tab(tagging_runner, app_config)
+            
+            # 4. Stacks Tab
             stacks_components = stacks_tab.create_stacks_tab()
             
-            # 6. Culling Tab
+            # 5. Culling Tab
             culling_components = culling_tab.create_tab(app_config)
             
-            # 7. Settings Tab
+            # 6. Settings Tab
             settings_tab.create_tab(app_config)
             
         # --- Cross-Tab Navigation Wiring ---
         
-        # Folder Tree -> Gallery
-        folder_tree_components['open_gallery_btn'].click(
-            fn=lambda *args: navigation.open_folder_in_gallery(*args, update_gallery_fn=update_gallery),
-            inputs=[folder_tree_components['selected_path'], *filter_inputs[:-2]], # Exclude folder_state and stack_state
-            outputs=[main_tabs, current_folder_state, current_stack_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths] + detail_outputs
+        # --- Cross-Tab Navigation Wiring ---
+        
+        # Folder Tree -> Scoring
+        folder_tree_components['open_scoring_btn'].click(
+            fn=navigation.open_folder_in_scoring,
+            inputs=[folder_tree_components['selected_path']],
+            outputs=[main_tabs, scoring_components['input_dir']]
+        )
+        
+        # Folder Tree -> Culling
+        folder_tree_components['open_culling_btn'].click(
+            fn=navigation.open_folder_in_culling,
+            inputs=[folder_tree_components['selected_path']],
+            outputs=[main_tabs, culling_components['input_dir']]
         )
         
         # Folder Tree -> Stacks
@@ -141,49 +108,8 @@ def create_ui():
             inputs=[folder_tree_components['selected_path']],
             outputs=[main_tabs, tagging_components['input_dir']]
         )
-        
-        # Stacks -> Gallery
-        # Stacks -> Gallery
-        # Inputs: stack_id, sort_by, order, (filters...), update_fn
-        # filter_inputs: [sort, order, rating, label, keyword, gen, aes, tech, start, end, folder, stack]
-        # We use Stacks tab sort/order, keeping other filters from Gallery
-        stacks_components["open_gallery_btn"].click(
-            fn=lambda stack_id, sort, order, *args: navigation.open_stack_in_gallery(
-                stack_id, sort, order, *args, update_gallery_fn=update_gallery
-            ),
-            inputs=[stacks_components["current_stack_id"], stacks_components["sort_by"], stacks_components["order"]] + filter_inputs[2:-2],
-            outputs=[main_tabs, current_folder_state, current_stack_state, folder_context_group, folder_display, current_page, gallery, page_label, current_paths] + detail_outputs
-        )
 
-        # --- Initialization Logic ---
-        
-        def load_initial_gallery():
-            """Load the first page of images when the app starts."""
-            default_sort = app_config.get('ui', {}).get('default_sort', 'score_general')
-            default_order = app_config.get('ui', {}).get('default_order', 'desc')
-            
-            result = (1, *update_gallery(
-                page=1,
-                sort_by=default_sort,
-                sort_order=default_order,
-                rating_filter=None,
-                label_filter=None,
-                keyword_filter=None,
-                min_gen=0.0, min_aes=0.0, min_tech=0.0,
-                start_date=None, end_date=None,
-                folder=None
-            ))
-            return result
-        
-        def load_initial_gallery_with_paths():
-            return load_initial_gallery()
-        
-        # Sync outputs: current_page (1) + gallery signals (3) + detail_outputs (19) = 23
-        # Using constants to ensure consistency across all event handlers
-        load_outputs = [current_page, gallery, page_label, current_paths] + detail_outputs
-        assert len(load_outputs) == TOTAL_LOAD_OUTPUTS, f"Expected {TOTAL_LOAD_OUTPUTS} outputs, got {len(load_outputs)}"
-        
-        demo.load(fn=load_initial_gallery_with_paths, inputs=[], outputs=load_outputs)
+
 
         # Monitor Loop
         def monitor_status_wrapper():

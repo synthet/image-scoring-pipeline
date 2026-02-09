@@ -161,12 +161,19 @@ def main():
             mcp_mount_error = str(e)
             print(f"MCP Server: Failed to mount SSE endpoint: {e}")
     
-    # Define allowed paths
-    allowed_paths = [os.path.abspath("."), os.path.abspath("thumbnails")]
-    if is_windows:
-        allowed_paths.append("D:/")
+    # Define allowed paths from config
+    system_config = config.get_config_section('system')
+    config_allowed = system_config.get('allowed_paths', [])
+    
+    allowed_paths = []
+    if config_allowed:
+        allowed_paths.extend(config_allowed)
+        # Always ensure current dir and thumbnails are allowed
+        allowed_paths.append(os.path.abspath("."))
+        allowed_paths.append(os.path.abspath("thumbnails"))
     else:
-        allowed_paths.append("/mnt/")
+        # Fallback to dynamic defaults if config is empty
+        allowed_paths = config.get_default_allowed_paths()
         
     print(f"Starting WebUI on {platform.system()}...")
     

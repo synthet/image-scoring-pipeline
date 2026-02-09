@@ -40,5 +40,17 @@
         "max_new_tokens": 50,
         "clip_model": "openai/clip-vit-base-patch32"
     },
-    "culling_input_path": "/path/to/your/photos"
+    "culling_input_path": "/path/to/your/photos",
+    "database": {
+        "filename": "scoring_history.FDB",
+        "user": "sysdba",
+        "password": "masterkey"
+    },
+    "system": {
+        "allowed_paths": [
+            "D:/",
+            "/mnt/"
+        ],
+        "log_dir": ".cursor"
+    }
 }

@@ -15,8 +15,13 @@ except ImportError:
     connect = None 
 
 import shutil
+from modules import config
 
-DB_FILE = "scoring_history.fdb"
+DB_CONFIG = config.get_config_section('database')
+DB_FILE = DB_CONFIG.get('filename', "scoring_history.fdb")
+DB_USER = DB_CONFIG.get('user', "sysdba")
+DB_PASS = DB_CONFIG.get('password', "masterkey")
+
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(_PROJECT_ROOT, DB_FILE)
 
@@ -226,7 +231,7 @@ def get_db():
         import traceback
         try:
             print(f"DEBUG: get_db attempting connect to dsn={dsn}")
-            conn = connect(dsn, user='sysdba', password='masterkey', charset='UTF8')
+            conn = connect(dsn, user=DB_USER, password=DB_PASS, charset='UTF8')
             print(f"DEBUG: get_db success. conn={conn}")
         except Exception as e:
              print(f"DEBUG: get_db connect failed: {e}")
@@ -446,7 +451,6 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
 def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     # Load page_size from config if not provided
     if page_size is None:
-        from modules import config
         ui_config = config.get_config_section('ui')
         page_size = ui_config.get('gallery_page_size', 50)
     conn = get_db()
@@ -548,7 +552,6 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
     """
     # Load page_size from config if not provided
     if page_size is None:
-        from modules import config
         ui_config = config.get_config_section('ui')
         page_size = ui_config.get('gallery_page_size', 50)
     

@@ -50,14 +50,14 @@ def create_tab(runner, app_config):
     def stop_scoring():
          runner.stop()
 
-    with gr.TabItem("Run Scoring", id="scoring") as tab_item:
+    with gr.TabItem("Scoring", id="scoring") as tab_item:
         gr.Markdown("### 🎯 Image Quality Scoring")
         with gr.Row():
             with gr.Column(scale=1, min_width=350):
                 with gr.Group():
                     input_dir = gr.Textbox(
                         label="📁 Input Folder Path", 
-                        placeholder="D:\\Photos\\2024\\...",
+                        placeholder=f"{config.get_default_allowed_paths()[0] if config.get_default_allowed_paths() else 'D:/'}Photos/...",
                         value=app_config.get('scoring_input_path', ''),
                         info="Select folder containing images to score"
                     )

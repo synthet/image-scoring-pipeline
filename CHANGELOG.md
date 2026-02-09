@@ -5,6 +5,36 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.0] - 2026-02-08
+
+### Added
+- **Configurable Database**: Database credentials and filename now configurable via `config.json`.
+  - New `database` section: `filename`, `user`, `password`.
+  - Replaces hardcoded values in `modules/db.py`.
+- **System Path Configuration**: Allowed paths and log directory now configurable via `config.json`.
+  - New `system` section: `allowed_paths`, `log_dir`.
+  - `get_system_drives()` and `get_default_allowed_paths()` in `modules/config.py` for dynamic path detection.
+- **Folder Tree Navigation**: Added "Open in Scoring" and "Open in Culling" buttons for direct workflow navigation.
+  - New `open_folder_in_scoring()` and `open_folder_in_culling()` in `modules/navigation.py`.
+
+### Changed
+- **Folder Tree Tab**: Simplified layout and workflow.
+  - Removed gallery preview panel (single-column tree view).
+  - Replaced "Open in Gallery" with "Open in Scoring" and "Open in Culling".
+  - Removed "Remove from DB" button and folder cache deletion.
+  - Tab order: Folder Tree is now the default first tab.
+- **WebUI Allowed Paths**: `webui.py` reads allowed paths from `config.system.allowed_paths` with fallback to `get_default_allowed_paths()`.
+- **Debug Log Path**: Log directory configurable via `system.log_dir` (default `.cursor`) in `modules/utils.py`.
+
+### Removed
+- **Gallery Tab**: Removed from main UI; `modules/ui/tabs/gallery.py` is now orphaned (file retained for reference).
+  - Removed cross-tab navigation: Folder Tree → Gallery, Stacks → Gallery.
+  - Removed initial gallery load on app startup.
+- **Maintenance Scripts**: Moved to `scripts/` directory: `cleanup_nvidia_repo.bat`, `fix_nvidia_docker.bat`.
+- **Hash Utilities**: Removed `find_hash.py`, `find_hash_path.py`, `find_hash_repr.py` (some moved to `scripts/`).
+- **Documentation**: Removed `NEF_EXTRACTION_DIAGNOSIS.md`, `WINDOWS_NATIVE_VIEWER_PLAN.md`; archived `proposals.md` to `docs/archive/proposals_old.md`.
+- **Test Artifacts**: Removed `test_gallery_optimization.py`, `verify_db_refactor.py`, `setup_legacy.sql`, `webui.lock`, database backup files.
+
 ## [3.14.0] - 2026-02-08
 
 ### Added

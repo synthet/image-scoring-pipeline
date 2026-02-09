@@ -2,6 +2,8 @@ import json
 import logging
 import os
 from pathlib import Path
+import platform
+import string
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = BASE_DIR / "config.json"
@@ -146,3 +148,53 @@ def get_export_template(template_name):
     """
     templates = get_export_templates()
     return templates.get(template_name)
+
+
+def get_system_drives():
+    """
+    Get a list of available system drives/root paths.
+    
+    Returns:
+        List of strings (e.g. ['C:/', 'D:/'] on Windows, ['/'] on Linux)
+    """
+    drives = []
+    system = platform.system()
+    
+    if system == "Windows":
+        # Get logical drives
+        import ctypes
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+        for letter in string.ascii_uppercase:
+            if bitmask & 1:
+                drives.append(f"{letter}:/")
+            bitmask >>= 1
+    else:
+        # Linux/Unix/MacOS
+        drives.append("/")
+        # Add WSL mounts if applicable
+        if os.path.isdir("/mnt"):
+            try:
+                for item in os.listdir("/mnt"):
+                    mount_point = f"/mnt/{item}"
+                    if os.path.isdir(mount_point):
+                        drives.append(mount_point + "/")
+            except:
+                pass
+                
+    return drives
+
+
+def get_default_allowed_paths():
+    """
+    Get default allowed paths based on system configuration.
+    
+    Returns:
+        List of paths safe to allow by default.
+    """
+    allowed = [os.path.abspath("."), os.path.abspath("thumbnails")]
+    
+    # Add all detected system drives
+    drives = get_system_drives()
+    allowed.extend(drives)
+    
+    return allowed

@@ -2,6 +2,9 @@
 	"folders": [
 		{
 			"path": "."
+		},
+		{
+			"path": "../electron-image-scoring"
 		}
 	],
 	"settings": {

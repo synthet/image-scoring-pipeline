@@ -28,9 +28,9 @@ def create_tab(app_config):
     """
     PAGE_SIZE = app_config.get('ui', {}).get('gallery_page_size', 50)
 
-    def update_tree_gallery(folder):
+    def update_tree_status(folder):
         if not folder: 
-            return [], "No folder selected."
+            return "No folder selected."
         
         # Convert Windows path to WSL format for DB query
         # DB stores paths in WSL format (/mnt/d/...)
@@ -81,65 +81,34 @@ def create_tab(app_config):
             else:
                 p = utils.resolve_file_path(p, image_id) or utils.convert_path_to_local(p)
             
-            results.append((p, label))
-
-        # Show count with note if truncated
-        folder_name = os.path.basename(folder)
+        status = f"{total_count} image{'s' if total_count != 1 else ''} in folder"
         if total_count > PAGE_SIZE:
-            status = f"Showing {len(results)} of {total_count} images in {folder_name} (use 'Open in Gallery' for full view)"
-        else:
-            status = f"Found {total_count} images in {folder_name}"
-        
-        return results, status
+            status += f" (showing first {PAGE_SIZE})"
+        return status
 
     def refresh_tree_wrapper():
         msg = db.rebuild_folder_cache()
         return ui_tree.get_tree_html(), msg
 
-    def delete_folder_cache_wrapper(folder, confirmed):
-        if not confirmed:
-            return ui_tree.get_tree_html(), "⚠️ Check confirmation to delete the selected folder from DB cache.", "", []
-        if not folder:
-            return ui_tree.get_tree_html(), "⚠️ No folder selected.", "", []
 
-        result = db.delete_folder_cache_entry(folder_path=folder, delete_descendants=True)
-        if not result.get("success"):
-            return ui_tree.get_tree_html(), f"❌ {result.get('message', 'Delete failed')}", folder, []
-
-        # Clear selection + gallery preview after successful delete
-        return ui_tree.get_tree_html(), f"🗑️ {result.get('message', 'Deleted')}", "", []
 
     with gr.TabItem("Folder Tree", id="folder_tree"):
         # Row 1: Action Bar
         with gr.Row():
             t_refresh_btn = gr.Button("🔄 Refresh", size="sm", scale=0, min_width=100)
-            t_open_gallery_btn = gr.Button("📸 Open in Gallery", variant="primary", size="sm", scale=1)
+            t_open_scoring_btn = gr.Button("▶️ Open in Scoring", variant="primary", size="sm", scale=1)
+            t_open_culling_btn = gr.Button("✂️ Open in Culling", variant="secondary", size="sm", scale=1)
             t_open_stacks_btn = gr.Button("📚 Open in Stacks", variant="secondary", size="sm", scale=1)
             t_open_keywords_btn = gr.Button("🏷️ Open in Keywords", variant="secondary", size="sm", scale=1)
-            t_delete_confirm = gr.Checkbox(label="Confirm", value=False, scale=0, min_width=90)
-            t_delete_btn = gr.Button("🗑️ Remove from DB", variant="stop", size="sm", scale=0, min_width=160)
         
-        # Row 2: Main Content - Tree | Gallery (equal width)
-        with gr.Row(equal_height=True):
-            # Left: Tree View
-            with gr.Column(scale=1):
-                # Init with empty tree, will be loaded on app start or via loop
-                t_tree_view = gr.HTML(
-                    value=ui_tree.get_tree_html(), # Initialize immediately if possible
-                    label="📁 Folder Tree",
-                    elem_classes=["folder-tree-container"]
-                )
-            
-            # Right: Gallery Preview
-            with gr.Column(scale=1):
-                t_gallery = gr.Gallery(
-                    label="Folder Images", 
-                    columns=4, 
-                    height=500,
-                    object_fit="cover",
-                    allow_preview=True,
-                    show_share_button=False
-                )
+        # Row 2: Main Content - Tree 
+        with gr.Row():
+            # Tree View
+            t_tree_view = gr.HTML(
+                value=ui_tree.get_tree_html(), # Initialize immediately if possible
+                label="📁 Folder Tree",
+                elem_classes=["folder-tree-container"]
+            )
         
         # Divider
         gr.Markdown("---")
@@ -159,25 +128,19 @@ def create_tab(app_config):
             outputs=[t_tree_view, t_status]
         )
 
-        t_delete_btn.click(
-            fn=delete_folder_cache_wrapper,
-            inputs=[t_selected_path, t_delete_confirm],
-            outputs=[t_tree_view, t_status, t_selected_path, t_gallery]
-        )
-        
         t_selected_path.change(
-            fn=update_tree_gallery,
+            fn=update_tree_status,
             inputs=[t_selected_path],
-            outputs=[t_gallery, t_status]
+            outputs=[t_status]
         )
         
     return {
         'refresh_btn': t_refresh_btn,
-        'open_gallery_btn': t_open_gallery_btn,
+        'open_scoring_btn': t_open_scoring_btn,
+        'open_culling_btn': t_open_culling_btn,
         'open_stacks_btn': t_open_stacks_btn,
         'open_keywords_btn': t_open_keywords_btn,
         'selected_path': t_selected_path,
         'tree_view': t_tree_view,
-        'gallery': t_gallery,
         'status': t_status # if needed
     }

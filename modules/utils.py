@@ -86,8 +86,10 @@ def get_debug_log_path():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
     
-    # Construct path: <root>/.cursor/debug.log
-    log_dir = os.path.join(project_root, ".cursor")
+    # Construct path: <root>/<log_dir>/debug.log
+    from modules import config
+    log_dir_name = config.get_config_value('system.log_dir', ".cursor")
+    log_dir = os.path.join(project_root, log_dir_name)
     
     # Ensure directory exists
     try:

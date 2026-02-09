@@ -313,7 +313,7 @@ def create_tab(app_config):
                 cull_input_dir = gr.Textbox(
                     label="Folder",
                     value=app_config.get('culling_input_path', ''),
-                    placeholder="D:\\Photos\\... (Select folder with images)"
+                    placeholder=f"{config.get_default_allowed_paths()[0] if config.get_default_allowed_paths() else 'D:/'}Photos/... (Select folder with images)"
                 )
                 
                 # Settings (Compact or Accordion)

@@ -116,3 +116,15 @@ def open_stack_in_gallery(stack_id, sort_by, sort_order, rating_filter, label_fi
         1,           # page
         *gal_outs
     )
+
+def open_folder_in_scoring(folder):
+    """Switches to Scoring tab and sets input folder."""
+    if not folder:
+        return gr.update(selected="scoring"), gr.update()
+    return gr.update(selected="scoring"), folder
+
+def open_folder_in_culling(folder):
+    """Switches to Culling tab and sets input folder."""
+    if not folder:
+        return gr.update(selected="culling"), gr.update()
+    return gr.update(selected="culling"), folder

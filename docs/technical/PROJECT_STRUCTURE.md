@@ -18,6 +18,9 @@ Common entry points you’ll actually use:
 - `launch.py`: convenience launcher
 - `mcp_config.json`: MCP server configuration (for Cursor / AI tooling)
 
+### External Repositories
+- **[electron-image-scoring](https://github.com/synthet/electron-image-scoring)**: The high-performance standalone Electron gallery. Previously located in `electron-gallery/`.
+
 ## Core code
 
 - `modules/`: application logic (DB, scoring, pipeline, UI, MCP server, etc.)
