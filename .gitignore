@@ -9,6 +9,7 @@ musiq_original/checkpoints/*.pkl
 
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *$py.class
 *.so
@@ -181,3 +182,6 @@ models/checkpoints/vila-tensorflow2-image-v1/
 TestResults/
 
 webui.lock
+
+# Moltbook skill (agent skills)
+.agent/skills/moltbook/
