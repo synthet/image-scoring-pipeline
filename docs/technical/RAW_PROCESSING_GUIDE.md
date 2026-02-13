@@ -107,6 +107,22 @@ For RAW files, the JSON includes additional metadata:
 - **85% JPEG quality** - Good balance of file size vs quality
 - **sRGB color space** - Standard web color space
 
+### Recommended Input Format (from Research)
+
+The `scripts/research_models.py` script assesses optimal NEF→model input parameters. Run it (without `--dry-run`) to generate `research_results.csv` and `research_summary.md` with recommended settings. Optional config overrides:
+
+```json
+{
+  "raw_conversion": {
+    "method": "rawpy_half",
+    "max_resolution": 512,
+    "jpeg_quality": 85
+  }
+}
+```
+
+See [MODEL_INPUT_SPECIFICATIONS.md](MODEL_INPUT_SPECIFICATIONS.md) for model input formats and score ranges.
+
 ### Processing Speed
 - RAW conversion: ~2-5 seconds per file
 - Model processing: Same as JPEG files

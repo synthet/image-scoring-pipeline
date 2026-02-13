@@ -339,10 +339,15 @@ class CullingEngine:
         2. Import and group images
         3. Auto-pick best in each group
         4. Optionally export to XMP
+
+        [Deprecated] Use Selection tab / SelectionService.run() for unified workflow.
         
         progress_callback: Optional fn(progress_pct, message) for UI updates.
         Returns combined stats from all steps.
         """
+        logger.warning(
+            "Deprecated: run_full_cull. Use the Selection tab or SelectionService.run() for unified stack + pick/reject workflow."
+        )
         def _progress(pct: float, msg: str):
             if progress_callback:
                 try:

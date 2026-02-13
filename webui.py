@@ -145,7 +145,7 @@ def main():
         }
     
     # Create UI and initialize engines (Gradio App)
-    demo, runner, tagging_runner = app_module.create_ui()
+    demo, runner, tagging_runner, selection_runner = app_module.create_ui()
     
     # Setup MCP server if enabled
     mcp_sse_app = None

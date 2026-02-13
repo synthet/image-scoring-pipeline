@@ -17,6 +17,9 @@ except ImportError:
 import shutil
 from modules import config
 
+logger = logging.getLogger(__name__)
+DEBUG_DB_CONNECTION = os.environ.get("DEBUG_DB_CONNECTION", "").lower() in ("1", "true", "yes")
+
 DB_CONFIG = config.get_config_section('database')
 DB_FILE = DB_CONFIG.get('filename', "scoring_history.fdb")
 DB_USER = DB_CONFIG.get('user', "sysdba")
@@ -94,7 +97,8 @@ if connect and FB_CLIENT_LIBRARY:
         # Fix: client_library is a top-level config option in this driver version
         if hasattr(driver_config, 'fb_client_library'):
              driver_config.fb_client_library.value = FB_CLIENT_LIBRARY
-    except: pass
+    except Exception as e:
+        logger.debug("Firebird driver config setup failed: %s", e)
 
 
 
@@ -125,9 +129,10 @@ def get_db():
 
              # Resolve DB path from project root so it works when cwd differs (e.g. MCP spawned from user home)
              dsn = DB_PATH
-             print(f"DEBUG: get_db connecting to DSN: {dsn}")
-             if hasattr(driver_config, 'fb_client_library'):
-                 print(f"DEBUG: Client Lib: {driver_config.fb_client_library.value}")
+             if DEBUG_DB_CONNECTION:
+                 logger.debug("get_db connecting to DSN: %s", dsn)
+             if DEBUG_DB_CONNECTION and hasattr(driver_config, 'fb_client_library'):
+                 logger.debug("Client Lib: %s", driver_config.fb_client_library.value)
              # dsn = os.path.normpath(os.path.join(_PROJECT_ROOT, DB_FILE)) 
              
         else:
@@ -144,11 +149,11 @@ def get_db():
 
                  if lib_dir:
                      if not _logged_wsl_info:
-                         print(f"WSL Info: Ensure LD_LIBRARY_PATH includes {lib_dir}")
+                         logger.info("WSL Info: Ensure LD_LIBRARY_PATH includes %s", lib_dir)
                          _logged_wsl_info = True
                  else:
                      if not _logged_wsl_info:
-                         print(f"Warning: Linux Firebird client lib not found/resolvable (FB_CLIENT_LIBRARY={FB_CLIENT_LIBRARY!r})")
+                         logger.warning("Linux Firebird client lib not found/resolvable (FB_CLIENT_LIBRARY=%r)", FB_CLIENT_LIBRARY)
                          _logged_wsl_info = True
 
              # Must use TCP to Windows Host to avoid corruption and locking issues
@@ -169,8 +174,8 @@ def get_db():
                      route_out = subprocess.check_output(["ip", "route", "show", "default"]).decode().strip()
                      if "via" in route_out:
                          host_ip = route_out.split("via")[1].split()[0]
-                 except:
-                     pass
+                 except Exception as e:
+                     logger.debug("Could not resolve default gateway: %s", e)
 
              # 4. Fallback to Resolv.conf
              if not host_ip:
@@ -180,8 +185,8 @@ def get_db():
                              if "nameserver" in line:
                                  host_ip = line.split()[1]
                                  break
-                 except:
-                     pass
+                 except (OSError, IndexError) as e:
+                     logger.debug("Could not read resolv.conf: %s", e)
                      
              if not host_ip:
                  host_ip = "127.0.0.1"
@@ -198,8 +203,8 @@ def get_db():
                      # or expect it to be passed via env?
                      # Let's keep the fallback but add a log message.
                      pass
-             except:
-                 pass
+             except (TypeError, ValueError) as e:
+                 logger.debug("Could not build win_path for DSN: %s", e)
                  
              global _logged_dsn
              dsn = f"inet://{host_ip}/{win_path}"
@@ -208,7 +213,7 @@ def get_db():
              # Skip auto-start in Docker for now as it's more complex to reach host process
              if not is_docker and not _is_firebird_running(host_ip):
                  if not _logged_dsn:
-                     print(f"WSL: Firebird Server not detected on {host_ip}:3050. Attempting to start...")
+                     logger.warning("WSL: Firebird Server not detected on %s:3050. Attempting to start...", host_ip)
                  
                  # We need to launch firebird.exe -a on Windows
                  # Path assumption: relative to project or hardcoded fallback
@@ -221,20 +226,20 @@ def get_db():
                  time.sleep(3) # Wait for startup
 
              if not _logged_dsn:
-                 print(f"WSL: Connecting to {dsn}")
+                 logger.info("WSL: Connecting to %s", dsn)
                  _logged_dsn = True
 
 
 
         # Basic connection
-        print(f"DEBUG: connect function: {connect}")
-        import traceback
+        if DEBUG_DB_CONNECTION:
+            logger.debug("get_db attempting connect to dsn=%s", dsn)
         try:
-            print(f"DEBUG: get_db attempting connect to dsn={dsn}")
             conn = connect(dsn, user=DB_USER, password=DB_PASS, charset='UTF8')
-            print(f"DEBUG: get_db success. conn={conn}")
+            if DEBUG_DB_CONNECTION:
+                logger.debug("get_db connection successful")
         except Exception as e:
-             print(f"DEBUG: get_db connect failed: {e}")
+             logger.debug("get_db connect failed: %s", e)
              traceback.print_exc()
              raise e
         
@@ -359,8 +364,7 @@ def get_db():
         return FirebirdConnectionProxy(conn)
 
     except Exception as e:
-        print(f"FATAL: get_db failed: {e}")
-        import traceback
+        logger.error("get_db failed: %s", e)
         traceback.print_exc()
         raise
 
@@ -1120,13 +1124,48 @@ def _init_db_impl():
         if _table_exists(c, 'FILE_PATHS') and not _index_exists(c, 'IDX_FILE_PATHS_IMG_TYPE'):
              c.execute("CREATE INDEX idx_file_paths_img_type ON file_paths(image_id, path_type)")
 
+        # Selection feature: cull_decision, cull_policy_version on IMAGES
+        c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'IMAGES'")
+        img_cols = [row[0].strip().lower() for row in c.fetchall()]
+        if "cull_decision" not in img_cols:
+            try:
+                c.execute("ALTER TABLE images ADD cull_decision VARCHAR(20)")
+                conn.commit()
+            except Exception as m:
+                logger.debug("Adding cull_decision column: %s", m)
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        if "cull_policy_version" not in img_cols:
+            try:
+                c.execute("ALTER TABLE images ADD cull_policy_version VARCHAR(50)")
+                conn.commit()
+            except Exception as m:
+                logger.debug("Adding cull_policy_version column: %s", m)
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
     except Exception as e:
-        print(f"Migration error: {e}")
+        logger.error("Migration error: %s", e)
         import traceback
         traceback.print_exc()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
-    conn.commit()
-    conn.close()
+    try:
+        conn.commit()
+    except Exception as e:
+        logger.warning("Final commit failed: %s", e)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def get_image_by_hash(image_hash):
     conn = get_db()
@@ -1157,7 +1196,7 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
     valid_fields = {
         'burst_uuid', 'rating', 'label', 'score_general', 'score_aesthetic',
         'score_technical', 'keywords', 'title', 'description', 'stack_id',
-        'thumbnail_path', 'metadata', 'image_hash'
+        'thumbnail_path', 'metadata', 'image_hash', 'cull_decision', 'cull_policy_version'
     }
     
     if field_name not in valid_fields:
@@ -1919,6 +1958,30 @@ def get_all_images(sort_by="score", order="desc", limit=100):
     else:
         query = f"SELECT * FROM images ORDER BY {sort_by} {order.upper()}"
         c.execute(query)
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def get_nef_paths_for_research(limit=500):
+    """
+    Fetch NEF file paths for research/assessment scripts.
+    Returns a random sample of NEF images with id, file_path, score_general.
+    Used by scripts/research_models.py for test set selection.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 500
+    limit = max(1, min(limit, 10000))
+    c.execute(
+        "SELECT id, file_path, score_general, score_technical, score_aesthetic "
+        "FROM images WHERE LOWER(file_type) = 'nef' "
+        "ORDER BY RAND() FETCH FIRST ? ROWS ONLY",
+        (limit,),
+    )
     rows = c.fetchall()
     conn.close()
     return rows
@@ -2749,6 +2812,32 @@ def update_image_stack_batch(updates):
         logging.error(f"Failed to batch update image stacks: {e}")
     finally:
         conn.close()
+
+
+def batch_update_cull_decisions(updates: list, policy_version: str = "1.0", batch_size: int = 1000):
+    """
+    Batch updates cull_decision and cull_policy_version for images.
+    updates: list of (image_id, cull_decision, file_path) tuples.
+    cull_decision: 'pick' | 'reject' | 'neutral'
+    """
+    if not updates:
+        return
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        for i in range(0, len(updates), batch_size):
+            batch = updates[i:i + batch_size]
+            params = [(decision, policy_version, img_id) for img_id, decision, _ in batch]
+            c.executemany(
+                "UPDATE images SET cull_decision = ?, cull_policy_version = ? WHERE id = ?",
+                params
+            )
+        conn.commit()
+    except Exception as e:
+        logging.error("Failed to batch update cull decisions: %s", e)
+    finally:
+        conn.close()
+
 
 def get_stacks():
     """

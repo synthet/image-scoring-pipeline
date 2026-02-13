@@ -87,6 +87,7 @@ test_images/
 output/
 results/
 test_quality_results/
+research_output/
 *.jpg
 *.jpeg
 *.png

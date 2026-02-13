@@ -18,13 +18,15 @@ from pathlib import Path
 from modules import scoring, db, tagging, config, clustering, thumbnails, utils, culling
 from modules.ui import assets, navigation, common
 from modules.ui.tabs import (
-    scoring as scoring_tab, 
-    tagging as tagging_tab, 
-    folder_tree, 
-    stacks as stacks_tab, 
+    scoring as scoring_tab,
+    tagging as tagging_tab,
+    folder_tree,
+    stacks as stacks_tab,
     settings as settings_tab,
-    culling as culling_tab
+    culling as culling_tab,
+    selection as selection_tab,
 )
+from modules.selection_runner import SelectionRunner
 
 # Cache platform check
 IS_WINDOWS = platform.system() == "Windows"
@@ -40,6 +42,7 @@ def create_ui():
     # Initialize Engines
     runner = scoring.ScoringRunner()
     tagging_runner = tagging.TaggingRunner()
+    selection_runner = SelectionRunner()
     
     # UI Elements from Assets
     tree_js = assets.get_tree_js()
@@ -68,13 +71,21 @@ def create_ui():
             # 3. Keywords Tab
             tagging_components = tagging_tab.create_tab(tagging_runner, app_config)
             
-            # 4. Stacks Tab
-            stacks_components = stacks_tab.create_stacks_tab()
+            # 4. Stacks Tab (legacy - hidden when selection.legacy_tabs_enabled is False)
+            legacy_enabled = app_config.get("selection", {}).get("legacy_tabs_enabled", False)
+            stacks_components = None
+            if legacy_enabled:
+                stacks_components = stacks_tab.create_stacks_tab()
             
-            # 5. Culling Tab
-            culling_components = culling_tab.create_tab(app_config)
+            # 5. Culling Tab (legacy - hidden when selection.legacy_tabs_enabled is False)
+            culling_components = None
+            if legacy_enabled:
+                culling_components = culling_tab.create_tab(app_config)
             
-            # 6. Settings Tab
+            # 6. Selection Tab
+            selection_components = selection_tab.create_tab(selection_runner, app_config)
+            
+            # 7. Settings Tab
             settings_tab.create_tab(app_config)
             
         # --- Cross-Tab Navigation Wiring ---
@@ -88,19 +99,33 @@ def create_ui():
             outputs=[main_tabs, scoring_components['input_dir']]
         )
         
-        # Folder Tree -> Culling
-        folder_tree_components['open_culling_btn'].click(
-            fn=navigation.open_folder_in_culling,
-            inputs=[folder_tree_components['selected_path']],
-            outputs=[main_tabs, culling_components['input_dir']]
-        )
+        # Folder Tree -> Culling (when legacy enabled) or -> Selection (when legacy disabled)
+        if culling_components:
+            folder_tree_components['open_culling_btn'].click(
+                fn=navigation.open_folder_in_culling,
+                inputs=[folder_tree_components['selected_path']],
+                outputs=[main_tabs, culling_components['input_dir']]
+            )
+        else:
+            folder_tree_components['open_culling_btn'].click(
+                fn=navigation.open_folder_in_selection,
+                inputs=[folder_tree_components['selected_path']],
+                outputs=[main_tabs, selection_components['input_dir']]
+            )
         
-        # Folder Tree -> Stacks
-        folder_tree_components['open_stacks_btn'].click(
-            fn=navigation.open_folder_in_stacks,
-            inputs=[folder_tree_components['selected_path']],
-            outputs=[main_tabs, stacks_components['input_dir']]
-        )
+        # Folder Tree -> Stacks (when legacy enabled) or -> Selection (when legacy disabled)
+        if stacks_components:
+            folder_tree_components['open_stacks_btn'].click(
+                fn=navigation.open_folder_in_stacks,
+                inputs=[folder_tree_components['selected_path']],
+                outputs=[main_tabs, stacks_components['input_dir']]
+            )
+        else:
+            folder_tree_components['open_stacks_btn'].click(
+                fn=navigation.open_folder_in_selection,
+                inputs=[folder_tree_components['selected_path']],
+                outputs=[main_tabs, selection_components['input_dir']]
+            )
         
         # Folder Tree -> Keywords
         folder_tree_components['open_keywords_btn'].click(
@@ -108,29 +133,42 @@ def create_ui():
             inputs=[folder_tree_components['selected_path']],
             outputs=[main_tabs, tagging_components['input_dir']]
         )
-
-
+        
+        # Folder Tree -> Selection
+        folder_tree_components['open_selection_btn'].click(
+            fn=navigation.open_folder_in_selection,
+            inputs=[folder_tree_components['selected_path']],
+            outputs=[main_tabs, selection_components['input_dir']]
+        )
 
         # Monitor Loop
         def monitor_status_wrapper():
             s_res = scoring_tab.get_status_update(runner)
             t_res = tagging_tab.get_status_update(tagging_runner)
-            stacks_res = stacks_tab.get_status_update()
-            return list(s_res) + list(t_res) + list(stacks_res)
+            stacks_res = stacks_tab.get_status_update() if stacks_components else []
+            sel_res = selection_tab.get_status_update(selection_runner)
+            return list(s_res) + list(t_res) + list(stacks_res) + list(sel_res)
+
+        monitor_outputs = [
+            scoring_components['log_output'], scoring_components['status_html'],
+            scoring_components['run_btn'], scoring_components['stop_btn'], scoring_components['fix_btn'],
+            tagging_components['log_output'], tagging_components['status_html'],
+            tagging_components['run_btn'], tagging_components['stop_btn'],
+        ]
+        if stacks_components:
+            monitor_outputs.extend([stacks_components['status_html'], stacks_components['run_btn'], stacks_components['refresh_btn']])
+        monitor_outputs.extend([
+            selection_components['log_output'], selection_components['status_html'],
+            selection_components['run_btn'], selection_components['stop_btn'],
+        ])
 
         status_timer.tick(
             fn=monitor_status_wrapper,
             inputs=[],
-            outputs=[
-                scoring_components['log_output'], scoring_components['status_html'], 
-                scoring_components['run_btn'], scoring_components['stop_btn'], scoring_components['fix_btn'],
-                tagging_components['log_output'], tagging_components['status_html'], 
-                tagging_components['run_btn'], tagging_components['stop_btn'],
-                stacks_components['status_html'], stacks_components['run_btn'], stacks_components['refresh_btn']
-            ]
+            outputs=monitor_outputs
         )
 
-    return demo, runner, tagging_runner
+    return demo, runner, tagging_runner, selection_runner
 
 def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None):
     """Configures FastAPI endpoints for the Gradio app."""

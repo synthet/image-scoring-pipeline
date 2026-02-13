@@ -5,6 +5,61 @@ All notable changes to the Image Scoring project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [3.18.0] - 2026-02-12
+
+### Added
+- **Unified Selection Workspace**: Finalized and re-enabled the Selection tab in WebUI, providing a single consolidated workflow for automated stack creation and pick/reject decision making.
+  - New modules: `modules/selection.py`, `modules/selection_policy.py`, `modules/selection_metadata.py`, `modules/selection_runner.py`.
+  - Integration: Replaced separate Stacks and Culling tabs with the unified Selection experience.
+- **Selection Tests**: Added integration and policy tests for the new selection logic.
+- **Improved Layout**: Updated WebUI to center Selection as the primary automated workflow.
+
+### Fixed
+- **Scoring Normalization**: Fixed a critical issue in `modules/scoring.py` where general scores were being double-normalized, resulting in tiny values (e.g., 0.00x).
+- **WebUI Startup**: Ensured selection runner initializes correctly alongside scoring and tagging runners.
+
+## [3.17.0] - 2026-02-12
+
+### Changed
+- **Scoring Weights**: Updated default scoring weights to prioritize technical quality via LIQE.
+  - New Formula: `0.50 * LIQE + 0.30 * AVA + 0.20 * SPAQ`
+  - Previous Formula: 50% Technical (LIQE/KonIQ/PaQ) + 50% Aesthetic (AVA/SPAQ/VILA).
+
+### Added
+- **Score Recalculation**: Added `scripts/python/recalc_scores.py` to update existing database records with the new scoring formula.
+  - Backs up database before running.
+  - Updates `score_general`, `rating`, and `model_version`.
+- **Model Documentation**: Added `docs/technical/MODEL_INPUT_SPECIFICATIONS.md` detailing input requirements and score ranges.
+- **Research Tools**: Added `scripts/python/research_models.py` and `scripts/python/analyze_research.py` for model analysis.
+
+## [3.16.0] - 2026-02-08
+
+### Added
+- **Unified Selection Tab**: New workflow replaces separate Stacks + Culling for automated stack creation and pick/reject assignment.
+  - Single input path, run/stop controls, console log, status updates (Scoring/Keywords style).
+  - Policy: top 33% pick, bottom 33% reject, middle neutral. Deterministic tie-break.
+  - Writes stack/burst IDs and pick/reject flags to XMP sidecars (Lightroom-compatible).
+  - Modules: `selection.py`, `selection_policy.py`, `selection_metadata.py`, `selection_runner.py`.
+- **Selection Policy**: Pure policy module (`selection_policy.py`) with `band_sizes`, `classify_sorted_ids`.
+- **Folder Tree**: "Open in Selection" button for direct navigation.
+- **Config**: New `selection` section: `score_field`, `pick_fraction`, `reject_fraction`, `force_rescan_default`, `verify_sidecar_write`, `legacy_tabs_enabled`.
+
+### Changed
+- **Code Review Fixes** (per 2026-02-09 review):
+  - Removed duplicate `ScoringRunner.__init__` in `modules/scoring.py`.
+  - Replaced DB `print()` diagnostics with structured logging; gate sensitive details behind `DEBUG_DB_CONNECTION` env var.
+  - Narrowed exception handling in `pipeline.py` and `db.py` (replace `except: pass` with specific types and logging).
+  - RAW converter optimization: PrepWorker reuses worker-local `MultiModelMUSIQ(skip_gpu=True)` instance.
+- **Stacks & Culling Deprecated**: Tab labels now "(Deprecated)"; use Selection tab instead.
+  - `selection.legacy_tabs_enabled` (default `false`) hides Stacks and Culling tabs; folder buttons route to Selection when disabled.
+  - `run_full_cull` emits deprecation warning.
+- **Database**: Added `cull_decision`, `cull_policy_version` columns to IMAGES; `batch_update_cull_decisions()` for batch updates.
+
+### Migration
+- Add `"selection": {"legacy_tabs_enabled": false}` to `config.json` to hide legacy tabs by default.
+- Set `legacy_tabs_enabled: true` to keep Stacks and Culling visible during transition.
+
 ## [3.15.0] - 2026-02-08
 
 ### Added

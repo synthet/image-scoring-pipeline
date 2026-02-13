@@ -30,13 +30,6 @@ class ScoringRunner:
         # We keep a ref to the current processor to stop it
         self.current_processor = None
         
-
-    def __init__(self):
-        # We hold the shared scorer here to persist it across runs
-        self.shared_scorer = None
-        # We keep a ref to the current processor to stop it
-        self.current_processor = None
-        
         # State persistence
         self.is_running = False
         self.job_type = None # 'scoring' or 'fix_db'
@@ -113,7 +106,7 @@ class ScoringRunner:
                 new_scorer = MultiModelMUSIQ()
                 
                 # Load models
-                musiq_models = ['spaq', 'ava', 'koniq', 'paq2piq']
+                musiq_models = ['spaq', 'ava']
                 for model_name in musiq_models:
                     log(f"Loading model: {model_name.upper()}...")
                     success = new_scorer.load_model(model_name)
@@ -224,7 +217,7 @@ class ScoringRunner:
             log("Initializing models...")
             try:
                 new_scorer = MultiModelMUSIQ()
-                musiq_models = ['spaq', 'ava', 'koniq', 'paq2piq']
+                musiq_models = ['spaq', 'ava']
                 for model_name in musiq_models:
                     success = new_scorer.load_model(model_name)
                     if not success:
@@ -255,7 +248,7 @@ class ScoringRunner:
              )
              
              # Pre-fill external scores
-             models = ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']
+             models = ['spaq', 'ava', 'liqe']
              for m in models:
                  key = f'score_{m}'
                  try:
@@ -340,7 +333,7 @@ class ScoringRunner:
             # Helper to retrieve score from various places
             scores = {}
             # Try DB columns first
-            for m in ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']:
+            for m in ['spaq', 'ava', 'liqe']:
                 key = f'score_{m}'
                 val = details.get(key)
                 if val is not None and val > 0:
@@ -371,26 +364,19 @@ class ScoringRunner:
             def get_s(model):
                 return scores.get(model, 0.0)
 
-            # Formulas from run_all_musiq_models.py (v3.0.0)
+            # Formulas from run_all_musiq_models.py (v3.0.0) -> Updated 2026-02-12
             
-            # Technical: PaQ(0.35), LIQE(0.35), KonIQ(0.15), SPAQ(0.15)
-            tech = (0.35 * get_s('paq2piq') + 
-                    0.35 * get_s('liqe') + 
-                    0.15 * get_s('koniq') + 
-                    0.15 * get_s('spaq'))
+            # Technical: LIQE(1.0)
+            tech = get_s('liqe')
 
-            # Aesthetic: AVA(0.40), KonIQ(0.30), SPAQ(0.20), PaQ(0.10)
-            aes = (0.40 * get_s('ava') + 
-                   0.30 * get_s('koniq') + 
-                   0.20 * get_s('spaq') + 
-                   0.10 * get_s('paq2piq'))
+            # Aesthetic: AVA(0.60), SPAQ(0.40)
+            aes = (0.60 * get_s('ava') + 
+                   0.40 * get_s('spaq'))
 
-            # General: PaQ(0.25), LIQE(0.25), AVA(0.20), KonIQ(0.20), SPAQ(0.10)
-            gen = (0.25 * get_s('paq2piq') + 
-                   0.25 * get_s('liqe') + 
-                   0.20 * get_s('ava') + 
-                   0.20 * get_s('koniq') + 
-                   0.10 * get_s('spaq'))
+            # General: LIQE(0.50), AVA(0.30), SPAQ(0.20)
+            gen = (0.50 * get_s('liqe') + 
+                   0.30 * get_s('ava') + 
+                   0.20 * get_s('spaq'))
                    
             # Rating Calculation
             rating = 1
@@ -404,7 +390,7 @@ class ScoringRunner:
             label = "Yellow"
             if tech < 0.40: label = "Red"
             elif tech < 0.65 and aes > tech and aes > 0.48: label = "Purple"
-            elif aes > 0.55 and tech > 0.65: label = "Blue"
+            elif aes > 0.70 and tech > 0.70: label = "Blue"
             elif tech > 0.65: label = "Green"
             
             # 4. Update Database
@@ -512,7 +498,7 @@ class ScoringRunner:
                 # Use local import if needed or assume globally imported
                 # from run_all_musiq_models import MultiModelMUSIQ
                 new_scorer = MultiModelMUSIQ()
-                for m in ['spaq', 'ava', 'koniq', 'paq2piq']:
+                for m in ['spaq', 'ava']:
                     new_scorer.load_model(m)
                 self.shared_scorer = new_scorer
             except Exception as e:
