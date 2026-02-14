@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.19.0] - 2026-02-14
+
+### Added
+- **LIQE Model Integration**: Integrated LIQE scorer (`pyiqa`) directly into `MultiModelMUSIQ` as a first-class model alongside MUSIQ variants.
+  - New `pyiqa` model type with dedicated loading and prediction paths in `run_all_musiq_models.py`.
+  - LIQE imported from `modules/liqe.LiqeScorer` with graceful fallback.
+- **Image Preprocessing Pipeline**: New `preprocess_image()` method in `MultiModelMUSIQ` standardizes all inputs to 512×512 with bicubic resize and black-border padding.
+  - RAW files: ExifTool embedded-JPEG extraction → rawpy half-size fallback.
+  - Standard images also preprocessed for consistent model input.
+- **Folder Tree → Selection**: Added "📋 Open in Selection" button and `open_folder_in_selection()` navigation helper.
+- **Antigravity Skills**: Added `.agent/skills/` with `scoring-pipeline`, `firebird-db`, `image-scoring-mcp`, `webui-gradio`, and `git-changelog` skills.
+- **Diagnostic & Research Scripts**: Added `diagnose_scores.py`, `inspect_db.py`, `repro_score_calc.py`, `verify_scores.py`, `research_models.py`, and `SCORING_CHANGES.md`.
+
+### Changed
+- **Scoring Weights Simplified**: Dropped KonIQ and PaQ2PiQ from active scoring; now uses three models only.
+  - General: `0.50 × LIQE + 0.30 × AVA + 0.20 × SPAQ`.
+  - Technical: `1.00 × LIQE`.
+  - Aesthetic: `0.60 × AVA + 0.40 × SPAQ`.
+- **Pipeline Hardening** (`modules/pipeline.py`):
+  - `PrepWorker` reuses a worker-local `MultiModelMUSIQ(skip_gpu=True)` instance for RAW conversion instead of creating one per image.
+  - Required-model backfill list trimmed to `['spaq', 'ava', 'liqe']`.
+  - Replaced bare `except: pass` blocks with specific exception types (`ImportError`, `RuntimeError`, `OSError`) and logging.
+- **Settings Tab Consolidated** (`modules/ui/tabs/settings.py`):
+  - Merged separate Clustering and Culling accordions into unified "📚 Stacks & Culling (Legacy)" section.
+  - Removed GPU toggle, rating thresholds, and per-score minimum filter sliders.
+  - Simplified `reset_config_defaults()` and `save_all_config()` signatures.
+- **Stacks & Culling Deprecated**: Tab labels now show "(Deprecated)" with banner directing users to the Selection tab.
+- **Test Cleanup** (`tests/test_model_sources.py`): Moved `MODEL_SOURCES` definition above first usage; removed KonIQ and PaQ2PiQ entries; renamed `test_all_sources` → `check_all_sources`.
+- **Color Label Formula**: Updated `score_to_rating()` and `calculate_weighted_categories()` to use new three-model weights.
+
 ## [3.18.0] - 2026-02-12
 
 ### Added

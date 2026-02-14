@@ -88,6 +88,7 @@ class PrepWorker(PipelineWorker):
     def __init__(self, input_queue, output_queue, stop_event, scorer_ref):
         super().__init__("PrepWorker", input_queue, output_queue, stop_event)
         self.scorer = scorer_ref # Reference to scorer class for static methods (is_raw, etc)
+        self._raw_converter = None  # Lazy-init; reused for RAW conversion to avoid per-image instantiation
         
     def process(self, job: ImageJob):
         image_hash = None
@@ -134,7 +135,7 @@ class PrepWorker(PipelineWorker):
                         
                         # Smart Backfill Logic
                         # Check if ALL required scores are present
-                        required_models = ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']
+                        required_models = ['spaq', 'ava', 'liqe']
                         missing_models = []
                         valid_scores = {}
                         
@@ -222,15 +223,12 @@ class PrepWorker(PipelineWorker):
                 t_dir = tempfile.mkdtemp(prefix="musiq_prep_")
                 job.temp_files.append(t_dir)
                 
-                # Create a specialized mini-instance for conversion? 
-                # Or just manually call the logic.
-                # To save time, we will create a dummy wrapper that mimics the necessary parts or 
-                # just instantiate the class but NOT load models.
-                converter = MultiModelMUSIQ(skip_gpu=True) 
-                # The constructor loads nothing heavy, just dicts.
-                converter.temp_dir = t_dir
+                # Reuse worker-local converter (avoids per-image instantiation cost)
+                if self._raw_converter is None:
+                    self._raw_converter = MultiModelMUSIQ(skip_gpu=True)
+                self._raw_converter.temp_dir = t_dir
                 
-                jpg = converter.convert_raw_to_jpeg(job.image_path)
+                jpg = self._raw_converter.convert_raw_to_jpeg(job.image_path)
                 if jpg:
                     job.process_path = jpg
                     job.temp_files.append(jpg)
@@ -294,7 +292,8 @@ class ScoringWorker(PipelineWorker):
                 import torch
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-            except: pass
+            except (ImportError, RuntimeError) as e:
+                logger.warning("CUDA cache clear failed: %s", e)
 
             results = self.scorer.run_all_models(
                 job.process_path, 
@@ -409,7 +408,8 @@ class ResultWorker(PipelineWorker):
                 else:
                     if os.path.exists(p):
                         os.remove(p)
-            except: pass
+            except OSError as e:
+                logger.warning("Cleanup failed for %s: %s", p, e)
         
         if self.item_finished_callback:
             self.item_finished_callback()

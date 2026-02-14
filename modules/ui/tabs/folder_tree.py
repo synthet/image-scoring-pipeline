@@ -97,6 +97,7 @@ def create_tab(app_config):
         with gr.Row():
             t_refresh_btn = gr.Button("🔄 Refresh", size="sm", scale=0, min_width=100)
             t_open_scoring_btn = gr.Button("▶️ Open in Scoring", variant="primary", size="sm", scale=1)
+            t_open_selection_btn = gr.Button("📋 Open in Selection", variant="secondary", size="sm", scale=1)
             t_open_culling_btn = gr.Button("✂️ Open in Culling", variant="secondary", size="sm", scale=1)
             t_open_stacks_btn = gr.Button("📚 Open in Stacks", variant="secondary", size="sm", scale=1)
             t_open_keywords_btn = gr.Button("🏷️ Open in Keywords", variant="secondary", size="sm", scale=1)
@@ -137,6 +138,7 @@ def create_tab(app_config):
     return {
         'refresh_btn': t_refresh_btn,
         'open_scoring_btn': t_open_scoring_btn,
+        'open_selection_btn': t_open_selection_btn,
         'open_culling_btn': t_open_culling_btn,
         'open_stacks_btn': t_open_stacks_btn,
         'open_keywords_btn': t_open_keywords_btn,

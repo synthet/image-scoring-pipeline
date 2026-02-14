@@ -305,7 +305,8 @@ def repick_culling_best(session_id, score_field='score_general'):
     return f"✅ Re-picked best: {pick_stats.get('picked', 0)} picks\n{msg}", gal, paths
 
 def create_tab(app_config):
-    with gr.TabItem("Culling", id="culling") as tab_item:
+    with gr.TabItem("Culling (Deprecated)", id="culling") as tab_item:
+        gr.Markdown("⚠️ **Deprecated:** Use the **Selection** tab for automated stack + pick/reject workflow.")
         # Row 1: Controls & Status
         with gr.Row():
             # Left: Inputs & Settings

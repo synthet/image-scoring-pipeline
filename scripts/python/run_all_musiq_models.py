@@ -22,7 +22,23 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_hub as hub
 import kagglehub
-from PIL import Image
+from PIL import Image, ImageOps
+import rawpy
+
+# Add project root to path to import modules
+project_root = str(Path(__file__).resolve().parents[2])
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+try:
+    from modules.liqe import LiqeScorer
+except ImportError:
+    # Fallback if run from root
+    try:
+        from modules.liqe import LiqeScorer
+    except ImportError:
+        logging.getLogger(__name__).warning("Could not import LiqeScorer. LIQE scoring will be unavailable.")
+        LiqeScorer = None
 
 
 class MultiModelMUSIQ:
@@ -60,6 +76,83 @@ class MultiModelMUSIQ:
         ext = Path(file_path).suffix.lower()
         return ext in self.RAW_EXTENSIONS
     
+    def preprocess_image(self, file_path: str) -> str:
+        """
+        Preprocess image for optimal model input:
+        1. Extract embedded JPEG from Raw (Fastest, usually sufficient)
+        2. Fallback: rawpy half-size decode
+        3. Resize: Bicubic to fit within 512x512
+        4. Pad: Add black borders to make exactly 512x512
+        
+        Returns path to preprocessed temporary JPEG.
+        """
+        temp_dir = self.setup_temp_directory()
+        output_path = os.path.join(temp_dir, f"preprocessed_{os.path.basename(file_path)}.jpg")
+        
+        try:
+            pil_image = None
+            
+            # 1. Try ExifTool extraction for RAWs
+            if self.is_raw_file(file_path):
+                try:
+                    # '-b -JpgFromRaw' usually extracts the full size preview
+                    # '-b -PreviewImage' is another option
+                    cmd = ['exiftool', '-b', '-JpgFromRaw', file_path]
+                    result = subprocess.run(cmd, capture_output=True, timeout=5)
+                    
+                    if result.returncode == 0 and len(result.stdout) > 0:
+                        pil_image = Image.open(io.BytesIO(result.stdout)).convert('RGB')
+                        # logging.getLogger(__name__).debug(f"Extracted JPEG from RAW: {file_path}")
+                except Exception as e:
+                    logging.getLogger(__name__).debug(f"ExifTool extraction failed: {e}")
+                
+                # 2. Fallback to rawpy
+                if pil_image is None:
+                    # Check safety/compatibility
+                    if not self._is_safe_for_rawpy(file_path):
+                        logging.getLogger(__name__).warning("Skipping rawpy for incompatible file (Nikon HE)")
+                        return None
+                        
+                    try:
+                        with rawpy.imread(file_path) as raw:
+                            # Use half_size for speed, it's plenty for 512x512
+                            rgb = raw.postprocess(use_camera_wb=True, half_size=True)
+                            pil_image = Image.fromarray(rgb)
+                    except Exception as e:
+                        logging.getLogger(__name__).error(f"Rawpy conversion failed: {e}")
+                        return None
+            else:
+                # Normal image
+                pil_image = Image.open(file_path).convert('RGB')
+                
+            if pil_image is None:
+                return None
+                
+            # 3. Resize (Bicubic) to fit within 512x512
+            target_size = 512
+            pil_image.thumbnail((target_size, target_size), Image.BICUBIC)
+            
+            # 4. Pad to exactly 512x512
+            delta_w = target_size - pil_image.size[0]
+            delta_h = target_size - pil_image.size[1]
+            padding = (delta_w//2, delta_h//2, delta_w-(delta_w//2), delta_h-(delta_h//2))
+            
+            # Add black border
+            padded_image = ImageOps.expand(pil_image, padding, fill=0)
+            
+            # Verify size
+            if padded_image.size != (512, 512):
+                padded_image = padded_image.resize((512, 512), Image.BICUBIC)
+                
+            # Save
+            padded_image.save(output_path, "JPEG", quality=95)
+            self.temp_files.append(output_path)
+            return output_path
+            
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Preprocessing failed: {e}")
+            return None
+    
     def is_nef_file(self, file_path: str) -> bool:
         """Check if file is a Nikon NEF file that can be rated."""
         ext = Path(file_path).suffix.lower()
@@ -68,7 +161,7 @@ class MultiModelMUSIQ:
     def score_to_rating(self, score: float) -> int:
         """
         Convert normalized score (0-1) to 1-5 star rating based on General Score.
-        Formula: (0.35 * PaQ) + (0.30 * AVA) + (0.25 * LIQE) + (0.10 * KonIQ)
+        Formula: (0.50 * LIQE) + (0.30 * AVA) + (0.20 * SPAQ)
         
         Rating brackets:
         0.85 - 1.00 : 5 Stars (Masterpiece)
@@ -103,17 +196,12 @@ class MultiModelMUSIQ:
 
         # Calculate sub-scores
         # Calculate sub-scores (Matching calculate_weighted_categories)
-        # Technical: PaQ(0.35), LIQE(0.35), KonIQ(0.15), SPAQ(0.15)
-        tech_score = (0.35 * get_s('paq2piq') + 
-                      0.35 * get_s('liqe') + 
-                      0.15 * get_s('koniq') + 
-                      0.15 * get_s('spaq'))
+        # Technical: LIQE (1.0) - Simplified to just LIQE as it is most reliable
+        tech_score = get_s('liqe')
 
-        # Aesthetic: AVA(0.40), KonIQ(0.30), SPAQ(0.20), PaQ(0.10)
-        art_score = (0.40 * get_s('ava') + 
-                     0.30 * get_s('koniq') + 
-                     0.20 * get_s('spaq') + 
-                     0.10 * get_s('paq2piq'))
+        # Aesthetic: AVA(0.60), SPAQ(0.40)
+        art_score = (0.60 * get_s('ava') + 
+                     0.40 * get_s('spaq'))
         
         # 1. 🔴 Red = "The Reject" (Technical Failure)
         if tech_score < 0.40:
@@ -579,10 +667,13 @@ class MultiModelMUSIQ:
         # Fallback order: TF Hub → Kaggle Hub → Local Checkpoints
         
         # Get base directory for local checkpoints
-        # Get base directory for local checkpoints
         checkpoint_dir = os.path.join(self.project_root, "models", "checkpoints")
         
         self.model_sources = {
+            "liqe": {
+                "type": "pyiqa",
+                "local": None # Loaded internally by pyiqa/LiqeScorer
+            },
             "spaq": {
                 "tfhub": "https://tfhub.dev/google/musiq/spaq/1",
                 "kaggle": "google/musiq/tensorFlow2/spaq",
@@ -593,16 +684,16 @@ class MultiModelMUSIQ:
                 "kaggle": "google/musiq/tensorFlow2/ava",
                 "local": os.path.join(checkpoint_dir, "ava_ckpt.npz")
             },
-            "koniq": {
-                "tfhub": None,  # Not available on TF Hub
-                "kaggle": "google/musiq/tensorFlow2/koniq-10k",
-                "local": os.path.join(checkpoint_dir, "koniq_ckpt.npz")
-            },
-            "paq2piq": {
-                "tfhub": "https://tfhub.dev/google/musiq/paq2piq/1",
-                "kaggle": "google/musiq/tensorFlow2/paq2piq",
-                "local": os.path.join(checkpoint_dir, "paq2piq_ckpt.npz")
-            }
+            # "koniq": {
+            #     "tfhub": None,  # Not available on TF Hub
+            #     "kaggle": "google/musiq/tensorFlow2/koniq-10k",
+            #     "local": os.path.join(checkpoint_dir, "koniq_ckpt.npz")
+            # },
+            # "paq2piq": {
+            #     "tfhub": "https://tfhub.dev/google/musiq/paq2piq/1",
+            #     "kaggle": "google/musiq/tensorFlow2/paq2piq",
+            #     "local": os.path.join(checkpoint_dir, "paq2piq_ckpt.npz")
+            # }
             # "vila": {
             #     "tfhub": "https://tfhub.dev/google/vila/image/1",
             #     "kaggle": "google/vila/tensorFlow2/image",
@@ -612,6 +703,7 @@ class MultiModelMUSIQ:
         
         # Model types (for processing logic)
         self.model_types = {
+            "liqe": "pyiqa",
             "spaq": "musiq",
             "ava": "musiq",
             "koniq": "musiq",
@@ -621,6 +713,7 @@ class MultiModelMUSIQ:
         
         # Model score ranges for reference (from official documentation)
         self.model_ranges = {
+            "liqe": (1.0, 5.0),        # LIQE: 1-5
             "spaq": (0.0, 100.0),      # SPAQ dataset: 0-100
             "ava": (1.0, 10.0),        # AVA dataset: 1-10
             "koniq": (0.0, 100.0),     # KONIQ-10k dataset: 0-100
@@ -638,11 +731,11 @@ class MultiModelMUSIQ:
         # Model weights for weighted scoring
         # Load from config if available, otherwise use defaults
         default_weights = {
-            "paq2piq": 0.25,
-            "liqe": 0.25,
-            "ava": 0.20,
-            "koniq": 0.20,
-            "spaq": 0.10,
+            "liqe": 0.50,
+            "ava": 0.30,
+            "spaq": 0.20,
+            "paq2piq": 0.00,
+            "koniq": 0.00,
             "vila": 0.00
         }
         
@@ -700,6 +793,24 @@ class MultiModelMUSIQ:
         tfhub_url = sources.get("tfhub")
         kaggle_path = sources.get("kaggle")
         local_path = sources.get("local")
+        model_type = sources.get("type", "tfhub")
+
+        # Special handling for LIQE
+        if model_name == "liqe" or model_type == "pyiqa":
+            try:
+                if LiqeScorer is None:
+                    return False
+                logging.getLogger(__name__).info(f"Loading {model_name.upper()} model via pyiqa...")
+                self.models[model_name] = LiqeScorer(device=self.device.replace('/GPU:0', 'cuda').replace('/CPU:0', 'cpu'))
+                if self.models[model_name].available:
+                    logging.getLogger(__name__).info(f"✓ {model_name.upper()} model loaded successfully")
+                    return True
+                else:
+                    logging.getLogger(__name__).error(f"✗ {model_name.upper()} model failed to initialize")
+                    return False
+            except Exception as e:
+                logging.getLogger(__name__).error(f"✗ Failed to load {model_name.upper()}: {e}")
+                return False
         
         # Try TensorFlow Hub first (preferred - no auth needed, usually faster)
         if tfhub_url:
@@ -810,6 +921,15 @@ class MultiModelMUSIQ:
                 # VILA models use 'image_bytes', MUSIQ models use 'image_bytes_tensor'
                 if model_type == "vila":
                     predictions = model.signatures['serving_default'](image_bytes=image_bytes_tensor)
+                elif model_type == "pyiqa":
+                    # LIQE / pyiqa prediction
+                    # image_path is passed directly
+                    result = model.predict(image_path)
+                    if result and result.get("status") == "success":
+                         return float(result.get("score", 0.0))
+                    else:
+                         logging.getLogger(__name__).warning(f"{model_name.upper()} prediction failed: {result.get('error')}")
+                         return None
                 else:
                     predictions = model.signatures['serving_default'](image_bytes_tensor=image_bytes_tensor)
             
@@ -865,9 +985,11 @@ class MultiModelMUSIQ:
         
         if is_raw:
             logger(f"RAW file detected: {image_path}")
-            # Convert RAW to temporary JPEG
-            temp_jpeg = self.convert_raw_to_jpeg(image_path)
-            if temp_jpeg is None:
+            # Use new preprocessing pipeline
+            processed_path = self.preprocess_image(image_path)
+            
+            if processed_path is None:
+                # Failed
                 return {
                     "version": self.VERSION,
                     "image_path": self.wsl_to_windows_path(image_path),
@@ -880,7 +1002,7 @@ class MultiModelMUSIQ:
                         "successful_predictions": 0,
                         "failed_predictions": 0,
                         "average_normalized_score": None,
-                        "error": "RAW conversion failed"
+                        "error": "RAW/Image preprocessing failed"
                     },
                     "raw_conversion": {
                         "original_raw": image_path,
@@ -888,7 +1010,14 @@ class MultiModelMUSIQ:
                         "conversion_success": False
                     }
                 }
-            processing_path = temp_jpeg
+            processing_path = processed_path
+        else:
+             # Also preprocess normal images to ensure 512x512 with padding
+             processed_path = self.preprocess_image(image_path)
+             if processed_path:
+                 processing_path = processed_path
+             else:
+                 logger("Warning: Preprocessing failed for standard image, using original.")
         
         # Convert WSL path to Windows path for browser compatibility
         browser_path = self.wsl_to_windows_path(image_path)
@@ -1165,26 +1294,19 @@ class MultiModelMUSIQ:
             return scores.get(model, 0.0)
 
         # 1. Technical Safety (Culling)
-        # PaQ: 0.35, LIQE: 0.35, KonIQ: 0.15, SPAQ: 0.15
-        technical = (0.35 * get_s('paq2piq') + 
-                     0.35 * get_s('liqe') + 
-                     0.15 * get_s('koniq') + 
-                     0.15 * get_s('spaq'))
+        # Tech: LIQE (1.0)
+        technical = get_s('liqe')
                      
         # 2. Portfolio Potential (Ranking)
-        # AVA: 0.40, KonIQ: 0.30, SPAQ: 0.20, PaQ: 0.10
-        aesthetic = (0.40 * get_s('ava') + 
-                     0.30 * get_s('koniq') + 
-                     0.20 * get_s('spaq') + 
-                     0.10 * get_s('paq2piq'))
+        # Art: AVA (0.60), SPAQ (0.40)
+        aesthetic = (0.60 * get_s('ava') + 
+                     0.40 * get_s('spaq'))
 
         # 3. General Purpose (Balanced)
-        # PaQ: 0.25, LIQE: 0.25, AVA: 0.20, KonIQ: 0.20, SPAQ: 0.10
-        general = (0.25 * get_s('paq2piq') + 
-                   0.25 * get_s('liqe') + 
-                   0.20 * get_s('ava') + 
-                   0.20 * get_s('koniq') + 
-                   0.10 * get_s('spaq'))
+        # General: LIQE (0.50), AVA (0.30), SPAQ (0.20)
+        general = (0.50 * get_s('liqe') + 
+                   0.30 * get_s('ava') + 
+                   0.20 * get_s('spaq'))
                    
         return {
             "technical": round(technical, 3),

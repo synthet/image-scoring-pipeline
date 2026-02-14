@@ -3,10 +3,10 @@ Settings/Configuration tab module for application settings.
 
 This module provides UI for configuring:
 - Scoring defaults (force re-score, default sort)
-- Processing options (thread counts, batch sizes)
-- Clustering parameters (threshold, time gap)
-- Culling workflow settings
-- UI preferences (page size, default sort)
+- Processing options (queue sizes, batch size)
+- Stacks & Culling legacy (shared threshold, time gap, force rescan, auto export)
+- UI preferences (page size, export format)
+- Tagging defaults (overwrite, captions, tokens, CLIP model)
 
 All changes are saved to config.json and persist across sessions.
 """
@@ -94,70 +94,34 @@ def create_tab(app_config):
                         label="Clustering Batch Size",
                         info="Number of images processed per batch for clustering (default: 32)"
                     )
-                    cfg_enable_gpu = gr.Checkbox(
-                        label="Enable GPU for Scoring",
-                        value=processing_config.get('enable_gpu', True),
-                        info="Use GPU acceleration for model inference (if available)"
-                    )
         
-        # Clustering/Stacks Configuration
-        with gr.Accordion("📚 Clustering/Stacks Configuration", open=False):
+        # Stacks & Culling (Legacy) - shared threshold/time_gap used by both tabs
+        with gr.Accordion("📚 Stacks & Culling (Legacy)", open=False):
+            gr.Markdown("*Used when Stacks or Culling tabs are enabled (legacy_tabs_enabled).*")
             with gr.Row():
                 with gr.Column():
-                    cfg_clustering_threshold = gr.Slider(
+                    cfg_stack_threshold = gr.Slider(
                         0.01, 1.0,
                         value=clustering_config.get('default_threshold', 0.15),
                         step=0.01,
                         label="Default Similarity Threshold",
-                        info="Default threshold for grouping similar images (0.01-1.0)"
+                        info="Threshold for grouping similar images (Stacks & Culling)"
                     )
-                    cfg_clustering_time_gap = gr.Number(
+                    cfg_stack_time_gap = gr.Number(
                         value=clustering_config.get('default_time_gap', 120),
                         label="Default Time Gap (seconds)",
-                        info="Default time gap for splitting groups (default: 120)"
+                        info="Time gap for splitting groups (default: 120)"
                     )
+                with gr.Column():
                     cfg_clustering_force_rescan = gr.Checkbox(
                         label="Force Rescan (Default)",
                         value=clustering_config.get('force_rescan_default', False),
-                        info="Default value for 'Force Rescan' checkbox in Stacks tab"
-                    )
-        
-        # Culling Configuration
-        with gr.Accordion("✂️ Culling Configuration", open=False):
-            with gr.Row():
-                with gr.Column():
-                    cfg_culling_threshold = gr.Slider(
-                        0.05, 0.5,
-                        value=culling_config.get('default_threshold', 0.15),
-                        step=0.05,
-                        label="Default Similarity Threshold",
-                        info="Default threshold for culling groups (0.05-0.5)"
-                    )
-                    cfg_culling_time_gap = gr.Number(
-                        value=culling_config.get('default_time_gap', 120),
-                        label="Default Time Gap (seconds)",
-                        info="Default time gap for splitting culling groups (default: 120)"
+                        info="Default for 'Force Rescan' in Stacks tab"
                     )
                     cfg_culling_auto_export = gr.Checkbox(
                         label="Auto Export (Default)",
                         value=culling_config.get('auto_export_default', False),
-                        info="Default value for 'Auto-export to XMP' checkbox in Culling tab"
-                    )
-                with gr.Column():
-                    gr.Markdown("**Rating Thresholds**")
-                    cfg_culling_pick_rating = gr.Slider(
-                        1, 5,
-                        value=culling_config.get('pick_rating_threshold', 4),
-                        step=1,
-                        label="Pick Rating Threshold (stars)",
-                        info="Minimum rating for 'picks' (default: 4)"
-                    )
-                    cfg_culling_reject_rating = gr.Slider(
-                        0, 2,
-                        value=culling_config.get('reject_rating_threshold', 1),
-                        step=1,
-                        label="Reject Rating Threshold (stars)",
-                        info="Maximum rating for 'rejects' (default: 1)"
+                        info="Default for 'Auto-export to XMP' in Culling tab"
                     )
         
         # UI Configuration
@@ -177,29 +141,6 @@ def create_tab(app_config):
                         ],
                         value=ui_config.get('default_export_format', 'json'),
                         label="Default Export Format"
-                    )
-                with gr.Column():
-                    gr.Markdown("**Default Filter Minimum Scores**")
-                    cfg_default_min_general = gr.Slider(
-                        0.0, 1.0,
-                        value=ui_config.get('default_min_general', 0.0),
-                        step=0.05,
-                        label="Min General Score",
-                        info="Default minimum general score filter"
-                    )
-                    cfg_default_min_aesthetic = gr.Slider(
-                        0.0, 1.0,
-                        value=ui_config.get('default_min_aesthetic', 0.0),
-                        step=0.05,
-                        label="Min Aesthetic Score",
-                        info="Default minimum aesthetic score filter"
-                    )
-                    cfg_default_min_technical = gr.Slider(
-                        0.0, 1.0,
-                        value=ui_config.get('default_min_technical', 0.0),
-                        step=0.05,
-                        label="Min Technical Score",
-                        info="Default minimum technical score filter"
                     )
         
         # Tagging Configuration
@@ -242,14 +183,14 @@ def create_tab(app_config):
         # Configuration save handler
         def save_all_config(
             force_rescore, sort_by, sort_order,
-            prep_queue, scoring_queue, result_queue, clustering_batch, enable_gpu,
-            clust_threshold, clust_gap, clust_force,
-            cull_threshold, cull_gap, cull_auto, cull_pick, cull_reject,
-            page_size, export_format, min_gen, min_aes, min_tech,
+            prep_queue, scoring_queue, result_queue, clustering_batch,
+            stack_threshold, stack_gap, clust_force, cull_auto,
+            page_size, export_format,
             tag_overwrite, tag_captions, tag_tokens, tag_clip_model
         ):
             try:
-                # Save each section
+                thresh = float(stack_threshold) if stack_threshold else 0.15
+                gap = int(stack_gap) if stack_gap else 120
                 config.save_config_value('scoring', {
                     'force_rescore_default': force_rescore,
                     'default_sort_by': sort_by,
@@ -259,27 +200,21 @@ def create_tab(app_config):
                     'prep_queue_size': int(prep_queue) if prep_queue else 50,
                     'scoring_queue_size': int(scoring_queue) if scoring_queue else 10,
                     'result_queue_size': int(result_queue) if result_queue else 50,
-                    'clustering_batch_size': int(clustering_batch) if clustering_batch else 32,
-                    'enable_gpu': enable_gpu
+                    'clustering_batch_size': int(clustering_batch) if clustering_batch else 32
                 })
                 config.save_config_value('clustering', {
-                    'default_threshold': float(clust_threshold) if clust_threshold else 0.15,
-                    'default_time_gap': int(clust_gap) if clust_gap else 120,
+                    'default_threshold': thresh,
+                    'default_time_gap': gap,
                     'force_rescan_default': clust_force
                 })
                 config.save_config_value('culling', {
-                    'default_threshold': float(cull_threshold) if cull_threshold else 0.15,
-                    'default_time_gap': int(cull_gap) if cull_gap else 120,
-                    'auto_export_default': cull_auto,
-                    'pick_rating_threshold': int(cull_pick) if cull_pick else 4,
-                    'reject_rating_threshold': int(cull_reject) if cull_reject else 1
+                    'default_threshold': thresh,
+                    'default_time_gap': gap,
+                    'auto_export_default': cull_auto
                 })
                 config.save_config_value('ui', {
                     'gallery_page_size': int(page_size) if page_size else 50,
-                    'default_export_format': export_format,
-                    'default_min_general': float(min_gen) if min_gen else 0.0,
-                    'default_min_aesthetic': float(min_aes) if min_aes else 0.0,
-                    'default_min_technical': float(min_tech) if min_tech else 0.0
+                    'default_export_format': export_format
                 })
                 config.save_config_value('tagging', {
                     'overwrite_default': tag_overwrite,
@@ -293,56 +228,21 @@ def create_tab(app_config):
         
         # Reset to defaults handler
         def reset_config_defaults():
-            defaults = {
-                'force_rescore': False,
-                'sort_by': 'score_general',
-                'sort_order': 'desc',
-                'prep_queue': 50,
-                'scoring_queue': 10,
-                'result_queue': 50,
-                'clustering_batch': 32,
-                'enable_gpu': True,
-                'clust_threshold': 0.15,
-                'clust_gap': 120,
-                'clust_force': False,
-                'cull_threshold': 0.15,
-                'cull_gap': 120,
-                'cull_auto': False,
-                'cull_pick': 4,
-                'cull_reject': 1,
-                'page_size': 50,
-                'export_format': 'json',
-                'min_gen': 0.0,
-                'min_aes': 0.0,
-                'min_tech': 0.0,
-                'tag_overwrite': False,
-                'tag_captions': False,
-                'tag_tokens': 50,
-                'tag_clip_model': 'openai/clip-vit-base-patch32'
-            }
             return (
-                defaults['force_rescore'], defaults['sort_by'], defaults['sort_order'],
-                defaults['prep_queue'], defaults['scoring_queue'], defaults['result_queue'],
-                defaults['clustering_batch'], defaults['enable_gpu'],
-                defaults['clust_threshold'], defaults['clust_gap'], defaults['clust_force'],
-                defaults['cull_threshold'], defaults['cull_gap'], defaults['cull_auto'],
-                defaults['cull_pick'], defaults['cull_reject'],
-                defaults['page_size'], defaults['export_format'],
-                defaults['min_gen'], defaults['min_aes'], defaults['min_tech'],
-                defaults['tag_overwrite'], defaults['tag_captions'],
-                defaults['tag_tokens'], defaults['tag_clip_model']
+                False, 'score_general', 'desc',
+                50, 10, 50, 32,
+                0.15, 120, False, False,
+                50, 'json',
+                False, False, 50, 'openai/clip-vit-base-patch32'
             )
         
         # Wire up events
         cfg_inputs = [
             cfg_force_rescore, cfg_default_sort_by, cfg_default_sort_order,
             cfg_prep_queue_size, cfg_scoring_queue_size, cfg_result_queue_size,
-            cfg_clustering_batch_size, cfg_enable_gpu,
-            cfg_clustering_threshold, cfg_clustering_time_gap, cfg_clustering_force_rescan,
-            cfg_culling_threshold, cfg_culling_time_gap, cfg_culling_auto_export,
-            cfg_culling_pick_rating, cfg_culling_reject_rating,
+            cfg_clustering_batch_size,
+            cfg_stack_threshold, cfg_stack_time_gap, cfg_clustering_force_rescan, cfg_culling_auto_export,
             cfg_gallery_page_size, cfg_default_export_format,
-            cfg_default_min_general, cfg_default_min_aesthetic, cfg_default_min_technical,
             cfg_tagging_overwrite, cfg_tagging_captions, cfg_tagging_max_tokens, cfg_tagging_clip_model
         ]
         

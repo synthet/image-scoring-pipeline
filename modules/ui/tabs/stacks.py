@@ -1,6 +1,8 @@
 """
 Stacks tab module for image grouping and clustering.
 
+[Deprecated] Use the Selection tab instead for automated stack + pick/reject workflow.
+
 This module provides UI for:
 - Automatic image clustering based on visual similarity and time gaps
 - Manual stack creation from selected images
@@ -341,7 +343,8 @@ def set_cover_image_handler(selected_indices, content_paths, current_stack_id, i
 def create_stacks_tab():
     app_config = config.load_config()
     
-    with gr.TabItem("Stacks", id="stacks") as tab_item:
+    with gr.TabItem("Stacks (Deprecated)", id="stacks") as tab_item:
+        gr.Markdown("⚠️ **Deprecated:** Use the **Selection** tab for automated stack + pick/reject workflow.")
         # Row 1: Controls split into two columns
         with gr.Row():
             # Left column: Input controls

@@ -55,8 +55,33 @@ else:
         KAGGLE_AVAILABLE = False
 
 
+
 def _bool_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Model sources (from run_all_musiq_models.py v2.3.0)
+# Get base directory for local checkpoints
+base_dir = os.path.dirname(os.path.abspath(__file__))
+checkpoint_dir = os.path.join(base_dir, "..", "models", "checkpoints")
+
+MODEL_SOURCES = {
+    "spaq": {
+        "tfhub": "https://tfhub.dev/google/musiq/spaq/1",
+        "kaggle": "google/musiq/tensorFlow2/spaq",
+        "local": os.path.join(checkpoint_dir, "spaq_ckpt.npz")
+    },
+    "ava": {
+        "tfhub": "https://tfhub.dev/google/musiq/ava/1",
+        "kaggle": "google/musiq/tensorFlow2/ava",
+        "local": os.path.join(checkpoint_dir, "ava_ckpt.npz")
+    },
+    "vila": {
+        "tfhub": "https://tfhub.dev/google/vila/image/1",
+        "kaggle": "google/vila/tensorFlow2/image",
+        "local": os.path.join(checkpoint_dir, "vila-tensorflow2-image-v1")
+    }
+}
 
 
 def test_model_sources_table_is_well_formed():
@@ -123,38 +148,6 @@ def test_kaggle_paths_optional_download(model_name: str, kaggle_path: str):
     assert success, msg
 
 
-# Model sources (from run_all_musiq_models.py v2.3.0)
-# Get base directory for local checkpoints
-base_dir = os.path.dirname(os.path.abspath(__file__))
-checkpoint_dir = os.path.join(base_dir, "..", "models", "checkpoints")
-
-MODEL_SOURCES = {
-    "spaq": {
-        "tfhub": "https://tfhub.dev/google/musiq/spaq/1",
-        "kaggle": "google/musiq/tensorFlow2/spaq",
-        "local": os.path.join(checkpoint_dir, "spaq_ckpt.npz")
-    },
-    "ava": {
-        "tfhub": "https://tfhub.dev/google/musiq/ava/1",
-        "kaggle": "google/musiq/tensorFlow2/ava",
-        "local": os.path.join(checkpoint_dir, "ava_ckpt.npz")
-    },
-    "koniq": {
-        "tfhub": None,  # Not available on TF Hub
-        "kaggle": "google/musiq/tensorFlow2/koniq-10k",
-        "local": os.path.join(checkpoint_dir, "koniq_ckpt.npz")
-    },
-    "paq2piq": {
-        "tfhub": "https://tfhub.dev/google/musiq/paq2piq/1",
-        "kaggle": "google/musiq/tensorFlow2/paq2piq",
-        "local": os.path.join(checkpoint_dir, "paq2piq_ckpt.npz")
-    },
-    "vila": {
-        "tfhub": "https://tfhub.dev/google/vila/image/1",
-        "kaggle": "google/vila/tensorFlow2/image",
-        "local": os.path.join(checkpoint_dir, "vila-tensorflow2-image-v1")
-    }
-}
 
 
 def check_kaggle_auth() -> bool:
@@ -428,7 +421,7 @@ Note:
     
     # Run tests
     try:
-        test_all_sources(
+        check_all_sources(
             test_kaggle=args.test_kaggle,
             skip_kaggle_download=args.skip_download,
             test_local=not args.skip_local

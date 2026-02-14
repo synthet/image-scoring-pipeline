@@ -128,3 +128,10 @@ def open_folder_in_culling(folder):
     if not folder:
         return gr.update(selected="culling"), gr.update()
     return gr.update(selected="culling"), folder
+
+
+def open_folder_in_selection(folder):
+    """Switches to Selection tab and sets input folder."""
+    if not folder:
+        return gr.update(selected="selection"), gr.update()
+    return gr.update(selected="selection"), folder
