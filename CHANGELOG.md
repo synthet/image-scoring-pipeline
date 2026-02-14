@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.20.0] - 2026-02-14
+
+### Added
+- **Agent Mailbox Workflow**: Added `/check_agent_mailbox` workflow to inspect the agent's mailbox for pending messages.
+  - New workflow file: `.agent/workflows/check_agent_mailbox.md`.
+
 ## [3.19.0] - 2026-02-14
 
 ### Added
