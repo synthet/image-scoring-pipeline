@@ -6,17 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [3.20.0] - 2026-02-14
+## [3.22.0] - 2026-02-15
 
 ### Added
-- **Agent Mailbox Workflow**: Added `/check_agent_mailbox` workflow to inspect the agent's mailbox for pending messages.
-  - New workflow file: `.agent/workflows/check_agent_mailbox.md`.
+- **MCP Processing Jobs**: New `run_processing_job` tool in MCP server to trigger scoring, tagging, or clustering jobs programmatically from any MCP client.
+  - Supports `scoring`, `tagging`, and `clustering` job types with per-type arguments.
+  - Registered in `create_mcp_server()` tool list and call handler in `modules/mcp_server.py`.
+- **ClusteringRunner**: New background runner class (`ClusteringRunner`) in `modules/clustering.py` for threaded clustering with status tracking.
+  - Matches the existing runner contract (`start_batch`, `stop`, `get_status`).
+  - Integrated into `webui.py` startup and MCP server standalone mode.
+- **All-Unprocessed-Folders Clustering**: When no target folder is specified, clustering now automatically discovers and processes all database folders that don't yet have stacks.
+  - Uses `db.get_all_folders()` minus `db.get_clustered_folders()` to find pending folders.
+- **Serena Integration**: Added `/consult_serena` workflow and `.agent/skills/serena-integration/` skill for symbolic code navigation and editing via the Serena MCP server.
+- **Architecture Documentation**: Added `docs/ARCHITECTURE.md` system overview with component diagrams and data-flow descriptions. Linked from `README.md`.
+- **Missing Stacks Scripts**: Added `check_stacks.py` and `scripts/process_missing_stacks.py` for diagnosing and batch-processing folders without stacks.
+
+### Changed
+- **Clustering Engine Refactored** (`modules/clustering.py`): Split `cluster_images()` into single-folder and all-unprocessed-folders code paths for clarity and correctness.
+- **MCP Server Runner Management** (`modules/mcp_server.py`): `set_runners()` now accepts an optional `clustering_runner` parameter; `get_runner_status()` reports clustering status.
+- **WSL Path Handling** (`modules/db.py`): `get_or_create_folder()` now detects WSL `/mnt/` paths and avoids `os.path.abspath()` mangling on Windows. Uses `posixpath` for parent-path resolution on WSL paths.
+- **Favicon**: Updated `static/favicon.ico` binary asset.
+
+### Fixed
+- **Recursion Depth Error**: Fixed `maximum recursion depth exceeded` in `get_or_create_folder()` caused by `os.path.abspath()` converting WSL paths to `D:\mnt\...` on Windows.
+
+### Removed
+- **Agent Mailbox**: Removed `agent-mailbox` skill and associated workflows (`/check_agent_mailbox`, `/send_agent_mailbox`) — replaced by direct Serena-based communication.
+- **Favicon SVG**: Removed `static/favicon.svg` (replaced by updated ICO).
 
 ## [3.21.0] - 2026-02-14
 
 ### Added
 - **Agent Mailbox Workflow**: Added `/send_agent_mailbox` workflow to send messages to other agents (e.g., `electron-gallery.agent`).
   - New workflow file: `.agent/workflows/send_agent_mailbox.md`.
+
+## [3.20.0] - 2026-02-14
+
+### Added
+- **Agent Mailbox Workflow**: Added `/check_agent_mailbox` workflow to inspect the agent's mailbox for pending messages.
+  - New workflow file: `.agent/workflows/check_agent_mailbox.md`.
 
 
 ## [3.19.0] - 2026-02-14

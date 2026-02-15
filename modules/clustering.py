@@ -2,6 +2,8 @@
 import os
 import logging
 import numpy as np
+import threading
+
 
 import os
 import logging
@@ -293,85 +295,92 @@ class ClusteringEngine:
         
         logging.info("Fetching images for clustering...")
         
-        images_rows = []
-        if target_folder:
-             images_rows = db.get_images_by_folder(target_folder)
-             if not images_rows:
-                 yield update_status(f"No images found in folder: {target_folder}", 0, 0)
-                 return
-        else:
-            # Fallback to all (limit 50k)
-            images_rows = db.get_all_images(sort_by="created_at", order="desc", limit=50000)
-        
-        if not images_rows:
-            yield update_status("No images found in database.", 0, 0)
-            return
-
-        yield update_status(f"Found {len(images_rows)} images. Checking progress...", 0, len(images_rows))
-
-        # 1. Group by Folder
-        by_folder = {}
-        for row in images_rows:
-            p = row['file_path']
-            if not p: continue
-            folder = os.path.dirname(p)
-            # Normalize?
-            folder = os.path.normpath(folder)
-            
-            if folder not in by_folder:
-                by_folder[folder] = []
-            by_folder[folder].append(row)
-            
-        # Get processed folders
+        # Get processed folders early (needed for both paths)
         processed_folders = db.get_clustered_folders()
-        if force_rescan:
-            if target_folder:
-                # Clear stacks only for the target folder (targeted re-clustering)
+        
+        if target_folder:
+            # --- Single folder mode ---
+            images_rows = db.get_images_by_folder(target_folder)
+            if not images_rows:
+                yield update_status(f"No images found in folder: {target_folder}", 0, 0)
+                return
+            
+            yield update_status(f"Found {len(images_rows)} images. Checking progress...", 0, len(images_rows))
+            
+            # Group by folder (usually just one for single-folder mode)
+            by_folder = {}
+            for row in images_rows:
+                p = row['file_path']
+                if not p: continue
+                folder = os.path.normpath(os.path.dirname(p))
+                if folder not in by_folder:
+                    by_folder[folder] = []
+                by_folder[folder].append(row)
+            
+            if force_rescan:
                 success, msg = db.clear_stacks_in_folder(target_folder)
                 if success:
                     processed_folders.discard(os.path.normpath(target_folder))
                     yield update_status(f"Force Rescan: {msg}", 0, len(images_rows))
                 else:
                     yield update_status(f"Warning: {msg}", 0, len(images_rows))
-            else:
-                # Global force rescan - clear everything
-                db.clear_cluster_progress()
-                processed_folders = set()
-                yield update_status("Force Rescan: Cleared previous progress.", 0, len(images_rows))
-        
-        total_clusters = db.get_stack_count() 
-        processed_count = 0
-        
-        # Filter folders to process
-        folders_to_process = []
-        if target_folder:
+            
             target_norm = os.path.normpath(target_folder)
-            # Only process if it is in by_folder (which it should be)
             if target_norm in by_folder:
                 folders_to_process = [target_norm]
             else:
-                 # Logic to handle subfolders? Request says "create stacks only inside a single folder", implies recursion?
-                 # "recursively scans and processes images located within sub-folders" was a previous topic.
-                 # Current request: "create stacks only inside a single folder".
-                 # If input path is D:\Photos, do we do D:\Photos\Sub? 
-                 # Usually users want recursive.
-                 # My by_folder keys are from image paths.
-                 # So if I gathered images from subfolders (db.get_images_by_folder is non-recursive strictly speaking? Let's check db.py)
-                 # db.get_images_by_folder uses folder_id which is strict 1:1.
-                 # So if target_folder is strict, we only have one folder.
-                 folders_to_process = [f for f in by_folder.keys()]
+                folders_to_process = list(by_folder.keys())
         else:
-            folders_to_process = [f for f in by_folder.keys() if f not in processed_folders]
+            # --- All unprocessed folders mode ---
+            # Get all folders from DB and subtract already-clustered ones
+            all_folders = db.get_all_folders()
+            
+            if force_rescan:
+                db.clear_cluster_progress()
+                processed_folders = set()
+                yield update_status("Force Rescan: Cleared previous progress.", 0, 0)
+                folders_to_process = list(all_folders)
+            else:
+                folders_to_process = [f for f in all_folders if f not in processed_folders]
+            
+            if not folders_to_process:
+                yield update_status("All folders already processed.", 0, 0)
+                return
+            
+            yield update_status(f"Found {len(folders_to_process)} unprocessed folders. Loading images...", 0, len(folders_to_process))
+            
+            # Load images per-folder into by_folder dict
+            by_folder = {}
+            images_rows = []  # Aggregate for total count tracking
+            for i, folder_path in enumerate(folders_to_process):
+                folder_images = db.get_images_by_folder(folder_path)
+                if folder_images:
+                    by_folder[folder_path] = folder_images
+                    images_rows.extend(folder_images)
+            
+            # Re-filter folders_to_process to only those with actual images
+            folders_to_process = list(by_folder.keys())
+            
+            if not folders_to_process:
+                yield update_status("No images found in unprocessed folders.", 0, 0)
+                return
+            
+            yield update_status(f"Found {len(images_rows)} images across {len(folders_to_process)} folders.", 0, len(images_rows))
         
         if not folders_to_process:
-            yield update_status("All folders already processed or no images in target folder.", len(images_rows), len(images_rows))
+            yield update_status("All folders already processed or no images in target folder.", 0, 0)
             return
+        
+        total_clusters = db.get_stack_count()
+        processed_count = 0
 
-        yield update_status(f"Processing {len(folders_to_process)} new folders...", processed_count, len(images_rows))
+        yield update_status(f"Processing {len(folders_to_process)} folders...", processed_count, len(images_rows))
 
         for folder in folders_to_process:
             rows = by_folder[folder]
             yield update_status(f"Processing folder: {folder} ({len(rows)} images)...", processed_count, len(images_rows))
+            
+            folder_stacks = 0
             
             # ===== PRE-GROUP BY BURSTUUID =====
             # Images with same BurstUUID go directly into stacks, skip visual clustering
@@ -462,8 +471,6 @@ class ClusteringEngine:
             if current_batch:
                 time_batches.append(current_batch)
                 
-            folder_stacks = 0
-            
             for b_idx, batch in enumerate(time_batches):
                 # Calculate overall progress for this folder
                 folder_progress = processed_count + (len(rows) * (b_idx / len(time_batches)))
@@ -571,3 +578,85 @@ class ClusteringEngine:
             
         yield update_status(f"Done! Processed {processed_count} images. Total Stacks: {db.get_stack_count()}", len(images_rows), len(images_rows))
 
+
+class ClusteringRunner:
+    """
+    Runs clustering in a local thread, providing status updates.
+    Matches the runner contract: start_batch, stop, get_status.
+    """
+    def __init__(self):
+        self.engine = ClusteringEngine()
+        self.stop_event = threading.Event()
+        self._thread = None
+        
+        # State
+        self.is_running = False
+        self.status_message = "Idle"
+        self.current_count = 0
+        self.total_count = 0
+        self.log_history = []
+        
+    def get_status(self):
+        """Returns (is_running, log_text, status_message, current, total)"""
+        return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
+        
+    def start_batch(self, input_path, threshold=None, time_gap=None, force_rescan=False):
+        """Starts clustering in background."""
+        if self.is_running:
+            return "Error: Already running."
+            
+        self.is_running = True
+        self.log_history = []
+        self.status_message = "Starting..."
+        self.current_count = 0
+        self.total_count = 0
+        self.stop_event.clear()
+        
+        def target():
+            self._run_internal(input_path, threshold, time_gap, force_rescan)
+            self.is_running = False
+            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            
+        self._thread = threading.Thread(target=target)
+        self._thread.start()
+        return "Started"
+        
+    def _run_internal(self, input_path, threshold, time_gap, force_rescan):
+        def log(msg):
+            self.log_history.append(msg)
+            
+        log(f"Starting Clustering on {input_path or 'all unprocessed folders'}...")
+        
+        try:
+            # We use the generator from engine
+            for msg_tuple in self.engine.cluster_images(
+                distance_threshold=threshold,
+                time_gap_seconds=time_gap,
+                force_rescan=force_rescan,
+                target_folder=input_path
+            ):
+                if self.stop_event.is_set():
+                    log("Stopped by user.")
+                    break
+                    
+                # unpack tuple (msg, cur, tot) or just msg string if engine changed?
+                # engine.cluster_images yields (msg, cur, tot) via update_status helper
+                if isinstance(msg_tuple, tuple):
+                    msg, cur, tot = msg_tuple
+                    self.status_message = msg
+                    self.current_count = cur
+                    self.total_count = tot
+                else:
+                    self.status_message = str(msg_tuple)
+                    
+        except Exception as e:
+            log(f"Error: {e}")
+            self.status_message = f"Error: {e}"
+            
+    def stop(self):
+        self.stop_event.set()
+        # The engine checks is_running but doesn't have a stop_event passed to it 
+        # structure in cluster_images. We might need to check how to interrupt it.
+        # The engine loop yields frequently, so we check stop_event in _run_internal loop.
+        # But _run_internal iterates over the generator. So we break the loop.
+        # That handles it.

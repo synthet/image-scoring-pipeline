@@ -89,6 +89,10 @@ logger = logging.getLogger(__name__)
 # Global reference to runners (set by webui when integrating)
 _scoring_runner = None
 _tagging_runner = None
+_clustering_runner = None
+
+_clustering_runner = None
+
 
 # Set False if db.init_db() fails (e.g. Firebird not migrated); DB-using tools then return a clear error
 _db_available = True
@@ -99,14 +103,17 @@ DB_TOOLS = frozenset({
     "search_images_by_hash", "get_stacks_summary",
     "get_failed_images", "get_error_summary", "check_database_health",
     "validate_file_paths", "get_performance_metrics",
+    "run_processing_job"
     # Note: get_model_status, validate_config, get_pipeline_stats don't require DB
 })
 
-def set_runners(scoring_runner, tagging_runner):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None):
     """Set references to the runner instances from webui."""
-    global _scoring_runner, _tagging_runner
+    global _scoring_runner, _tagging_runner, _clustering_runner
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
+    _clustering_runner = clustering_runner
+
 
 # --- Tool Implementations ---
 
@@ -376,6 +383,23 @@ def get_runner_status() -> dict:
             }
         except Exception as e:
             status["tagging"]["error"] = str(e)
+            
+    if _clustering_runner:
+
+        try:
+            is_running, log, status_msg, current, total = _clustering_runner.get_status()
+            status["clustering"] = {
+                "available": True,
+                "is_running": is_running,
+                "status_message": status_msg,
+                "progress": {"current": current, "total": total},
+                "recent_log": log[-2000:] if log else ""
+            }
+        except Exception as e:
+            status["clustering"]["error"] = str(e)
+    else:
+        status["clustering"] = {"available": False}
+
     
     return status
 
@@ -846,6 +870,81 @@ def get_performance_metrics() -> dict:
     return metrics
 
 
+def run_processing_job(job_type: str, input_path: str, args: dict = None) -> dict:
+    """
+    Trigger a background processing job.
+    
+    Args:
+        job_type: "scoring", "tagging", or "clustering" (stacks)
+        input_path: Folder path to process
+        args: Optional arguments:
+            - scoring: {"rescore": bool}
+            - tagging: {"overwrite": bool, "custom_keywords": list}
+            - clustering: {"threshold": float, "time_gap": int, "force_rescan": bool}
+    """
+    import uuid
+    
+    if args is None:
+        args = {}
+        
+    job_id = f"mcp_{job_type}_{uuid.uuid4().hex[:8]}"
+    
+    if not os.path.exists(input_path) and not (job_type == "clustering" and (not input_path or not input_path.strip())):
+        return {"error": f"Input path not found: {input_path}"}
+
+    if job_type == "scoring":
+        if not _scoring_runner:
+            return {"error": "Scoring runner not available"}
+        
+        # Check if running
+        if _scoring_runner.is_running:
+            return {"error": "Scoring job already running"}
+            
+        res = _scoring_runner.start_batch(
+            input_path, 
+            job_id, 
+            skip_existing=not args.get("rescore", False)
+        )
+        return {"status": res, "job_id": job_id}
+        
+    elif job_type == "tagging":
+        if not _tagging_runner:
+            return {"error": "Tagging runner not available"}
+            
+        if _tagging_runner.is_running:
+            return {"error": "Tagging job already running"}
+            
+        custom_keywords = args.get("custom_keywords")
+        res = _tagging_runner.start_batch(
+            input_path,
+            overwrite=args.get("overwrite", False),
+            custom_keywords=custom_keywords
+        )
+        return {"status": res, "job_id": job_id}
+        
+    elif job_type == "clustering":
+        if not _clustering_runner:
+            return {"error": "Clustering runner not available (not initialized)"}
+            
+        if _clustering_runner.is_running:
+            return {"error": "Clustering job already running"}
+        
+        # Allow empty input_path for clustering (processes all unprocessed folders)
+        cluster_path = input_path.strip() if input_path and input_path.strip() else None
+            
+        res = _clustering_runner.start_batch(
+            cluster_path,
+            threshold=args.get("threshold"),
+            time_gap=args.get("time_gap"),
+            force_rescan=args.get("force_rescan", False)
+        )
+        return {"status": res, "job_id": job_id}
+        
+    else:
+        return {"error": f"Unknown job type: {job_type}"}
+
+
+
 def get_model_status() -> dict:
     """Get status of loaded models and GPU availability."""
     status = {
@@ -1264,6 +1363,37 @@ def create_mcp_server() -> "Server":
                     "properties": {},
                     "required": []
                 }
+            ),
+            Tool(
+                name="run_processing_job",
+                description="Trigger a background processing job (scoring, tagging, or clustering/stacks)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "job_type": {
+                            "type": "string",
+                            "enum": ["scoring", "tagging", "clustering"], 
+                            "description": "Type of job to run"
+                        },
+                        "input_path": {
+                            "type": "string", 
+                            "description": "Full path to the folder or file to process"
+                        },
+                        "args": {
+                            "type": "object",
+                            "description": "Optional arguments specific to the job type",
+                            "properties": {
+                                "rescore": {"type": "boolean", "description": "For scoring: Force rescore existing images"},
+                                "overwrite": {"type": "boolean", "description": "For tagging: Overwrite existing tags"},
+                                "custom_keywords": {"type": "array", "items": {"type": "string"}, "description": "For tagging: Custom keywords to add"},
+                                "threshold": {"type": "number", "description": "For clustering: Similarity threshold"},
+                                "time_gap": {"type": "integer", "description": "For clustering: Max time gap in seconds"},
+                                "force_rescan": {"type": "boolean", "description": "For clustering: Force rescan of all images"}
+                            }
+                        }
+                    },
+                    "required": ["job_type", "input_path"]
+                }
             )
         ]
     
@@ -1321,6 +1451,12 @@ def create_mcp_server() -> "Server":
                 result = validate_config()
             elif name == "get_pipeline_stats":
                 result = get_pipeline_stats()
+            elif name == "run_processing_job":
+                result = run_processing_job(
+                    arguments["job_type"], 
+                    arguments["input_path"],
+                    arguments.get("args")
+                )
             else:
                 result = {"error": f"Unknown tool: {name}"}
             
@@ -1414,5 +1550,17 @@ if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     logger.info("Starting Image Scoring MCP Server...")
+    
+    # Initialize runners for standalone mode
+    try:
+        from modules.clustering import ClusteringRunner
+        # Note: ScoringRunner/TaggingRunner require shared_scorer which is heavy. 
+        # Clustering runs its own lightweight model.
+        clustering_runner = ClusteringRunner()
+        set_runners(None, None, clustering_runner)
+        logger.info("Initialized ClusteringRunner for standalone mode")
+    except Exception as e:
+        logger.warning(f"Failed to initialize clustering runner: {e}")
+
     asyncio.run(run_server())
 

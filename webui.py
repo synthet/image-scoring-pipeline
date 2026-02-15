@@ -145,13 +145,17 @@ def main():
         }
     
     # Create UI and initialize engines (Gradio App)
+    import modules.clustering as clustering
+    clustering_runner = clustering.ClusteringRunner()
     demo, runner, tagging_runner, selection_runner = app_module.create_ui()
+
     
     # Setup MCP server if enabled
     mcp_sse_app = None
     if mcp_available and mcp_enabled:
-        mcp_server.set_runners(runner, tagging_runner)
+        mcp_server.set_runners(runner, tagging_runner, clustering_runner)
         try:
+
             # Expose MCP over HTTP/SSE so Cursor can connect via:
             #   http://localhost:7860/mcp/sse
             # NOTE: we mount *after* Gradio is mounted; gr.mount_gradio_app()

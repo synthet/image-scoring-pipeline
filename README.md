@@ -455,6 +455,8 @@ The tool uses a **triple fallback mechanism** for maximum reliability:
 - [Keyword Extraction](docs/technical/README_KEYWORD_EXTRACTION.md) - AI keyword extraction
 - [Triple Fallback System](docs/technical/TRIPLE_FALLBACK_SYSTEM.md) - Model loading reliability
 - [MCP Debugging Tools](docs/technical/MCP_DEBUGGING_TOOLS.md) - Advanced debugging
+- [Architecture Documentation](docs/ARCHITECTURE.md) - System overview and design
+
 
 ---
 

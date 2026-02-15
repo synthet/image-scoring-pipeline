@@ -1494,8 +1494,21 @@ def get_or_create_folder(folder_path, _depth=0):
     if not folder_path or folder_path == '.':
         folder_path = os.getcwd()
 
-    folder_path = os.path.abspath(folder_path)
     folder_path = os.path.normpath(folder_path)
+    
+    import posixpath
+    
+    # Check if this is a WSL path (starts with /mnt/)
+    # On Windows, os.path.abspath will mangle it (D:\mnt\...)
+    normalized_unix = folder_path.replace('\\', '/')
+    is_wsl_path = normalized_unix.startswith('/mnt/') or normalized_unix == '/mnt' or normalized_unix == '/'
+    
+    if not is_wsl_path:
+        folder_path = os.path.abspath(folder_path)
+        folder_path = os.path.normpath(folder_path)
+    else:
+        folder_path = folder_path.replace('\\', '/')
+        folder_path = posixpath.normpath(folder_path)
     
     # Auto-convert Windows paths to WSL if we are on Windows but DB has WSL paths
     # This is critical because scoring runs in WSL (saving /mnt/d/...) 
@@ -1512,6 +1525,7 @@ def get_or_create_folder(folder_path, _depth=0):
              # The app seems to favor WSL paths in DB ('WSL' type default in file_paths).
              # Let's keep existing logic but ensure abspath first.
              if wsl_path != folder_path:
+                 logging.debug(f"Converted {folder_path} to {wsl_path}")
                  folder_path = wsl_path
     except ImportError:
         pass
@@ -1519,7 +1533,13 @@ def get_or_create_folder(folder_path, _depth=0):
     # Base case for recursion / root check
     # On Windows, os.path.dirname("D:\\") is "D:\\". 
     # Stop if parent is same as current or empty.
-    parent_path = os.path.dirname(folder_path)
+    
+    import posixpath
+    if folder_path.startswith('/mnt/'):
+        parent_path = posixpath.dirname(folder_path)
+    else:
+        parent_path = os.path.dirname(folder_path)
+    
     if not parent_path or parent_path == folder_path:
         # It's a root or top level?
         # Just create/get it with no parent.
