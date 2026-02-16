@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.23.0] - 2026-02-15
+
+### Added
+- **Project Documentation Skills**: Added `webui-dev` and `webui-gradio` skills to `.agent/skills/` to document development workflows for the WebUI.
+- **Cross-Project Context**: Exchanged memory contexts with `electron-image-scoring` project to align development knowledge.
+
 ## [3.22.0] - 2026-02-15
 
 ### Added

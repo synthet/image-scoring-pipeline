@@ -95,111 +95,145 @@ class SelectionService:
             )
 
         try:
-            # Stage 1: Resolve images from DB
-            self._progress(progress_cb, 0.02, "Scanning images...")
-            images = db.get_images_by_folder(local_path)
-            if not images:
+            # Stage 1: Resolve folders
+            self._progress(progress_cb, 0.01, "Scanning folders...")
+            
+            all_folders = db.get_all_folders()
+            target_folders = []
+            
+            # Normalize for matching
+            local_norm = os.path.normpath(local_path)
+            
+            for f in all_folders:
+                # Check if folder is the target or a subfolder
+                # Use os.path.commonpath to be safe with partial matches (e.g. /foo/bar vs /foo/bar_baz)
+                try:
+                    tgt = os.path.normpath(f)
+                    if tgt == local_norm or tgt.startswith(local_norm + os.sep):
+                        target_folders.append(tgt)
+                except ValueError:
+                    continue
+                    
+            if not target_folders:
                 return SelectionSummary(
                     0, 0, 0, 0, 0, 0, 0,
-                    status="No scored images found in folder. Run Scoring first.",
+                    status="No folders found in database matching path.",
                 )
-
-            n_images = len(images)
-            self._progress(progress_cb, 0.05, f"Found {n_images} images. Clustering stacks...")
-
-            # Stage 2-3: Create/refresh stacks (clustering)
-            # Use fixed time_gap - do NOT read default_time_gap from config
-            for _ in self._cluster_engine.cluster_images(
-                distance_threshold=0.15,
-                time_gap_seconds=SELECTION_TIME_GAP_SECONDS,
-                force_rescan=cfg.force_rescan,
-                target_folder=local_path,
-            ):
-                if self._check_stop():
-                    return SelectionSummary(
-                        n_images, 0, 0, 0, 0, 0, 0,
-                        status="stopped",
-                    )
-
-            if self._check_stop():
-                return SelectionSummary(n_images, 0, 0, 0, 0, 0, 0, status="stopped")
-
-            # Re-fetch images (now with stack_id)
-            images = db.get_images_by_folder(local_path)
-            if not images:
-                return SelectionSummary(0, 0, 0, 0, 0, 0, 0, status="No images after clustering")
-
-            # Stage 4-5: Group by stack, sort, apply policy
-            self._progress(progress_cb, 0.4, "Assigning pick/reject bands...")
-            by_stack = defaultdict(list)
-            for img in images:
-                sid = img.get("stack_id")
-                by_stack[sid].append(img)
-
-            # Tie-break: score_field DESC, created_at ASC, id ASC
-            score_col = cfg.score_field
-            def sort_key(img):
-                s = img.get(score_col) or 0
-                c = img.get("created_at") or ""
-                i = img.get("id") or 0
-                return (-float(s) if s else 0, str(c), int(i))
-
-            all_decisions: list[tuple[int, str, str]] = []  # (image_id, decision, file_path)
-            for stack_id, group in by_stack.items():
+                
+            n_folders = len(target_folders)
+            self._progress(progress_cb, 0.02, f"Found {n_folders} folders. Starting processing...")
+            
+            # Aggregate stats
+            total_images_processed = 0
+            total_stacks_created = 0
+            total_picked = 0
+            total_rejected = 0
+            total_neutral = 0
+            total_written = 0
+            total_errors = 0
+            
+            for i, folder in enumerate(target_folders):
                 if self._check_stop():
                     break
-                sorted_group = sorted(group, key=sort_key)
-                sorted_ids = [img["id"] for img in sorted_group]
-                path_by_id = {img["id"]: img.get("file_path") or "" for img in sorted_group}
-                classifications = classify_sorted_ids(sorted_ids, frac=cfg.pick_fraction)
-                for img_id, decision in classifications.items():
-                    path = path_by_id.get(img_id, "")
-                    all_decisions.append((img_id, decision, path))
-
-            # Stage 6: Persist to DB
-            self._progress(progress_cb, 0.6, "Writing decisions to database...")
-            db.batch_update_cull_decisions(all_decisions, policy_version=POLICY_VERSION)
-
-            # Stage 7: Write to sidecars
-            self._progress(progress_cb, 0.7, "Writing metadata...")
-            sidecar_written = 0
-            sidecar_errors = 0
-            stack_id_by_img = {img["id"]: img.get("stack_id") for img in images}
-
-            for img_id, decision, file_path in all_decisions:
-                if self._check_stop():
-                    break
-                if not file_path:
+                    
+                pct_base = 0.05 + (0.9 * (i / n_folders))
+                self._progress(progress_cb, pct_base, f"Processing folder {i+1}/{n_folders}: {os.path.basename(folder)}")
+                
+                # --- Per-folder processing ---
+                
+                # 1. Get images
+                images = db.get_images_by_folder(folder)
+                if not images:
                     continue
-                try:
-                    sid = stack_id_by_img.get(img_id)
-                    stack_ok, pr_ok = write_selection_metadata(file_path, sid, decision)
-                    if stack_ok and pr_ok:
-                        sidecar_written += 1
-                    else:
-                        sidecar_errors += 1
-                except Exception as e:
-                    logger.warning("Sidecar write failed for %s: %s", file_path, e)
-                    sidecar_errors += 1
+                    
+                n_images_folder = len(images)
+                
+                # 2. Cluster
+                # Use fixed time_gap - do NOT read default_time_gap from config
+                # We yield from generator but ignore messages mostly, just check stop
+                for _ in self._cluster_engine.cluster_images(
+                    distance_threshold=0.15,
+                    time_gap_seconds=SELECTION_TIME_GAP_SECONDS,
+                    force_rescan=cfg.force_rescan,
+                    target_folder=folder,
+                ):
+                    if self._check_stop():
+                        break
+                
+                if self._check_stop():
+                    break
+                    
+                # 3. Reload images with stack_ids
+                images = db.get_images_by_folder(folder)
+                if not images:
+                    continue
+                    
+                # 4. Group & Sort
+                by_stack = defaultdict(list)
+                for img in images:
+                    sid = img.get("stack_id")
+                    by_stack[sid].append(img)
+                    
+                score_col = cfg.score_field
+                def sort_key(img):
+                    s = img.get(score_col) or 0
+                    c = img.get("created_at") or ""
+                    i = img.get("id") or 0
+                    return (-float(s) if s else 0, str(c), int(i))
 
-            # Stage 8-9: Summary
-            picked = sum(1 for _, d, _ in all_decisions if d == "pick")
-            rejected = sum(1 for _, d, _ in all_decisions if d == "reject")
-            neutral = sum(1 for _, d, _ in all_decisions if d == "neutral")
-            n_stacks = len(by_stack)
-
+                folder_decisions: list[tuple[int, str, str]] = []
+                for stack_id, group in by_stack.items():
+                    sorted_group = sorted(group, key=sort_key)
+                    sorted_ids = [img["id"] for img in sorted_group]
+                    path_by_id = {img["id"]: img.get("file_path") or "" for img in sorted_group}
+                    classifications = classify_sorted_ids(sorted_ids, frac=cfg.pick_fraction)
+                    for img_id, decision in classifications.items():
+                        path = path_by_id.get(img_id, "")
+                        folder_decisions.append((img_id, decision, path))
+                        
+                # 5. Persist DB
+                db.batch_update_cull_decisions(folder_decisions, policy_version=POLICY_VERSION)
+                
+                # 6. Write Sidecars
+                stack_id_by_img = {img["id"]: img.get("stack_id") for img in images}
+                
+                for img_id, decision, file_path in folder_decisions:
+                    if self._check_stop():
+                        break
+                    if not file_path:
+                        continue
+                    try:
+                        sid = stack_id_by_img.get(img_id)
+                        stack_ok, pr_ok = write_selection_metadata(file_path, sid, decision)
+                        if stack_ok and pr_ok:
+                            total_written += 1
+                        else:
+                            total_errors += 1
+                    except Exception as e:
+                        logger.warning("Sidecar write failed for %s: %s", file_path, e)
+                        total_errors += 1
+                        
+                # Update stats
+                total_images_processed += n_images_folder
+                total_stacks_created += len(by_stack)
+                total_picked += sum(1 for _, d, _ in folder_decisions if d == "pick")
+                total_rejected += sum(1 for _, d, _ in folder_decisions if d == "reject")
+                total_neutral += sum(1 for _, d, _ in folder_decisions if d == "neutral")
+                
+            # --- End Loop ---
+            
             status = "completed"
             if self._check_stop():
                 status = "stopped"
-
+                
             return SelectionSummary(
-                total_images=n_images,
-                total_stacks=n_stacks,
-                picked=picked,
-                rejected=rejected,
-                neutral=neutral,
-                sidecar_written=sidecar_written,
-                sidecar_errors=sidecar_errors,
+                total_images=total_images_processed,
+                total_stacks=total_stacks_created,
+                picked=total_picked,
+                rejected=total_rejected,
+                neutral=total_neutral,
+                sidecar_written=total_written,
+                sidecar_errors=total_errors,
                 status=status,
             )
 
