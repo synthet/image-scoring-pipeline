@@ -32,21 +32,24 @@ if project_root not in sys.path:
 
 try:
     from modules.liqe import LiqeScorer
-except ImportError:
-    # Fallback if run from root
+except Exception:
     try:
         from modules.liqe import LiqeScorer
-    except ImportError:
+    except Exception:
         logging.getLogger(__name__).warning("Could not import LiqeScorer. LIQE scoring will be unavailable.")
         LiqeScorer = None
+
+try:
+    from modules import score_normalization as snorm
+except ImportError:
+    snorm = None
 
 
 class MultiModelMUSIQ:
     """Run multiple MUSIQ and VILA models on a single image."""
     
     # Version identifier for this implementation
-    # Version identifier for this implementation
-    VERSION = "3.0.0"  # Updated: Weighted Scoring Checkpoints
+    VERSION = "5.0.0"  # Percentile normalization, JPEG caching, rebalanced weights
     
     # RAW file extensions to detect (case insensitive)
     RAW_EXTENSIONS = {'.nef', '.NEF', '.nrw', '.NRW', '.cr2', '.CR2', '.cr3', '.CR3', 
@@ -76,81 +79,171 @@ class MultiModelMUSIQ:
         ext = Path(file_path).suffix.lower()
         return ext in self.RAW_EXTENSIONS
     
-    def preprocess_image(self, file_path: str) -> str:
+    def _get_cache_path(self, file_path: str, resolution_override: Optional[int] = None) -> Optional[str]:
+        """Return path to cached preprocessed JPEG, or None if caching disabled.
+        Cache key includes max_resolution so changing config invalidates cache."""
+        try:
+            cfg = {}
+            config_path = os.path.join(self.project_root, "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    cfg = json.load(f)
+
+            prep_cfg = cfg.get("preprocessing", {})
+            if not prep_cfg.get("cache_enabled", False):
+                return None
+
+            raw_cfg = cfg.get("raw_conversion", {})
+            max_res = int(resolution_override) if resolution_override is not None else int(raw_cfg.get("max_resolution", 512))
+            max_res = max(224, min(2048, max_res))
+
+            cache_dir = prep_cfg.get("cache_dir", ".cache/preprocessed_512")
+            if cache_dir == ".cache/preprocessed_512" or "{resolution}" not in cache_dir:
+                cache_dir = f".cache/preprocessed_{max_res}"
+            if not os.path.isabs(cache_dir):
+                cache_dir = os.path.join(self.project_root, cache_dir)
+
+            os.makedirs(cache_dir, exist_ok=True)
+
+            import hashlib
+            path_hash = hashlib.sha256(file_path.encode("utf-8")).hexdigest()[:16]
+            mtime = str(int(os.path.getmtime(file_path)))
+            cache_name = f"{path_hash}_{mtime}.jpg"
+            return os.path.join(cache_dir, cache_name)
+        except Exception:
+            return None
+
+    def _get_raw_conversion_config(self) -> dict:
+        """Read raw_conversion and preprocessing config. Returns defaults if missing."""
+        try:
+            config_path = os.path.join(self.project_root, "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    cfg = json.load(f)
+                raw_cfg = cfg.get("raw_conversion", {})
+                return {
+                    "method": raw_cfg.get("method", "rawpy_half"),
+                    "max_resolution": int(raw_cfg.get("max_resolution", 512)),
+                    "jpeg_quality": int(raw_cfg.get("jpeg_quality", 85)),
+                }
+        except Exception:
+            pass
+        return {"method": "rawpy_half", "max_resolution": 512, "jpeg_quality": 85}
+
+    def preprocess_image(self, file_path: str, output_dir: Optional[str] = None, resolution_override: Optional[int] = None) -> Optional[str]:
         """
         Preprocess image for optimal model input:
-        1. Extract embedded JPEG from Raw (Fastest, usually sufficient)
-        2. Fallback: rawpy half-size decode
-        3. Resize: Bicubic to fit within 512x512
-        4. Pad: Add black borders to make exactly 512x512
-        
-        Returns path to preprocessed temporary JPEG.
+        1. Check preprocessed cache (if enabled, and no resolution_override)
+        2. (RAW only) Convert using config raw_conversion.method order (exiftool_jpgfromraw or rawpy_half)
+        3. Resize: Bicubic to fit within config max_resolution (or resolution_override)
+        4. Pad: Add black borders to make exactly target_size x target_size
+
+        Args:
+            file_path: Path to image or RAW file.
+            output_dir: If set, write preprocessed JPEG here and return path (caller owns cleanup).
+                        If None, use internal temp dir and append to self.temp_files.
+            resolution_override: If set, use this size instead of config max_resolution (for per-model preprocessing).
+
+        Returns:
+            Path to preprocessed JPEG, or None on failure.
         """
-        temp_dir = self.setup_temp_directory()
-        output_path = os.path.join(temp_dir, f"preprocessed_{os.path.basename(file_path)}.jpg")
+        raw_cfg = self._get_raw_conversion_config()
+        target_size = int(resolution_override) if resolution_override is not None else max(224, min(2048, raw_cfg["max_resolution"]))
+        target_size = max(224, min(2048, target_size))
+        jpeg_quality = max(50, min(100, raw_cfg["jpeg_quality"]))
+        conversion_prefer = (raw_cfg["method"] or "exiftool_jpgfromraw").strip().lower()
+
+        if output_dir is None and resolution_override is None:
+            cache_path = self._get_cache_path(file_path)
+            if cache_path and os.path.exists(cache_path):
+                logging.getLogger(__name__).debug("Cache hit: %s", cache_path)
+                return cache_path
+
+        if output_dir is not None:
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, f"preprocessed_{target_size}.jpg")
+        else:
+            temp_dir = self.setup_temp_directory()
+            output_path = os.path.join(temp_dir, f"preprocessed_{os.path.basename(file_path)}.jpg")
         
         try:
             pil_image = None
             
-            # 1. Try ExifTool extraction for RAWs
+            # RAW: use config conversion order (preferred method first)
             if self.is_raw_file(file_path):
-                try:
-                    # '-b -JpgFromRaw' usually extracts the full size preview
-                    # '-b -PreviewImage' is another option
-                    cmd = ['exiftool', '-b', '-JpgFromRaw', file_path]
-                    result = subprocess.run(cmd, capture_output=True, timeout=5)
-                    
-                    if result.returncode == 0 and len(result.stdout) > 0:
-                        pil_image = Image.open(io.BytesIO(result.stdout)).convert('RGB')
-                        # logging.getLogger(__name__).debug(f"Extracted JPEG from RAW: {file_path}")
-                except Exception as e:
-                    logging.getLogger(__name__).debug(f"ExifTool extraction failed: {e}")
-                
-                # 2. Fallback to rawpy
-                if pil_image is None:
-                    # Check safety/compatibility
-                    if not self._is_safe_for_rawpy(file_path):
-                        logging.getLogger(__name__).warning("Skipping rawpy for incompatible file (Nikon HE)")
-                        return None
-                        
-                    try:
-                        with rawpy.imread(file_path) as raw:
-                            # Use half_size for speed, it's plenty for 512x512
-                            rgb = raw.postprocess(use_camera_wb=True, half_size=True)
-                            pil_image = Image.fromarray(rgb)
-                    except Exception as e:
-                        logging.getLogger(__name__).error(f"Rawpy conversion failed: {e}")
-                        return None
+                try_exiftool = lambda: self._extract_jpeg_exiftool(file_path)
+                try_rawpy = lambda: self._extract_jpeg_rawpy(file_path)
+                if conversion_prefer == "rawpy_half":
+                    pil_image = try_rawpy()
+                    if pil_image is None:
+                        pil_image = try_exiftool()
+                else:
+                    pil_image = try_exiftool()
+                    if pil_image is None:
+                        pil_image = try_rawpy()
             else:
-                # Normal image
                 pil_image = Image.open(file_path).convert('RGB')
-                
+            
             if pil_image is None:
                 return None
+
+            if pil_image.size == (target_size, target_size):
+                if output_dir is not None:
+                    pil_image.save(output_path, "JPEG", quality=jpeg_quality)
+                    return output_path
+                return file_path
                 
-            # 3. Resize (Bicubic) to fit within 512x512
-            target_size = 512
             pil_image.thumbnail((target_size, target_size), Image.BICUBIC)
-            
-            # 4. Pad to exactly 512x512
             delta_w = target_size - pil_image.size[0]
             delta_h = target_size - pil_image.size[1]
             padding = (delta_w//2, delta_h//2, delta_w-(delta_w//2), delta_h-(delta_h//2))
-            
-            # Add black border
             padded_image = ImageOps.expand(pil_image, padding, fill=0)
             
-            # Verify size
-            if padded_image.size != (512, 512):
-                padded_image = padded_image.resize((512, 512), Image.BICUBIC)
-                
-            # Save
-            padded_image.save(output_path, "JPEG", quality=95)
-            self.temp_files.append(output_path)
+            if padded_image.size != (target_size, target_size):
+                padded_image = padded_image.resize((target_size, target_size), Image.BICUBIC)
+            
+            padded_image.save(output_path, "JPEG", quality=jpeg_quality)
+            if output_dir is None:
+                self.temp_files.append(output_path)
+                cache_path = self._get_cache_path(file_path)
+                if cache_path and not os.path.exists(cache_path):
+                    try:
+                        import shutil as _shutil
+                        _shutil.copy2(output_path, cache_path)
+                    except Exception:
+                        pass
             return output_path
             
         except Exception as e:
             logging.getLogger(__name__).error(f"Preprocessing failed: {e}")
+            return None
+
+    def _extract_jpeg_exiftool(self, file_path: str):
+        """Extract embedded JPEG via exiftool. Returns PIL Image or None."""
+        try:
+            cmd = ['exiftool', '-b', '-JpgFromRaw', file_path]
+            result = subprocess.run(cmd, capture_output=True, timeout=5)
+            if result.returncode == 0 and len(result.stdout) > 0:
+                return Image.open(io.BytesIO(result.stdout)).convert('RGB')
+            cmd = ['exiftool', '-b', '-PreviewImage', file_path]
+            result = subprocess.run(cmd, capture_output=True, timeout=5)
+            if result.returncode == 0 and len(result.stdout) > 1000 and result.stdout.startswith(b'\xff\xd8'):
+                return Image.open(io.BytesIO(result.stdout)).convert('RGB')
+        except Exception as e:
+            logging.getLogger(__name__).debug(f"ExifTool extraction failed: {e}")
+        return None
+
+    def _extract_jpeg_rawpy(self, file_path: str):
+        """Extract JPEG via rawpy half-size. Returns PIL Image or None."""
+        if not self._is_safe_for_rawpy(file_path):
+            logging.getLogger(__name__).warning("Skipping rawpy for incompatible file (Nikon HE)")
+            return None
+        try:
+            with rawpy.imread(file_path) as raw:
+                rgb = raw.postprocess(use_camera_wb=True, half_size=True)
+                return Image.fromarray(rgb)
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Rawpy conversion failed: {e}")
             return None
     
     def is_nef_file(self, file_path: str) -> bool:
@@ -159,67 +252,32 @@ class MultiModelMUSIQ:
         return ext in self.NEF_EXTENSIONS
     
     def score_to_rating(self, score: float) -> int:
-        """
-        Convert normalized score (0-1) to 1-5 star rating based on General Score.
-        Formula: (0.50 * LIQE) + (0.30 * AVA) + (0.20 * SPAQ)
-        
-        Rating brackets:
-        0.85 - 1.00 : 5 Stars (Masterpiece)
-        0.70 - 0.84 : 4 Stars (Excellent)
-        0.55 - 0.69 : 3 Stars (Good)
-        0.40 - 0.54 : 2 Stars (Weak)
-        0.00 - 0.39 : 1 Star  (Reject)
-        """
-        # Ensure score is between 0.0 and 1.0
+        """Convert rescaled general score to 1-5 star rating.
+        Delegates to score_normalization module when available."""
+        if snorm is not None:
+            return snorm.score_to_rating(score)
         s = max(0.0, min(1.0, score))
-        
-        if s >= 0.85:
-            return 5  # Masterpiece
-        elif s >= 0.70:
-            return 4  # Excellent
-        elif s >= 0.55:
-            return 3  # Good
-        elif s >= 0.40:
-            return 2  # Weak
-        else:
-            return 1  # Reject
+        if s >= 0.90: return 5
+        elif s >= 0.72: return 4
+        elif s >= 0.50: return 3
+        elif s >= 0.30: return 2
+        else: return 1
             
     def determine_lightroom_label(self, scores: Dict[str, float]) -> Optional[str]:
-        """
-        Determine Lightroom color label based on Tech/Art scores.
-        
-        Tech_Score (Sharpness/Quality) = Average of PaQ2PiQ and LIQE
-        Art_Score (Aesthetics/Vibes) = Average of AVA and KonIQ
-        """
+        """Determine Lightroom color label. Delegates to score_normalization module."""
+        if snorm is not None:
+            return snorm.determine_label(scores)
+
         def get_s(model):
             return scores.get(model, 0.0)
 
-        # Calculate sub-scores
-        # Calculate sub-scores (Matching calculate_weighted_categories)
-        # Technical: LIQE (1.0) - Simplified to just LIQE as it is most reliable
         tech_score = get_s('liqe')
+        art_score = 0.55 * get_s('ava') + 0.45 * get_s('spaq')
 
-        # Aesthetic: AVA(0.60), SPAQ(0.40)
-        art_score = (0.60 * get_s('ava') + 
-                     0.40 * get_s('spaq'))
-        
-        # 1. 🔴 Red = "The Reject" (Technical Failure)
-        if tech_score < 0.40:
-            return "Red"
-
-        # 2. 🟣 Purple = "The Anomaly" (Artistic but Low Tech)
-        if art_score > 0.75 and tech_score < 0.55:
-            return "Purple"
-
-        # 3. 🔵 Blue = "The Portfolio Shot" (High Aesthetics & Sharp)
-        if art_score > 0.70 and tech_score > 0.70:
-            return "Blue"
-
-        # 4. 🟢 Green = "The Reference Shot" (High Technical)
-        if tech_score > 0.65:
-            return "Green"
-
-        # 5. 🟡 Yellow = "The Maybe" (The Middle)
+        if tech_score < 0.30: return "Red"
+        if art_score > 0.65 and tech_score < 0.50: return "Purple"
+        if art_score > 0.65 and tech_score > 0.65: return "Blue"
+        if tech_score > 0.55: return "Green"
         return "Yellow"
     
 
@@ -483,11 +541,11 @@ class MultiModelMUSIQ:
         temp_jpeg = os.path.join(temp_dir, f"{raw_name}_temp.jpg")
         
         # Try different RAW conversion tools in order of preference
-        # Check for HE/HE* compression which hangs rawpy
+        # Research recommendation: exiftool first (fast, sufficient), then rawpy
         if self._is_safe_for_rawpy(raw_path):
              conversion_methods = [
+                 self._convert_with_exiftool,
                  self._convert_with_rawpy,
-                 self._convert_with_exiftool,  # Add ExifTool here as strong secondary
                  self._convert_with_dcraw,
                  self._convert_with_imagemagick,
                  self._convert_with_pillow
@@ -1012,12 +1070,26 @@ class MultiModelMUSIQ:
                 }
             processing_path = processed_path
         else:
-             # Also preprocess normal images to ensure 512x512 with padding
-             processed_path = self.preprocess_image(image_path)
-             if processed_path:
-                 processing_path = processed_path
-             else:
-                 logger("Warning: Preprocessing failed for standard image, using original.")
+             # Skip preprocessing if already at target size (e.g. pipeline preprocessed)
+             raw_cfg = self._get_raw_conversion_config()
+             target_size = max(224, min(2048, raw_cfg["max_resolution"]))
+             try:
+                 with Image.open(image_path) as img:
+                     w, h = img.size
+                 if w == target_size and h == target_size:
+                     processing_path = image_path
+                 else:
+                     processed_path = self.preprocess_image(image_path)
+                     if processed_path:
+                         processing_path = processed_path
+                     else:
+                         logger("Warning: Preprocessing failed for standard image, using original.")
+             except Exception:
+                 processed_path = self.preprocess_image(image_path)
+                 if processed_path:
+                     processing_path = processed_path
+                 else:
+                     logger("Warning: Preprocessing failed for standard image, using original.")
         
         # Convert WSL path to Windows path for browser compatibility
         browser_path = self.wsl_to_windows_path(image_path)
@@ -1283,35 +1355,23 @@ class MultiModelMUSIQ:
     
     def calculate_weighted_categories(self, scores: Dict[str, float]) -> Dict[str, float]:
         """
-        Calculate weighted scores for different categories:
-        1. Technical Safety (Culling)
-        2. Portfolio Potential (Ranking)
-        3. General Purpose (Balanced)
+        Calculate weighted scores with percentile-based rescaling.
+        Delegates to score_normalization module when available.
         """
-        
-        # Helper to safely get score (default to 0 if missing)
+        if snorm is not None:
+            return snorm.compute_composites(scores)
+
         def get_s(model):
             return scores.get(model, 0.0)
 
-        # 1. Technical Safety (Culling)
-        # Tech: LIQE (1.0)
         technical = get_s('liqe')
-                     
-        # 2. Portfolio Potential (Ranking)
-        # Art: AVA (0.60), SPAQ (0.40)
-        aesthetic = (0.60 * get_s('ava') + 
-                     0.40 * get_s('spaq'))
+        aesthetic = 0.55 * get_s('ava') + 0.45 * get_s('spaq')
+        general = 0.45 * get_s('liqe') + 0.30 * get_s('ava') + 0.25 * get_s('spaq')
 
-        # 3. General Purpose (Balanced)
-        # General: LIQE (0.50), AVA (0.30), SPAQ (0.20)
-        general = (0.50 * get_s('liqe') + 
-                   0.30 * get_s('ava') + 
-                   0.20 * get_s('spaq'))
-                   
         return {
             "technical": round(technical, 3),
             "aesthetic": round(aesthetic, 3),
-            "general": round(general, 3)
+            "general": round(general, 3),
         }
     
     def save_results(self, results: Dict[str, any], output_path: str):

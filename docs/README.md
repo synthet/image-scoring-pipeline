@@ -107,6 +107,7 @@ Documentation for setting up the development environment.
 ### WSL & Linux Setup
 | Document | Description | Read Time |
 |----------|-------------|-----------|
+| **[ENVIRONMENTS.md](setup/ENVIRONMENTS.md)** | Virtual environments: .venv, ~/.venvs/tf, tests; what uses what | 5 min |
 | **[WSL2_TENSORFLOW_GPU_SETUP.md](setup/WSL2_TENSORFLOW_GPU_SETUP.md)** | TensorFlow GPU setup in WSL2 | 25 min |
 | **[WSL_WRAPPER_VERIFICATION.md](setup/WSL_WRAPPER_VERIFICATION.md)** | WSL wrapper verification | 8 min |
 | **[WSL_PYTHON_PACKAGES.md](setup/WSL_PYTHON_PACKAGES.md)** | Python packages in WSL | 3 min |

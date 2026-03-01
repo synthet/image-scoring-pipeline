@@ -1,0 +1,26 @@
+# Requirements for scripts/research_models.py
+# Minimal set for the input format assessment research script.
+#
+# Usage (WSL):
+#   python3 -m venv .venv_research
+#   source .venv_research/bin/activate
+#   pip install -r requirements/requirements_research.txt
+#   python scripts/research_models.py --dry-run   # pipeline test
+#   python scripts/research_models.py              # full run with models
+#
+# For dry-run (no ML models), only Pillow + firebird-driver are needed.
+# For full run, install tensorflow and pyiqa (torch) as well.
+
+# Core (always required)
+Pillow>=10.0
+firebird-driver>=2.0
+
+# NEF conversion (optional, exiftool fallback works without rawpy)
+rawpy>=0.21
+
+# MUSIQ models (TensorFlow)
+tensorflow>=2.15
+tensorflow-hub>=0.16
+
+# LIQE model (PyTorch/PyIQA)
+pyiqa>=0.1.14

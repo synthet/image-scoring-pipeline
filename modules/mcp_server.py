@@ -1,57 +1,37 @@
 """
 MCP (Model Context Protocol) Server for Image Scoring WebUI
 
-Provides comprehensive debugging tools for Cursor IDE and AI agents to interact with:
-- Database operations: Query images, get statistics, check data integrity
-- Error diagnostics: Find failed images, error summaries, health checks
-- Performance monitoring: Track metrics, job status, pipeline state
-- System diagnostics: GPU/model status, configuration validation
-- File validation: Verify file paths exist, check consistency
-- Log access: Read debug logs for investigation
-- Configuration: Read and update application settings
+Provides debugging and management tools for Cursor IDE and AI agents.
 
-Available Tools (21 total):
-  Database & Stats:
+Available Tools (17):
+  Database & Query:
     - get_database_stats: Overall database statistics
     - query_images: Flexible image queries with filtering
     - get_image_details: Full details for specific image
     - execute_sql: Read-only SQL queries (SELECT only)
-  
+    - get_folder_tree: Folder structure with counts
+    - get_stacks_summary: Stack/cluster analysis
+
   Error & Diagnostics:
     - get_failed_images: Images with missing/failed scores
     - get_error_summary: Summary of all errors and issues
     - check_database_health: Data integrity validation
-    - validate_file_paths: Check if database paths exist
-  
-  Performance & Monitoring:
-    - get_performance_metrics: Processing speed and success rates
-    - get_runner_status: Current job status and progress
+    - validate_file_paths: Check if database paths exist on disk
+
+  Monitoring & Jobs:
+    - get_runner_status: Current scoring/tagging/clustering progress
     - get_recent_jobs: Recent job history
-    - get_pipeline_stats: Active pipeline state and queues
-  
-  System Diagnostics:
     - get_model_status: GPU availability, model loading status
-    - validate_config: Configuration validation
-    - read_debug_log: Read debug log entries
-  
-  Analysis & Utilities:
-    - get_incomplete_images: Images missing data
-    - get_stacks_summary: Stack/cluster analysis
-    - get_folder_tree: Folder structure with counts
-    - search_images_by_hash: Find image by content hash
+    - run_processing_job: Trigger scoring, tagging, or clustering
+
+  Configuration & Logs:
     - get_config: Read configuration
     - set_config_value: Update configuration
+    - read_debug_log: Read debug log entries
 
 Usage:
-    Start alongside webui.py or run standalone:
-    python -m modules.mcp_server
-    
-    Or set environment variable when running webui:
-    ENABLE_MCP_SERVER=1 python webui.py
-
-For AI Agents:
-    See docs/technical/MCP_DEBUGGING_TOOLS.md for detailed documentation
-    See .agent/mcp_tools_reference.md for quick reference guide
+    python -m modules.mcp_server          # standalone
+    ENABLE_MCP_SERVER=1 python webui.py   # integrated
 """
 
 import asyncio
@@ -91,20 +71,16 @@ _scoring_runner = None
 _tagging_runner = None
 _clustering_runner = None
 
-_clustering_runner = None
-
 
 # Set False if db.init_db() fails (e.g. Firebird not migrated); DB-using tools then return a clear error
 _db_available = True
 
 DB_TOOLS = frozenset({
     "get_database_stats", "query_images", "get_image_details", "execute_sql",
-    "get_recent_jobs", "get_folder_tree", "get_incomplete_images",
-    "search_images_by_hash", "get_stacks_summary",
+    "get_recent_jobs", "get_folder_tree", "get_stacks_summary",
     "get_failed_images", "get_error_summary", "check_database_health",
-    "validate_file_paths", "get_performance_metrics",
-    "run_processing_job"
-    # Note: get_model_status, validate_config, get_pipeline_stats don't require DB
+    "validate_file_paths", "run_processing_job", "search_similar_images"
+    # Note: get_model_status, get_runner_status, get_config, set_config_value, read_debug_log don't require DB
 })
 
 def set_runners(scoring_runner, tagging_runner, clustering_runner=None):
@@ -311,10 +287,16 @@ def execute_sql(query: str, params: list = None) -> dict:
     if not query.upper().startswith("SELECT"):
         return {"error": "Only SELECT queries are allowed for safety reasons"}
     
-    # Block dangerous patterns
-    dangerous_patterns = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "--", ";--"]
+    # Block dangerous SQL statements (word-boundary check to avoid
+    # false positives on column names like "updated_at" or "created_at")
+    import re
+    dangerous_patterns = [
+        r'\bDROP\b', r'\bDELETE\b', r'\bINSERT\b', r'\bUPDATE\b',
+        r'\bALTER\b', r'\bCREATE\b', r'--', r';--',
+    ]
+    upper_query = query.upper()
     for pattern in dangerous_patterns:
-        if pattern in query.upper():
+        if re.search(pattern, upper_query):
             return {"error": f"Query contains forbidden pattern: {pattern}"}
     
     conn = db.get_db()
@@ -440,29 +422,6 @@ def get_folder_tree(root_path: Optional[str] = None) -> list:
     return tree
 
 
-def get_incomplete_images(limit: int = 50) -> list:
-    """Get images with missing or incomplete data."""
-    rows = db.get_incomplete_records()
-    results = []
-    
-    for row in rows[:limit]:
-        item = dict(row)
-        # Identify what's missing
-        missing = []
-        if not item.get('score') or item.get('score', 0) <= 0:
-            missing.append('score')
-        if not item.get('rating') or item.get('rating', 0) <= 0:
-            missing.append('rating')
-        if not item.get('label'):
-            missing.append('label')
-        if not item.get('score_liqe') or item.get('score_liqe', 0) <= 0:
-            missing.append('liqe')
-            
-        item['missing_fields'] = missing
-        results.append(item)
-    
-    return results
-
 
 def read_debug_log(lines: int = 100) -> dict:
     """Read the debug log file."""
@@ -495,10 +454,6 @@ def read_debug_log(lines: int = 100) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
-def search_images_by_hash(image_hash: str) -> dict:
-    """Search for an image by its content hash."""
-    return db.get_image_by_hash(image_hash)
 
 
 def get_stacks_summary(folder_path: Optional[str] = None) -> dict:
@@ -559,8 +514,6 @@ def get_stacks_summary(folder_path: Optional[str] = None) -> dict:
     
     return summary
 
-
-# --- New Debugging Tools ---
 
 def get_failed_images(limit: int = 50) -> list:
     """Get images that failed processing or have errors."""
@@ -805,71 +758,6 @@ def validate_file_paths(limit: int = 100) -> dict:
     return results
 
 
-def get_performance_metrics() -> dict:
-    """Get performance metrics from recent jobs."""
-    conn = db.get_db()
-    c = conn.cursor()
-    
-    metrics = {}
-    
-    try:
-        # Average job duration
-        c.execute("""
-            SELECT 
-                AVG(EXTRACT(EPOCH FROM (updated_at - created_at))) as avg_duration,
-                COUNT(*) as total_jobs
-            FROM jobs
-            WHERE status = 'completed' 
-              AND updated_at IS NOT NULL 
-              AND created_at IS NOT NULL
-        """)
-        row = c.fetchone()
-        if row and row[0]:
-            metrics["avg_job_duration_seconds"] = round(row[0], 2)
-            metrics["total_completed_jobs"] = row[1]
-        
-        # Images processed per hour (recent jobs)
-        c.execute("""
-            SELECT 
-                SUM(image_count) as total_images,
-                SUM(EXTRACT(EPOCH FROM (updated_at - created_at))) as total_seconds
-            FROM jobs
-            WHERE status = 'completed'
-              AND image_count > 0
-              AND updated_at IS NOT NULL
-              AND created_at IS NOT NULL
-              AND created_at > CURRENT_DATE - 7
-        """)
-        row = c.fetchone()
-        if row and row[0] and row[1] and row[1] > 0:
-            images_per_hour = (row[0] / row[1]) * 3600
-            metrics["images_per_hour"] = round(images_per_hour, 2)
-            metrics["total_images_last_7_days"] = row[0]
-        
-        # Job success rate
-        c.execute("""
-            SELECT 
-                status,
-                COUNT(*) as count
-            FROM jobs
-            GROUP BY status
-        """)
-        status_counts = {row[0]: row[1] for row in c.fetchall()}
-        total = sum(status_counts.values())
-        if total > 0:
-            metrics["job_success_rate"] = round(
-                (status_counts.get('completed', 0) / total) * 100, 2
-            )
-            metrics["job_status_breakdown"] = status_counts
-        
-    except Exception as e:
-        metrics["error"] = str(e)
-    finally:
-        conn.close()
-    
-    return metrics
-
-
 def run_processing_job(job_type: str, input_path: str, args: dict = None) -> dict:
     """
     Trigger a background processing job.
@@ -942,7 +830,6 @@ def run_processing_job(job_type: str, input_path: str, args: dict = None) -> dic
         
     else:
         return {"error": f"Unknown job type: {job_type}"}
-
 
 
 def get_model_status() -> dict:
@@ -1023,108 +910,6 @@ def get_model_status() -> dict:
         status["error"] = str(e)
     
     return status
-
-
-def validate_config() -> dict:
-    """Validate configuration values."""
-    validation = {
-        "valid": True,
-        "issues": [],
-        "warnings": []
-    }
-    
-    try:
-        cfg = config.load_config()
-        
-        # Check required paths
-        if 'paths' in cfg:
-            paths = cfg['paths']
-            if 'image_directories' in paths:
-                dirs = paths['image_directories']
-                if isinstance(dirs, list):
-                    for dir_path in dirs:
-                        if not os.path.exists(dir_path):
-                            validation["warnings"].append(f"Image directory does not exist: {dir_path}")
-                            validation["valid"] = False
-                else:
-                    validation["issues"].append("image_directories should be a list")
-        
-        # Check processing config
-        if 'processing' in cfg:
-            proc = cfg['processing']
-            queue_sizes = ['prep_queue_size', 'scoring_queue_size', 'result_queue_size']
-            for qs in queue_sizes:
-                if qs in proc:
-                    val = proc[qs]
-                    if not isinstance(val, int) or val < 1:
-                        validation["issues"].append(f"{qs} must be a positive integer")
-                        validation["valid"] = False
-        
-        validation["config_keys"] = list(cfg.keys())
-        
-    except Exception as e:
-        validation["valid"] = False
-        validation["error"] = str(e)
-    
-    return validation
-
-
-def get_pipeline_stats() -> dict:
-    """Get statistics about the processing pipeline."""
-    stats = {
-        "runners": {},
-        "queues": {},
-        "processor": {}
-    }
-    
-    try:
-        # Get runner status
-        runner_status = get_runner_status()
-        stats["runners"] = runner_status
-        
-        # Try to get processor information
-        if _scoring_runner:
-            stats["processor"]["scorer_initialized"] = _scoring_runner.shared_scorer is not None
-            stats["processor"]["is_running"] = getattr(_scoring_runner, 'is_running', False)
-            stats["processor"]["job_type"] = getattr(_scoring_runner, 'job_type', None)
-            stats["processor"]["status_message"] = getattr(_scoring_runner, 'status_message', 'Unknown')
-            
-            # Get progress information
-            if hasattr(_scoring_runner, 'current_count') and hasattr(_scoring_runner, 'total_count'):
-                stats["processor"]["current_count"] = _scoring_runner.current_count
-                stats["processor"]["total_count"] = _scoring_runner.total_count
-                if _scoring_runner.total_count > 0:
-                    stats["processor"]["progress_percent"] = round(
-                        (_scoring_runner.current_count / _scoring_runner.total_count * 100), 2
-                    )
-            
-            # Check if processor is active
-            if _scoring_runner.current_processor:
-                processor = _scoring_runner.current_processor
-                stats["processor"]["has_active_processor"] = True
-                stats["processor"]["processed_count"] = getattr(processor, 'processed_count', 0)
-                stats["processor"]["total_count"] = getattr(processor, 'total_count', 0)
-                stats["processor"]["stop_requested"] = getattr(processor, 'stop_event', None) and processor.stop_event.is_set() if hasattr(processor, 'stop_event') else False
-            else:
-                stats["processor"]["has_active_processor"] = False
-        else:
-            stats["processor"]["note"] = "Scoring runner not available"
-        
-        # Get config-based queue sizes
-        try:
-            processing_config = config.get_config_section('processing')
-            stats["queues"] = {
-                "prep_queue_size": processing_config.get('prep_queue_size', 'not_set'),
-                "scoring_queue_size": processing_config.get('scoring_queue_size', 'not_set'),
-                "result_queue_size": processing_config.get('result_queue_size', 'not_set')
-            }
-        except:
-            stats["queues"]["note"] = "Could not read queue sizes from config"
-        
-    except Exception as e:
-        stats["error"] = str(e)
-    
-    return stats
 
 
 # --- MCP Server Setup ---
@@ -1245,17 +1030,6 @@ def create_mcp_server() -> "Server":
                 }
             ),
             Tool(
-                name="get_incomplete_images",
-                description="Get images with missing or incomplete scoring data",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "limit": {"type": "integer", "description": "Max number of results", "default": 50}
-                    },
-                    "required": []
-                }
-            ),
-            Tool(
                 name="read_debug_log",
                 description="Read recent entries from the debug log file",
                 inputSchema={
@@ -1264,17 +1038,6 @@ def create_mcp_server() -> "Server":
                         "lines": {"type": "integer", "description": "Number of recent lines to read", "default": 100}
                     },
                     "required": []
-                }
-            ),
-            Tool(
-                name="search_images_by_hash",
-                description="Search for an image by its content hash (SHA256)",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "image_hash": {"type": "string", "description": "SHA256 hash of the image content"}
-                    },
-                    "required": ["image_hash"]
                 }
             ),
             Tool(
@@ -1329,35 +1092,8 @@ def create_mcp_server() -> "Server":
                 }
             ),
             Tool(
-                name="get_performance_metrics",
-                description="Get performance metrics from recent jobs including processing speed and success rates",
-                inputSchema={
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            ),
-            Tool(
                 name="get_model_status",
                 description="Get status of loaded models, GPU availability, and CUDA/PyTorch/TensorFlow configuration",
-                inputSchema={
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            ),
-            Tool(
-                name="validate_config",
-                description="Validate configuration values and check for issues",
-                inputSchema={
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            ),
-            Tool(
-                name="get_pipeline_stats",
-                description="Get statistics about the processing pipeline including queue sizes and worker status",
                 inputSchema={
                     "type": "object",
                     "properties": {},
@@ -1394,6 +1130,21 @@ def create_mcp_server() -> "Server":
                     },
                     "required": ["job_type", "input_path"]
                 }
+            ),
+            Tool(
+                name="search_similar_images",
+                description="Find images visually similar to an example image using stored MobileNetV2 embeddings and cosine similarity. Provide either example_path or example_image_id.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "example_path": {"type": "string", "description": "File path of the example image to search for"},
+                        "example_image_id": {"type": "integer", "description": "Database ID of the example image (alternative to example_path)"},
+                        "limit": {"type": "integer", "description": "Max results to return (default: 20)", "default": 20},
+                        "folder_path": {"type": "string", "description": "Restrict search to images in this folder"},
+                        "min_similarity": {"type": "number", "description": "Minimum cosine similarity threshold (0-1)"}
+                    },
+                    "required": []
+                }
             )
         ]
     
@@ -1427,12 +1178,8 @@ def create_mcp_server() -> "Server":
                 result = set_config_value(arguments["key"], arguments["value"])
             elif name == "get_folder_tree":
                 result = get_folder_tree(arguments.get("root_path"))
-            elif name == "get_incomplete_images":
-                result = get_incomplete_images(arguments.get("limit", 50))
             elif name == "read_debug_log":
                 result = read_debug_log(arguments.get("lines", 100))
-            elif name == "search_images_by_hash":
-                result = search_images_by_hash(arguments["image_hash"])
             elif name == "get_stacks_summary":
                 result = get_stacks_summary(arguments.get("folder_path"))
             elif name == "get_failed_images":
@@ -1443,19 +1190,22 @@ def create_mcp_server() -> "Server":
                 result = check_database_health()
             elif name == "validate_file_paths":
                 result = validate_file_paths(arguments.get("limit", 100))
-            elif name == "get_performance_metrics":
-                result = get_performance_metrics()
             elif name == "get_model_status":
                 result = get_model_status()
-            elif name == "validate_config":
-                result = validate_config()
-            elif name == "get_pipeline_stats":
-                result = get_pipeline_stats()
             elif name == "run_processing_job":
                 result = run_processing_job(
                     arguments["job_type"], 
                     arguments["input_path"],
                     arguments.get("args")
+                )
+            elif name == "search_similar_images":
+                from modules import similar_search
+                result = similar_search.search_similar_images(
+                    example_path=arguments.get("example_path"),
+                    example_image_id=arguments.get("example_image_id"),
+                    limit=arguments.get("limit", 20),
+                    folder_path=arguments.get("folder_path"),
+                    min_similarity=arguments.get("min_similarity"),
                 )
             else:
                 result = {"error": f"Unknown tool: {name}"}

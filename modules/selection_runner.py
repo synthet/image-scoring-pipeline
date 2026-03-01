@@ -6,6 +6,8 @@ Matches Scoring/Keywords runner contract for polling-based UI integration.
 
 import threading
 from modules.selection import SelectionService, SelectionConfig
+from modules import db
+from modules.events import event_manager
 
 
 class SelectionRunner:
@@ -36,7 +38,7 @@ class SelectionRunner:
                 self._total_count,
             )
 
-    def start_batch(self, input_path: str, force_rescan: bool = False) -> str:
+    def start_batch(self, input_path: str, job_id: int = None, force_rescan: bool = False) -> str:
         """Starts Selection in a background thread. Non-blocking."""
         with self._lock:
             if self._is_running:
@@ -48,8 +50,11 @@ class SelectionRunner:
             self._current_count = 0
             self._total_count = 0
 
+        if job_id is None:
+            job_id = db.create_job(input_path or "ALL_IMAGES_SELECTION")
+
         def target():
-            self._run_internal(input_path, force_rescan)
+            self._run_internal(input_path, force_rescan, job_id=job_id)
             with self._lock:
                 self._is_running = False
 
@@ -57,7 +62,8 @@ class SelectionRunner:
         self._thread.start()
         return "Started"
 
-    def _run_internal(self, input_path: str, force_rescan: bool):
+    def _run_internal(self, input_path: str, force_rescan: bool, job_id: int = None):
+        
         def log(msg: str):
             with self._lock:
                 self._log_history.append(msg)
@@ -67,10 +73,27 @@ class SelectionRunner:
                 self._status_message = msg
                 self._total_count = 100
                 self._current_count = int(pct * 100)
+                
+            if job_id:
+                event_manager.broadcast_threadsafe("job_progress", {
+                    "job_id": job_id,
+                    "current": self._current_count,
+                    "total": 100,
+                    "message": msg
+                })
 
         log("Starting Selection workflow...")
         log(f"Input: {input_path}")
         log("-" * 20)
+        
+        # Notify job started
+        if job_id:
+            db.update_job_status(job_id, "running")
+            event_manager.broadcast_threadsafe("job_started", {
+                "job_id": job_id, 
+                "job_type": "selection", 
+                "input_path": input_path
+            })
 
         cfg = SelectionConfig(force_rescan=force_rescan)
         summary = self._service.run(input_path, cfg=cfg, progress_cb=progress_cb)
@@ -79,6 +102,13 @@ class SelectionRunner:
             self._status_message = summary.status
             self._current_count = 100
             self._total_count = 100
+            
+        if job_id:
+            db.update_job_status(job_id, "completed")
+            event_manager.broadcast_threadsafe("job_completed", {
+                "job_id": job_id, 
+                "status": "completed"
+            })
 
         log(f"Total images: {summary.total_images}")
         log(f"Total stacks: {summary.total_stacks}")

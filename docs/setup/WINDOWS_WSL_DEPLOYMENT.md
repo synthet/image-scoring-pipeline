@@ -1,4 +1,4 @@
-﻿# Deployment Guide: Image Scoring Tool on Windows (WSL2)
+# Deployment Guide: Image Scoring Tool on Windows (WSL2)
 
 This guide provides step-by-step instructions to deploy the Image Scoring tool on a fresh Windows 10/11 PC using WSL2 (Windows Subsystem for Linux), which is the recommended environment for GPU acceleration.
 
@@ -74,22 +74,22 @@ sudo apt install -y python3-pip python3-venv build-essential python3-dev
 ```
 
 ### 2. Create Virtual Environment
-Create a clean virtual environment (e.g., in `~/.venvs/scoring`):
+Create a clean virtual environment (e.g., in `~/.venvs/tf`):
 
 ```bash
 mkdir -p ~/.venvs
-python3 -m venv ~/.venvs/scoring
+python3 -m venv ~/.venvs/tf
 ```
 
 ### 3. Activate Environment
 You must activate this environment whenever you work on the project:
 
 ```bash
-source ~/.venvs/scoring/bin/activate
+source ~/.venvs/tf/bin/activate
 ```
 *(Optional) Add this to your `.bashrc` to auto-activate:*
 ```bash
-echo "source ~/.venvs/scoring/bin/activate" >> ~/.bashrc
+echo "source ~/.venvs/tf/bin/activate" >> ~/.bashrc
 ```
 
 ### 4. Install Project Dependencies

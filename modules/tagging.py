@@ -7,6 +7,7 @@ from PIL import Image
 from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration
 from typing import List, Dict, Optional, Tuple
 from modules import db, thumbnails, xmp
+from modules.events import event_manager
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -145,7 +146,7 @@ class TaggingRunner:
     def get_status(self):
         return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
         
-    def start_batch(self, input_path: str, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False):
+    def start_batch(self, input_path: str, job_id: int = None, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False):
         if self.is_running:
             return "Error: Already running."
             
@@ -155,8 +156,12 @@ class TaggingRunner:
         self.current_count = 0
         self.total_count = 0
         
+        if job_id is None:
+            from modules import db
+            job_id = db.create_job(input_path or "ALL_IMAGES_TAGGING")
+            
         def target():
-            self._run_batch_internal(input_path, custom_keywords, overwrite, generate_captions)
+            self._run_batch_internal(input_path, custom_keywords, overwrite, generate_captions, job_id=job_id)
             self.is_running = False
             self.status_message = "Done" if "Error" not in self.status_message else "Failed"
             
@@ -164,10 +169,12 @@ class TaggingRunner:
         self._thread.start()
         return "Started"
 
-    def _run_batch_internal(self, input_path: str, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False):
+    def _run_batch_internal(self, input_path: str, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False, job_id: int = None):
         """
         Internal sync runner for tagging process.
         """
+        from modules.events import event_manager
+        
         def log(msg):
             self.log_history.append(msg)
             # print(msg, flush=True)
@@ -185,6 +192,15 @@ class TaggingRunner:
         self.stop_event.clear()
         log(f"Starting Tagging process on {input_path}...")
         self.status_message = "Running..."
+        
+        # Notify job started
+        if job_id:
+            db.update_job_status(job_id, "running")
+            event_manager.broadcast_threadsafe("job_started", {
+                "job_id": job_id, 
+                "job_type": "tagging", 
+                "input_path": input_path
+            })
         
         # Initialize Scorer
         if not self.scorer:
@@ -294,17 +310,11 @@ class TaggingRunner:
             inference_path = path
             ext = os.path.splitext(path)[1].lower()
             if ext in ['.nef', '.nrw', '.arw', '.cr2', '.cr3', '.dng']:
-                 thumb_path = row['thumbnail_path']
-                 
-                 # Convert thumb path to WSL if needed
-                 if thumb_path and ":" in thumb_path and thumb_path[1] == ":" and os.path.exists("/mnt/"):
-                     drive_t = thumb_path[0].lower()
-                     p_t = thumb_path[2:].replace("\\", "/")
-                     thumb_path = f"/mnt/{drive_t}{p_t}"
+                 from modules.thumbnails import get_thumb_wsl
+                 thumb_path = get_thumb_wsl(row)  # tagging runs in WSL
 
                  if thumb_path and os.path.exists(thumb_path):
                      inference_path = thumb_path
-                     # logger.debug(f"Using thumbnail for inference: {thumb_path}")
                  else:
                      log(f"  [Warning] No thumbnail found for RAW file, inference might fail: {os.path.basename(path)}")
             
@@ -349,8 +359,17 @@ class TaggingRunner:
             except Exception as e:
                 log(f"Request failed: {e}")
                 self.current_count += 1
+            event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": self.current_count, "total": self.total_count})
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")
+
+        # Update Job Status
+        if job_id:
+            db.update_job_status(job_id, "completed")
+            event_manager.broadcast_threadsafe("job_completed", {
+                "job_id": job_id, 
+                "status": "completed"
+            })
 
         # Update Folder Status
         if processed_folders:
@@ -427,13 +446,8 @@ class TaggingRunner:
         if ext in ['.nef', '.nrw', '.arw', '.cr2', '.cr3', '.dng']:
              row = db.get_image_details(file_path)
              if row:
-                thumb_path = row.get('thumbnail_path')
-                # Convert thumb path to WSL if needed
-                if thumb_path and ":" in thumb_path and thumb_path[1] == ":" and os.path.exists("/mnt/"):
-                    drive_t = thumb_path[0].lower()
-                    p_t = thumb_path[2:].replace("\\", "/")
-                    thumb_path = f"/mnt/{drive_t}{p_t}"
-
+                from modules.thumbnails import get_thumb_wsl
+                thumb_path = get_thumb_wsl(row)  # tagging runs in WSL
                 if thumb_path and os.path.exists(thumb_path):
                     inference_path = thumb_path
         

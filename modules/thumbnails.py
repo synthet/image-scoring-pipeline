@@ -1,4 +1,6 @@
 import os
+import platform
+import re
 from pathlib import Path
 from PIL import Image
 import hashlib
@@ -13,8 +15,7 @@ THUMB_DIR = str(PROJECT_ROOT / "thumbnails")
 MAX_SIZE = (512, 512)
 
 def ensure_thumb_dir():
-    if not os.path.exists(THUMB_DIR):
-        os.makedirs(THUMB_DIR)
+    os.makedirs(THUMB_DIR, exist_ok=True)
 
 def extract_embedded_jpeg(image_path: str, min_size: int = 100) -> Optional[Image.Image]:
     """
@@ -80,14 +81,104 @@ def extract_embedded_jpeg(image_path: str, min_size: int = 100) -> Optional[Imag
     
     return None
 
+def _thumb_hash(image_path):
+    return hashlib.md5(str(image_path).encode('utf-8')).hexdigest()
+
+
 def get_thumb_path(image_path):
     """
     Returns the expected path of the thumbnail for a given image.
-    Uses MD5 of the path to avoid filename collisions/length issues.
+    Uses MD5 of the path with a 2-char prefix subdirectory (git-style).
+    Layout: thumbnails/{hash[:2]}/{hash}.jpg
+    Falls back to legacy flat path if it exists and nested does not.
     """
-    ensure_thumb_dir()
-    path_hash = hashlib.md5(str(image_path).encode('utf-8')).hexdigest()
-    return os.path.join(THUMB_DIR, f"{path_hash}.jpg")
+    path_hash = _thumb_hash(image_path)
+    prefix = path_hash[:2]
+
+    nested = os.path.join(THUMB_DIR, prefix, f"{path_hash}.jpg")
+    if os.path.exists(nested):
+        return nested
+
+    legacy = os.path.join(THUMB_DIR, f"{path_hash}.jpg")
+    if os.path.exists(legacy):
+        return legacy
+
+    subdir = os.path.join(THUMB_DIR, prefix)
+    os.makedirs(subdir, exist_ok=True)
+    return nested
+
+
+def thumb_path_to_win(wsl_path):
+    """Deterministic WSL-to-Windows conversion for thumbnail paths."""
+    if not wsl_path:
+        return None
+    p = wsl_path.replace('\\', '/')
+    m = re.match(r'^/mnt/([a-zA-Z])/(.*)', p)
+    if m:
+        drive = m.group(1).upper()
+        rest = m.group(2).replace('/', '\\')
+        return f"{drive}:\\{rest}"
+    return wsl_path.replace('/', '\\')
+
+
+def thumb_path_to_wsl(win_path):
+    """Deterministic Windows-to-WSL conversion for thumbnail paths."""
+    if not win_path:
+        return None
+    m = re.match(r'^([a-zA-Z]):[\\\/](.*)', win_path)
+    if m:
+        drive = m.group(1).lower()
+        rest = m.group(2).replace('\\', '/')
+        return f"/mnt/{drive}/{rest}"
+    return win_path.replace('\\', '/')
+
+
+def get_thumb_wsl(row):
+    """
+    Return the WSL/Linux thumbnail path from a DB row.
+    Use this in code that runs inside WSL (Gradio server, ML inference, scoring).
+    Falls back to converting thumbnail_path_win if thumbnail_path is empty.
+    """
+    wsl = _row_val(row, 'thumbnail_path')
+    if wsl:
+        return wsl
+    win = _row_val(row, 'thumbnail_path_win')
+    return thumb_path_to_wsl(win) if win else None
+
+
+def get_thumb_win(row):
+    """
+    Return the native Windows thumbnail path from a DB row.
+    Use this in code that runs on native Windows (Windows-only scripts, native UI).
+    Falls back to converting thumbnail_path if thumbnail_path_win is empty.
+    """
+    win = _row_val(row, 'thumbnail_path_win')
+    if win:
+        return win
+    wsl = _row_val(row, 'thumbnail_path')
+    return thumb_path_to_win(wsl) if wsl else None
+
+
+def get_local_thumb(row):
+    """
+    Auto-detect platform and return the appropriate thumbnail path.
+    Prefer get_thumb_wsl() or get_thumb_win() for explicit intent.
+    """
+    if platform.system() == 'Windows':
+        return get_thumb_win(row)
+    return get_thumb_wsl(row)
+
+
+def _row_val(row, col_name):
+    """Read a column from a DB row (dict, Row, or keys()-supporting object)."""
+    try:
+        if hasattr(row, 'get'):
+            return row.get(col_name)
+        if hasattr(row, 'keys') and col_name in row.keys():
+            return row[col_name]
+    except Exception:
+        pass
+    return None
 
 def generate_thumbnail(image_path):
     """
@@ -147,6 +238,12 @@ def generate_thumbnail(image_path):
             
             img.thumbnail(MAX_SIZE)
             img.save(thumb_path, "JPEG", quality=85)
+            
+            # Copy EXIF orientation from original
+            if is_raw and shutil.which("exiftool"):
+                cmd = ["exiftool", "-TagsFromFile", str(image_path), "-Orientation", "-overwrite_original", thumb_path]
+                subprocess.run(cmd, capture_output=True, timeout=10)
+                
             return thumb_path
             
     except Exception as e:
@@ -198,6 +295,12 @@ def generate_preview(image_path):
         if img.width > 1000:
             try:
                 img.save(preview_path, "JPEG", quality=90)
+                
+                # Copy EXIF orientation from original
+                if shutil.which("exiftool"):
+                    cmd = ["exiftool", "-TagsFromFile", str(image_path), "-Orientation", "-overwrite_original", preview_path]
+                    subprocess.run(cmd, capture_output=True, timeout=10)
+                
                 return preview_path
             except Exception as e:
                 print(f"Failed to save extracted preview: {e}")
@@ -215,6 +318,12 @@ def generate_preview(image_path):
                 rgb = raw.postprocess(use_camera_wb=True, bright=1.0, user_sat=None)
                 img = Image.fromarray(rgb)
                 img.save(preview_path, "JPEG", quality=90)
+                
+                # Copy EXIF orientation from original
+                if shutil.which("exiftool"):
+                    cmd = ["exiftool", "-TagsFromFile", str(image_path), "-Orientation", "-overwrite_original", preview_path]
+                    subprocess.run(cmd, capture_output=True, timeout=10)
+                
                 return preview_path
         except ImportError:
             print("rawpy not available for full decode")

@@ -1,20 +1,14 @@
-
 import os
 import logging
 import numpy as np
 import threading
-
-
-import os
-import logging
-import numpy as np
-# Defer tensorflow imports to avoid slow startup/errors if not needed
-# import tensorflow as tf
-# from tensorflow.keras.applications import MobileNetV2
-# ...
-from sklearn.cluster import AgglomerativeClustering
-from modules import db
+import sqlite3
+import time
+from datetime import datetime
 from PIL import Image
+from sklearn.cluster import AgglomerativeClustering
+from modules import db, utils, config
+from modules.events import event_manager
 
 # Suppress TF logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -245,7 +239,7 @@ class ClusteringEngine:
         burst_uuid = utils.read_burst_uuid(row['file_path'])
         return burst_uuid
 
-    def cluster_images(self, distance_threshold=None, time_gap_seconds=None, force_rescan=None, target_folder=None):
+    def cluster_images(self, distance_threshold=None, time_gap_seconds=None, force_rescan=None, target_folder=None, job_id=None):
         """
         Main function to load images from DB, cluster them, and update DB.
         Enforces: 1. Folder Isolation 2. Time Gap Splitting 3. Persistence
@@ -262,13 +256,13 @@ class ClusteringEngine:
         self.total = 0
         
         try:
-            yield from self._cluster_images_impl(distance_threshold, time_gap_seconds, force_rescan, target_folder)
+            yield from self._cluster_images_impl(distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id)
         finally:
             # Always mark as not running when done
             self.is_running = False
             self.status_message = "Idle"
             
-    def _cluster_images_impl(self, distance_threshold, time_gap_seconds, force_rescan, target_folder):
+    def _cluster_images_impl(self, distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id=None):
         """Internal implementation of cluster_images."""
         import datetime
         import json
@@ -483,7 +477,8 @@ class ClusteringEngine:
                 batch_paths = []
                 batch_ids = []
                 for r, t in batch:
-                    thumb = r['thumbnail_path']
+                    from modules.thumbnails import get_thumb_wsl
+                    thumb = get_thumb_wsl(r)  # clustering runs in WSL
                     p = thumb if (thumb and os.path.exists(thumb)) else r['file_path']
                     
                     if p and os.path.exists(p):
@@ -494,7 +489,16 @@ class ClusteringEngine:
                     continue
                     
                 features, valid_indices = self.extract_features(batch_paths)
-                
+
+                # Persist embeddings to DB for similarity search
+                embedding_pairs = []
+                for i, feat in enumerate(features):
+                    orig_idx = valid_indices[i]
+                    img_id = batch_ids[orig_idx]
+                    embedding_pairs.append((img_id, feat.astype(np.float32).tobytes()))
+                if embedding_pairs:
+                    db.update_image_embeddings_batch(embedding_pairs)
+
                 if len(features) < 2:
                     continue
                 
@@ -571,10 +575,30 @@ class ClusteringEngine:
                                     xmp.write_burst_uuid(r['file_path'], new_burst_uuid)
                                     break
                     
+                    # Broadcast event
+                    try:
+                        from modules.events import event_manager
+                        event_manager.broadcast_threadsafe("stack_created", {
+                            "folder": folder, 
+                            "count": len(batch_stacks_data),
+                            "total_stacks": folder_stacks
+                        })
+                    except Exception as e:
+                        logging.debug(f"Failed to broadcast batch event: {e}")
+
             # Mark as processed
             db.mark_folder_clustered(folder)
             processed_count += len(rows)
             yield update_status(f"Finished {folder}. Created {folder_stacks} stacks.", processed_count, len(images_rows))
+            
+            # Broadcast final event for folder
+            try:
+                from modules.events import event_manager
+                # Hack: Just use a global trigger that the webui poller checks?
+                # Or better: event_manager should have a thread_safe_broadcast method.
+                event_manager.broadcast_threadsafe("stack_created", {"folder": folder, "count": folder_stacks})
+            except Exception as e:
+                logging.debug(f"Failed to broadcast event: {e}")
             
         yield update_status(f"Done! Processed {processed_count} images. Total Stacks: {db.get_stack_count()}", len(images_rows), len(images_rows))
 
@@ -600,7 +624,7 @@ class ClusteringRunner:
         """Returns (is_running, log_text, status_message, current, total)"""
         return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
         
-    def start_batch(self, input_path, threshold=None, time_gap=None, force_rescan=False):
+    def start_batch(self, input_path, threshold=None, time_gap=None, force_rescan=False, job_id=None):
         """Starts clustering in background."""
         if self.is_running:
             return "Error: Already running."
@@ -613,7 +637,7 @@ class ClusteringRunner:
         self.stop_event.clear()
         
         def target():
-            self._run_internal(input_path, threshold, time_gap, force_rescan)
+            self._run_internal(input_path, threshold, time_gap, force_rescan, job_id)
             self.is_running = False
             self.status_message = "Done" if "Error" not in self.status_message else "Failed"
             
@@ -621,19 +645,29 @@ class ClusteringRunner:
         self._thread.start()
         return "Started"
         
-    def _run_internal(self, input_path, threshold, time_gap, force_rescan):
+    def _run_internal(self, input_path, threshold, time_gap, force_rescan, job_id=None):
         def log(msg):
             self.log_history.append(msg)
             
         log(f"Starting Clustering on {input_path or 'all unprocessed folders'}...")
         
+        # Notify job started
+        if job_id:
+            db.update_job_status(job_id, "running")
+            event_manager.broadcast_threadsafe("job_started", {
+                "job_id": job_id, 
+                "job_type": "clustering", 
+                "input_path": input_path
+            })
+            
         try:
             # We use the generator from engine
             for msg_tuple in self.engine.cluster_images(
                 distance_threshold=threshold,
                 time_gap_seconds=time_gap,
                 force_rescan=force_rescan,
-                target_folder=input_path
+                target_folder=input_path,
+                job_id=job_id
             ):
                 if self.stop_event.is_set():
                     log("Stopped by user.")
@@ -646,12 +680,34 @@ class ClusteringRunner:
                     self.status_message = msg
                     self.current_count = cur
                     self.total_count = tot
+                    
+                    if job_id:
+                         event_manager.broadcast_threadsafe("job_progress", {
+                             "job_id": job_id,
+                             "current": cur,
+                             "total": tot,
+                             "message": msg
+                         })
                 else:
                     self.status_message = str(msg_tuple)
-                    
+            
+            if job_id:
+                db.update_job_status(job_id, "completed")
+                event_manager.broadcast_threadsafe("job_completed", {
+                    "job_id": job_id, 
+                    "status": "completed"
+                })
+                
         except Exception as e:
             log(f"Error: {e}")
             self.status_message = f"Error: {e}"
+            if job_id:
+                db.update_job_status(job_id, "failed", str(e))
+                event_manager.broadcast_threadsafe("job_completed", {
+                    "job_id": job_id, 
+                    "status": "failed", 
+                    "error": str(e)
+                })
             
     def stop(self):
         self.stop_event.set()

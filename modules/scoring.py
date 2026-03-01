@@ -7,6 +7,8 @@ from modules.engine import BatchImageProcessor
 import sys
 from pathlib import Path
 from modules import pipeline
+from modules.events import event_manager
+from modules import score_normalization as snorm
 
 # Ensure paths are set up to import scripts
 project_root = Path(__file__).resolve().parent.parent
@@ -89,6 +91,7 @@ class ScoringRunner:
         Internal synchronous runner.
         """
         db.update_job_status(job_id, "running")
+        event_manager.broadcast_threadsafe("job_started", {"job_id": job_id, "job_type": "scoring", "input_path": input_path})
         
         def log(msg):
             self.log_history.append(msg)
@@ -126,6 +129,7 @@ class ScoringRunner:
         def on_progress(cur, tot):
             self.current_count = cur
             self.total_count = tot
+            event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": cur, "total": tot})
             
         # Initialize processor
         processor = BatchImageProcessor(
@@ -158,11 +162,13 @@ class ScoringRunner:
             self.current_processor = None
             log("Processing finished.")
             db.update_job_status(job_id, "completed", "\n".join(self.log_history))
+            event_manager.broadcast_threadsafe("job_completed", {"job_id": job_id, "status": "completed"})
             
         except Exception as e:
             log(f"Error: {e}")
             self.status_message = "Error in processing"
             db.update_job_status(job_id, "failed", "\n".join(self.log_history))
+            event_manager.broadcast_threadsafe("job_completed", {"job_id": job_id, "status": "failed", "error": str(e)})
         
         # Backup after
         db.backup_database()
@@ -199,6 +205,7 @@ class ScoringRunner:
         Internal synchronous fix db runner.
         """
         db.update_job_status(job_id, "running")
+        event_manager.broadcast_threadsafe("job_started", {"job_id": job_id, "job_type": "fix_db"})
         
         def log(msg):
             self.log_history.append(msg)
@@ -283,6 +290,7 @@ class ScoringRunner:
         def on_progress(cur, tot):
             self.current_count = cur
             self.total_count = tot
+            event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": cur, "total": tot})
 
         # Initialize processor
         processor = BatchImageProcessor(
@@ -305,11 +313,13 @@ class ScoringRunner:
             self.current_processor = None
             log("DB Fix finished.")
             db.update_job_status(job_id, "completed", "\n".join(self.log_history))
+            event_manager.broadcast_threadsafe("job_completed", {"job_id": job_id, "status": "completed"})
             
         except Exception as e:
             log(f"Error: {e}")
             self.status_message = "Error in processing"
             db.update_job_status(job_id, "failed", "\n".join(self.log_history))
+            event_manager.broadcast_threadsafe("job_completed", {"job_id": job_id, "status": "failed", "error": str(e)})
 
 
     def fix_image_metadata(self, file_path):
@@ -353,45 +363,15 @@ class ScoringRunner:
                     pass
             
             # 3. Recalculate if we have enough data
-            # We need at least some models to make a meaningful calculation
-            # If all missing, we can't do anything without running models
             if not scores:
                 return False, "No existing model scores found to recalculate from."
-                
-            # Use MultiModelMUSIQ static helpers if possible, or reimplement lightweight logic
-            # Reimplementing here to avoid instantiating heavy class
-            
-            def get_s(model):
-                return scores.get(model, 0.0)
 
-            # Formulas from run_all_musiq_models.py (v3.0.0) -> Updated 2026-02-12
-            
-            # Technical: LIQE(1.0)
-            tech = get_s('liqe')
-
-            # Aesthetic: AVA(0.60), SPAQ(0.40)
-            aes = (0.60 * get_s('ava') + 
-                   0.40 * get_s('spaq'))
-
-            # General: LIQE(0.50), AVA(0.30), SPAQ(0.20)
-            gen = (0.50 * get_s('liqe') + 
-                   0.30 * get_s('ava') + 
-                   0.20 * get_s('spaq'))
-                   
-            # Rating Calculation
-            rating = 1
-            if gen >= 0.85: rating = 5
-            elif gen >= 0.70: rating = 4
-            elif gen >= 0.55: rating = 3
-            elif gen >= 0.40: rating = 2
-            
-            # Label Calculation (matches determine_lightroom_label)
-            # Red=Reject, Purple=Aesthetic beats tech, Blue=Portfolio, Green=Reference, Yellow=Maybe
-            label = "Yellow"
-            if tech < 0.40: label = "Red"
-            elif tech < 0.65 and aes > tech and aes > 0.48: label = "Purple"
-            elif aes > 0.70 and tech > 0.70: label = "Blue"
-            elif tech > 0.65: label = "Green"
+            result = snorm.compute_all(scores)
+            tech = result["technical"]
+            aes = result["aesthetic"]
+            gen = result["general"]
+            rating = result["rating"]
+            label = result["label"]
             
             # 4. Update Database
             # We need to construct a partial update or update the whole record
@@ -453,12 +433,11 @@ class ScoringRunner:
                      
                      # Actually, db.py usually handles path conversion or we store whatever we get.
                      # Let's just update it.
+                     thumb_win = thumbnails.thumb_path_to_win(new_thumb)
                      conn = db.get_db()
                      c = conn.cursor()
-                     # If running in WSL, we might want to convert to /mnt/...
-                     # But existing code likely handles this elsewhere. 
-                     # We will just update providing consistency with current env.
-                     c.execute("UPDATE images SET thumbnail_path = ? WHERE file_path = ?", (new_thumb, file_path))
+                     c.execute("UPDATE images SET thumbnail_path = ?, thumbnail_path_win = ? WHERE file_path = ?",
+                               (new_thumb, thumb_win, file_path))
                      conn.commit()
                      conn.close()
             except Exception as e:

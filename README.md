@@ -70,10 +70,10 @@ That's it! The Docker container includes all dependencies, CUDA support, and con
    # In WSL terminal
    # Create virtual environment
    mkdir -p ~/.venvs
-   python3 -m venv ~/.venvs/scoring
+   python3 -m venv ~/.venvs/tf
    
    # Activate environment
-   source ~/.venvs/scoring/bin/activate
+   source ~/.venvs/tf/bin/activate
    
    # Navigate to project (adjust drive letter as needed)
    cd /path/to/image-scoring

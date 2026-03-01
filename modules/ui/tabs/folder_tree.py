@@ -10,7 +10,7 @@ The create_tab() function returns navigation buttons that are wired in app.py
 for cross-tab navigation.
 """
 import gradio as gr
-from modules import ui_tree, utils, db, config
+from modules import ui_tree, utils, db, config, thumbnails
 import os
 import platform
 
@@ -58,26 +58,15 @@ def create_tab(app_config):
             p = row['file_path']
             label = row['file_name']
             
-            # OPTIMIZATION: Prioritize thumbnails, skip expensive existence checks
-            # Trust DB paths - they were valid when stored
-            thumb_path = row.get('thumbnail_path')
-            
             image_id = row.get('id')
-            
-            # Optimized Resolution Logic
-            resolved_p = None
-            if image_id and image_id in resolved_map:
+
+            local_thumb = thumbnails.get_thumb_wsl(row)  # WebUI runs in WSL
+            if local_thumb:
+                p = local_thumb
+            elif image_id and image_id in resolved_map:
                 cached_path = resolved_map[image_id]
-                # Validate path (allow /mnt for WSL, reject mixed separators)
-                if cached_path:
-                    is_malformed = '\\' in cached_path and '/' in cached_path
-                    if not is_malformed:
-                        resolved_p = cached_path
-            
-            if resolved_p:
-                p = resolved_p
-            elif thumb_path:
-                p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
+                if cached_path and not ('\\' in cached_path and '/' in cached_path):
+                    p = cached_path
             else:
                 p = utils.resolve_file_path(p, image_id) or utils.convert_path_to_local(p)
             

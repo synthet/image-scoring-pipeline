@@ -14,7 +14,7 @@ navigation and stack operations.
 """
 import gradio as gr
 import os
-from modules import db, utils, clustering, config
+from modules import db, utils, clustering, config, thumbnails
 
 cluster_engine = clustering.ClusteringEngine()
 
@@ -25,7 +25,11 @@ def run_clustering_wrapper(input_path, threshold, gap, force, progress=gr.Progre
         if gap is None:
             gap = 120
         target = input_path.strip() if input_path and input_path.strip() else None
-        for msg_tuple in cluster_engine.cluster_images(distance_threshold=threshold, time_gap_seconds=gap, force_rescan=force, target_folder=target):
+        
+        # Create Job
+        job_id = db.create_job(target)
+
+        for msg_tuple in cluster_engine.cluster_images(distance_threshold=threshold, time_gap_seconds=gap, force_rescan=force, target_folder=target, job_id=job_id):
             if isinstance(msg_tuple, tuple):
                 msg, cur, tot = msg_tuple
                 if tot > 0:
@@ -184,24 +188,14 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
         # Get file name from original path
         file_name = os.path.basename(file_path)
         
-        # OPTIMIZATION: Use thumbnail if available, skip existence checks
-        # Trust DB paths - they were validated when stored
-        thumb = row['thumbnail_path']  # sqlite3.Row uses bracket notation, not .get()
-        if thumb:
-            # Resolve thumb or file path
-            image_id = row['id']
-            if thumb:
-                p = utils.resolve_file_path(thumb, image_id) or utils.convert_path_to_local(thumb)
-            else:
-                p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
-
-            # Optimized Resolution Logic
-            if image_id and image_id in resolved_map:
-                cached_path = resolved_map[image_id]
-                if cached_path:
-                    is_malformed = '\\' in cached_path and '/' in cached_path
-                    if not is_malformed:
-                        p = cached_path
+        image_id = row['id']
+        p = thumbnails.get_thumb_wsl(row)  # WebUI runs in WSL
+        if not p and image_id and image_id in resolved_map:
+            cached_path = resolved_map[image_id]
+            if cached_path and not ('\\' in cached_path and '/' in cached_path):
+                p = cached_path
+        if not p:
+            p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
         
         # Get the selected score
         score = row[score_col] if score_col in row.keys() else None
@@ -275,11 +269,9 @@ def remove_from_stack_handler(selected_indices, content_paths, current_stack_id,
             file_path = row['file_path']
             if file_path:
                 new_content_paths.append(file_path)
-                thumb = row['thumbnail_path']
                 image_id = row['id']
-                if thumb:
-                    p = utils.resolve_file_path(thumb, image_id) or utils.convert_path_to_local(thumb)
-                else:
+                p = thumbnails.get_thumb_wsl(row)  # WebUI runs in WSL
+                if not p:
                     p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
                 file_name = os.path.basename(file_path)
                 score = row['score_general']

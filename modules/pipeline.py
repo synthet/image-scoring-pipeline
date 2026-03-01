@@ -4,6 +4,7 @@ import queue
 import time
 import os
 import sys
+import tempfile
 import logging
 from datetime import datetime
 import traceback
@@ -13,6 +14,8 @@ from typing import Optional, Dict, Any, List
 
 # Local imports
 from modules import db, thumbnails, xmp
+from modules import score_normalization as snorm
+from modules import config as app_config
 from scripts.python.run_all_musiq_models import MultiModelMUSIQ
 from modules.liqe import LiqeScorer
 
@@ -144,8 +147,12 @@ class PrepWorker(PipelineWorker):
                             val = existing_record.get(key)
                             # Check if value is valid (non-zero)
                             if val and isinstance(val, (int, float)) and val > 0:
+                                # DB stores normalized 0-1. run_all_models expects normalized_score
+                                # when reusing; passing only "score" causes LIQE to be treated as
+                                # raw 1-5 and incorrectly zeroed. See score_analysis plan.
                                 valid_scores[m] = {
                                     "score": val,
+                                    "normalized_score": float(val),
                                     "status": "success"
                                 }
                             else:
@@ -270,12 +277,50 @@ class ScoringWorker(PipelineWorker):
         # Prepare external scores container
         external = job.external_scores if job.external_scores else {}
         
+        # Preprocess using config (raw_conversion or scoring.model_preprocessing)
+        try:
+            temp_dir = tempfile.mkdtemp(prefix="score_512_")
+            job.temp_files.append(temp_dir)
+            cfg = app_config.load_config()
+            model_prep = (cfg.get("scoring") or {}).get("model_preprocessing") or {}
+            def get_res(key):
+                v = model_prep.get(key)
+                if isinstance(v, dict):
+                    return v.get("resolution")
+                return v
+            liqe_res = get_res("liqe")
+            musiq_res = get_res("spaq") or get_res("ava")
+            # Single path: no per-model preprocessing or same resolution
+            if not liqe_res and not musiq_res:
+                path_512 = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir)
+                if path_512:
+                    job.process_path = path_512
+            else:
+                # Per-model: preprocess at LIQE resolution and at MUSIQ resolution
+                res_liqe = int(liqe_res) if liqe_res is not None else None
+                res_musiq = int(musiq_res) if musiq_res is not None else None
+                if res_liqe is not None and res_musiq is not None and res_liqe != res_musiq:
+                    path_liqe = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir, resolution_override=res_liqe)
+                    path_musiq = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir, resolution_override=res_musiq)
+                    if path_liqe and path_musiq:
+                        job.process_path = path_musiq
+                        job.external_scores["_liqe_preprocess_path"] = path_liqe
+                elif res_liqe is not None:
+                    path_liqe = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir, resolution_override=res_liqe)
+                    if path_liqe:
+                        job.process_path = path_liqe
+                        job.external_scores["_liqe_preprocess_path"] = path_liqe
+                else:
+                    path_512 = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir, resolution_override=res_musiq)
+                    if path_512:
+                        job.process_path = path_512
+        except Exception as e:
+            logger.warning("Preprocess failed, using original path: %s", e)
+        
         # Check/Run LIQE if missing
         if "liqe" not in external:
             try:
-                # Run LIQE
-                # Ensure we have a process path
-                path = job.process_path
+                path = external.get("_liqe_preprocess_path") or job.process_path
                 liqe_result = self.liqe_scorer.predict(path)
                 external["liqe"] = liqe_result
             except Exception as e:
@@ -344,16 +389,21 @@ class ResultWorker(PipelineWorker):
             # Doing this here takes I/O off the GPU thread
             if self.scorer and "weighted_scores" in job.result["summary"]:
                 try:
-                    # Calculate Rating/Label using scorer helpers
                     normalized_scores_dict = {}
                     for m_name, m_res in job.result["models"].items():
                          if m_res.get("status") == "success":
                              normalized_scores_dict[m_name] = m_res.get("normalized_score", 0)
-                    
-                    avg_score = job.result["summary"]["weighted_scores"].get("general", 0)
-                    
-                    rating = self.scorer.score_to_rating(avg_score)
-                    label = self.scorer.determine_lightroom_label(normalized_scores_dict)
+
+                    result_all = snorm.compute_all(normalized_scores_dict)
+                    avg_score = result_all["general"]
+                    rating = result_all["rating"]
+                    label = result_all["label"]
+
+                    job.result["summary"]["weighted_scores"] = {
+                        "technical": result_all["technical"],
+                        "aesthetic": result_all["aesthetic"],
+                        "general": result_all["general"],
+                    }
                     
                     # Use unified XMP module for consistent metadata handling
                     # Write XMP sidecar (non-destructive) for all images

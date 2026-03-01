@@ -1,6 +1,6 @@
 import gradio as gr
 import os
-from modules import db, utils, culling, config
+from modules import db, utils, culling, config, thumbnails
 
 def get_active_sessions():
     """Returns active culling sessions for dropdown."""
@@ -203,25 +203,19 @@ def resume_culling_session(session_id):
 def _add_to_gallery(gallery_list, path_list, img_data, group_id, color, status, resolved_map=None):
     """Helper to process image and add to gallery list."""
     file_path = img_data.get('file_path')
-    thumb = img_data.get('thumbnail_path') or file_path
     
-    # Resolve paths for display
     image_id = img_data.get('id')
-    
-    # Optimized Resolution Logic
-    resolved_p = None
-    if image_id and resolved_map and image_id in resolved_map:
-        cached_path = resolved_map[image_id]
-        if cached_path:
-            is_malformed = '\\' in cached_path and '/' in cached_path
-            if not is_malformed:
-                resolved_p = cached_path
+    thumb = thumbnails.get_thumb_wsl(img_data)  # WebUI runs in WSL
 
-    if resolved_p:
-        thumb = resolved_p
-    elif thumb:
-        thumb = utils.resolve_file_path(thumb, image_id) or utils.convert_path_to_local(thumb)
-    elif not thumb and file_path:
+    if not thumb:
+        resolved_p = None
+        if image_id and resolved_map and image_id in resolved_map:
+            cached_path = resolved_map[image_id]
+            if cached_path and not ('\\' in cached_path and '/' in cached_path):
+                resolved_p = cached_path
+        thumb = resolved_p or utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
+
+    if not thumb and file_path:
         thumb = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
     
     # Create label
@@ -273,10 +267,8 @@ def delete_rejected_files(session_id, confirmed):
             local_path = utils.resolve_file_path(file_path) or utils.convert_path_to_local(file_path)
             if local_path and os.path.exists(local_path): os.remove(local_path)
             xmp_module.delete_xmp(file_path)
-            thumb_path = reject.get('thumbnail_path')
-            if thumb_path:
-                local_thumb = utils.resolve_file_path(thumb_path) or utils.convert_path_to_local(thumb_path)
-                if local_thumb and os.path.exists(local_thumb): os.remove(local_thumb)
+            local_thumb = thumbnails.get_thumb_wsl(reject)  # WebUI runs in WSL
+            if local_thumb and os.path.exists(local_thumb): os.remove(local_thumb)
             db.delete_image(file_path)
             deleted_count += 1
         except: pass

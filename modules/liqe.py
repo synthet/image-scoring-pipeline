@@ -15,10 +15,14 @@ class LiqeScorer:
     """
     Persistent LIQE scorer class to avoid re-loading model for every image.
     """
-    def __init__(self, device='cuda'):
+    # Default max dimension (longest edge) before downscaling; config can override.
+    DEFAULT_MAX_DIM = 518
+
+    def __init__(self, device='cuda', max_dimension=None):
         self.device = device
         self.available = False
         self.metric = None
+        self.max_dimension = int(max_dimension) if max_dimension is not None else self._load_max_dimension()
         
         # Check torch availability
         if not torch.cuda.is_available() and self.device == 'cuda':
@@ -37,6 +41,20 @@ class LiqeScorer:
         except Exception as e:
             print(f"LIQE: Failed to load model: {e}")
 
+    def _load_max_dimension(self):
+        """Read LIQE max dimension from config (scoring.liqe_max_dimension or raw_conversion.liqe_max_dimension)."""
+        try:
+            config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    cfg = json.load(f)
+                v = (cfg.get("scoring") or {}).get("liqe_max_dimension") or (cfg.get("raw_conversion") or {}).get("liqe_max_dimension")
+                if v is not None:
+                    return max(224, min(2048, int(v)))
+        except Exception:
+            pass
+        return self.DEFAULT_MAX_DIM
+
     def predict(self, image_path):
         """
         Score a single image.
@@ -49,9 +67,9 @@ class LiqeScorer:
              # using PIL to ensure consistent loading
              img = Image.open(image_path).convert('RGB')
              
-             # Resize if too large (LIQE optimization)
-             if max(img.size) > 518:
-                ratio = 518 / max(img.size)
+             # Resize if too large (LIQE optimization; threshold from config or default 518)
+             if max(img.size) > self.max_dimension:
+                ratio = self.max_dimension / max(img.size)
                 new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
                 img = img.resize(new_size, Image.BICUBIC)
              

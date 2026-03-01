@@ -863,18 +863,26 @@ def create_api_router() -> APIRouter:
                 detail=f"Path not found: {request.input_path}"
             )
         
+        # Create job ID
+        from modules import db
+        job_id = db.create_job(request.input_path or "ALL_IMAGES_TAGGING")
+        
         result = _tagging_runner.start_batch(
             request.input_path,
-            request.custom_keywords,
-            request.overwrite,
-            request.generate_captions
+            job_id=job_id,
+            custom_keywords=request.custom_keywords,
+            overwrite=request.overwrite,
+            generate_captions=request.generate_captions
         )
         
         if result == "Started":
             return ApiResponse(
                 success=True,
                 message="Tagging job started successfully",
-                data={"input_path": request.input_path or "all images"}
+                data={
+                    "job_id": job_id,
+                    "input_path": request.input_path or "all images"
+                }
             )
         else:
             return ApiResponse(

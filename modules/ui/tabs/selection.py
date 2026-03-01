@@ -6,7 +6,7 @@ writes to metadata. No gallery or manual review UI.
 """
 
 import gradio as gr
-from modules import config
+from modules import config, db
 
 
 def create_tab(runner, app_config):
@@ -16,8 +16,12 @@ def create_tab(runner, app_config):
     """
     def run_selection_wrapper(input_path, force_rescan):
         config.save_config_value("selection_input_path", input_path)
-        msg = runner.start_batch(input_path, force_rescan=force_rescan)
-        return msg, "Starting...", gr.update(interactive=False), gr.update(interactive=True)
+        
+        # Create Job
+        job_id = db.create_job(input_path)
+        
+        msg = runner.start_batch(input_path, job_id=job_id, force_rescan=force_rescan)
+        return f"Job {job_id}: {msg}", "Starting...", gr.update(interactive=False), gr.update(interactive=True)
 
     def stop_selection():
         runner.stop()

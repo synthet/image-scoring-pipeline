@@ -39,12 +39,10 @@ env/
 ENV/
 env.bak/
 venv.bak/
-.venv/
-.venve/
+.venv*/
 musiq_env/
 musiq_gpu_env/
 musiq_gpu_env_*/
-.venv-wsl-tests/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -143,7 +141,6 @@ test_verification*.log
 
 
 backups/
-.venv_wsl/
 config.json
 secrets.json
 test_export.json

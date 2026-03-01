@@ -16,6 +16,7 @@ except ImportError:
 
 import shutil
 from modules import config
+from modules.events import event_manager
 
 logger = logging.getLogger(__name__)
 DEBUG_DB_CONNECTION = os.environ.get("DEBUG_DB_CONNECTION", "").lower() in ("1", "true", "yes")
@@ -24,6 +25,12 @@ DB_CONFIG = config.get_config_section('database')
 DB_FILE = DB_CONFIG.get('filename', "scoring_history.fdb")
 DB_USER = DB_CONFIG.get('user', "sysdba")
 DB_PASS = DB_CONFIG.get('password', "masterkey")
+
+import sys
+if "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST"):
+    # Tests must use only scoring_history_test.fdb — never production (e.g. SCORING_HISTORY.FDB).
+    DB_FILE = "scoring_history_test.fdb"
+    logger.info("Test environment detected: using DB_FILE=%s only", DB_FILE)
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(_PROJECT_ROOT, DB_FILE)
@@ -901,9 +908,17 @@ def _init_db_impl():
     if "thumbnail_path" not in columns:
         try: c.execute("ALTER TABLE images ADD thumbnail_path VARCHAR(4000)")
         except: pass
+
+    if "thumbnail_path_win" not in columns:
+        try: c.execute("ALTER TABLE images ADD thumbnail_path_win VARCHAR(4000)")
+        except: pass
         
     if "scores_json" not in columns:
         try: c.execute("ALTER TABLE images ADD scores_json BLOB SUB_TYPE TEXT")
+        except: pass
+
+    if "image_embedding" not in columns:
+        try: c.execute("ALTER TABLE images ADD image_embedding BLOB SUB_TYPE 0")
         except: pass
 
     # Stacks table
@@ -1196,7 +1211,8 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
     valid_fields = {
         'burst_uuid', 'rating', 'label', 'score_general', 'score_aesthetic',
         'score_technical', 'keywords', 'title', 'description', 'stack_id',
-        'thumbnail_path', 'metadata', 'image_hash', 'cull_decision', 'cull_policy_version'
+        'thumbnail_path', 'thumbnail_path_win', 'metadata', 'image_hash',
+        'cull_decision', 'cull_policy_version'
     }
     
     if field_name not in valid_fields:
@@ -1210,6 +1226,17 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
         c.execute(f"UPDATE images SET {field_name} = ? WHERE id = ?", (value, image_id))
         conn.commit()
         conn.close()
+        
+        # Broadcast image update
+        try:
+            from modules.events import event_manager
+            event_manager.broadcast_threadsafe("image_updated", {
+                "image_id": image_id,
+                "field": field_name,
+                "value": value
+            })
+        except: pass
+        
         return True
     except Exception as e:
         logging.error(f"Failed to update {field_name} for image {image_id}: {e}")
@@ -1509,6 +1536,15 @@ def get_or_create_folder(folder_path, _depth=0):
     else:
         folder_path = folder_path.replace('\\', '/')
         folder_path = posixpath.normpath(folder_path)
+
+    # Sanity check for recursive loops (e.g. /mnt/d/mnt/d/...)
+    if "/mnt/d/mnt/d" in folder_path:
+        logging.error(f"Refusing to create recursive folder path: {folder_path}")
+        return None
+        
+    # Check depth
+    if folder_path.count('/') > 15:
+         logging.warning(f"Deep folder path detected: {folder_path} (Depth: {folder_path.count('/')})")
     
     # Auto-convert Windows paths to WSL if we are on Windows but DB has WSL paths
     # This is critical because scoring runs in WSL (saving /mnt/d/...) 
@@ -1587,6 +1623,7 @@ def rebuild_folder_cache():
     """
     Scans all images, populates folders table with full hierarchy, and updates images.folder_id.
     """
+    invalidate_folder_images_cache()
     print("Rebuilding folder cache with hierarchy...")
     conn = get_db()
     c = conn.cursor()
@@ -1697,6 +1734,15 @@ def set_folder_scored(folder_path, is_scored=True):
     c.execute("UPDATE folders SET is_fully_scored = ? WHERE id = ?", (1 if is_scored else 0, folder_id))
     conn.commit()
     conn.close()
+    
+    # Broadcast folder update
+    try:
+        from modules.events import event_manager
+        event_manager.broadcast_threadsafe("folder_updated", {
+            "path": folder_path,
+            "is_fully_scored": is_scored
+        })
+    except: pass
 
 def is_folder_scored(folder_path):
     folder_id = get_or_create_folder(folder_path)
@@ -1888,6 +1934,14 @@ def delete_folder_cache_entry(folder_path: str, delete_descendants: bool = True)
             c.execute("DELETE FROM folders WHERE id = ?", (fid,))
 
         conn.commit()
+        
+        # Broadcast folder deletions
+        try:
+            from modules.events import event_manager
+            for path in paths_to_delete:
+                event_manager.broadcast_threadsafe("folder_deleted", {"path": path})
+        except: pass
+
         return {
             "success": True,
             "message": f"Deleted {len(ids_to_delete)} folder cache record(s).",
@@ -1906,16 +1960,40 @@ def delete_folder_cache_entry(folder_path: str, delete_descendants: bool = True)
         except Exception:
             pass
 
+_folder_images_cache = {}
+_FOLDER_CACHE_TTL = 30  # seconds
+
+
+def invalidate_folder_images_cache(folder_path=None):
+    """Clear cached get_images_by_folder results.
+
+    Args:
+        folder_path: Specific folder to invalidate, or None to clear all.
+    """
+    if folder_path:
+        _folder_images_cache.pop(os.path.normpath(folder_path), None)
+    else:
+        _folder_images_cache.clear()
+
+
 def get_images_by_folder(folder_path):
     """
     Returns all images located immediately in the specified folder using folder_id.
+    Results are cached for up to _FOLDER_CACHE_TTL seconds to avoid redundant
+    DB round-trips (e.g. folder tree selection followed by "Open in..." navigation).
     """
-    # Normalize
     folder_path = os.path.normpath(folder_path)
-    
-    # Get ID
-    folder_id = get_or_create_folder(folder_path) # retrieving id mainly
-    
+
+    now = time.time()
+    cached = _folder_images_cache.get(folder_path)
+    if cached is not None:
+        cached_time, cached_rows = cached
+        if now - cached_time < _FOLDER_CACHE_TTL:
+            return cached_rows
+        del _folder_images_cache[folder_path]
+
+    folder_id = get_or_create_folder(folder_path)
+
     if not folder_id:
         return []
 
@@ -1924,8 +2002,10 @@ def get_images_by_folder(folder_path):
     c.execute("SELECT * FROM images WHERE folder_id = ? ORDER BY file_name", (folder_id,))
     rows = c.fetchall()
     conn.close()
-    
-    return [dict(row) for row in rows]
+
+    result = [dict(row) for row in rows]
+    _folder_images_cache[folder_path] = (now, result)
+    return result
 
 def create_job(input_path):
 
@@ -1953,6 +2033,15 @@ def update_job_status(job_id, status, log=None):
                   (status, log, job_id))
     conn.commit()
     conn.close()
+    
+    # Broadcast job status update
+    try:
+        from modules.events import event_manager
+        event_manager.broadcast_threadsafe(f"job_{status}", {
+            "job_id": job_id,
+            "status": status
+        })
+    except: pass
 
 def get_jobs(limit=50):
     conn = get_db()
@@ -2077,6 +2166,8 @@ def sync_folder_to_db(folder_path, job_id=None):
             
     conn.commit()
     conn.close()
+    if count > 0:
+        event_manager.broadcast_threadsafe("folder_scanned", {"folder_path": folder_path, "new_images": count})
     return count
 
 def upsert_image(job_id, result):
@@ -2170,7 +2261,9 @@ def upsert_image(job_id, result):
 
     
     thumbnail_path = result.get("thumbnail_path")
-    
+    from modules.thumbnails import thumb_path_to_win, thumb_path_to_wsl
+    thumbnail_path_win = result.get("thumbnail_path_win") or thumb_path_to_win(thumbnail_path)
+
     # Extract Version
     model_version = "0.0.0"
     if "version" in result:
@@ -2227,8 +2320,10 @@ def upsert_image(job_id, result):
                    score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                    score_technical, score_aesthetic, score_general, model_version,
                    rating, label,
-                   keywords, title, description, metadata, scores_json, thumbnail_path, image_hash, folder_id, created_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   keywords, title, description, metadata, scores_json,
+                   thumbnail_path, thumbnail_path_win,
+                   image_hash, folder_id, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                   MATCHING (file_path) RETURNING id'''
     
     c.execute(query,
@@ -2237,19 +2332,35 @@ def upsert_image(job_id, result):
                score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                score_technical, score_aesthetic, score_general, model_version,
                rating, label,
-               keywords, title, description, metadata, json.dumps(result), thumbnail_path, image_hash, folder_id, utils.get_image_creation_time(image_path)))
+               keywords, title, description, metadata, json.dumps(result),
+               thumbnail_path, thumbnail_path_win,
+               image_hash, folder_id, utils.get_image_creation_time(image_path)))
     
     row = c.fetchone()
     image_id = row[0] if row else None
             
     conn.commit()
     conn.close()
-    
+
+    if image_path:
+        invalidate_folder_images_cache(os.path.dirname(image_path))
+
     # Register path in file_paths
     if image_id:
         register_image_path(image_id, image_path)
         # Also resolve Windows path for native viewer
         resolve_windows_path(image_id, image_path, verify=False)
+        
+        event_manager.broadcast_threadsafe("image_scored", {
+            "image_id": image_id,
+            "file_path": image_path,
+            "score_general": score_general,
+            "score_technical": score_technical,
+            "score_aesthetic": score_aesthetic,
+            "rating": rating,
+            "label": label,
+            "image_hash": image_hash
+        })
 
 
 
@@ -2305,8 +2416,7 @@ def delete_image(file_path, delete_related: bool = True):
     conn = get_db()
     c = conn.cursor()
     try:
-        # Look up image id + stack + thumbnail_path for cleanup
-        c.execute("SELECT id, stack_id, thumbnail_path FROM images WHERE file_path = ?", (file_path,))
+        c.execute("SELECT id, stack_id, thumbnail_path, thumbnail_path_win FROM images WHERE file_path = ?", (file_path,))
         row = c.fetchone()
         if not row:
             return False, "Image not found in DB"
@@ -2314,6 +2424,7 @@ def delete_image(file_path, delete_related: bool = True):
         image_id = row["id"] if "id" in row.keys() else row[0]
         stack_id = row["stack_id"] if "stack_id" in row.keys() else row[1]
         thumbnail_path = row["thumbnail_path"] if "thumbnail_path" in row.keys() else row[2]
+        thumbnail_path_win = row["thumbnail_path_win"] if "thumbnail_path_win" in row.keys() else row[3]
 
         # Remove dependent rows first (no FKs defined, so do it manually)
         if delete_related:
@@ -2363,17 +2474,15 @@ def delete_image(file_path, delete_related: bool = True):
                 pass
 
         conn.commit()
+        invalidate_folder_images_cache(os.path.dirname(file_path))
 
-        # Best-effort: also remove thumbnail file if it exists locally
-        # (keeps thumbnails folder from accumulating orphans)
-        if thumbnail_path:
+        # Best-effort: remove thumbnail file using the caller's native path
+        import platform as _plat
+        _local_thumb = thumbnail_path_win if _plat.system() == "Windows" else thumbnail_path
+        if _local_thumb:
             try:
-                # Import lazily to avoid circular deps
-                from modules import utils as _utils
-
-                local_thumb = _utils.convert_path_to_local(thumbnail_path)
-                if local_thumb and os.path.exists(local_thumb):
-                    os.remove(local_thumb)
+                if os.path.exists(_local_thumb):
+                    os.remove(_local_thumb)
             except Exception:
                 pass
 
@@ -2430,6 +2539,22 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
                      WHERE file_path = ?''',
                   (keywords, title, description, rating, label, file_path))
         conn.commit()
+        
+        # Broadcast image update
+        try:
+            from modules.events import event_manager
+            event_manager.broadcast_threadsafe("image_updated", {
+                "file_path": file_path,
+                "updates": {
+                    "keywords": keywords,
+                    "title": title,
+                    "description": description,
+                    "rating": rating,
+                    "label": label
+                }
+            })
+        except: pass
+        
         return True
     except Exception as e:
         logging.error(f"Failed to update metadata for {file_path}: {e}")
@@ -2794,6 +2919,7 @@ def clear_stacks():
         # Reset stack_id to NULL
         c.execute("UPDATE images SET stack_id = NULL")
         conn.commit()
+        event_manager.broadcast_threadsafe("stacks_cleared", {})
     except Exception as e:
         logging.error(f"Failed to clear stacks: {e}")
     finally:
@@ -2812,6 +2938,8 @@ def create_stack(name, best_image_id=None):
         row = c.fetchone()
         stack_id = row[0] if row else None
         conn.commit()
+        if stack_id:
+            event_manager.broadcast_threadsafe("stack_created", {"stack_id": stack_id})
     except Exception as e:
         logging.error(f"Failed to create stack: {e}")
     finally:
@@ -2828,6 +2956,14 @@ def update_image_stack_batch(updates):
     try:
         c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
         conn.commit()
+        invalidate_folder_images_cache()
+        
+        # Broadcast updates
+        for stack_id, image_id in updates:
+            event_manager.broadcast_threadsafe("image_updated", {
+                "image_id": image_id,
+                "updates": {"stack_id": stack_id}
+            })
     except Exception as e:
         logging.error(f"Failed to batch update image stacks: {e}")
     finally:
@@ -2853,6 +2989,15 @@ def batch_update_cull_decisions(updates: list, policy_version: str = "1.0", batc
                 params
             )
         conn.commit()
+        invalidate_folder_images_cache()
+        
+        # Broadcast updates
+        for img_id, decision, file_path in updates:
+            event_manager.broadcast_threadsafe("image_updated", {
+                "image_id": img_id,
+                "file_path": file_path,
+                "updates": {"cull_decision": decision}
+            })
     except Exception as e:
         logging.error("Failed to batch update cull decisions: %s", e)
     finally:
@@ -3000,15 +3145,18 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
         params.append(folder_id)  # For main SELECT WHERE clause
         params.append(folder_id)  # For subquery WHERE clause
         
-    # Simplified query without window function - use subquery for cover image
-    # Firebird uses FIRST instead of LIMIT
+    # db.py is called from both WSL and Windows; pick the SQL column
+    # that matches the caller's environment so the returned cover_path is usable directly.
+    import platform as _plat
+    _thumb_col = "thumbnail_path_win" if _plat.system() == "Windows" else "thumbnail_path"
+
     query = f'''
         SELECT 
             s.id, 
             s.name, 
             COUNT(i.id) as image_count,
             {agg_func}(i.{sort_by}) as sort_val,
-            (SELECT FIRST 1 COALESCE(NULLIF(i2.thumbnail_path, ''), i2.file_path)
+            (SELECT FIRST 1 COALESCE(NULLIF(i2.{_thumb_col}, ''), NULLIF(i2.thumbnail_path, ''), i2.file_path)
              FROM images i2
              WHERE i2.stack_id = s.id {cte_where}
              ORDER BY i2.{sort_by} {order_dir}) as cover_path
@@ -3036,7 +3184,7 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
             query_fb = f'''
                 WITH ranked_covers AS (
                     SELECT stack_id,
-                        COALESCE(NULLIF(thumbnail_path, ''), file_path) as cover_path,
+                        COALESCE(NULLIF({_thumb_col}, ''), NULLIF(thumbnail_path, ''), file_path) as cover_path,
                         ROW_NUMBER() OVER (PARTITION BY stack_id ORDER BY {sort_by} {order_dir}) as rn
                     FROM images WHERE stack_id IS NOT NULL
                 )
@@ -3103,6 +3251,7 @@ def mark_folder_clustered(folder_path):
         c.execute("UPDATE OR INSERT INTO cluster_progress (folder_path, last_run) VALUES (?, ?) MATCHING (folder_path)",
                   (folder_path, datetime.datetime.now()))
         conn.commit()
+        event_manager.broadcast_threadsafe("folder_updated", {"folder_path": folder_path})
     except Exception as e:
         logging.error(f"Failed to mark folder as clustered: {e}")
     finally:
@@ -3203,6 +3352,11 @@ def clear_stacks_in_folder(folder_path):
         c.execute("DELETE FROM cluster_progress WHERE folder_path = ?", (folder_path,))
         
         conn.commit()
+        
+        # Broadcast updates
+        event_manager.broadcast_threadsafe("folder_updated", {"folder_path": folder_path})
+        event_manager.broadcast_threadsafe("stacks_cleared", {"folder_path": folder_path})
+        
         msg = f"Cleared {deleted_stacks} stacks, updated {updated_count} images in folder: {folder_path}"
         logging.info(msg)
         return True, msg
@@ -3244,6 +3398,8 @@ def create_stacks_batch(stacks_data):
                 c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
             
             created_count += 1
+            if stack_id:
+                event_manager.broadcast_threadsafe("stack_created", {"stack_id": stack_id})
             
         conn.commit()
         return True, f"Created {created_count} stacks."
@@ -3302,6 +3458,8 @@ def create_stack_from_images(image_ids, name=None):
         c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
         
         conn.commit()
+        if stack_id:
+            event_manager.broadcast_threadsafe("stack_created", {"stack_id": stack_id})
         return True, stack_id
     except Exception as e:
         logging.error(f"Failed to create stack from images: {e}")
@@ -3350,8 +3508,17 @@ def remove_images_from_stack(image_ids):
                         FETCH FIRST 1 ROWS ONLY
                     ) WHERE id = ?
                 """, (stack_id, stack_id))
+                event_manager.broadcast_threadsafe("stack_updated", {"stack_id": stack_id})
         
         conn.commit()
+        
+        # Broadcast updates
+        for img_id in image_ids:
+            event_manager.broadcast_threadsafe("image_updated", {
+                "image_id": img_id,
+                "updates": {"stack_id": None}
+            })
+            
         msg = f"Removed {removed_count} images from stacks"
         if deleted_stacks > 0:
             msg += f", deleted {deleted_stacks} empty stack(s)"
@@ -3390,6 +3557,7 @@ def dissolve_stack(stack_id):
         c.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
         
         conn.commit()
+        event_manager.broadcast_threadsafe("stack_deleted", {"stack_id": stack_id})
         return True, f"Dissolved '{stack_name}' ({image_count} images ungrouped)"
     except Exception as e:
         logging.error(f"Failed to dissolve stack: {e}")
@@ -3434,6 +3602,7 @@ def set_stack_cover_image(stack_id, image_id):
         c.execute("UPDATE stacks SET best_image_id = ? WHERE id = ?", (image_id, stack_id))
         
         conn.commit()
+        event_manager.broadcast_threadsafe("stack_updated", {"stack_id": stack_id})
         return True, f"Set '{img_row['file_name']}' as cover for '{stack_row['name']}'"
     except Exception as e:
         logging.error(f"Failed to set stack cover image: {e}")
@@ -3721,6 +3890,14 @@ def set_pick_decision(session_id, image_id, decision, auto_suggested=False):
                      WHERE session_id = ? AND image_id = ?""",
                   (decision, auto_suggested, session_id, image_id))
         conn.commit()
+        
+        # Broadcast update
+        if c.rowcount > 0:
+            event_manager.broadcast_threadsafe("image_updated", {
+                "image_id": image_id,
+                "updates": {"cull_decision": decision}
+            })
+            
         return c.rowcount > 0
     except Exception as e:
         logging.error(f"Failed to set pick decision: {e}")
@@ -3763,7 +3940,7 @@ def get_session_picks(session_id, decision_filter=None):
     c = conn.cursor()
     
     query = """
-        SELECT cp.*, i.file_path, i.file_name, i.thumbnail_path,
+        SELECT cp.*, i.file_path, i.file_name, i.thumbnail_path, i.thumbnail_path_win,
                i.score_general, i.score_technical, i.score_aesthetic,
                i.rating, i.label
         FROM culling_picks cp
@@ -3794,7 +3971,7 @@ def get_session_groups(session_id):
     
     c.execute("""
         SELECT cp.group_id, cp.image_id, cp.decision, cp.auto_suggested, cp.is_best_in_group,
-               i.file_path, i.file_name, i.thumbnail_path,
+               i.file_path, i.file_name, i.thumbnail_path, i.thumbnail_path_win,
                i.score_general, i.score_technical, i.score_aesthetic
         FROM culling_picks cp
         JOIN images i ON cp.image_id = i.id
@@ -4050,6 +4227,99 @@ def get_stack_count_for_folder(folder_path):
         return 0
     finally:
         conn.close()
+
+def update_image_embedding(image_id, embedding_bytes):
+    """Store a raw float32 embedding blob for an image."""
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("UPDATE images SET image_embedding = ? WHERE id = ?", (embedding_bytes, image_id))
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating embedding for image {image_id}: {e}")
+    finally:
+        conn.close()
+
+
+def update_image_embeddings_batch(pairs):
+    """
+    Batch-update embeddings.  pairs: list of (image_id, embedding_bytes).
+    """
+    if not pairs:
+        return
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        for image_id, embedding_bytes in pairs:
+            c.execute("UPDATE images SET image_embedding = ? WHERE id = ?", (embedding_bytes, image_id))
+        conn.commit()
+    except Exception as e:
+        print(f"Error batch-updating embeddings: {e}")
+    finally:
+        conn.close()
+
+
+def get_image_embedding(image_id):
+    """Return the raw embedding bytes for an image, or None."""
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT image_embedding FROM images WHERE id = ?", (image_id,))
+        row = c.fetchone()
+        if row and row[0]:
+            return bytes(row[0])
+        return None
+    except Exception as e:
+        print(f"Error getting embedding for image {image_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_embeddings_for_search(folder_path=None, limit=None):
+    """
+    Return (image_id, file_path, embedding_bytes) for images with stored embeddings.
+    Optionally filter by folder_path and cap results with limit.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        if folder_path:
+            norm = os.path.normpath(folder_path)
+            c.execute("SELECT id FROM folders WHERE path = ?", (norm,))
+            frow = c.fetchone()
+            if not frow:
+                return []
+            folder_id = frow[0]
+            query = """
+                SELECT id, file_path, image_embedding
+                FROM images
+                WHERE image_embedding IS NOT NULL AND folder_id = ?
+            """
+            params = [folder_id]
+        else:
+            query = """
+                SELECT id, file_path, image_embedding
+                FROM images
+                WHERE image_embedding IS NOT NULL
+            """
+            params = []
+
+        if limit:
+            query += " ROWS ?"
+            params.append(limit)
+
+        c.execute(query, tuple(params))
+        results = []
+        for row in c.fetchall():
+            results.append((row[0], row[1], bytes(row[2])))
+        return results
+    except Exception as e:
+        print(f"Error loading embeddings for search: {e}")
+        return []
+    finally:
+        conn.close()
+
 
 def _is_firebird_running(host_ip, port=3050):
     import socket

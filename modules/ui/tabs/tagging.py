@@ -35,9 +35,12 @@ def create_tab(runner, app_config):
         if custom_keywords:
             keywords_list = [k.strip() for k in custom_keywords.split(",") if k.strip()]
             
-        msg = runner.start_batch(input_path, keywords_list, overwrite, generate_captions)
+        # Create Job
+        job_id = db.create_job(input_path)
+            
+        msg = runner.start_batch(input_path, job_id=job_id, custom_keywords=keywords_list, overwrite=overwrite, generate_captions=generate_captions)
         
-        return msg, "Starting...", gr.update(interactive=False), gr.update(interactive=True)
+        return f"Job {job_id}: {msg}", "Starting...", gr.update(interactive=False), gr.update(interactive=True)
 
     def stop_tagging():
         runner.stop()

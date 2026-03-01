@@ -3,9 +3,11 @@ import platform
 import warnings
 import logging
 import gradio as gr
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from modules.ui import app as app_module
+from modules.events import event_manager
 
 # Suppress TensorFlow logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -134,6 +136,25 @@ def main():
             }
         ]
     )
+    
+    # Add CORS middleware to allow requests from the Electron/Vite frontend
+    # Note: allow_origins=["*"] with allow_credentials=True is invalid in Starlette/FastAPI
+    origins = [
+        "http://127.0.0.1:7860",
+        "http://localhost:7860",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+    ]
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/mcp-status")
     def mcp_status():
@@ -195,11 +216,30 @@ def main():
         except Exception:
             pass
 
+    # WebSocket Endpoint for Real-time Events
+    @app.websocket("/ws/updates")
+    async def websocket_endpoint(websocket: WebSocket):
+        await event_manager.connect(websocket)
+        try:
+            while True:
+                # Keep connection alive and listen for any incoming messages (though we mainly push)
+                # We can also handle simple pings or subscription requests here if needed
+                data = await websocket.receive_text()
+                # Echo back or handle commands if necessary
+                pass 
+        except WebSocketDisconnect:
+            event_manager.disconnect(websocket)
+        except Exception as e:
+            logging.error(f"WebSocket error: {e}")
+            event_manager.disconnect(websocket)
+
     # Mount Gradio App onto FastAPI
     # This creates a completely new routing structure where Gradio sits at /
     # and our custom endpoints sit at /source-image etc.
     app = gr.mount_gradio_app(app, demo, path="/", allowed_paths=allowed_paths, favicon_path="static/favicon.ico")
     
+
+
     # Apply logging filter to suppress repetitive Gradio queue polling messages
     logging.getLogger("uvicorn.access").addFilter(SuppressGradioQueueFilter())
     
@@ -226,6 +266,15 @@ def main():
     # Launch using Uvicorn
     # Note: inbrowser=False is default for uvicorn, handled by user opening browser
     print("Launching Uvicorn server at http://127.0.0.1:7860")
+    
+    # Attach loop to event manager on startup
+    @app.on_event("startup")
+    async def startup_event():
+        import asyncio
+        loop = asyncio.get_running_loop()
+        event_manager.set_loop(loop)
+        print("EventManager: Event loop attached.")
+
     try:
         uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
     finally:

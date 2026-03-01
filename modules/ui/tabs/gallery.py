@@ -4,7 +4,7 @@ import json
 import datetime
 import platform
 import time
-from modules import db, config, utils
+from modules import db, config, utils, thumbnails
 from modules.ui import common
 from modules import debug
 
@@ -72,33 +72,33 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
                     raw_paths.append(file_path)
                     image_id = row['id'] if 'id' in row.keys() else None
                     
-                    # Use thumbnail if available, with resolved_path fallback
-                    thumb_path = row['thumbnail_path']
-                    
                     t_r0 = time.perf_counter()
                     
                     # OPTIMIZED Resolution Logic
                     p = None
                     used_cache = False
                     
-                    # Strategy 1: Try Batch Cache First (Fastest - Memory/DB Cache)
-                    if image_id and image_id in resolved_map:
+                    # Strategy 1: Use pre-stored WSL thumbnail path (WebUI runs in WSL)
+                    local_thumb = thumbnails.get_thumb_wsl(row)
+                    if local_thumb:
+                        p = local_thumb
+                        used_thumb += 1
+                        used_cache = True
+                        cache_hits += 1
+
+                    # Strategy 2: Try Batch Cache (for image file paths)
+                    if not p and image_id and image_id in resolved_map:
                         cached_path = resolved_map[image_id]
-                        # Validation is now handled in db.get_resolved_paths_batch
                         if cached_path:
                             p = cached_path
                             used_cache = True
                             cache_hits += 1
                     
-                    # Strategy 2: Fallback to resolve_file_path (Slower)
+                    # Strategy 3: Fallback to resolve_file_path (Slower)
                     if not p:
                         cache_misses += 1
                         fallback_calls += 1
-                        if thumb_path:
-                            used_thumb += 1
-                            p = utils.resolve_file_path(thumb_path, image_id) or utils.convert_path_to_local(thumb_path)
-                        else:
-                            p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
+                        p = utils.resolve_file_path(file_path, image_id) or utils.convert_path_to_local(file_path)
 
                     t_r1 = time.perf_counter()
                     

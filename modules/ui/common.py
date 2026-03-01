@@ -12,7 +12,7 @@ and avoid global state dependencies.
 import gradio as gr
 import os
 import json
-from modules import db
+from modules import db, thumbnails
 
 # Color palette for keyword tags - distinct, vibrant colors
 KEYWORD_COLORS = [
@@ -147,7 +147,7 @@ def delete_nef(details):
             deleted_files.append("NEF")
             
         # Delete Thumbnail
-        thumb_path = details.get('thumbnail_path')
+        thumb_path = thumbnails.get_thumb_wsl(details)  # WebUI runs in WSL
         if thumb_path and os.path.exists(thumb_path):
             try:
                 os.remove(thumb_path)

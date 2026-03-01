@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+
+## [3.24.0] - 2026-03-01
+
+### Added
+- **Similar Image Search**: New `similar_search` module for visual similarity queries using embeddings.
+- **Event System**: Decentralized `EventBus` in `modules/events.py` for decoupled module interactions.
+- **Score Normalization**: Modular `score_normalization.py` to handle rating/score mapping consistently.
+- **Embedding Research**: Comprehensive set of research documents in `docs/technical/` for future embedding-based applications including diversity selection, outlier detection, and tag propagation.
+- **Backup & Maintenance Utilities**: Added `cleanup_backup.py`, `sync_backup.py`, `organize_videos.py`, and `scripts/maintenance/cleanup_orphans.py`.
+- **Agent Infrastructure**: New `mcp-firebird` skill and `firebird-diagnostics` workflow for enhanced database diagnostics.
+
+### Changed
+- **Database Handler**: Expanded `modules/db.py` with tag support and robust ID-based fetching for images.
+- **UI Enhancements**: Refined navigation and state handling across WebUI tabs (`gallery.py`, `selection.py`, `stacks.py`).
+- **Pipeline Processing**: Improved worker logging and error recovery in `modules/pipeline.py`.
+
+### Fixed
+- **Scoring & Paths**: Improved LIQE score range handling and thumbnail path resolution for WSL environments in `modules/thumbnails.py`.
+
 ## [3.23.1] - 2026-02-15
 
 ### Added

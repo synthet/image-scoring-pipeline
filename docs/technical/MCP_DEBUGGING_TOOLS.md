@@ -146,6 +146,18 @@ Search for an image by its SHA256 content hash.
 **Parameters:**
 - `image_hash` - SHA256 hash of image content
 
+#### `search_similar_images`
+Find images visually similar to an example image using stored MobileNetV2 embeddings and cosine similarity. Embeddings are persisted to the database during clustering; if the example image has no stored embedding it is computed on the fly and saved.
+
+**Parameters:**
+- `example_path` (string, optional) - File path of the example image
+- `example_image_id` (integer, optional) - Database ID of the example image (alternative to example_path)
+- `limit` (integer, default 20) - Maximum number of results
+- `folder_path` (string, optional) - Restrict search to images in this folder
+- `min_similarity` (number, optional) - Minimum cosine similarity threshold (0-1)
+
+**Returns:** List of `{ image_id, file_path, similarity }` sorted by descending similarity. Requires at least one of `example_path` or `example_image_id`.
+
 ### Job & Runner Tools
 
 #### `get_recent_jobs`

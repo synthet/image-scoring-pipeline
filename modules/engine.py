@@ -64,12 +64,24 @@ class BatchImageProcessor:
                 except Exception as e:
                     self.log(f"Error checking folder status for {root}: {e}", "WARNING")
 
+            # Broadcast folder discovery
+            try:
+                from modules.events import event_manager
+                event_manager.broadcast_threadsafe("folder_discovered", {"path": root})
+            except: pass
+
             visited_folders.add(root)
             
             for filename in filenames:
                 ext = os.path.splitext(filename)[1]
                 if ext.lower() in extensions:
-                    files.append(os.path.join(root, filename))
+                    file_path = os.path.join(root, filename)
+                    files.append(file_path)
+                    # Broadcast image discovery
+                    try:
+                        from modules.events import event_manager
+                        event_manager.broadcast_threadsafe("image_discovered", {"path": file_path})
+                    except: pass
 
         files = sorted(list(set(files))) # Dedup just in case
 

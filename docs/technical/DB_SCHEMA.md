@@ -87,6 +87,7 @@ Core table storing image metadata and quality scores.
 | `stack_id` | INTEGER | YES | FK → STACKS.id |
 | `created_at` | TIMESTAMP | YES | Creation timestamp |
 | `burst_uuid` | VARCHAR(64) | YES | Burst/stack group UUID |
+| `image_embedding` | BLOB SUB_TYPE 0 | YES | MobileNetV2 feature vector (1280 × float32 = 5120 bytes). Populated during clustering; used by similarity search. |
 
 **Indexes:** `IDX_FOLDER_ID`, `IDX_STACK_ID`, `IDX_IMAGE_HASH`, `IDX_BURST_UUID`, `IDX_STACK_SCORE_GENERAL`
 

@@ -12,8 +12,7 @@
     "prep_queue_size": 50,
     "scoring_queue_size": 10,
     "result_queue_size": 50,
-    "clustering_batch_size": 32,
-    "enable_gpu": true
+    "clustering_batch_size": 32
   },
   "clustering": {
     "default_threshold": 0.15,
@@ -23,16 +22,11 @@
   "culling": {
     "default_threshold": 0.15,
     "default_time_gap": 120,
-    "auto_export_default": false,
-    "pick_rating_threshold": 4,
-    "reject_rating_threshold": 1
+    "auto_export_default": false
   },
   "ui": {
     "gallery_page_size": 50,
-    "default_export_format": "json",
-    "default_min_general": 0.0,
-    "default_min_aesthetic": 0.0,
-    "default_min_technical": 0.0
+    "default_export_format": "json"
   },
   "tagging": {
     "overwrite_default": false,
