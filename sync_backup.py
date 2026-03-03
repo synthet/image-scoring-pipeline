@@ -1,18 +1,21 @@
 """
-Sync highly scored and picked images from local drive D: to backup drive E:\Photos.
+Sync highly scored and picked images from local drive to backup drive/folder.
 
 Usage:
-    python sync_backup.py              # Dry-run (default) - lists files missing from E:
-    python sync_backup.py --execute    # Actually copy missing files to E:
+    python sync_backup.py                    # Dry-run (default) - lists files missing from backup
+    python sync_backup.py --execute          # Actually copy missing files
+    python sync_backup.py --source D:\       --backup E:\
+    python sync_backup.py --source D:\Photos --backup E:\Photos
+    python sync_backup.py --backup F:\MyBackup
+
+Accepts drive path (E:\, F:) or folder path (E:\Photos, F:\MyBackup\Photos).
+Source and backup should match depth: D:\ + E:\ or D:\Photos + E:\Photos.
 
 Queries Firebird DB for images with:
   - CULL_DECISION = 'pick'
   - LABEL IN ('Green', 'Blue', 'Purple', 'Yellow')
   - RATING >= 4
   - SCORE_GENERAL >= 0.75
-
-Translates DB paths to D:\... and E:\... and copies missing files.
-D:\Photos is typically the local source, E:\Photos is the backup destination.
 """
 import argparse
 import os
@@ -33,30 +36,35 @@ import modules.db
 if os.name == 'nt' and not modules.db.DB_PATH.startswith("localhost:"):
     modules.db.DB_PATH = f"localhost:{modules.db.DB_PATH}"
 
-def translate_path_to_local(db_path: str) -> Path | None:
-    """Convert a DB path to a Windows D: local path."""
+def _db_to_windows_path(db_path: str) -> Path | None:
+    """Convert DB path (/mnt/d/... or D:\...) to Windows Path."""
     if db_path.startswith("/mnt/d/"):
-        rel = db_path[7:]
-    elif db_path.upper().startswith("D:\\"):
-        rel = db_path[3:]
-    elif db_path.upper().startswith("D:/"):
-        rel = db_path[3:]
-    else:
-        return None
-    return Path("D:\\") / rel.replace("/", "\\")
+        return Path("D:\\") / db_path[7:].replace("/", "\\")
+    if db_path.upper().startswith("D:\\") or db_path.upper().startswith("D:/"):
+        return Path(db_path[0] + ":\\") / db_path[3:].replace("/", "\\")
+    return None
 
 
-def translate_path_to_backup(db_path: str) -> Path | None:
-    """Convert a DB path to a Windows E: backup path."""
-    if db_path.startswith("/mnt/d/"):
-        rel = db_path[7:]
-    elif db_path.upper().startswith("D:\\"):
-        rel = db_path[3:]
-    elif db_path.upper().startswith("D:/"):
-        rel = db_path[3:]
-    else:
-        return None
-    return Path("E:\\") / rel.replace("/", "\\")
+def _translate_paths(
+    db_path: str, source_root: Path, backup_root: Path
+) -> tuple[Path | None, Path | None]:
+    """Convert db_path to (local_path, backup_path). Returns (None, None) if not under source."""
+    local = _db_to_windows_path(db_path)
+    if not local:
+        return None, None
+    try:
+        rel = local.relative_to(source_root)
+    except ValueError:
+        return local, None
+    return local, backup_root / rel
+
+
+def _normalize_root(p: str) -> Path:
+    """Normalize drive (E:, E:\\) or folder (E:\\Photos) path to Path."""
+    p = p.strip().rstrip("\\/")
+    if len(p) == 2 and p[1] == ":":
+        return Path(p + "\\")
+    return Path(p)
 
 
 def format_size(size_bytes: int) -> str:
@@ -68,19 +76,29 @@ def format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
-def run_sync(execute: bool = False, max_size_gb: float = 34.0):
+def run_sync(
+    execute: bool = False,
+    max_size_gb: float = 34.0,
+    source: str = "D:\\",
+    backup: str = "E:\\",
+):
     """Main sync function."""
+    source_root = _normalize_root(source)
+    backup_root = _normalize_root(backup)
+
     print("=" * 70)
     print(f"  BACKUP SYNC — {'EXECUTE MODE' if execute else 'DRY RUN'}")
+    print(f"  Source: {source_root}")
+    print(f"  Backup: {backup_root}")
     print(f"  Max Size: {max_size_gb} GB")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
     sys.stdout.flush()
-    
-    if not Path("E:\\Photos").exists():
-        print("\n[ERROR] E:\\Photos is not accessible. Is the backup drive connected?")
+
+    if not backup_root.exists():
+        print(f"\n[ERROR] {backup_root} is not accessible. Is the backup drive connected?")
         return
-    
+
     print("\n[1/4] Querying Firebird database for highly rated/picked images...")
     sys.stdout.flush()
     
@@ -121,8 +139,7 @@ def run_sync(execute: bool = False, max_size_gb: float = 34.0):
             seen_stacks.add(stack_id)
         
         
-        local_path = translate_path_to_local(db_path)
-        backup_path = translate_path_to_backup(db_path)
+        local_path, backup_path = _translate_paths(db_path, source_root, backup_root)
         
         if local_path and backup_path:
             reasons = []
@@ -150,7 +167,7 @@ def run_sync(execute: bool = False, max_size_gb: float = 34.0):
     print(f"   Found {len(files)} highly rated/picked images in DB")
     sys.stdout.flush()
     
-    print(f"\n[2/4] Checking which files are missing on E:\\ backup drive...")
+    print(f"\n[2/4] Checking which files are missing on {backup_root}...")
     sys.stdout.flush()
     
     missing_to_copy = []
@@ -201,7 +218,7 @@ def run_sync(execute: bool = False, max_size_gb: float = 34.0):
     sidecar_size = sum(s["size"] for s in sidecar_files_to_copy)
     
     print(f"\n[3/4] Results:")
-    print(f"   Files missing on E:   {len(missing_to_copy)}")
+    print(f"   Files missing on backup: {len(missing_to_copy)}")
     print(f"   XMP sidecars missing: {len(sidecar_files_to_copy)}")
     print(f"   Image size to copy:   {format_size(total_copy_size)}")
     print(f"   Sidecar size to copy: {format_size(sidecar_size)}")
@@ -297,16 +314,25 @@ def run_sync(execute: bool = False, max_size_gb: float = 34.0):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Sync highly rated/picked images from D: to backup drive E:")
+    parser = argparse.ArgumentParser(
+        description="Sync highly rated/picked images from source to backup (drive or folder path)"
+    )
     parser.add_argument("--execute", action="store_true", help="Actually copy files (default: dry-run)")
-    parser.add_argument("--max-size-gb", type=float, default=34.0, help="Maximum total size of files to copy in gigabytes (default: 34.0)")
+    parser.add_argument("--max-size-gb", type=float, default=34.0, help="Max size to copy in GB (default: 34.0)")
+    parser.add_argument("--source", default="D:\\", help="Source drive or folder (default: D:\\)")
+    parser.add_argument("--backup", default="E:\\", help="Backup drive or folder (default: E:\\)")
     args = parser.parse_args()
-    
+
     if args.execute:
-        print(f"\n  WARNING: This will COPY missing files to E:\\! (Limit: {args.max_size_gb} GB)")
+        print(f"\n  WARNING: This will COPY missing files to {args.backup}! (Limit: {args.max_size_gb} GB)")
         confirm = input("  Type 'yes' to confirm: ")
         if confirm.strip().lower() != "yes":
             print("  Aborted.")
             sys.exit(0)
-    
-    run_sync(execute=args.execute, max_size_gb=args.max_size_gb)
+
+    run_sync(
+        execute=args.execute,
+        max_size_gb=args.max_size_gb,
+        source=args.source,
+        backup=args.backup,
+    )

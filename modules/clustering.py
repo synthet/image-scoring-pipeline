@@ -9,6 +9,10 @@ from PIL import Image
 from sklearn.cluster import AgglomerativeClustering
 from modules import db, utils, config
 from modules.events import event_manager
+from modules.phases import PhaseCode, PhaseStatus
+from modules.version import APP_VERSION
+
+CLUSTER_VERSION = "1.0.0"  # bump when clustering algorithm or model changes
 
 # Suppress TF logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -589,6 +593,16 @@ class ClusteringEngine:
             # Mark as processed
             db.mark_folder_clustered(folder)
             processed_count += len(rows)
+
+            # Phase D (Culling) — mark all images in this folder as done
+            for r in rows:
+                try:
+                    db.set_image_phase_status(r['id'], PhaseCode.CULLING, PhaseStatus.DONE,
+                                              app_version=APP_VERSION, executor_version=CLUSTER_VERSION,
+                                              job_id=job_id)
+                except Exception:
+                    pass
+
             yield update_status(f"Finished {folder}. Created {folder_stacks} stacks.", processed_count, len(images_rows))
             
             # Broadcast final event for folder

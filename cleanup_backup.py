@@ -1,16 +1,21 @@
 """
-Cleanup rejected and red-labeled images from backup drive E:\Photos.
+Cleanup rejected and red-labeled images from backup drive/folder.
 
 Usage:
     python cleanup_backup.py              # Dry-run (default) - lists files
     python cleanup_backup.py --execute    # Actually delete files
+    python cleanup_backup.py --backup E:\
+    python cleanup_backup.py --backup E:\Photos
+    python cleanup_backup.py --backup F:\MyBackup
+
+Accepts drive path (E:\, F:) or folder path (E:\Photos, F:\MyBackup\Photos).
+Source and backup should match depth: D:\ + E:\ or D:\Photos + E:\Photos.
 
 Queries Firebird DB for images with:
   - cull_decision = 'reject'  (rejected during culling)
   - label = 'Red'             (low-scored / red-labeled)
 
-Translates DB paths (/mnt/d/Photos/...) -> E:\Photos\... and deletes
-only from the backup drive. D:\Photos is never touched.
+Translates DB paths to backup path and deletes only from backup. D:\ is never touched.
 """
 import argparse
 import os
@@ -31,22 +36,35 @@ if os.name == 'nt' and not modules.db.DB_PATH.startswith("localhost:"):
     modules.db.DB_PATH = f"localhost:{modules.db.DB_PATH}"
 
 
-def translate_path_to_backup(db_path: str) -> Path | None:
-    """Convert a WSL DB path to a Windows E: backup path.
-    
-    /mnt/d/Photos/Z6ii/28-400mm/2025/... -> E:\Photos\Z6ii\28-400mm\2025\...
-    D:\Photos\Z6ii\28-400mm\2025\...     -> E:\Photos\Z6ii\28-400mm\2025\...
-    """
+def _db_to_windows_path(db_path: str) -> Path | None:
+    """Convert DB path (/mnt/d/... or D:\...) to Windows Path."""
     if db_path.startswith("/mnt/d/"):
-        rel = db_path[7:]
-    elif db_path.upper().startswith("D:\\"):
-        rel = db_path[3:]
-    elif db_path.upper().startswith("D:/"):
-        rel = db_path[3:]
-    else:
+        return Path("D:\\") / db_path[7:].replace("/", "\\")
+    if db_path.upper().startswith("D:\\") or db_path.upper().startswith("D:/"):
+        return Path(db_path[0] + ":\\") / db_path[3:].replace("/", "\\")
+    return None
+
+
+def _normalize_root(p: str) -> Path:
+    """Normalize drive (E:, E:\\) or folder (E:\\Photos) path to Path."""
+    p = p.strip().rstrip("\\/")
+    if len(p) == 2 and p[1] == ":":
+        return Path(p + "\\")
+    return Path(p)
+
+
+def translate_path_to_backup(
+    db_path: str, source_root: Path, backup_root: Path
+) -> Path | None:
+    """Convert a DB path to backup path. source_root and backup_root must match depth."""
+    local = _db_to_windows_path(db_path)
+    if not local:
         return None
-    
-    return Path("E:\\") / rel.replace("/", "\\")
+    try:
+        rel = local.relative_to(source_root)
+    except ValueError:
+        return None
+    return backup_root / rel
 
 
 def format_size(size_bytes: int) -> str:
@@ -58,19 +76,27 @@ def format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
-def run_cleanup(execute: bool = False):
+def run_cleanup(
+    execute: bool = False,
+    source: str = "D:\\",
+    backup: str = "E:\\",
+):
     """Main cleanup function."""
+    source_root = _normalize_root(source)
+    backup_root = _normalize_root(backup)
+
     print("=" * 70)
     print(f"  BACKUP CLEANUP — {'EXECUTE MODE' if execute else 'DRY RUN'}")
+    print(f"  Source: {source_root}")
+    print(f"  Backup: {backup_root}")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
     sys.stdout.flush()
-    
-    # Verify E: drive is accessible 
-    if not Path("E:\\Photos").exists():
-        print("\n[ERROR] E:\\Photos is not accessible. Is the backup drive connected?")
+
+    if not backup_root.exists():
+        print(f"\n[ERROR] {backup_root} is not accessible. Is the backup drive connected?")
         return
-    
+
     print("\n[1/4] Querying Firebird database...")
     sys.stdout.flush()
     conn = get_db()
@@ -86,7 +112,7 @@ def run_cleanup(execute: bool = False):
         db_path = row[0]
         label = row[1]
         cull = row[2]
-        backup_path = translate_path_to_backup(db_path)
+        backup_path = translate_path_to_backup(db_path, source_root, backup_root)
         if backup_path:
             reasons = []
             if cull == "reject":
@@ -113,7 +139,7 @@ def run_cleanup(execute: bool = False):
     sys.stdout.flush()
     
     # Check existence on backup drive (with progress)
-    print(f"\n[2/4] Checking files on E:\\ drive (this may be slow)...")
+    print(f"\n[2/4] Checking files on {backup_root} (this may be slow)...")
     sys.stdout.flush()
     
     existing = []
@@ -161,8 +187,8 @@ def run_cleanup(execute: bool = False):
     sidecar_size = sum(s["size"] for s in sidecar_files)
     
     print(f"\n[3/4] Results:")
-    print(f"   Files found on E:     {len(existing)}")
-    print(f"   Files missing on E:   {len(missing)}")
+    print(f"   Files found on backup: {len(existing)}")
+    print(f"   Files missing on backup: {len(missing)}")
     print(f"   XMP sidecars found:   {len(sidecar_files)}")
     print(f"   Image size total:     {format_size(total_size)}")
     print(f"   Sidecar size total:   {format_size(sidecar_size)}")
@@ -170,7 +196,7 @@ def run_cleanup(execute: bool = False):
     sys.stdout.flush()
     
     if not existing:
-        print("\n[DONE] Nothing to delete — all files already gone from E:")
+        print(f"\n[DONE] Nothing to delete — all files already gone from {backup_root}")
         return
     
     # Write log + optionally delete
@@ -246,11 +272,11 @@ def run_cleanup(execute: bool = False):
             key=lambda p: len(p.parts),
             reverse=True,
         )
-        h_photos = Path("E:\\Photos")
+        h_backup = backup_root
         for parent in parents:
             try:
                 d = parent
-                while d != h_photos and d.exists() and not any(d.iterdir()):
+                while d != h_backup and d.exists() and not any(d.iterdir()):
                     d.rmdir()
                     empty_removed += 1
                     d = d.parent
@@ -275,15 +301,23 @@ def run_cleanup(execute: bool = False):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Cleanup rejected/red-labeled images from backup drive E:")
+    parser = argparse.ArgumentParser(
+        description="Cleanup rejected/red-labeled images from backup (drive or folder path)"
+    )
     parser.add_argument("--execute", action="store_true", help="Actually delete files (default: dry-run)")
+    parser.add_argument("--source", default="D:\\", help="Source drive or folder (default: D:\\)")
+    parser.add_argument("--backup", default="E:\\", help="Backup drive or folder (default: E:\\)")
     args = parser.parse_args()
-    
+
     if args.execute:
-        print("\n  WARNING: This will PERMANENTLY DELETE files from E:\\Photos!")
+        print(f"\n  WARNING: This will PERMANENTLY DELETE files from {args.backup}!")
         confirm = input("  Type 'yes' to confirm: ")
         if confirm.strip().lower() != "yes":
             print("  Aborted.")
             sys.exit(0)
-    
-    run_cleanup(execute=args.execute)
+
+    run_cleanup(
+        execute=args.execute,
+        source=args.source,
+        backup=args.backup,
+    )

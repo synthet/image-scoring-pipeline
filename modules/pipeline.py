@@ -16,6 +16,8 @@ from typing import Optional, Dict, Any, List
 from modules import db, thumbnails, xmp
 from modules import score_normalization as snorm
 from modules import config as app_config
+from modules.phases import PhaseCode, PhaseStatus
+from modules.version import APP_VERSION
 from scripts.python.run_all_musiq_models import MultiModelMUSIQ
 from modules.liqe import LiqeScorer
 
@@ -43,6 +45,7 @@ class ImageJob:
     process_path: str = "" # Path to actual image to score (original or temp jpeg)
     external_scores: Dict[str, Any] = field(default_factory=dict)
     thumbnail_path: Optional[str] = None
+    image_id: Optional[int] = None  # DB id, set when image is found/created
     
 class PipelineWorker(threading.Thread):
     def __init__(self, name, input_queue, output_queue, stop_event):
@@ -122,9 +125,14 @@ class PrepWorker(PipelineWorker):
                     # Update Path if different (Portability)
                     db_path = existing_record.get('file_path')
                     image_id = existing_record.get('id')
+                    job.image_id = image_id  # Store for phase tracking
                     
                     # Register this path as well
                     db.register_image_path(image_id, job.image_path)
+                    
+                    # Phase A (Indexing) — image exists in DB
+                    db.set_image_phase_status(image_id, PhaseCode.INDEXING, PhaseStatus.DONE,
+                                              app_version=APP_VERSION)
 
                     if db_path != job.image_path:
                         logger.info(f"Relocating image {image_hash[:8]}... from {db_path} to {job.image_path}")
@@ -208,6 +216,11 @@ class PrepWorker(PipelineWorker):
                     thumb = generated
             
             job.thumbnail_path = thumb
+
+            # Phase B (Metadata) — thumbnail generated
+            if job.image_id and thumb and os.path.exists(thumb):
+                db.set_image_phase_status(job.image_id, PhaseCode.METADATA, PhaseStatus.DONE,
+                                          app_version=APP_VERSION)
 
             # RAW Conversion for Scoring
             if job.is_raw:
@@ -441,10 +454,36 @@ class ResultWorker(PipelineWorker):
                 
                 db.upsert_image(job.job_id, job.result)
                 
+                # Resolve image_id for phase tracking (may have been created by upsert)
+                if not job.image_id:
+                    try:
+                        img_rec = db.get_image_details(job.image_path)
+                        if img_rec:
+                            job.image_id = img_rec['id']
+                    except:
+                        pass
+
+                # Phase status updates for new images
+                if job.image_id:
+                    db.set_image_phase_status(job.image_id, PhaseCode.INDEXING, PhaseStatus.DONE,
+                                              app_version=APP_VERSION, job_id=job.job_id)
+                    if job.thumbnail_path and os.path.exists(job.thumbnail_path):
+                        db.set_image_phase_status(job.image_id, PhaseCode.METADATA, PhaseStatus.DONE,
+                                                  app_version=APP_VERSION, job_id=job.job_id)
+                    # Phase C (Scoring) — done
+                    db.set_image_phase_status(job.image_id, PhaseCode.SCORING, PhaseStatus.DONE,
+                                              app_version=APP_VERSION,
+                                              executor_version=self.scorer.VERSION if self.scorer else None,
+                                              job_id=job.job_id)
+
                 score = job.result["summary"]["weighted_scores"].get("general", 0)
                 if self.progress_callback:
                     self.progress_callback(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} [INFO] [ResultWorker] Scored: {Path(job.image_path).name} - {score:.2f}")
             except Exception as e:
+                # Phase C (Scoring) — failed
+                if job.image_id:
+                    db.set_image_phase_status(job.image_id, PhaseCode.SCORING, PhaseStatus.FAILED,
+                                              job_id=job.job_id, error=str(e))
                 if self.progress_callback:
                     self.progress_callback(f"DB Error: {e}")
         

@@ -183,3 +183,5 @@ webui.lock
 
 # Moltbook skill (agent skills)
 .agent/skills/moltbook/
+
+.mcp.json

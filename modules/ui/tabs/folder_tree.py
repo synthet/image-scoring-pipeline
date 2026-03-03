@@ -1,117 +1,209 @@
 """
 Folder Tree tab module for hierarchical folder navigation.
 
-This module provides a tree view of folders containing scored images:
+Provides:
 - Interactive folder tree with selection
-- Quick preview of images in selected folder
-- Navigation buttons to open folder in Gallery, Stacks, or Keywords tabs
+- Phase-launch buttons that **directly start jobs** (not just navigate tabs)
+- Folder phase status strip showing per-phase completion badges
 
-The create_tab() function returns navigation buttons that are wired in app.py
-for cross-tab navigation.
+The create_tab() function accepts runner instances so buttons can launch
+jobs directly from the Folder Tree without switching tabs.
 """
 import gradio as gr
 from modules import ui_tree, utils, db, config, thumbnails
+from modules.phases import PhaseCode, PhaseRegistry
 import os
 import platform
+import logging
+
+logger = logging.getLogger(__name__)
 
 IS_WINDOWS = (platform.system() == 'Windows')
 
-def create_tab(app_config):
+# Status badge mapping
+_STATUS_BADGES = {
+    "done":        "✅",
+    "partial":     "⏳",
+    "not_started": "❌",
+    "failed":      "⚠️",
+    "running":     "🔄",
+}
+
+
+def _build_phase_status_html(folder_path):
+    """Build an HTML status strip showing per-phase completion for a folder."""
+    if not folder_path:
+        return ""
+
+    wsl_folder = utils.convert_path_to_wsl(folder_path) if hasattr(utils, 'convert_path_to_wsl') else folder_path
+    summary = db.get_folder_phase_summary(wsl_folder)
+
+    if not summary:
+        return "<div style='color: #888; padding: 4px;'>No phase data available.</div>"
+
+    badges = []
+    for ph in summary:
+        icon = _STATUS_BADGES.get(ph["status"], "❓")
+        count_text = f"{ph['done_count']}/{ph['total_count']}" if ph["total_count"] > 0 else "—"
+        badges.append(
+            f'<span style="display:inline-block; margin:2px 8px 2px 0; padding:3px 8px; '
+            f'border-radius:6px; background:#1a1a2e; color:#e0e0e0; font-size:0.85em;">'
+            f'{icon} <b>{ph["name"]}</b> <span style="color:#999;">({count_text})</span>'
+            f'</span>'
+        )
+
+    return f'<div style="padding:4px 0;">{"".join(badges)}</div>'
+
+
+def create_tab(app_config, scoring_runner=None, tagging_runner=None, selection_runner=None):
     """
     Creates the Folder Tree tab.
-    
+
     Args:
         app_config: Application configuration.
-        
+        scoring_runner: ScoringRunner instance (for Run Scoring).
+        tagging_runner: TaggingRunner instance (for Run Keywords).
+        selection_runner: SelectionRunner instance (for Run Culling).
+
     Returns:
-        dict: Components (buttons, selection, etc.) for wiring in main app.
+        dict: Components for wiring in main app.
     """
     PAGE_SIZE = app_config.get('ui', {}).get('gallery_page_size', 50)
 
     def update_tree_status(folder):
-        if not folder: 
-            return "No folder selected."
-        
-        # Convert Windows path to WSL format for DB query
-        # DB stores paths in WSL format (/mnt/d/...)
+        if not folder:
+            return "No folder selected.", ""
+
         wsl_folder = utils.convert_path_to_wsl(folder)
         rows = db.get_images_by_folder(wsl_folder)
-        
+
         total_count = len(rows)
-        
-        # OPTIMIZATION: Limit to PAGE_SIZE to avoid slow Gradio rendering
-        # Folder Tree is for quick preview; use "Open in Gallery" for full browsing
-        rows = rows[:PAGE_SIZE]
-        
-        
-        # OPTIMIZATION: Batch resolve paths
-        image_ids = [row.get('id') for row in rows if row.get('id')]
-        resolved_map = {}
-        if image_ids:
-            try:
-                resolved_map = db.get_resolved_paths_batch(image_ids)
-            except:
-                pass
 
-        results = []
-        for row in rows:
-            p = row['file_path']
-            label = row['file_name']
-            
-            image_id = row.get('id')
-
-            local_thumb = thumbnails.get_thumb_wsl(row)  # WebUI runs in WSL
-            if local_thumb:
-                p = local_thumb
-            elif image_id and image_id in resolved_map:
-                cached_path = resolved_map[image_id]
-                if cached_path and not ('\\' in cached_path and '/' in cached_path):
-                    p = cached_path
-            else:
-                p = utils.resolve_file_path(p, image_id) or utils.convert_path_to_local(p)
-            
         status = f"{total_count} image{'s' if total_count != 1 else ''} in folder"
         if total_count > PAGE_SIZE:
             status += f" (showing first {PAGE_SIZE})"
-        return status
+
+        phase_html = _build_phase_status_html(folder)
+        return status, phase_html
 
     def refresh_tree_wrapper():
         msg = db.rebuild_folder_cache()
         return ui_tree.get_tree_html(), msg
 
+    # --- Direct job launch handlers ---
 
+    def run_scoring_job(folder):
+        """Start scoring job directly from Folder Tree."""
+        if not folder:
+            return "⚠️ No folder selected."
+        if scoring_runner is None:
+            return "⚠️ Scoring runner not available."
+
+        # Check if already running
+        status = scoring_runner.get_status()
+        if status[0]:  # is_running
+            return "⚠️ Scoring is already running."
+
+        wsl_folder = utils.convert_path_to_wsl(folder)
+        job_id = db.create_job(wsl_folder, phase_code=PhaseCode.SCORING, job_type="scoring")
+        scoring_runner.start_batch(wsl_folder, job_id=job_id, skip_existing=True)
+        return f"✅ Scoring started for {os.path.basename(folder)} (Job #{job_id})"
+
+    def run_culling_job(folder):
+        """Start culling/selection job directly from Folder Tree."""
+        if not folder:
+            return "⚠️ No folder selected."
+        if selection_runner is None:
+            return "⚠️ Selection runner not available."
+
+        status = selection_runner.get_status()
+        if status[0]:  # is_running
+            return "⚠️ Selection is already running."
+
+        wsl_folder = utils.convert_path_to_wsl(folder)
+        job_id = db.create_job(wsl_folder, phase_code=PhaseCode.CULLING, job_type="selection")
+        selection_runner.start_batch(wsl_folder, job_id=job_id)
+        return f"✅ Culling started for {os.path.basename(folder)} (Job #{job_id})"
+
+    def run_keywords_job(folder):
+        """Start keywords/tagging job directly from Folder Tree."""
+        if not folder:
+            return "⚠️ No folder selected."
+        if tagging_runner is None:
+            return "⚠️ Tagging runner not available."
+
+        status = tagging_runner.get_status()
+        if status[0]:  # is_running
+            return "⚠️ Keywords is already running."
+
+        wsl_folder = utils.convert_path_to_wsl(folder)
+        job_id = db.create_job(wsl_folder, phase_code=PhaseCode.KEYWORDS, job_type="tagging")
+        tagging_runner.start_batch(wsl_folder, job_id=job_id)
+        return f"✅ Keywords started for {os.path.basename(folder)} (Job #{job_id})"
+
+    # --- UI Layout ---
 
     with gr.TabItem("Folder Tree", id="folder_tree"):
         # Row 1: Action Bar
         with gr.Row():
             t_refresh_btn = gr.Button("🔄 Refresh", size="sm", scale=0, min_width=100)
-            t_open_scoring_btn = gr.Button("▶️ Open in Scoring", variant="primary", size="sm", scale=1)
-            t_open_selection_btn = gr.Button("📋 Open in Selection", variant="secondary", size="sm", scale=1)
-            t_open_culling_btn = gr.Button("✂️ Open in Culling", variant="secondary", size="sm", scale=1)
-            t_open_stacks_btn = gr.Button("📚 Open in Stacks", variant="secondary", size="sm", scale=1)
-            t_open_keywords_btn = gr.Button("🏷️ Open in Keywords", variant="secondary", size="sm", scale=1)
-        
-        # Row 2: Main Content - Tree 
+            _reg_scoring  = PhaseRegistry.get(PhaseCode.SCORING)
+            _reg_culling  = PhaseRegistry.get(PhaseCode.CULLING)
+            _reg_keywords = PhaseRegistry.get(PhaseCode.KEYWORDS)
+
+            t_run_scoring_btn = gr.Button(
+                "▶️ Run Scoring", variant="primary", size="sm", scale=1,
+                interactive=(
+                    scoring_runner is not None
+                    and _reg_scoring is not None
+                    and _reg_scoring.run_folder is not None
+                )
+            )
+            t_run_culling_btn = gr.Button(
+                "📚 Run Culling", variant="secondary", size="sm", scale=1,
+                interactive=(
+                    selection_runner is not None
+                    and _reg_culling is not None
+                    and _reg_culling.run_folder is not None
+                )
+            )
+            t_run_keywords_btn = gr.Button(
+                "🏷️ Run Keywords", variant="secondary", size="sm", scale=1,
+                interactive=(
+                    tagging_runner is not None
+                    and _reg_keywords is not None
+                    and _reg_keywords.run_folder is not None
+                )
+            )
+
+        # Row 2: Phase Status Strip
+        t_phase_status = gr.HTML(
+            value="<div style='color:#666; padding:4px;'>Select a folder to view phase status.</div>",
+            label="Pipeline Status",
+            elem_classes=["phase-status-strip"]
+        )
+
+        # Row 3: Main Content — Tree
         with gr.Row():
-            # Tree View
             t_tree_view = gr.HTML(
-                value=ui_tree.get_tree_html(), # Initialize immediately if possible
+                value=ui_tree.get_tree_html(),
                 label="📁 Folder Tree",
                 elem_classes=["folder-tree-container"]
             )
-        
+
         # Divider
         gr.Markdown("---")
-        
-        # Row 3: Status Bar (full width)
+
+        # Row 4: Status Bar
         t_selected_path = gr.Textbox(
-            elem_id="folder_tree_selection", 
-            label="Selected Folder", 
+            elem_id="folder_tree_selection",
+            label="Selected Folder",
             interactive=True
         )
         t_status = gr.Label(label="Status", elem_classes=["tree-status-label"])
-        
-        # Events
+
+        # --- Events ---
+
         t_refresh_btn.click(
             fn=refresh_tree_wrapper,
             inputs=[],
@@ -121,17 +213,35 @@ def create_tab(app_config):
         t_selected_path.change(
             fn=update_tree_status,
             inputs=[t_selected_path],
+            outputs=[t_status, t_phase_status]
+        )
+
+        # Direct job launch buttons
+        t_run_scoring_btn.click(
+            fn=run_scoring_job,
+            inputs=[t_selected_path],
             outputs=[t_status]
         )
-        
+
+        t_run_culling_btn.click(
+            fn=run_culling_job,
+            inputs=[t_selected_path],
+            outputs=[t_status]
+        )
+
+        t_run_keywords_btn.click(
+            fn=run_keywords_job,
+            inputs=[t_selected_path],
+            outputs=[t_status]
+        )
+
     return {
         'refresh_btn': t_refresh_btn,
-        'open_scoring_btn': t_open_scoring_btn,
-        'open_selection_btn': t_open_selection_btn,
-        'open_culling_btn': t_open_culling_btn,
-        'open_stacks_btn': t_open_stacks_btn,
-        'open_keywords_btn': t_open_keywords_btn,
+        'run_scoring_btn': t_run_scoring_btn,
+        'run_culling_btn': t_run_culling_btn,
+        'run_keywords_btn': t_run_keywords_btn,
         'selected_path': t_selected_path,
         'tree_view': t_tree_view,
-        'status': t_status # if needed
+        'status': t_status,
+        'phase_status': t_phase_status,
     }

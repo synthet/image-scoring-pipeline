@@ -8,6 +8,10 @@ from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditi
 from typing import List, Dict, Optional, Tuple
 from modules import db, thumbnails, xmp
 from modules.events import event_manager
+from modules.phases import PhaseCode, PhaseStatus
+from modules.version import APP_VERSION
+
+TAGGER_VERSION = "1.0.0"  # bump when CLIP model or tagging logic changes
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -296,6 +300,12 @@ class TaggingRunner:
             if existing and not overwrite:
                 skipped_count += 1
                 self.current_count += 1
+                # Mark as done — keywords already present
+                try:
+                    db.set_image_phase_status(row['id'], PhaseCode.KEYWORDS, PhaseStatus.DONE,
+                                              app_version=APP_VERSION, executor_version=TAGGER_VERSION)
+                except Exception:
+                    pass
                 continue
                 
             if not os.path.exists(path):
@@ -346,6 +356,11 @@ class TaggingRunner:
                     log(f"  -> Tags: {tags_str}")
                     processed_count += 1
                     self.current_count += 1
+
+                    # Phase E (Keywords) — done for this image
+                    db.set_image_phase_status(row['id'], PhaseCode.KEYWORDS, PhaseStatus.DONE,
+                                              app_version=APP_VERSION, executor_version=TAGGER_VERSION,
+                                              job_id=job_id)
                     
                     # Write Metadata
                     if self.write_metadata(path, tags, title, caption):
@@ -359,6 +374,12 @@ class TaggingRunner:
             except Exception as e:
                 log(f"Request failed: {e}")
                 self.current_count += 1
+                # Phase E (Keywords) — failed for this image
+                try:
+                    db.set_image_phase_status(row['id'], PhaseCode.KEYWORDS, PhaseStatus.FAILED,
+                                              executor_version=TAGGER_VERSION,
+                                              job_id=job_id, error=str(e))
+                except: pass
             event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": self.current_count, "total": self.total_count})
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")

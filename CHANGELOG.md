@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [3.25.0] - 2026-03-02
+
+### Added
+- **Path Migration Utility**: New `update_db_paths.py` for batch-updating folder and image paths in the database (useful for moving data between drives).
+- **Reorganization Planning**: Added `reorganize_source_plan.md` documenting the strategy for source photo cleanup and standardization.
+- **Agent Skills**: Added `moltbook` skill to `.gitignore`.
+
+### Changed
+- **Hardened Clustering**: Added error handling in `modules/clustering.py` to prevent crashes during folder processing.
+- **Improved DB Connectivity**: Enhanced robustness of Firebird connection checks and error reporting in `modules/db.py`.
+- **Enhanced Backup Scripts**: Refactored `cleanup_backup.py` and `sync_backup.py` with improved argument handling and status feedback.
+- **Ignored Patterns**: Updated `.gitignore` to include `.agent/skills/moltbook` and `.mcp.json`.
+
 ## [3.24.0] - 2026-03-01
 
 ### Added

@@ -27,6 +27,7 @@ from modules.ui.tabs import (
     selection as selection_tab,
 )
 from modules.selection_runner import SelectionRunner
+from modules import phase_executors
 
 # Cache platform check
 IS_WINDOWS = platform.system() == "Windows"
@@ -43,6 +44,13 @@ def create_ui():
     runner = scoring.ScoringRunner()
     tagging_runner = tagging.TaggingRunner()
     selection_runner = SelectionRunner()
+
+    # Register phase executors (binds phase codes to runner logic)
+    phase_executors.register_all(
+        scoring_runner=runner,
+        tagging_runner=tagging_runner,
+        selection_runner=selection_runner,
+    )
     
     # UI Elements from Assets
     tree_js = assets.get_tree_js()
@@ -62,8 +70,13 @@ def create_ui():
 
         
         with gr.Tabs() as main_tabs:
-            # 1. Folder Tree Tab (Default)
-            folder_tree_components = folder_tree.create_tab(app_config)
+            # 1. Folder Tree Tab (Default) — receives runners for direct job launch
+            folder_tree_components = folder_tree.create_tab(
+                app_config,
+                scoring_runner=runner,
+                tagging_runner=tagging_runner,
+                selection_runner=selection_runner,
+            )
             
             # 2. Scoring Tab
             scoring_components = scoring_tab.create_tab(runner, app_config)
@@ -89,57 +102,7 @@ def create_ui():
             settings_tab.create_tab(app_config)
             
         # --- Cross-Tab Navigation Wiring ---
-        
-        # --- Cross-Tab Navigation Wiring ---
-        
-        # Folder Tree -> Scoring
-        folder_tree_components['open_scoring_btn'].click(
-            fn=navigation.open_folder_in_scoring,
-            inputs=[folder_tree_components['selected_path']],
-            outputs=[main_tabs, scoring_components['input_dir']]
-        )
-        
-        # Folder Tree -> Culling (when legacy enabled) or -> Selection (when legacy disabled)
-        if culling_components:
-            folder_tree_components['open_culling_btn'].click(
-                fn=navigation.open_folder_in_culling,
-                inputs=[folder_tree_components['selected_path']],
-                outputs=[main_tabs, culling_components['input_dir']]
-            )
-        else:
-            folder_tree_components['open_culling_btn'].click(
-                fn=navigation.open_folder_in_selection,
-                inputs=[folder_tree_components['selected_path']],
-                outputs=[main_tabs, selection_components['input_dir']]
-            )
-        
-        # Folder Tree -> Stacks (when legacy enabled) or -> Selection (when legacy disabled)
-        if stacks_components:
-            folder_tree_components['open_stacks_btn'].click(
-                fn=navigation.open_folder_in_stacks,
-                inputs=[folder_tree_components['selected_path']],
-                outputs=[main_tabs, stacks_components['input_dir']]
-            )
-        else:
-            folder_tree_components['open_stacks_btn'].click(
-                fn=navigation.open_folder_in_selection,
-                inputs=[folder_tree_components['selected_path']],
-                outputs=[main_tabs, selection_components['input_dir']]
-            )
-        
-        # Folder Tree -> Keywords
-        folder_tree_components['open_keywords_btn'].click(
-            fn=navigation.open_folder_in_keywords,
-            inputs=[folder_tree_components['selected_path']],
-            outputs=[main_tabs, tagging_components['input_dir']]
-        )
-        
-        # Folder Tree -> Selection
-        folder_tree_components['open_selection_btn'].click(
-            fn=navigation.open_folder_in_selection,
-            inputs=[folder_tree_components['selected_path']],
-            outputs=[main_tabs, selection_components['input_dir']]
-        )
+        # (Folder Tree Run buttons now launch jobs directly — no tab navigation needed)
 
         # Monitor Loop
         def monitor_status_wrapper():

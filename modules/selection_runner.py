@@ -8,6 +8,8 @@ import threading
 from modules.selection import SelectionService, SelectionConfig
 from modules import db
 from modules.events import event_manager
+from modules.phases import PhaseCode, PhaseStatus
+from modules.version import APP_VERSION
 
 
 class SelectionRunner:
@@ -97,6 +99,16 @@ class SelectionRunner:
 
         cfg = SelectionConfig(force_rescan=force_rescan)
         summary = self._service.run(input_path, cfg=cfg, progress_cb=progress_cb)
+
+        # Phase D (Culling) — mark images in the processed folder as done
+        try:
+            images = db.get_images_by_folder(input_path)
+            if images:
+                for img in images:
+                    db.set_image_phase_status(img['id'], PhaseCode.CULLING, PhaseStatus.DONE,
+                                              app_version=APP_VERSION, job_id=job_id)
+        except Exception as pe:
+            log(f"Phase status update error: {pe}")
 
         with self._lock:
             self._status_message = summary.status

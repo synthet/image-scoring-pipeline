@@ -1,0 +1,93 @@
+"""
+Phase Executor Registration — wires PhaseCode to actual runner logic.
+
+Called once at app startup (after db.init_db, before UI build).
+Each executor binds:
+  - code:             PhaseCode enum value
+  - executor_version: bumped when the underlying algorithm/model changes
+  - run_folder:       fn(folder_path, job_id) -> None
+  - depends_on:       list of phase codes that must be 'done' first
+"""
+import logging
+from modules.phases import PhaseCode, PhaseExecutor, PhaseRegistry
+from modules.version import APP_VERSION
+
+logger = logging.getLogger(__name__)
+
+
+def register_all(
+    scoring_runner=None,
+    tagging_runner=None,
+    clustering_runner=None,
+    selection_runner=None,
+):
+    """
+    Register all known phase executors.
+
+    Runners are optional — if a runner is None, that phase will appear in the
+    UI (from the DB) but its button will be disabled (no executor registered).
+    """
+
+    # Phase A — Indexing (happens implicitly inside scoring pipeline)
+    PhaseRegistry.register(PhaseExecutor(
+        code=PhaseCode.INDEXING,
+        executor_version="1.0.0",
+        run_folder=None,  # implicitly handled by scoring pipeline
+        depends_on=[],
+    ))
+
+    # Phase B — Metadata Prep (implicit inside scoring pipeline)
+    PhaseRegistry.register(PhaseExecutor(
+        code=PhaseCode.METADATA,
+        executor_version="1.0.0",
+        run_folder=None,  # implicitly handled by scoring pipeline
+        depends_on=[PhaseCode.INDEXING],
+    ))
+
+    # Phase C — Scoring
+    if scoring_runner:
+        PhaseRegistry.register(PhaseExecutor(
+            code=PhaseCode.SCORING,
+            executor_version=_get_scorer_version(scoring_runner),
+            run_folder=scoring_runner.start_batch,
+            depends_on=[PhaseCode.METADATA],
+        ))
+
+    # Phase D — Culling & Stacks (clustering OR selection)
+    if selection_runner:
+        PhaseRegistry.register(PhaseExecutor(
+            code=PhaseCode.CULLING,
+            executor_version="1.0.0",
+            run_folder=selection_runner.start_batch,
+            depends_on=[PhaseCode.SCORING],
+        ))
+    elif clustering_runner:
+        PhaseRegistry.register(PhaseExecutor(
+            code=PhaseCode.CULLING,
+            executor_version="1.0.0",
+            run_folder=clustering_runner.start_batch,
+            depends_on=[PhaseCode.SCORING],
+        ))
+
+    # Phase E — Keywords
+    if tagging_runner:
+        PhaseRegistry.register(PhaseExecutor(
+            code=PhaseCode.KEYWORDS,
+            executor_version="1.0.0",
+            run_folder=tagging_runner.start_batch,
+            depends_on=[PhaseCode.SCORING],
+        ))
+
+    registered = [e.code for e in PhaseRegistry.get_all()]
+    logger.info("Phase executors registered: %s", registered)
+
+
+def _get_scorer_version(scoring_runner) -> str:
+    """Try to read the VERSION from the shared scorer model."""
+    try:
+        if scoring_runner.shared_scorer and hasattr(scoring_runner.shared_scorer, 'VERSION'):
+            return scoring_runner.shared_scorer.VERSION
+    except Exception:
+        pass
+    # Fallback — scorer not loaded yet at registration time
+    return "1.0.0"
