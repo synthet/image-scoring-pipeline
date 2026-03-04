@@ -150,7 +150,7 @@ def resume_culling_session(session_id):
     if all_image_ids:
         try:
             resolved_map = db.get_resolved_paths_batch(all_image_ids)
-        except: pass
+        except Exception: pass
     
     # Process regular groups
     for group in regular_groups:
@@ -271,7 +271,7 @@ def delete_rejected_files(session_id, confirmed):
             if local_thumb and os.path.exists(local_thumb): os.remove(local_thumb)
             db.delete_image(file_path)
             deleted_count += 1
-        except: pass
+        except (OSError, Exception): pass
     
     # Refresh gallery after delete
     msg, gal, sid, paths = resume_culling_session(session_id)

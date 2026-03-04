@@ -209,15 +209,15 @@ class ClusteringEngine:
                 if date_str:
                     # Parse
                     return datetime.datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S").timestamp()
-            except:
+            except (ValueError, KeyError, TypeError):
                 pass
-                
+
         # Fallback: Filesystem mtime
         try:
             p = row['file_path']
             if os.path.exists(p):
                 return os.path.getmtime(p)
-        except:
+        except (OSError, KeyError):
             pass
             
         return 0.0

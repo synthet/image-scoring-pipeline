@@ -1,26 +1,26 @@
 # MUSIQ: Multi-scale Image Quality Transformer - Minimal Dependencies
 # CPU-only installation for production use
 
-# Core ML framework (CPU-only)
-tensorflow-cpu==2.15.0
+# Core ML framework (CPU-only) — 2.15.1 fixes CVE-2024-27314
+tensorflow-cpu>=2.15.1,<2.16.0
 
 # Image processing
-Pillow==10.4.0
+Pillow>=10.4.0,<11.0
 
 # Numerical computing
-numpy==1.24.4
+numpy>=1.24.4,<2.0
 
 # Optional: TensorFlow Hub for model loading
-tensorflow-hub==0.16.1
+tensorflow-hub>=0.16.1,<0.17
 
 # Kaggle Hub for advanced model loading (KONIQ, VILA)
-kagglehub==0.3.4
+kagglehub>=0.3.4,<0.4
 
-# keyword extraction deps omitted
-rawpy
-imageio
+# keyword extraction deps
+rawpy>=0.21.0,<1.0
+imageio>=2.34.0,<3.0
 gradio>=5.0,<6.0
-scikit-learn
+scikit-learn>=1.3.0,<2.0
 
 # MCP Server (optional - for Cursor debugging integration)
-mcp>=1.0.0
+mcp>=1.0.0,<2.0

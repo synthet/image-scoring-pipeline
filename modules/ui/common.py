@@ -123,7 +123,7 @@ def delete_nef(details):
         scores_json = details.get('scores_json', {})
         if isinstance(scores_json, str):
              try: scores_json = json.loads(scores_json)
-             except: scores_json = {}
+             except (json.JSONDecodeError, ValueError): scores_json = {}
              
         nef_meta = scores_json.get('nef_metadata', {})
         if nef_meta.get('file_path'):
@@ -152,7 +152,7 @@ def delete_nef(details):
             try:
                 os.remove(thumb_path)
                 deleted_files.append("Thumb")
-            except:
+            except OSError:
                 pass
                 
         # Delete DB Record

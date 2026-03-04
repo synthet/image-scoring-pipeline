@@ -26,7 +26,7 @@ class QAlignScore:
             try:
                 available = pyiqa.list_models()
                 logging.info(f"Available pyiqa models: {available}")
-            except:
+            except Exception:
                 logging.warning("Could not list pyiqa models")
 
     def predict(self, image_path):

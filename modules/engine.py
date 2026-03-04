@@ -68,7 +68,7 @@ class BatchImageProcessor:
             try:
                 from modules.events import event_manager
                 event_manager.broadcast_threadsafe("folder_discovered", {"path": root})
-            except: pass
+            except Exception: pass
 
             visited_folders.add(root)
             
@@ -81,7 +81,7 @@ class BatchImageProcessor:
                     try:
                         from modules.events import event_manager
                         event_manager.broadcast_threadsafe("image_discovered", {"path": file_path})
-                    except: pass
+                    except Exception: pass
 
         files = sorted(list(set(files))) # Dedup just in case
 
@@ -93,7 +93,7 @@ class BatchImageProcessor:
                 self.log("Verifying empty folders...")
                 for f in visited_folders:
                      try: db.check_and_update_folder_status(f)
-                     except: pass
+                     except Exception: pass
             return
 
         self.log(f"Found {len(files)} images to process.")

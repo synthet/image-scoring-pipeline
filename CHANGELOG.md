@@ -7,9 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [3.25.0] - 2026-03-02
+## [3.26.0] - 2026-03-03
 
 ### Added
+- **Diversity-Aware Selection**: Implemented MMR (Maximal Marginal Relevance) in `modules/diversity.py` to ensure selected image stacks are visually diverse. Added UI controls for Diversity Weight (lambda).
+- **Near-Duplicate Detection**: Added `find_near_duplicates` utility in `modules/similar_search.py` and exposed it via the MCP server to identify and manage nearly identical images.
+- **Image UUID Generation**: Added `scripts/add_image_uuids.py` to embed unique v4 UUIDs into database, RAW `.NEF` files, and `.xmp` sidecars via ExifTool.
+- **Backup UUID Sync**: Added `scripts/sync_uuids_to_backup.py` to synchronize UUIDs to backup drives without re-copying massive RAW files.
+- **Security & Integrity**: 
+  - Implemented comprehensive database security tests (`tests/test_db_security.py`) to prevent SQL injection.
+  - Added API security mechanisms including CORS, rate limiting, and API key validation (`modules/api.py` and `tests/test_api_security.py`).
+  - Added secret configuration tests (`tests/test_config_secrets.py`).
+
+### Changed
+- **Electron Stability**: Fixed IPC race condition during startup phase to prevent application hangs during "Connecting to services...".
+- **DevTools Defaults**: Disabled Electron developer tools from opening automatically in production mode.
+- **WebUI Configuration**: Integrated Chrome DevTools configuration in `mcp_config.json`.
+
+## [3.25.0] - 2026-03-02
 - **Path Migration Utility**: New `update_db_paths.py` for batch-updating folder and image paths in the database (useful for moving data between drives).
 - **Reorganization Planning**: Added `reorganize_source_plan.md` documenting the strategy for source photo cleanup and standardization.
 - **Agent Skills**: Added `moltbook` skill to `.gitignore`.

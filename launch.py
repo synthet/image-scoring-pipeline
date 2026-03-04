@@ -35,7 +35,11 @@ def main():
     try:
         # Check using Windows tasklist (works from WSL too if interop is on)
         # We look for "firebird.exe"
-        output = subprocess.check_output(["tasklist.exe", "/FI", "IMAGENAME eq firebird.exe"], stderr=subprocess.STDOUT).decode(errors='ignore')
+        output = subprocess.check_output(
+            ["tasklist.exe", "/FI", "IMAGENAME eq firebird.exe"], 
+            stderr=subprocess.STDOUT,
+            timeout=5
+        ).decode(errors='ignore')
         if "firebird.exe" in output:
             is_running = True
     except FileNotFoundError:
@@ -63,7 +67,7 @@ def main():
                      fb_root_win = subprocess.check_output(["wslpath", "-w", fb_root]).decode().strip()
                      
                      # Use cmd.exe /C start ... to launch invisible or minimized
-                     subprocess.run(["cmd.exe", "/C", "start", "/MIN", "Firebird Server", fb_exe_win, "-a"])
+                     subprocess.Popen(["cmd.exe", "/C", "start", "/MIN", "Firebird Server", fb_exe_win, "-a"])
                      print("Launched Firebird Server on Windows Host.")
                  except Exception as e:
                      print(f"Failed to launch Firebird from WSL: {e}")

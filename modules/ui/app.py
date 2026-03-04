@@ -133,9 +133,57 @@ def create_ui():
 
     return demo, runner, tagging_runner, selection_runner
 
+import re
+import time
+from collections import defaultdict
+
+# --- Rate limiting ---
+_rate_limits: dict = defaultdict(list)
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX_REQUESTS = 10
+
+def _check_rate_limit(endpoint: str):
+    """Simple in-memory rate limiter per endpoint."""
+    from fastapi import HTTPException
+    now = time.time()
+    _rate_limits[endpoint] = [t for t in _rate_limits[endpoint] if now - t < _RATE_LIMIT_WINDOW]
+    if len(_rate_limits[endpoint]) >= _RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    _rate_limits[endpoint].append(now)
+
+# --- Path validation ---
+_ALLOWED_IMAGE_ROOTS = None
+
+def _validate_file_path(file_path: str) -> str:
+    """Validate and resolve a file path, rejecting traversal attempts."""
+    from fastapi import HTTPException
+    if ".." in file_path:
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    resolved = os.path.realpath(file_path)
+
+    global _ALLOWED_IMAGE_ROOTS
+    if _ALLOWED_IMAGE_ROOTS is None:
+        _ALLOWED_IMAGE_ROOTS = config.get_config_value("allowed_paths", [])
+        _ALLOWED_IMAGE_ROOTS.extend(config.get_default_allowed_paths())
+
+    if _ALLOWED_IMAGE_ROOTS and not any(
+        resolved.startswith(os.path.realpath(root)) for root in _ALLOWED_IMAGE_ROOTS
+    ):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return resolved
+
+# --- SQL query validation ---
+_SQL_FORBIDDEN_PATTERNS = re.compile(
+    r'\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|EXECUTE|INTO|GRANT|REVOKE)\b',
+    re.IGNORECASE
+)
+
+
 def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None):
     """Configures FastAPI endpoints for the Gradio app."""
-    
+
     # Setup REST API endpoints
     from modules import api
     api.set_runners(scoring_runner, tagging_runner)
@@ -166,10 +214,11 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
             file_path = urllib.parse.unquote(path)
             # Conversion logic using unified resolver
             file_path = utils.resolve_file_path(file_path) or utils.convert_path_to_local(file_path)
-            
+            file_path = _validate_file_path(file_path)
+
             if not os.path.exists(file_path):
                 raise HTTPException(status_code=404, detail="File not found")
-            
+
             ext = Path(file_path).suffix.lower()
             if ext not in ['.nef', '.cr2', '.dng', '.arw', '.orf', '.nrw', '.cr3', '.rw2']:
                 raise HTTPException(status_code=400, detail="Unsupported format")
@@ -202,9 +251,13 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
         query = payload.get("query")
         parameters = payload.get("parameters", {})
         
-        # Basic security check - only allow SELECT
+        # Security checks
         if not query or not query.strip().upper().startswith("SELECT"):
              raise HTTPException(status_code=400, detail="Only SELECT queries are allowed")
+        if _SQL_FORBIDDEN_PATTERNS.search(query):
+             raise HTTPException(status_code=400, detail="Query contains forbidden keywords")
+        if ";" in query:
+             raise HTTPException(status_code=400, detail="Multi-statement queries not allowed")
 
         try:
             conn = db.get_db()
@@ -236,7 +289,7 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
         
         try:
             file_path = urllib.parse.unquote(path)
-            
+
             # Convert WSL path to Windows path using resolution logic
             resolved = utils.resolve_file_path(file_path)
             if resolved:
@@ -244,7 +297,8 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
             else:
                 # Fallback to conversion if resolve failed
                 file_path = utils.convert_path_to_local(file_path)
-            
+            file_path = _validate_file_path(file_path)
+
             if not os.path.exists(file_path):
                 raise HTTPException(status_code=404, detail="File not found")
             

@@ -83,13 +83,13 @@ def refresh_stacks_wrapper(input_path, sort_by, sort_order, progress=gr.Progress
                 if row['cover_path']:
                     iid = row.get('best_image_id')
                     if iid: cover_image_ids.append(iid)
-            except: pass
+            except Exception: pass
             
         resolved_map = {}
         if cover_image_ids:
              try:
                  resolved_map = db.get_resolved_paths_batch(cover_image_ids)
-             except: pass
+             except Exception: pass
 
         for i, row in enumerate(rows):
             if total_rows > 0:
@@ -154,7 +154,7 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
          try:
              reverse = (sort_order == "desc")
              images.sort(key=lambda x: x[sort_by] if x[sort_by] is not None else (0 if reverse else 999), reverse=reverse)
-         except:
+         except (KeyError, TypeError):
              pass
 
     # Prepare gallery format
@@ -176,7 +176,7 @@ def select_stack(evt: gr.SelectData, stack_ids_state, sort_by, sort_order):
     if stack_image_ids:
         try:
             resolved_map = db.get_resolved_paths_batch(stack_image_ids)
-        except: pass
+        except Exception: pass
     
     for row in images:
         file_path = row['file_path']

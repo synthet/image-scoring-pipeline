@@ -262,7 +262,7 @@ def resolve_file_path(db_path, image_id=None):
              try:
                  from modules import db
                  db.add_resolved_path(image_id, out)
-             except: pass
+             except Exception: pass
     
     # Strategy 3: Convert using platform-aware conversion
     converted = convert_path_to_local(db_path)
@@ -275,7 +275,7 @@ def resolve_file_path(db_path, image_id=None):
              try:
                  from modules import db
                  db.add_resolved_path(image_id, out)
-             except: pass
+             except Exception: pass
     
     # Strategy 4: If we have image_id, try unverified resolved path
     if out is None and image_id:

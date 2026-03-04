@@ -460,7 +460,7 @@ class ResultWorker(PipelineWorker):
                         img_rec = db.get_image_details(job.image_path)
                         if img_rec:
                             job.image_id = img_rec['id']
-                    except:
+                    except Exception:
                         pass
 
                 # Phase status updates for new images

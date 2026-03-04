@@ -158,10 +158,14 @@ def compute_composites(scores: Dict[str, float]) -> Dict[str, float]:
 
     def weighted_sum(category: str) -> float:
         cat_weights = weights.get(category, {})
-        total = 0.0
-        for model, w in cat_weights.items():
-            total += w * rescaled.get(model, 0.0)
-        return round(max(0.0, min(1.0, total)), 4)
+        # Only weight models actually present — re-normalize so missing models
+        # don't pull the composite toward 0.
+        active = {m: w for m, w in cat_weights.items() if m in rescaled}
+        if not active:
+            return 0.0
+        total_weight = sum(active.values())
+        total = sum(w * rescaled[m] for m, w in active.items())
+        return round(max(0.0, min(1.0, total / total_weight if total_weight > 0 else 0.0)), 4)
 
     return {
         "technical": weighted_sum("technical"),

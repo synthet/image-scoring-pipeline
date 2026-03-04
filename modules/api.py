@@ -299,9 +299,27 @@ class HealthResponse(BaseModel):
             "example": {
                 "status": "healthy",
                 "scoring_available": True,
-                "tagging_available": True
             }
         }
+
+
+class FindDuplicatesRequest(BaseModel):
+    """Request model for finding near-duplicate images."""
+    threshold: Optional[float] = Field(
+        None,
+        description="Minimum cosine similarity threshold (default: 0.98).",
+        example=0.98
+    )
+    folder_path: Optional[str] = Field(
+        None,
+        description="Optional folder path to restrict duplicate search to a specific directory.",
+        example="D:/Photos/2024"
+    )
+    limit: Optional[int] = Field(
+        None,
+        description="Max number of duplicate pairs to return (defaults to configured duplicate_max_pairs).",
+        example=5000
+    )
 
 
 class ApiResponse(BaseModel):
@@ -614,13 +632,16 @@ def create_api_router() -> APIRouter:
     async def start_scoring(request: ScoringStartRequest):
         """
         Start a batch scoring job.
-        
+
         Args:
             request: ScoringStartRequest with input_path and options
-            
+
         Returns:
             ApiResponse with success status and job_id if started
         """
+        from modules.ui.app import _check_rate_limit
+        _check_rate_limit("scoring_start")
+
         if _scoring_runner is None:
             raise HTTPException(status_code=503, detail="Scoring runner not available")
         
@@ -846,6 +867,9 @@ def create_api_router() -> APIRouter:
     )
     async def start_tagging(request: TaggingStartRequest):
         """Start a batch tagging job."""
+        from modules.ui.app import _check_rate_limit
+        _check_rate_limit("tagging_start")
+
         if _tagging_runner is None:
             raise HTTPException(status_code=503, detail="Tagging runner not available")
         
@@ -1172,9 +1196,9 @@ def create_api_router() -> APIRouter:
                         win_path = f"{drive}:{os.sep}{rest}"
                         if os.path.exists(win_path):
                             decoded_path = win_path
-                except:
+                except (OSError, IndexError, ValueError):
                     pass
-        
+
         if not os.path.exists(decoded_path):
              # Try appending to current working directory if just a relative path
              abs_path = os.path.abspath(decoded_path)
@@ -1251,5 +1275,25 @@ def create_api_router() -> APIRouter:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+            
+    # ========== Find Duplicates Endpoints ==========
+
+    @router.post("/duplicates/find", response_model=ApiResponse)
+    def find_duplicates(req: FindDuplicatesRequest = Body(...)):
+        """Find near-duplicate image pairs in the database."""
+        try:
+            from modules import similar_search
+            results = similar_search.find_near_duplicates(
+                threshold=req.threshold,
+                folder_path=req.folder_path,
+                limit=req.limit
+            )
+            return ApiResponse(
+                success=True, 
+                message=f"Found {len(results)} near-duplicate pairs",
+                data={"duplicates": results}
+            )
+        except Exception as e:
+            return ApiResponse(success=False, message=str(e))
     
     return router

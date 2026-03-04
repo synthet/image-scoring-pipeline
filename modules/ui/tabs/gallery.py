@@ -292,7 +292,7 @@ def display_details(raw_paths, evt: gr.SelectData = None, forced_index=None):
         scores_data = details.get('scores_json', {})
         if isinstance(scores_data, str):
             try: scores_data = json.loads(scores_data)
-            except: scores_data = {}
+            except (json.JSONDecodeError, ValueError): scores_data = {}
         
         # Logic for Delete Button (NEF only + specific ratings/labels)
         show_delete = False
@@ -364,7 +364,7 @@ def display_details(raw_paths, evt: gr.SelectData = None, forced_index=None):
         # Culling Status HTML (Optional DB sidecar)
         try:
             culling_status = db.get_image_culling_status(file_path) if hasattr(db, 'get_image_culling_status') else None
-        except:
+        except Exception:
             culling_status = None
             
         culling_html = '<div style="display: none;"></div>'

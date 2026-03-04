@@ -178,10 +178,29 @@ def get_system_drives():
                     mount_point = f"/mnt/{item}"
                     if os.path.isdir(mount_point):
                         drives.append(mount_point + "/")
-            except:
+            except OSError:
                 pass
                 
     return drives
+
+
+_SECRETS_FILE = BASE_DIR / "secrets.json"
+
+def get_secret(service_name: str):
+    """Load API credentials from secrets.json for a specific service.
+
+    Returns:
+        dict or None: Credentials dict for the service, or None if not found.
+    """
+    try:
+        if not _SECRETS_FILE.exists():
+            return None
+        with open(_SECRETS_FILE, 'r') as f:
+            secrets = json.load(f)
+        return secrets.get(service_name)
+    except Exception as e:
+        logging.warning("Failed to load secret for '%s': %s", service_name, e)
+        return None
 
 
 def get_default_allowed_paths():

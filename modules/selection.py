@@ -33,6 +33,11 @@ class SelectionConfig:
     write_stack_ids: bool = True
     write_pick_reject: bool = True
     verify_sidecar_write: bool = False
+    # Diversity selection settings
+    diversity_enabled: bool = False
+    diversity_lambda: float = 0.70
+    diversity_min_similarity_penalty: float = 0.85
+    diversity_fallback_on_missing_embedding: str = "score_only"
 
 
 @dataclass
@@ -184,6 +189,22 @@ class SelectionService:
                 folder_decisions: list[tuple[int, str, str]] = []
                 for stack_id, group in by_stack.items():
                     sorted_group = sorted(group, key=sort_key)
+                    
+                    if cfg.diversity_enabled and len(sorted_group) > 2:
+                        from modules.selection_policy import band_sizes
+                        from modules.diversity import reorder_with_mmr
+                        k_picks, _ = band_sizes(len(sorted_group), cfg.pick_fraction)
+                        if k_picks > 0:
+                            stack_image_ids = [img["id"] for img in sorted_group]
+                            embeddings_dict = db.get_image_embeddings_batch(stack_image_ids)
+                            sorted_group = reorder_with_mmr(
+                                sorted_images=sorted_group,
+                                k=k_picks,
+                                embeddings_dict=embeddings_dict,
+                                lambda_val=cfg.diversity_lambda,
+                                score_key=cfg.score_field
+                            )
+                    
                     sorted_ids = [img["id"] for img in sorted_group]
                     path_by_id = {img["id"]: img.get("file_path") or "" for img in sorted_group}
                     classifications = classify_sorted_ids(sorted_ids, frac=cfg.pick_fraction)

@@ -79,7 +79,8 @@ DB_TOOLS = frozenset({
     "get_database_stats", "query_images", "get_image_details", "execute_sql",
     "get_recent_jobs", "get_folder_tree", "get_stacks_summary",
     "get_failed_images", "get_error_summary", "check_database_health",
-    "validate_file_paths", "run_processing_job", "search_similar_images"
+    "validate_file_paths", "run_processing_job", "search_similar_images",
+    "find_near_duplicates"
     # Note: get_model_status, get_runner_status, get_config, set_config_value, read_debug_log don't require DB
 })
 
@@ -443,7 +444,7 @@ def read_debug_log(lines: int = 100) -> dict:
         for line in recent:
             try:
                 entries.append(json.loads(line.strip()))
-            except:
+            except (json.JSONDecodeError, ValueError):
                 entries.append({"raw": line.strip()})
         
         return {
@@ -849,7 +850,7 @@ def get_model_status() -> dict:
             # Get model version
             try:
                 status["models"]["version"] = getattr(scorer, 'VERSION', 'unknown')
-            except:
+            except Exception:
                 pass
             
             # Check which models are loaded
@@ -860,7 +861,7 @@ def get_model_status() -> dict:
                     status["models"][model_name] = {
                         "loaded": model_attr is not None
                     }
-                except:
+                except Exception:
                     status["models"][model_name] = {"loaded": False}
         else:
             status["models"]["note"] = "Scorer not initialized"
@@ -903,7 +904,7 @@ def get_model_status() -> dict:
                 status["gpu"]["gpu_info"] = lines
             else:
                 status["gpu"]["nvidia_driver"] = "not_available"
-        except:
+        except (OSError, Exception):
             status["gpu"]["nvidia_driver"] = "not_checked"
         
     except Exception as e:
@@ -1145,6 +1146,19 @@ def create_mcp_server() -> "Server":
                     },
                     "required": []
                 }
+            ),
+            Tool(
+                name="find_near_duplicates",
+                description="Detect visually duplicate or near-duplicate images even when file hashes differ. Returns a list of near-duplicate image pairs.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "threshold": {"type": "number", "description": "Minimum cosine similarity threshold (default: 0.98)"},
+                        "folder_path": {"type": "string", "description": "Optional folder path to restrict duplicate search to a specific directory"},
+                        "limit": {"type": "integer", "description": "Max number of duplicate pairs to return (defaults to configured duplicate_max_pairs)"}
+                    },
+                    "required": []
+                }
             )
         ]
     
@@ -1206,6 +1220,13 @@ def create_mcp_server() -> "Server":
                     limit=arguments.get("limit", 20),
                     folder_path=arguments.get("folder_path"),
                     min_similarity=arguments.get("min_similarity"),
+                )
+            elif name == "find_near_duplicates":
+                from modules import similar_search
+                result = similar_search.find_near_duplicates(
+                    threshold=arguments.get("threshold"),
+                    folder_path=arguments.get("folder_path"),
+                    limit=arguments.get("limit")
                 )
             else:
                 result = {"error": f"Unknown tool: {name}"}

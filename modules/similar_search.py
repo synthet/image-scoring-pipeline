@@ -123,3 +123,74 @@ def search_similar_images(example_path=None, example_image_id=None,
             break
 
     return results
+
+
+def find_near_duplicates(threshold=None, folder_path=None, limit=None):
+    """
+    Find near-duplicate image pairs in the database based on embedding cosine similarity.
+    
+    Returns a list of dicts representing near-duplicate pairs, sorted by similarity descending:
+        [{'image_id_a': int, 'image_id_b': int, 'file_path_a': str, 'file_path_b': str, 'similarity': float}, ...]
+    """
+    from modules import config
+    
+    if threshold is None:
+        threshold = config.get_config_value("similarity.duplicate_threshold", 0.98)
+    max_pairs = config.get_config_value("similarity.duplicate_max_pairs", 5000)
+    
+    if limit is None:
+        limit = max_pairs
+    else:
+        limit = min(limit, max_pairs)
+
+    candidates = db.get_embeddings_for_search(folder_path=folder_path)
+    if not candidates or len(candidates) < 2:
+        return []
+
+    ids = []
+    paths = []
+    vecs = []
+    for cid, cpath, cbytes in candidates:
+        ids.append(cid)
+        paths.append(cpath)
+        vecs.append(np.frombuffer(cbytes, dtype=np.float32))
+
+    matrix = np.stack(vecs)
+    matrix_norm = _normalize(matrix)
+
+    n = len(ids)
+    results = []
+    block_size = 2000
+    
+    for i in range(0, n, block_size):
+        end_i = min(i + block_size, n)
+        block_a = matrix_norm[i:end_i]
+        
+        for j in range(i, n, block_size):
+            end_j = min(j + block_size, n)
+            block_b = matrix_norm[j:end_j]
+            
+            sims = block_a @ block_b.T
+            
+            # Find indices where similarity >= threshold
+            rows, cols = np.where(sims >= threshold)
+            
+            for r, c in zip(rows, cols):
+                global_i = i + r
+                global_j = j + c
+                
+                # Only keep upper-triangle (i < j) to avoid self-matches and symmetric duplicates
+                if global_i < global_j:
+                    results.append({
+                        "image_id_a": int(ids[global_i]),
+                        "image_id_b": int(ids[global_j]),
+                        "file_path_a": paths[global_i],
+                        "file_path_b": paths[global_j],
+                        "similarity": round(float(sims[r, c]), 6)
+                    })
+                    
+    # Sort by highest similarity first, then deterministic IDs
+    results.sort(key=lambda x: (-x['similarity'], x['image_id_a'], x['image_id_b']))
+    
+    return results[:limit]
+

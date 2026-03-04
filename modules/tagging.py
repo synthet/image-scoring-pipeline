@@ -379,7 +379,7 @@ class TaggingRunner:
                     db.set_image_phase_status(row['id'], PhaseCode.KEYWORDS, PhaseStatus.FAILED,
                                               executor_version=TAGGER_VERSION,
                                               job_id=job_id, error=str(e))
-                except: pass
+                except Exception: pass
             event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": self.current_count, "total": self.total_count})
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")

@@ -359,7 +359,7 @@ class ScoringRunner:
                             for m, res in s_data['models'].items():
                                 if m not in scores and res.get('status') == 'success':
                                     scores[m] = float(res.get('normalized_score', 0))
-                except:
+                except (json.JSONDecodeError, ValueError, KeyError, TypeError):
                     pass
             
             # 3. Recalculate if we have enough data

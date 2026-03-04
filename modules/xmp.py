@@ -499,8 +499,14 @@ def write_metadata_unified(image_path: str,
     Returns:
         True if at least one write succeeded
     """
+    # Validate label against known values
+    VALID_LABELS = {'Red', 'Yellow', 'Green', 'Blue', 'Purple', 'None', '', None}
+    if label not in VALID_LABELS:
+        logger.warning("Invalid label value '%s', ignoring", label)
+        label = None
+
     success = False
-    
+
     # 1. Write to XMP sidecar (preferred for non-destructive workflow)
     if use_sidecar:
         try:

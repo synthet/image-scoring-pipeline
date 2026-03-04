@@ -152,6 +152,93 @@ class TestSearchSimilarImages:
         assert "embedding" in result["error"].lower() or "Run clustering" in result["error"]
 
 
+class TestFindNearDuplicates:
+    """Tests for find_near_duplicates with mocked DB."""
+
+    def test_returns_empty_when_no_embeddings(self):
+        with patch("modules.similar_search.db") as mock_db:
+            mock_db.get_embeddings_for_search.return_value = []
+            result = similar_search.find_near_duplicates()
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    def test_returns_empty_when_one_embedding(self):
+        with patch("modules.similar_search.db") as mock_db:
+            mock_db.get_embeddings_for_search.return_value = [
+                (1, "/a.jpg", np.random.randn(1280).astype(np.float32).tobytes())
+            ]
+            result = similar_search.find_near_duplicates()
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    def test_finds_near_duplicates(self):
+        dim = 1280
+        v1 = np.random.randn(dim).astype(np.float32)
+        v1 = v1 / np.linalg.norm(v1)
+        
+        v2 = v1 * 0.999 + np.random.randn(dim).astype(np.float32) * 0.001
+        v2 = v2 / np.linalg.norm(v2)
+        
+        v3 = np.random.randn(dim).astype(np.float32)
+        v3 = v3 / np.linalg.norm(v3)
+        
+        with patch("modules.similar_search.db") as mock_db:
+            with patch("modules.config.get_config_value") as mock_config:
+                # Mock config so our duplicate_threshold is lower for testing
+                mock_config.side_effect = lambda k, default: 0.95 if k == "similarity.duplicate_threshold" else default
+                mock_db.get_embeddings_for_search.return_value = [
+                    (1, "/v1.jpg", v1.tobytes()),
+                    (2, "/v2.jpg", v2.tobytes()),
+                    (3, "/v3.jpg", v3.tobytes()),
+                ]
+                
+                result = similar_search.find_near_duplicates()
+                
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["image_id_a"] == 1
+        assert result[0]["image_id_b"] == 2
+        assert result[0]["file_path_a"] == "/v1.jpg"
+        assert result[0]["file_path_b"] == "/v2.jpg"
+        assert result[0]["similarity"] >= 0.95
+
+    def test_limit_enforced(self):
+        dim = 1280
+        v = np.random.randn(dim).astype(np.float32)
+        v = v / np.linalg.norm(v)
+        
+        candidates = []
+        for i in range(1, 11): 
+            candidates.append((i, f"/v{i}.jpg", v.tobytes()))
+            
+        with patch("modules.similar_search.db") as mock_db:
+            mock_db.get_embeddings_for_search.return_value = candidates
+            
+            result = similar_search.find_near_duplicates(limit=5)
+            
+        assert isinstance(result, list)
+        assert len(result) == 5
+        
+    def test_excludes_self_pairs_and_symmetric(self):
+        dim = 1280
+        v = np.random.randn(dim).astype(np.float32)
+        v = v / np.linalg.norm(v)
+        
+        with patch("modules.similar_search.db") as mock_db:
+            mock_db.get_embeddings_for_search.return_value = [
+                (1, "/v1.jpg", v.tobytes()),
+                (2, "/v2.jpg", v.tobytes()),
+            ]
+            
+            result = similar_search.find_near_duplicates()
+            
+        assert isinstance(result, list)
+        assert len(result) == 1
+        pair = result[0]
+        assert (pair["image_id_a"] == 1 and pair["image_id_b"] == 2)
+
+
+
 @pytest.mark.firebird
 @pytest.mark.ml
 class TestSearchSimilarImagesIntegration:

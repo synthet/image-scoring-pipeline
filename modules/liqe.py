@@ -101,9 +101,9 @@ class LiqeScorer:
                         "note": "fallback_path",
                         "score_range": "1.0-5.0"
                     }
-            except:
+            except Exception:
                 pass
-                
+
             return {
                 "error": str(e),
                 "status": "failed"

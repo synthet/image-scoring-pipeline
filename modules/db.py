@@ -21,10 +21,33 @@ from modules.events import event_manager
 logger = logging.getLogger(__name__)
 DEBUG_DB_CONNECTION = os.environ.get("DEBUG_DB_CONNECTION", "").lower() in ("1", "true", "yes")
 
+# --- Sort validation whitelist (SQL injection prevention) ---
+ALLOWED_SORT_COLUMNS = {
+    "score", "score_general", "score_aesthetic", "score_technical",
+    "score_spaq", "score_ava", "score_koniq", "score_paq2piq", "score_liqe",
+    "rating", "file_name", "file_path", "created_at", "updated_at",
+    "id", "label", "folder_id",
+}
+ALLOWED_SORT_ORDERS = {"asc", "desc"}
+
+def _validate_sort(sort_by: str, order: str) -> tuple:
+    """Validate and sanitize ORDER BY parameters to prevent SQL injection."""
+    if sort_by not in ALLOWED_SORT_COLUMNS:
+        sort_by = "score_general"
+    if order.lower() not in ALLOWED_SORT_ORDERS:
+        order = "desc"
+    return sort_by, order.upper()
+
 DB_CONFIG = config.get_config_section('database')
 DB_FILE = DB_CONFIG.get('filename', "scoring_history.fdb")
 DB_USER = DB_CONFIG.get('user', "sysdba")
-DB_PASS = DB_CONFIG.get('password', "masterkey")
+DB_PASS = (
+    os.environ.get("FIREBIRD_PASSWORD")
+    or DB_CONFIG.get('password')
+    or "masterkey"
+)
+if DB_PASS == "masterkey":
+    logger.warning("Using default Firebird password 'masterkey' — set FIREBIRD_PASSWORD env var for production")
 
 import sys
 if "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST"):
@@ -178,7 +201,7 @@ def get_db():
                  try:
                      import subprocess
                      # output: default via 172.22.144.1 dev eth0 ...
-                     route_out = subprocess.check_output(["ip", "route", "show", "default"]).decode().strip()
+                     route_out = subprocess.check_output(["ip", "route", "show", "default"], timeout=2).decode().strip()
                      if "via" in route_out:
                          host_ip = route_out.split("via")[1].split()[0]
                  except Exception as e:
@@ -440,7 +463,7 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
     # Date Filter
     if date_range:
         start_date, end_date = date_range
-        print(f"DEBUG: Date Range: {start_date} to {end_date}")
+        logger.debug("Date Range: %s to %s", start_date, end_date)
         if start_date:
             conditions.append("CAST(created_at AS DATE) >= CAST(? AS DATE)")
             params.append(start_date)
@@ -479,47 +502,48 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
     c = conn.cursor()
     # Ensure integers
     try: page = int(page)
-    except: page = 1
+    except (ValueError, TypeError): page = 1
     try: page_size = int(page_size)
-    except: page_size = 50
-    
+    except (ValueError, TypeError): page_size = 50
+    sort_by, order = _validate_sort(sort_by, order)
+
     offset = (page - 1) * page_size
     if offset < 0: offset = 0
-    
+
     query = "SELECT * FROM images"
     params = []
     conditions = []
-    
+
     if rating_filter:
         placeholders = ','.join(['?'] * len(rating_filter))
         conditions.append(f"rating IN ({placeholders})")
         params.extend(rating_filter)
-        
+
     if label_filter:
         clean_labels = [l for l in label_filter if l != "None"]
         has_none = "None" in label_filter
-        
+
         lbl_conds = []
         if clean_labels:
             placeholders = ','.join(['?'] * len(clean_labels))
             lbl_conds.append(f"label IN ({placeholders})")
             params.extend(clean_labels)
-            
+
         if has_none:
             lbl_conds.append("(label IS NULL OR label = '')")
-            
+
         if lbl_conds:
             conditions.append(f"({' OR '.join(lbl_conds)})")
-            
+
     if keyword_filter and keyword_filter.strip():
         conditions.append("keywords LIKE ?")
         params.append(f"%{keyword_filter.strip()}%")
-        
+
     # Score Filters
     if min_score_general > 0:
         conditions.append("score_general >= ?")
         params.append(min_score_general)
-    
+
     if min_score_aesthetic > 0:
         conditions.append("score_aesthetic >= ?")
         params.append(min_score_aesthetic)
@@ -537,8 +561,8 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
         if end_date:
             conditions.append("CAST(created_at AS DATE) <= CAST(? AS DATE)")
             params.append(end_date)
-            
-    
+
+
     if folder_path:
         folder_id = get_or_create_folder(folder_path)
         conditions.append("folder_id = ?")
@@ -550,8 +574,8 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
-    
-    query += f" ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+
+    query += f" ORDER BY {sort_by} {order} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
     params.extend([offset, page_size])
     
     try:
@@ -582,17 +606,18 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
     
     # Ensure integers
     try: page = int(page)
-    except: page = 1
+    except (ValueError, TypeError): page = 1
     try: page_size = int(page_size)
-    except: page_size = 50
-    
+    except (ValueError, TypeError): page_size = 50
+    sort_by, order = _validate_sort(sort_by, order)
+
     offset = (page - 1) * page_size
     if offset < 0: offset = 0
-    
+
     # Build base query components
     params = []
     conditions = []
-    
+
     # Rating filter
     if rating_filter:
         placeholders = ','.join(['?'] * len(rating_filter))
@@ -664,7 +689,7 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         # OPTIMIZATION: Use Window Function to get count and data in single query
         # This reduces DB round trips by 50%
         
-        query = f"SELECT *, COUNT(*) OVER() as total_count FROM images{where_clause} ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+        query = f"SELECT *, COUNT(*) OVER() as total_count FROM images{where_clause} ORDER BY {sort_by} {order} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
         
         # Add pagination params
         params.extend([offset, page_size])
@@ -684,12 +709,12 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
             except (KeyError, IndexError, ValueError):
                 # Fallback if alias fails (though it shouldn't)
                 total_count = len(rows) # Incorrect but better than crashing
-                print("WARNING: Could not retrieve total_count from window function result")
+                logger.warning("Could not retrieve total_count from window function result")
         
         return rows, total_count
         
     except Exception as e:
-        print(f"ERROR in get_images_paginated_with_count: {e}")
+        logger.error("Error in get_images_paginated_with_count: %s", e)
         # Fallback to separate queries if Window Function fails (e.g. old Firebird version)
         try:
              # Query 1: Get count
@@ -697,11 +722,11 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
              total_count = c.fetchone()[0]
              
              # Query 2: Get data
-             query_fallback = f"SELECT * FROM images{where_clause} ORDER BY {sort_by} {order.upper()} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+             query_fallback = f"SELECT * FROM images{where_clause} ORDER BY {sort_by} {order} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
              c.execute(query_fallback, tuple(params))
              rows = c.fetchall()
              return rows, total_count
-        except:
+        except Exception:
              raise e
     finally:
         conn.close()
@@ -758,7 +783,7 @@ def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=Non
     # Date Filter
     if date_range:
         start_date, end_date = date_range
-        print(f"DEBUG: Date Range: {start_date} to {end_date}")
+        logger.debug("Date Range: %s to %s", start_date, end_date)
         if start_date:
             conditions.append("CAST(created_at AS DATE) >= CAST(? AS DATE)")
             params.append(start_date)
@@ -824,7 +849,7 @@ def init_db():
     if _db_initialized:
         return
     if os.environ.get('SKIP_DB_INIT'):
-        print("DEBUG: SKIP_DB_INIT set, skipping DDL.")
+        logger.debug("SKIP_DB_INIT set, skipping DDL.")
         return
 
     try:
@@ -844,7 +869,7 @@ def _table_exists(cursor, table_name):
         (table_name.upper(),)
     )
     result = cursor.fetchone() is not None
-    print(f"DEBUG: Table {table_name}: {result}")
+    logger.debug("Table %s: %s", table_name, result)
     return result
 
 def _index_exists(cursor, index_name):
@@ -891,7 +916,7 @@ def _init_db_impl():
             log BLOB SUB_TYPE TEXT
         )''')
         try: conn.commit()
-        except: pass
+        except Exception: pass
     
     # Images table
     if not _table_exists(c, 'IMAGES'):
@@ -911,7 +936,7 @@ def _init_db_impl():
             created_at TIMESTAMP
         )''')
         try: conn.commit()
-        except: pass
+        except Exception: pass
         c = conn.cursor()
     
     # Check for missing columns (Schema Migration)
@@ -920,23 +945,23 @@ def _init_db_impl():
     
     if "file_type" not in columns:
         try: c.execute("ALTER TABLE images ADD file_type VARCHAR(20)")
-        except: pass
+        except Exception: pass
 
     if "thumbnail_path" not in columns:
         try: c.execute("ALTER TABLE images ADD thumbnail_path VARCHAR(4000)")
-        except: pass
+        except Exception: pass
 
     if "thumbnail_path_win" not in columns:
         try: c.execute("ALTER TABLE images ADD thumbnail_path_win VARCHAR(4000)")
-        except: pass
+        except Exception: pass
         
     if "scores_json" not in columns:
         try: c.execute("ALTER TABLE images ADD scores_json BLOB SUB_TYPE TEXT")
-        except: pass
+        except Exception: pass
 
     if "image_embedding" not in columns:
         try: c.execute("ALTER TABLE images ADD image_embedding BLOB SUB_TYPE 0")
-        except: pass
+        except Exception: pass
 
     # Stacks table
     if not _table_exists(c, 'STACKS'):
@@ -947,7 +972,7 @@ def _init_db_impl():
             created_at TIMESTAMP
         )''')
         try: conn.commit()
-        except: pass
+        except Exception: pass
     
     # Folders table
     if not _table_exists(c, 'FOLDERS'):
@@ -960,7 +985,7 @@ def _init_db_impl():
             created_at TIMESTAMP
         )''')
         try: conn.commit()
-        except: pass
+        except Exception: pass
     
     # Check For Folders Columns
     if _table_exists(c, 'FOLDERS'):
@@ -969,14 +994,14 @@ def _init_db_impl():
 
         if "is_fully_scored" not in folder_cols:
              try: c.execute("ALTER TABLE folders ADD is_fully_scored INTEGER DEFAULT 0")
-             except: pass
+             except Exception: pass
 
         if "is_keywords_processed" not in folder_cols:
              try: c.execute("ALTER TABLE folders ADD is_keywords_processed INTEGER DEFAULT 0")
-             except: pass
+             except Exception: pass
         
         try: conn.commit()
-        except: pass
+        except Exception: pass
 
     if not _table_exists(c, 'CLUSTER_PROGRESS'):
         c.execute('''CREATE TABLE cluster_progress (
@@ -984,7 +1009,7 @@ def _init_db_impl():
             last_run TIMESTAMP
         )''')
         try: conn.commit()
-        except: pass
+        except Exception: pass
 
     # Culling Sessions table
     if not _table_exists(c, 'CULLING_SESSIONS'):
@@ -1002,7 +1027,7 @@ def _init_db_impl():
             completed_at TIMESTAMP
         )''')
         try: conn.commit()
-        except: pass
+        except Exception: pass
 
     # Culling Picks table
     if not _table_exists(c, 'CULLING_PICKS'):
@@ -1017,46 +1042,46 @@ def _init_db_impl():
             created_at TIMESTAMP
         )''')
         try: conn.commit()
-        except: pass
+        except Exception: pass
     
     # Index for fast lookup
     if not _index_exists(c, 'IDX_CULLING_PICKS_SESSION'):
         try: c.execute("CREATE INDEX idx_culling_picks_session ON culling_picks(session_id)")
-        except: pass
+        except Exception: pass
     if not _index_exists(c, 'IDX_CULLING_PICKS_IMAGE'):
         try: c.execute("CREATE INDEX idx_culling_picks_image ON culling_picks(image_id)")
-        except: pass
+        except Exception: pass
     
     try: conn.commit()
-    except: pass
+    except Exception: pass
     
     # Additional migrations (Scores etc)
     if not _index_exists(c, 'IDX_STACK_ID') and "stack_id" in columns:
         try: c.execute("CREATE INDEX idx_stack_id ON images(stack_id)")
-        except: pass
+        except Exception: pass
     if not _index_exists(c, 'IDX_FOLDER_ID') and "folder_id" in columns:
         try: c.execute("CREATE INDEX idx_folder_id ON images(folder_id)")
-        except: pass
+        except Exception: pass
 
     
     c = conn.cursor()
-    print("DEBUG: _init_db_impl started, checking for backup...")
+    logger.debug("_init_db_impl started, checking for backup...")
     try:
         # Check if migration needed (e.g. missing columns or old tables)
         migration_needed = False
         
         # Check if RESOLVED_PATHS exists
         if _table_exists(c, 'RESOLVED_PATHS'):
-             print("DEBUG: RESOLVED_PATHS exists, migration needed.")
+             logger.debug("RESOLVED_PATHS exists, migration needed.")
              migration_needed = True
         else:
-             print("DEBUG: RESOLVED_PATHS not found.")
+             logger.debug("RESOLVED_PATHS not found.")
              
         # Check if FILE_PATHS needs columns
-        print("DEBUG: Checking FILE_PATHS columns...")
+        logger.debug("Checking FILE_PATHS columns...")
         c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'FILE_PATHS'")
         fp_cols = [row[0].strip().lower() for row in c.fetchall()]
-        print(f"DEBUG: FILE_PATHS columns: {fp_cols}")
+        logger.debug("FILE_PATHS columns: %s", fp_cols)
         
         if "path_type" not in fp_cols or "is_verified" not in fp_cols:
              migration_needed = True
@@ -1065,10 +1090,10 @@ def _init_db_impl():
              print("Database migration required. Starting backup...")
              # Close conn to release lock for backup
              conn.close()
-             print("DEBUG: Closed conn for backup.")
+             logger.debug("Closed conn for backup.")
              _backup_db()
              # Re-open
-             print("DEBUG: Re-opening DB after backup.")
+             logger.debug("Re-opening DB after backup.")
              conn = get_db()
              c = conn.cursor()
 
@@ -1079,7 +1104,7 @@ def _init_db_impl():
         # But wait, if we closed conn, we need to re-fetch?
         # Yes, if we use fp_cols variable it is fine.
         
-        print("DEBUG: Starting Schema updates...")
+        logger.debug("Starting Schema updates...")
         c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'FILE_PATHS'")
         fp_cols = [row[0].strip().lower() for row in c.fetchall()]
         
@@ -1263,7 +1288,7 @@ def _init_db_impl():
                 except Exception as fk_err:
                     logger.debug("FK_IPS_IMAGES: %s", fk_err)
                     try: conn.rollback()
-                    except: pass
+                    except Exception: pass
                     c = conn.cursor()
 
             if not _constraint_exists(c, 'FK_IPS_PHASES'):
@@ -1274,7 +1299,7 @@ def _init_db_impl():
                 except Exception as fk_err:
                     logger.debug("FK_IPS_PHASES: %s", fk_err)
                     try: conn.rollback()
-                    except: pass
+                    except Exception: pass
                     c = conn.cursor()
 
         # JOBS — add phase_id column if missing
@@ -1289,7 +1314,7 @@ def _init_db_impl():
                 except Exception as m:
                     logger.debug("Adding jobs.phase_id: %s", m)
                     try: conn.rollback()
-                    except: pass
+                    except Exception: pass
                     c = conn.cursor()
             if "job_type" not in jobs_cols:
                 try:
@@ -1299,7 +1324,7 @@ def _init_db_impl():
                 except Exception as m:
                     logger.debug("Adding jobs.job_type: %s", m)
                     try: conn.rollback()
-                    except: pass
+                    except Exception: pass
                     c = conn.cursor()
             # FK for phase_id
             if not _constraint_exists(c, 'FK_JOBS_PHASES'):
@@ -1310,7 +1335,7 @@ def _init_db_impl():
                 except Exception as fk_err:
                     logger.debug("FK_JOBS_PHASES: %s", fk_err)
                     try: conn.rollback()
-                    except: pass
+                    except Exception: pass
                     c = conn.cursor()
 
             # Index on jobs.phase_id
@@ -1319,18 +1344,18 @@ def _init_db_impl():
                     c.execute("CREATE INDEX idx_jobs_phase_id ON jobs(phase_id)")
                     conn.commit()
                     c = conn.cursor()
-                except: pass
+                except Exception: pass
 
         conn.commit()
     except Exception as e:
         logger.error("Pipeline phases migration error: %s", e)
         try: conn.rollback()
-        except: pass
+        except Exception: pass
 
     # Seed phases and backfill
     try:
         conn.close()
-    except:
+    except Exception:
         pass
     seed_pipeline_phases()
     _backfill_phase_statuses()
@@ -1400,7 +1425,7 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
                 "field": field_name,
                 "value": value
             })
-        except: pass
+        except Exception: pass
         
         return True
     except Exception as e:
@@ -1431,7 +1456,7 @@ def update_image_path(image_hash, new_path):
         # Post-update folder fix
         try:
              update_image_folder_id(image_hash=image_hash) 
-        except: pass
+        except Exception: pass
         
         return True
     except Exception as e:
@@ -1476,7 +1501,7 @@ def update_image_folder_id(image_hash=None, image_id=None):
     finally:
         # conn close handled
         try: conn.close()
-        except: pass
+        except Exception: pass
 
 def register_image_path(image_id, path):
     """
@@ -1777,7 +1802,7 @@ def get_or_create_folder(folder_path, _depth=0):
              c.execute("SELECT id FROM folders WHERE path = ?", (folder_path,))
              row = c.fetchone()
              if row: return row[0]
-        except: pass
+        except Exception: pass
         
         logging.error(f"Error getting/creating folder {folder_path}: {e}")
         return None
@@ -1907,7 +1932,7 @@ def set_folder_scored(folder_path, is_scored=True):
             "path": folder_path,
             "is_fully_scored": is_scored
         })
-    except: pass
+    except Exception: pass
 
 def is_folder_scored(folder_path):
     folder_id = get_or_create_folder(folder_path)
@@ -2105,7 +2130,7 @@ def delete_folder_cache_entry(folder_path: str, delete_descendants: bool = True)
             from modules.events import event_manager
             for path in paths_to_delete:
                 event_manager.broadcast_threadsafe("folder_deleted", {"path": path})
-        except: pass
+        except Exception: pass
 
         return {
             "success": True,
@@ -2219,13 +2244,13 @@ def update_job_status(job_id, status, log=None):
             "job_id": job_id,
             "status": status
         })
-    except: pass
+    except Exception: pass
 
 def get_jobs(limit=50):
     conn = get_db()
     c = conn.cursor()
     try: limit = int(limit)
-    except: limit = 50
+    except (ValueError, TypeError): limit = 50
     if limit < 0: limit = 50
     c.execute("SELECT * FROM jobs ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY", (limit,))
     rows = c.fetchall()
@@ -2237,13 +2262,14 @@ def get_all_images(sort_by="score", order="desc", limit=100):
     c = conn.cursor()
     # Ensure limit is int
     try: limit = int(limit)
-    except: limit = 100
+    except (ValueError, TypeError): limit = 100
+    sort_by, order = _validate_sort(sort_by, order)
 
     if limit > 0:
-        query = f"SELECT * FROM images ORDER BY {sort_by} {order.upper()} FETCH FIRST ? ROWS ONLY"
+        query = f"SELECT * FROM images ORDER BY {sort_by} {order} FETCH FIRST ? ROWS ONLY"
         c.execute(query, (limit,))
     else:
-        query = f"SELECT * FROM images ORDER BY {sort_by} {order.upper()}"
+        query = f"SELECT * FROM images ORDER BY {sort_by} {order}"
         c.execute(query)
     rows = c.fetchall()
     conn.close()
@@ -2731,7 +2757,7 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
                     "label": label
                 }
             })
-        except: pass
+        except Exception: pass
         
         return True
     except Exception as e:
@@ -2801,13 +2827,13 @@ def export_db_to_json(output_path):
         if 'scores_json' in item and isinstance(item['scores_json'], str):
             try:
                 item['scores_json'] = json.loads(item['scores_json'])
-            except:
+            except (json.JSONDecodeError, ValueError):
                 pass # Leave as string if fail
-                
+
         if 'metadata' in item and isinstance(item['metadata'], str):
             try:
                 item['metadata'] = json.loads(item['metadata'])
-            except:
+            except (json.JSONDecodeError, ValueError):
                 pass
                 
         data.append(item)
@@ -3848,7 +3874,7 @@ def create_culling_session(folder_path, mode='automated'):
         try:
              print(f"SQL Code: {e.sql_code}", file=sys.stderr)
              print(f"GDS Codes: {e.gds_codes}", file=sys.stderr)
-        except: pass
+        except Exception: pass
         logging.error(f"Failed to create culling session: {e}")
         return None
     finally:
@@ -3940,7 +3966,7 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
                 },
                 "timestamp": int(time.time() * 1000)
             }) + '\n')
-    except: pass
+    except Exception: pass
     # #endregion agent log
     
     if not image_ids:
@@ -3974,7 +4000,7 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
                         },
                         "timestamp": int(time.time() * 1000)
                     }) + '\n')
-            except: pass
+            except Exception: pass
             # #endregion agent log
             
             # Use UPDATE OR INSERT for Firebird (equivalent to SQLite's INSERT OR IGNORE)
@@ -3999,7 +4025,7 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
                             "data": {"img_id": img_id, "group_id": group_id},
                             "timestamp": int(time.time() * 1000)
                         }) + '\n')
-                except: pass
+                except Exception: pass
                 # #endregion agent log
                 
                 added_count += 1
@@ -4022,7 +4048,7 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
                             },
                             "timestamp": int(time.time() * 1000)
                         }) + '\n')
-                except: pass
+                except Exception: pass
                 # #endregion agent log
                 
                 logging.error(f"Failed to add image {img_id} to session {session_id}: {e}")
@@ -4041,7 +4067,7 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
                     "data": {"added_count": added_count, "total": len(image_ids), "success": added_count > 0},
                     "timestamp": int(time.time() * 1000)
                 }) + '\n')
-        except: pass
+        except Exception: pass
         # #endregion agent log
         
         logging.info(f"Added {added_count}/{len(image_ids)} images to culling session {session_id}")
@@ -4453,6 +4479,32 @@ def get_image_embedding(image_id):
     finally:
         conn.close()
 
+def get_image_embeddings_batch(image_ids: list[int]) -> dict[int, bytes]:
+    """Return a dictionary mapping image_id to raw embedding bytes for the given sequence of image IDs."""
+    if not image_ids:
+        return {}
+    
+    conn = get_db()
+    c = conn.cursor()
+    embeddings = {}
+    try:
+        # For small lists typical in a stack, generic IN clause works fine.
+        placeholders = ','.join(['?'] * len(image_ids))
+        query = f"SELECT id, image_embedding FROM images WHERE id IN ({placeholders})"
+        c.execute(query, tuple(image_ids))
+        for row in c.fetchall():
+            uid = row['id']
+            # Accessing column by index or name
+            emb = row['image_embedding'] if 'image_embedding' in row.keys() else row[1]
+            if emb:
+                embeddings[uid] = bytes(emb)
+        return embeddings
+    except Exception as e:
+        logger.error(f"Error getting batch embeddings: {e}")
+        return embeddings
+    finally:
+        conn.close()
+
 
 def get_embeddings_for_search(folder_path=None, limit=None):
     """
@@ -4537,7 +4589,7 @@ def seed_pipeline_phases():
         logger.error("Failed to seed pipeline phases: %s", e)
         try:
             conn.rollback()
-        except:
+        except Exception:
             pass
     finally:
         conn.close()
@@ -4746,12 +4798,12 @@ def _backfill_phase_statuses():
         logger.error("Phase backfill error: %s", e)
         try:
             conn.rollback()
-        except:
+        except Exception:
             pass
     finally:
         try:
             conn.close()
-        except:
+        except Exception:
             pass
 
 
@@ -4894,7 +4946,7 @@ def set_image_phase_status(image_id, phase_code, status,
                      image_id, phase_code, e)
         try:
             conn.rollback()
-        except:
+        except Exception:
             pass
     finally:
         conn.close()
@@ -5060,7 +5112,7 @@ def _is_firebird_running(host_ip, port=3050):
             s.settimeout(1)
             result = s.connect_ex((host_ip, port))
             return result == 0
-    except:
+    except (OSError, Exception):
         return False
 
 def _launch_firebird_server_wsl(fb_exe_path):
