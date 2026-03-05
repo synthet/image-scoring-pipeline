@@ -4,6 +4,7 @@ import numpy as np
 import threading
 import sqlite3
 import time
+import json
 from datetime import datetime
 from PIL import Image
 from sklearn.cluster import AgglomerativeClustering
