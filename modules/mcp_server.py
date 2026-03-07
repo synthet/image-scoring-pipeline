@@ -3,7 +3,7 @@ MCP (Model Context Protocol) Server for Image Scoring WebUI
 
 Provides debugging and management tools for Cursor IDE and AI agents.
 
-Available Tools (17):
+Available Tools (18):
   Database & Query:
     - get_database_stats: Overall database statistics
     - query_images: Flexible image queries with filtering
@@ -80,7 +80,7 @@ DB_TOOLS = frozenset({
     "get_recent_jobs", "get_folder_tree", "get_stacks_summary",
     "get_failed_images", "get_error_summary", "check_database_health",
     "validate_file_paths", "run_processing_job", "search_similar_images",
-    "find_near_duplicates"
+    "find_near_duplicates", "propagate_tags", "find_outliers"
     # Note: get_model_status, get_runner_status, get_config, set_config_value, read_debug_log don't require DB
 })
 
@@ -1159,6 +1159,35 @@ def create_mcp_server() -> "Server":
                     },
                     "required": []
                 }
+            ),
+            Tool(
+                name="propagate_tags",
+                description="Propagate keywords from tagged images to untagged neighbors using embedding cosine similarity. Uses weighted voting with configurable thresholds. Defaults to dry_run=true for safe preview.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "folder_path": {"type": "string", "description": "Optional folder to scope propagation"},
+                        "dry_run": {"type": "boolean", "description": "Preview candidates without writing (default: true)", "default": True},
+                        "k": {"type": "integer", "description": "Number of nearest neighbors (default: 5)"},
+                        "min_similarity": {"type": "number", "description": "Minimum anchor similarity (default: 0.85)"},
+                        "min_keyword_confidence": {"type": "number", "description": "Minimum keyword score (default: 0.60)"}
+                    },
+                    "required": []
+                }
+            ),
+            Tool(
+                name="find_outliers",
+                description="Identify visually atypical images in a folder using embedding similarity analysis. Computes top-K mean cosine similarity per image and flags statistical outliers via z-score. Returns flagged images with explainability (nearest neighbors, folder stats).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "folder_path": {"type": "string", "description": "Folder path to analyze for outliers"},
+                        "z_threshold": {"type": "number", "description": "Z-score threshold for flagging outliers (default: 2.0)"},
+                        "k": {"type": "integer", "description": "Number of nearest neighbors for score computation (default: 10)"},
+                        "limit": {"type": "integer", "description": "Max outliers to return (default: 100)"}
+                    },
+                    "required": ["folder_path"]
+                }
             )
         ]
     
@@ -1227,6 +1256,23 @@ def create_mcp_server() -> "Server":
                     threshold=arguments.get("threshold"),
                     folder_path=arguments.get("folder_path"),
                     limit=arguments.get("limit")
+                )
+            elif name == "propagate_tags":
+                from modules.tagging import propagate_tags
+                result = propagate_tags(
+                    folder_path=arguments.get("folder_path"),
+                    dry_run=arguments.get("dry_run", True),
+                    k=arguments.get("k"),
+                    min_similarity=arguments.get("min_similarity"),
+                    min_keyword_confidence=arguments.get("min_keyword_confidence"),
+                )
+            elif name == "find_outliers":
+                from modules import similar_search
+                result = similar_search.find_outliers(
+                    folder_path=arguments.get("folder_path"),
+                    z_threshold=arguments.get("z_threshold"),
+                    k=arguments.get("k"),
+                    limit=arguments.get("limit"),
                 )
             else:
                 result = {"error": f"Unknown tool: {name}"}

@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Scoring Pipeline UI Mockup - Electron Style</title>
+  <style>
+    :root {
+      --accent-primary: #007acc;
+      --accent-hover: #0098ff;
+      --accent-success: #4caf50;
+      --accent-danger: #f44336;
+      --accent-queued: #888888;
+      
+      --bg-page: #1e1e1e;
+      --bg-panel: #252526;
+      --bg-surface: #333333;
+      --bg-input: #3c3c3c;
+      
+      --ink-base: rgba(255, 255, 255, 0.87);
+      --ink-muted: #cccccc;
+      --ink-dim: #888888;
+      
+      --line: #444444;
+      --line-light: #555555;
+      
+      --radius-md: 4px;
+      
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      color: var(--ink-base);
+      background-color: var(--bg-page);
+      overflow-x: hidden;
+    }
+
+    .shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* TOPBAR */
+    .topbar {
+      display: flex;
+      align-items: center;
+      padding: 10px 20px;
+      background-color: #333333;
+      border-bottom: 1px solid var(--line);
+      gap: 15px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+
+    .folder-meta {
+      font-size: 0.9em;
+      color: var(--ink-dim);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 5px;
+      margin-left: 20px;
+    }
+
+    .tab {
+      background: transparent;
+      border: none;
+      color: var(--ink-muted);
+      padding: 6px 12px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    .tab.active {
+      background: var(--accent-primary);
+      color: #fff;
+    }
+    
+    .tab:hover:not(.active) {
+      background: var(--bg-input);
+    }
+
+    .topbar-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 10px;
+    }
+
+    /* LAYOUT */
+    .layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 300px;
+      background-color: #252526;
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      gap: 15px;
+      overflow-y: auto;
+    }
+
+    h2.card-title, h3 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--ink-base);
+      margin-bottom: 10px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      background-color: var(--bg-input);
+      color: var(--ink-base);
+      border: 1px solid var(--line-light);
+      border-radius: var(--radius-md);
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn:hover {
+      background-color: #4a4a4a;
+    }
+
+    .btn.primary {
+      background-color: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: white;
+    }
+    
+    .btn.primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .btn.stop {
+      background-color: transparent;
+      border-color: var(--accent-danger);
+      color: var(--accent-danger);
+    }
+    
+    .btn.stop:hover {
+      background-color: rgba(244, 67, 54, 0.1);
+    }
+
+    .btn.success {
+      background-color: var(--accent-success);
+      border-color: var(--accent-success);
+      color: white;
+      border-left: 4px solid #fff;
+    }
+
+    .tree {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--ink-muted);
+    }
+
+    .tree li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+    }
+
+    .tree li:hover {
+      background-color: var(--bg-surface);
+    }
+
+    .tree li.active {
+      background-color: var(--accent-primary);
+      color: #fff;
+    }
+
+    .tree .indent-1 { padding-left: 20px; }
+    .tree .indent-2 { padding-left: 36px; }
+    .tree .indent-3 { padding-left: 52px; }
+
+    .tree .status {
+      font-family: monospace;
+      font-size: 0.8rem;
+    }
+    
+    .status.done { color: var(--accent-success); }
+    .status.partial { color: #5bc0de; }
+    .status.failed { color: var(--accent-danger); }
+    .status.empty { color: var(--ink-dim); }
+
+    .folder-summary p {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--ink-muted);
+      line-height: 1.5;
+    }
+
+    .folder-summary strong {
+      color: var(--ink-base);
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--ink-muted);
+    }
+
+    /* DASHBOARD / MAIN CONTENT */
+    .dashboard {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .panel {
+      background-color: var(--bg-panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      background-color: #2a2a2a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .panel-title {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .panel-body {
+      padding: 16px;
+    }
+
+    /* STEPPER */
+    .stepper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+    }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .step-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background-color: var(--bg-surface);
+      border: 2px solid var(--line-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: bold;
+      color: var(--ink-dim);
+      position: relative;
+      z-index: 2;
+    }
+
+    .step-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-transform: uppercase;
+    }
+
+    .step-count {
+      font-size: 0.75rem;
+      color: var(--ink-dim);
+    }
+
+    .connector {
+      height: 2px;
+      background-color: var(--line-light);
+      flex: 1;
+      margin-top: -38px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .step.done .step-dot {
+      border-color: var(--accent-success);
+      color: var(--accent-success);
+      background-color: rgba(76, 175, 80, 0.1);
+    }
+
+    .step.running .step-dot {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+      background-color: rgba(0, 122, 204, 0.1);
+      box-shadow: 0 0 0 4px rgba(0, 122, 204, 0.2);
+    }
+
+    .connector.done {
+      background-color: var(--accent-success);
+    }
+
+    .connector.running {
+      background: linear-gradient(90deg, var(--accent-success), var(--accent-primary));
+    }
+
+    /* PHASE CARDS */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+    }
+
+    .phase-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border-left: 4px solid var(--accent-primary); /* Default */
+    }
+
+    .phase-card.queued {
+      border-left-color: var(--accent-queued);
+    }
+
+    .phase-card.running {
+      border-left-color: var(--accent-primary);
+      border-right: 1px solid var(--accent-primary);
+      border-top: 1px solid var(--accent-primary);
+      border-bottom: 1px solid var(--accent-primary);
+    }
+
+    .phase-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .phase-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .phase-icon {
+      width: 24px;
+      height: 24px;
+      background: var(--bg-input);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      color: var(--ink-muted);
+    }
+    
+    .phase-card.running .phase-icon {
+      background: var(--accent-primary);
+      color: white;
+    }
+
+    .phase-status {
+      font-size: 0.75rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background-color: var(--bg-input);
+      color: var(--ink-muted);
+      text-transform: uppercase;
+    }
+
+    .phase-card.running .phase-status {
+      background-color: rgba(0, 122, 204, 0.2);
+      color: #61baff;
+    }
+
+    .phase-stats {
+      font-size: 0.85rem;
+      color: var(--ink-muted);
+    }
+
+    .progress {
+      height: 6px;
+      background-color: var(--bg-page);
+      border-radius: 3px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+
+    .fill {
+      height: 100%;
+      background-color: var(--ink-dim);
+      width: var(--w, 0%);
+    }
+
+    .phase-card.running .fill {
+      background-color: var(--accent-primary);
+    }
+
+    /* DETAILS TOGGLE */
+    .options-toggle {
+      background: none;
+      border: none;
+      color: var(--ink-dim);
+      cursor: pointer;
+      font-size: 0.8rem;
+      text-align: left;
+      padding: 0;
+      margin-top: 5px;
+    }
+    
+    .options-toggle:hover {
+      color: var(--ink-base);
+    }
+
+    .options-content {
+      display: none;
+      margin-top: 10px;
+      font-size: 0.85rem;
+      background: #2a2a2a;
+      padding: 10px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+    }
+
+    .options-content.visible {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    
+    .options-content label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink-muted);
+      cursor: pointer;
+    }
+
+    /* CONSOLE */
+    .console {
+      background-color: #1e1e1e;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 15px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: #d4d4d4;
+      line-height: 1.5;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .console-line { margin: 0; }
+    .console-time { color: var(--ink-dim); }
+    .console-info { color: #4fc1ff; }
+    .console-success { color: #b5cea8; }
+
+    .switch-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--ink-muted);
+    }
+    
+    input[type="checkbox"] {
+      accent-color: var(--accent-primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" id="shell">
+    <header class="topbar">
+      <div class="brand">Image Scoring WebUI</div>
+      
+      <div class="folder-meta">/Photos/D300/28-70mm/2015 - 48 images</div>
+
+      <nav class="tabs">
+        <button class="tab active">Pipeline</button>
+        <button class="tab">Gallery</button>
+        <button class="tab">Settings</button>
+      </nav>
+
+      <div class="topbar-actions">
+        <span style="color: #4caf50; font-size: 0.85rem; display: flex; align-items: center; gap: 5px;">
+          ● Connected
+        </span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- SIDEBAR -->
+      <aside class="sidebar" id="sidebar">
+        <div>
+          <h2 class="card-title">Folders</h2>
+          <div class="btn-row" style="margin-bottom: 10px;">
+            <button class="btn" style="flex: 1">Refresh</button>
+            <button class="btn" style="flex: 1">Collapse</button>
+          </div>
+          <ul class="tree">
+            <li><span class="status empty">+</span><span>Photos</span></li>
+            <li class="indent-1"><span class="status empty">+</span><span>D300</span></li>
+            <li class="indent-2"><span class="status empty">+</span><span>28-70mm</span></li>
+            <li class="indent-3 active"><span class="status partial">P</span><span>2015</span></li>
+            <li class="indent-1"><span class="status empty">+</span><span>D90</span></li>
+            <li class="indent-2"><span class="status empty">+</span><span>10.5mm</span></li>
+            <li class="indent-3"><span class="status done">D</span><span>2013</span></li>
+          </ul>
+        </div>
+
+        <div style="border-top: 1px solid var(--line); margin: 5px 0;"></div>
+
+        <div class="folder-summary">
+          <h2 class="card-title">Selected Folder</h2>
+          <p><strong>D300 / 28-70mm / 2015</strong><br>48 images</p>
+          <button class="btn success" style="width: 100%; margin-top: 10px; font-weight: bold;">Back to Gallery</button>
+        </div>
+        
+        <div style="border-top: 1px solid var(--line); margin: 5px 0;"></div>
+
+        <div>
+          <h2 class="card-title">Legend</h2>
+          <div class="legend">
+            <span><strong class="status done">D</strong> Done</span>
+            <span><strong class="status partial">P</strong> Running</span>
+            <span><strong class="status failed">F</strong> Failed</span>
+            <span><strong class="status empty">N</strong> Not Started</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- MAIN DASHBOARD -->
+      <main class="dashboard">
+        
+        <!-- PIPELINE PANEL -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">Pipeline Progress</h2>
+            <div class="folder-meta">Active: Scoring Mode</div>
+          </div>
+          <div class="panel-body">
+            <div class="stepper">
+              <div class="step done">
+                <div class="step-dot">1</div>
+                <div class="step-label">Index</div>
+                <div class="step-count">48 / 48</div>
+              </div>
+              <div class="connector done"></div>
+
+              <div class="step done">
+                <div class="step-dot">2</div>
+                <div class="step-label">Meta</div>
+                <div class="step-count">48 / 48</div>
+              </div>
+              <div class="connector running"></div>
+
+              <div class="step running">
+                <div class="step-dot">3</div>
+                <div class="step-label">Scoring</div>
+                <div class="step-count">32 / 48</div>
+              </div>
+              <div class="connector"></div>
+
+              <div class="step">
+                <div class="step-dot">4</div>
+                <div class="step-label">Culling</div>
+                <div class="step-count">0 / 48</div>
+              </div>
+              <div class="connector"></div>
+
+              <div class="step">
+                <div class="step-dot">5</div>
+                <div class="step-label">Keywords</div>
+                <div class="step-count">0 / 48</div>
+              </div>
+            </div>
+            
+            <div style="margin-top: 30px;" class="btn-row">
+              <button class="btn primary">Run All Pending</button>
+              <button class="btn stop">Stop All</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- PHASES PANEL -->
+        <div class="panel">
+          <div class="panel-body card-grid">
+            
+            <article class="phase-card running">
+              <div class="phase-head">
+                <div class="phase-title">
+                  <div class="phase-icon">S</div>
+                  Scoring
+                </div>
+                <div class="phase-status">Running</div>
+              </div>
+              <div class="phase-stats">32 / 48 images processed</div>
+              <div class="progress"><div class="fill" style="--w: 66.7%;"></div></div>
+              <button class="btn primary" style="margin-top: 5px;">Pause Scoring</button>
+              
+              <button class="options-toggle" data-target="scoring-options">▼ Options</button>
+              <div class="options-content" id="scoring-options">
+                <label><input type="checkbox"> Force Re-score existing</label>
+                <label><input type="checkbox"> Check metadata before scoring</label>
+              </div>
+            </article>
+
+            <article class="phase-card queued">
+              <div class="phase-head">
+                <div class="phase-title">
+                  <div class="phase-icon">C</div>
+                  Culling
+                </div>
+                <div class="phase-status" style="background:#333">Queued</div>
+              </div>
+              <div class="phase-stats">0 / 48 images processed</div>
+              <div class="progress"><div class="fill" style="--w: 0%;"></div></div>
+              <button class="btn" style="margin-top: 5px;">Run Culling</button>
+            </article>
+
+            <article class="phase-card queued">
+              <div class="phase-head">
+                <div class="phase-title">
+                  <div class="phase-icon">K</div>
+                  Keywords
+                </div>
+                <div class="phase-status" style="background:#333">Queued</div>
+              </div>
+              <div class="phase-stats">0 / 48 images processed</div>
+              <div class="progress"><div class="fill" style="--w: 0%;"></div></div>
+              <button class="btn" style="margin-top: 5px;">Run Keywords</button>
+            </article>
+
+          </div>
+        </div>
+
+        <!-- CONSOLE PANEL -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">Active Job Monitor (Scoring)</h2>
+            <div class="btn-row">
+              <label class="switch-row" style="margin-right: 15px;"><input type="checkbox" checked> Auto-scroll</label>
+              <button class="btn" style="padding: 2px 10px; font-size: 0.8rem;">Clear</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="console">
+              <p class="console-line"><span class="console-time">[10:12:21]</span> <span class="console-info">INFO</span> model loaded: mobilenet_v2 + aesthetic head</p>
+              <p class="console-line"><span class="console-time">[10:12:22]</span> <span class="console-info">INFO</span> scanning 48 candidate files from selected folder</p>
+              <p class="console-line"><span class="console-time">[10:12:24]</span> <span class="console-success">SUCCESS</span> scored IMG_1832.jpg score=0.82</p>
+              <p class="console-line"><span class="console-time">[10:12:25]</span> <span class="console-success">SUCCESS</span> scored IMG_1833.jpg score=0.77</p>
+              <p class="console-line"><span class="console-time">[10:12:25]</span> <span class="console-info">INFO</span> updating database IMAGE_PHASE_STATUS for row_id=8941</p>
+              <p class="console-line"><span class="console-time">[10:12:28]</span> <span class="console-success">SUCCESS</span> scored IMG_1834.jpg score=0.69</p>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--ink-dim); margin-top: 10px; margin-bottom: 0;">Unified monitor rotates to Culling and Keywords automatically when they become active.</p>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.options-toggle').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const targetId = e.target.getAttribute('data-target');
+        const content = document.getElementById(targetId);
+        if (content.classList.contains('visible')) {
+          content.classList.remove('visible');
+          e.target.textContent = '▼ Options';
+        } else {
+          content.classList.add('visible');
+          e.target.textContent = '▲ Options';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

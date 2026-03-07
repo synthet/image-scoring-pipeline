@@ -15,16 +15,12 @@ import os
 import platform
 import gradio as gr
 from pathlib import Path
-from modules import scoring, db, tagging, config, clustering, thumbnails, utils, culling
+from modules import scoring, db, tagging, config, clustering, thumbnails, utils, culling, pipeline_orchestrator
 from modules.ui import assets, navigation, common
 from modules.ui.tabs import (
-    scoring as scoring_tab,
-    tagging as tagging_tab,
-    folder_tree,
-    stacks as stacks_tab,
-    settings as settings_tab,
-    culling as culling_tab,
-    selection as selection_tab,
+    pipeline,
+    gallery,
+    settings as settings_tab
 )
 from modules.selection_runner import SelectionRunner
 from modules import phase_executors
@@ -45,6 +41,12 @@ def create_ui():
     tagging_runner = tagging.TaggingRunner()
     selection_runner = SelectionRunner()
 
+    orchestrator = pipeline_orchestrator.PipelineOrchestrator(
+        scoring_runner=runner,
+        tagging_runner=tagging_runner,
+        selection_runner=selection_runner
+    )
+
     # Register phase executors (binds phase codes to runner logic)
     phase_executors.register_all(
         scoring_runner=runner,
@@ -58,80 +60,65 @@ def create_ui():
     
     favicon_links = """
 <link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/favicon-180.png">
 """
     with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js + favicon_links) as demo:
         gr.Markdown("# Image Scoring WebUI")
         
         # Shared States
+        current_page = gr.State(1)
+        current_paths = gr.State([])
+        image_details = gr.State({})
+        shared_state = (current_page, current_paths, image_details)
+        current_folder_state = gr.State(None)
+        current_stack_state = gr.State(None)
+        
         # Status Polling Timer
         status_timer = gr.Timer(value=1.0)
 
         
         with gr.Tabs() as main_tabs:
-            # 1. Folder Tree Tab (Default) — receives runners for direct job launch
-            folder_tree_components = folder_tree.create_tab(
+            # 1. Pipeline Tab
+            pipeline_components = pipeline.create_tab(
                 app_config,
                 scoring_runner=runner,
                 tagging_runner=tagging_runner,
                 selection_runner=selection_runner,
+                orchestrator=orchestrator
             )
             
-            # 2. Scoring Tab
-            scoring_components = scoring_tab.create_tab(runner, app_config)
+            # 2. Gallery Tab
+            gallery_components = gallery.create_tab(shared_state, current_folder_state, current_stack_state, runner, tagging_runner, app_config)
             
-            # 3. Keywords Tab
-            tagging_components = tagging_tab.create_tab(tagging_runner, app_config)
+            # 3. Settings Tab
+            settings_components = settings_tab.create_tab(app_config)
             
-            # 4. Stacks Tab (legacy - hidden when selection.legacy_tabs_enabled is False)
-            legacy_enabled = app_config.get("selection", {}).get("legacy_tabs_enabled", False)
-            stacks_components = None
-            if legacy_enabled:
-                stacks_components = stacks_tab.create_stacks_tab()
-            
-            # 5. Culling Tab (legacy - hidden when selection.legacy_tabs_enabled is False)
-            culling_components = None
-            if legacy_enabled:
-                culling_components = culling_tab.create_tab(app_config)
-            
-            # 6. Selection Tab
-            selection_components = selection_tab.create_tab(selection_runner, app_config)
-            
-            # 7. Settings Tab
-            settings_tab.create_tab(app_config)
-            
-        # --- Cross-Tab Navigation Wiring ---
-        # (Folder Tree Run buttons now launch jobs directly — no tab navigation needed)
-
         # Monitor Loop
-        def monitor_status_wrapper():
-            s_res = scoring_tab.get_status_update(runner)
-            t_res = tagging_tab.get_status_update(tagging_runner)
-            stacks_res = stacks_tab.get_status_update() if stacks_components else []
-            sel_res = selection_tab.get_status_update(selection_runner)
-            return list(s_res) + list(t_res) + list(stacks_res) + list(sel_res)
+        def monitor_status_wrapper(selected_folder):
+            # Pass the currently selected folder from the Pipeline tree to update cards
+            res = pipeline.get_status_update(runner, tagging_runner, selection_runner, orchestrator, selected_folder)
+            return list(res)
 
         monitor_outputs = [
-            scoring_components['log_output'], scoring_components['status_html'],
-            scoring_components['run_btn'], scoring_components['stop_btn'], scoring_components['fix_btn'],
-            tagging_components['log_output'], tagging_components['status_html'],
-            tagging_components['run_btn'], tagging_components['stop_btn'],
+            pipeline_components["stepper_html"],
+            pipeline_components["scoring_card_html"],
+            pipeline_components["culling_card_html"],
+            pipeline_components["keywords_card_html"],
+            pipeline_components["monitor_html"],
+            pipeline_components["console_output"],
+            pipeline_components["run_all_btn"],
+            pipeline_components["stop_all_btn"],
+            pipeline_components["scoring_run_btn"],
+            pipeline_components["culling_run_btn"],
+            pipeline_components["keywords_run_btn"]
         ]
-        if stacks_components:
-            monitor_outputs.extend([stacks_components['status_html'], stacks_components['run_btn'], stacks_components['refresh_btn']])
-        monitor_outputs.extend([
-            selection_components['log_output'], selection_components['status_html'],
-            selection_components['run_btn'], selection_components['stop_btn'],
-        ])
 
         status_timer.tick(
             fn=monitor_status_wrapper,
-            inputs=[],
+            inputs=[pipeline_components.get("selected_path")],
             outputs=monitor_outputs
         )
 
-    return demo, runner, tagging_runner, selection_runner
+    return demo, runner, tagging_runner, selection_runner, orchestrator
 
 import re
 import time

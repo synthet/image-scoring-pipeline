@@ -26,7 +26,7 @@ Endpoints:
 from fastapi import APIRouter, HTTPException, Body, Query
 from fastapi.responses import FileResponse
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 import os
 from pathlib import Path
@@ -40,7 +40,7 @@ class ScoringStartRequest(BaseModel):
     (SPAQ, AVA, KonIQ, PaQ2PiQ, LIQE) to generate technical, aesthetic, and general quality scores.
     
     Attributes:
-        input_path: Directory path containing images to score. Supports Windows (D:\...) 
+        input_path: Directory path containing images to score. Supports Windows (D:\\...)
                    and WSL (/mnt/...) paths. Required.
         skip_existing: If True, skip images that already have complete scores in database. 
                       Default: True. Set to False to force re-scoring.
@@ -70,14 +70,13 @@ class ScoringStartRequest(BaseModel):
         example=False
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "input_path": "D:/Photos/2024",
-                "skip_existing": True,
-                "force_rescore": False
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "input_path": "D:/Photos/2024",
+            "skip_existing": True,
+            "force_rescore": False
         }
+    })
 
 
 class TaggingStartRequest(BaseModel):
@@ -122,15 +121,14 @@ class TaggingStartRequest(BaseModel):
         example=True
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "input_path": "D:/Photos/2024",
-                "custom_keywords": ["landscape", "sunset"],
-                "overwrite": False,
-                "generate_captions": True
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "input_path": "D:/Photos/2024",
+            "custom_keywords": ["landscape", "sunset"],
+            "overwrite": False,
+            "generate_captions": True
         }
+    })
 
 
 class SingleImageRequest(BaseModel):
@@ -152,12 +150,11 @@ class SingleImageRequest(BaseModel):
         example="D:/Photos/2024/image.jpg"
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "file_path": "D:/Photos/2024/image.jpg"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "file_path": "D:/Photos/2024/image.jpg"
         }
+    })
 
 
 class TaggingSingleRequest(BaseModel):
@@ -191,14 +188,13 @@ class TaggingSingleRequest(BaseModel):
         example=True
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "file_path": "D:/Photos/2024/image.jpg",
-                "custom_keywords": ["landscape"],
-                "generate_captions": True
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "file_path": "D:/Photos/2024/image.jpg",
+            "custom_keywords": ["landscape"],
+            "generate_captions": True
         }
+    })
 
 
 class StatusResponse(BaseModel):
@@ -249,16 +245,15 @@ class StatusResponse(BaseModel):
         example="scoring"
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "is_running": True,
-                "status_message": "Running...",
-                "progress": {"current": 45, "total": 100},
-                "log": "Starting batch processing...\nProcessing image 1...",
-                "job_type": "scoring"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "is_running": True,
+            "status_message": "Running...",
+            "progress": {"current": 45, "total": 100},
+            "log": "Starting batch processing...\nProcessing image 1...",
+            "job_type": "scoring"
         }
+    })
 
 
 class HealthResponse(BaseModel):
@@ -294,13 +289,12 @@ class HealthResponse(BaseModel):
         example=True
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "status": "healthy",
-                "scoring_available": True,
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "status": "healthy",
+            "scoring_available": True,
         }
+    })
 
 
 class FindDuplicatesRequest(BaseModel):
@@ -356,14 +350,13 @@ class ApiResponse(BaseModel):
         example={"job_id": 123, "input_path": "D:/Photos/2024"}
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "success": True,
-                "message": "Operation completed successfully",
-                "data": {"job_id": 123}
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "success": True,
+            "message": "Operation completed successfully",
+            "data": {"job_id": 123}
         }
+    })
 
 
 # Global references to runners (set by webui.py)
@@ -1276,6 +1269,66 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
             
+    # ========== Similar Images Endpoint ==========
+
+    @router.get(
+        "/similar",
+        summary="Find similar images",
+        description="""
+        Find images visually similar to a given image using embedding-based cosine similarity.
+        
+        **Query Parameters:**
+        - image_id: Required. Integer ID of the query image.
+        - limit: Maximum number of results (default: 20).
+        - folder_path: Optional. Scope search to a specific folder path.
+        - min_similarity: Minimum similarity threshold 0.0-1.0 (default: 0.80).
+        
+        **Returns:**
+        - query_image_id: ID of the query image
+        - results: List of {image_id, file_path, similarity}
+        - count: Number of results returned
+        
+        **Errors:**
+        - 400: Missing or invalid image_id
+        - 404: Image not found
+        - 400: No embeddings (run clustering first)
+        """
+    )
+    def get_similar_images(
+        image_id: int = Query(..., description="ID of the query image"),
+        limit: int = Query(20, ge=1, le=100, description="Maximum number of results"),
+        folder_path: Optional[str] = Query(None, description="Scope search to folder"),
+        min_similarity: Optional[float] = Query(0.80, ge=0.0, le=1.0, description="Minimum similarity threshold"),
+    ):
+        """Find images similar to the given image by ID."""
+        from modules import similar_search, db
+        # Verify image exists before searching
+        conn = db.get_db()
+        try:
+            c = conn.cursor()
+            c.execute("SELECT id FROM images WHERE id = ?", (image_id,))
+            if c.fetchone() is None:
+                raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
+        finally:
+            conn.close()
+        result = similar_search.search_similar_images(
+            example_image_id=image_id,
+            limit=limit,
+            folder_path=folder_path,
+            min_similarity=min_similarity,
+        )
+        if isinstance(result, dict) and "error" in result:
+            if "not found" in result["error"].lower():
+                raise HTTPException(status_code=404, detail=result["error"])
+            if "no embeddings" in result["error"].lower() or "clustering" in result["error"].lower():
+                raise HTTPException(status_code=400, detail=result["error"])
+            raise HTTPException(status_code=400, detail=result["error"])
+        return {
+            "query_image_id": image_id,
+            "results": result,
+            "count": len(result),
+        }
+
     # ========== Find Duplicates Endpoints ==========
 
     @router.post("/duplicates/find", response_model=ApiResponse)

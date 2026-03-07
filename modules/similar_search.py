@@ -194,3 +194,134 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
     
     return results[:limit]
 
+
+def find_outliers(folder_path, z_threshold=None, k=None, limit=None):
+    """
+    Identify images that are visually atypical inside a folder.
+
+    For each image, computes the mean cosine similarity to its top-K nearest
+    neighbors, then z-scores the distribution and flags images whose z-score
+    falls at or below -z_threshold.
+
+    Returns a dict with:
+        outliers  – list of flagged images (sorted by z_score ascending)
+        stats     – folder-level summary (mean, std, total, z_threshold)
+        skipped   – list of images missing embeddings (anomaly_class: embedding_missing)
+    """
+    from modules import config
+
+    if z_threshold is None:
+        z_threshold = config.get_config_value("similarity.outlier_z_threshold", 2.0)
+    if k is None:
+        k = config.get_config_value("similarity.outlier_k_neighbors", 10)
+    min_folder_size = config.get_config_value("similarity.outlier_min_folder_size", 20)
+    if limit is None:
+        limit = 100
+
+    if not folder_path:
+        return {"error": "folder_path is required"}
+
+    # Fetch all images in the folder (with and without embeddings)
+    candidates = db.get_embeddings_for_search(folder_path=folder_path)
+
+    # Also detect images that have no embedding at all
+    skipped = []
+    ids = []
+    paths = []
+    vecs = []
+
+    if candidates:
+        for cid, cpath, cbytes in candidates:
+            if cbytes is None:
+                skipped.append({
+                    "image_id": int(cid),
+                    "file_path": cpath,
+                    "anomaly_class": "embedding_missing",
+                })
+                continue
+            ids.append(cid)
+            paths.append(cpath)
+            vecs.append(np.frombuffer(cbytes, dtype=np.float32))
+
+    n = len(ids)
+    if n < min_folder_size:
+        return {
+            "outliers": [],
+            "stats": {
+                "total_with_embeddings": n,
+                "min_folder_size": min_folder_size,
+                "reason": "folder_too_small",
+            },
+            "skipped": skipped,
+        }
+
+    matrix = np.stack(vecs)
+    matrix_norm = _normalize(matrix)
+
+    # Full pairwise cosine similarity
+    sim_matrix = matrix_norm @ matrix_norm.T
+
+    # For each image, compute mean of top-K similarities (excluding self)
+    effective_k = min(k, n - 1)
+    scores = np.empty(n, dtype=np.float64)
+    for i in range(n):
+        row = sim_matrix[i].copy()
+        row[i] = -np.inf  # exclude self
+        top_k = np.partition(row, -effective_k)[-effective_k:]
+        scores[i] = float(np.mean(top_k))
+
+    # Z-score
+    folder_mean = float(np.mean(scores))
+    folder_std = float(np.std(scores))
+    if folder_std == 0:
+        z_scores = np.zeros(n, dtype=np.float64)
+    else:
+        z_scores = (scores - folder_mean) / folder_std
+
+    # Flag outliers
+    outlier_indices = np.where(z_scores <= -z_threshold)[0]
+
+    # Sort by z_score ascending (worst outliers first)
+    outlier_indices = outlier_indices[np.argsort(z_scores[outlier_indices])]
+
+    outliers = []
+    for idx in outlier_indices:
+        if len(outliers) >= limit:
+            break
+
+        # Nearest 3 neighbors for explainability
+        row = sim_matrix[idx].copy()
+        row[idx] = -np.inf
+        neighbor_k = min(3, n - 1)
+        top_neighbor_indices = np.argpartition(row, -neighbor_k)[-neighbor_k:]
+        top_neighbor_indices = top_neighbor_indices[np.argsort(-row[top_neighbor_indices])]
+
+        nearest_neighbors = []
+        for ni in top_neighbor_indices:
+            nearest_neighbors.append({
+                "image_id": int(ids[ni]),
+                "file_path": paths[ni],
+                "similarity": round(float(sim_matrix[idx, ni]), 6),
+            })
+
+        outliers.append({
+            "image_id": int(ids[idx]),
+            "file_path": paths[idx],
+            "outlier_score": round(float(scores[idx]), 6),
+            "z_score": round(float(z_scores[idx]), 4),
+            "nearest_neighbors": nearest_neighbors,
+        })
+
+    return {
+        "outliers": outliers,
+        "stats": {
+            "total_with_embeddings": n,
+            "folder_mean": round(folder_mean, 6),
+            "folder_std": round(folder_std, 6),
+            "z_threshold": z_threshold,
+            "k_neighbors": effective_k,
+            "outliers_found": len(outliers),
+        },
+        "skipped": skipped,
+    }
+

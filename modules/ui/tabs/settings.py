@@ -32,7 +32,7 @@ def create_tab(app_config):
     ui_config = app_config.get('ui', {})
     tagging_config = app_config.get('tagging', {})
     
-    with gr.TabItem("Configurations", id="configurations"):
+    with gr.TabItem("Settings", id="settings"):
         gr.Markdown("### ⚙️ Experimental & Advanced Configuration")
         gr.Markdown("*Configure experimental options and advanced settings. Changes are saved to config.json.*")
         

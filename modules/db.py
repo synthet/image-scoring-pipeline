@@ -21,6 +21,46 @@ from modules.events import event_manager
 logger = logging.getLogger(__name__)
 DEBUG_DB_CONNECTION = os.environ.get("DEBUG_DB_CONNECTION", "").lower() in ("1", "true", "yes")
 
+
+def _generate_image_uuid(metadata: dict | None) -> str:
+    """
+    Generate a UUID for an image.
+
+    Priority:
+    1. Existing ImageUniqueID already embedded in EXIF/XMP metadata.
+    2. Deterministic UUID: SHA-256 hash of CreateDate + SubSecTimeOriginal +
+       Model + LensModel + ShutterCount (stable across machines and path changes).
+    3. Fallback: random uuid4().
+    """
+    import uuid
+    import hashlib
+
+    if metadata and isinstance(metadata, dict):
+        # 1. Honour existing embedded UUID
+        existing = metadata.get("ImageUniqueID") or metadata.get("xmp:ImageUniqueID")
+        if existing and isinstance(existing, str) and existing.strip():
+            return existing.strip()
+
+        # 2. Deterministic UUID from EXIF identity fields
+        create_date = (
+            metadata.get("CreateDate")
+            or metadata.get("DateTimeOriginal")
+            or ""
+        )
+        sub_sec = metadata.get("SubSecTimeOriginal") or metadata.get("SubSecTime") or ""
+        model = metadata.get("Model") or ""
+        lens_model = metadata.get("LensModel") or ""
+        shutter_count = str(metadata.get("ShutterCount") or "")
+
+        if create_date:  # Only use deterministic when we have at least a date
+            fingerprint = f"{create_date}|{sub_sec}|{model}|{lens_model}|{shutter_count}"
+            digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
+            # Format as 8-4-4-4-12 UUID
+            return f"{digest[0:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}"
+
+    # 3. Random fallback
+    return str(uuid.uuid4())
+
 # --- Sort validation whitelist (SQL injection prevention) ---
 ALLOWED_SORT_COLUMNS = {
     "score", "score_general", "score_aesthetic", "score_technical",
@@ -1204,6 +1244,16 @@ def _init_db_impl():
                     conn.rollback()
                 except Exception:
                     pass
+        if "image_uuid" not in img_cols:
+            try:
+                c.execute("ALTER TABLE images ADD image_uuid VARCHAR(36)")
+                conn.commit()
+            except Exception as m:
+                logger.debug("Adding image_uuid column: %s", m)
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
 
     except Exception as e:
         logger.error("Migration error: %s", e)
@@ -1352,13 +1402,12 @@ def _init_db_impl():
         try: conn.rollback()
         except Exception: pass
 
-    # Seed phases and backfill
+    # Seed phases
     try:
         conn.close()
     except Exception:
         pass
     seed_pipeline_phases()
-    _backfill_phase_statuses()
 
     # Re-open for final commit check
     try:
@@ -2358,12 +2407,20 @@ def sync_folder_to_db(folder_path, job_id=None):
             file_name = Path(image_path).name
             
             # Upsert
-            c.execute('''UPDATE OR INSERT INTO images 
+            c.execute('''UPDATE OR INSERT INTO images
                           (job_id, file_path, file_name, score, scores_json, created_at)
                           VALUES (?, ?, ?, ?, ?, ?)
                           MATCHING (file_path)''',
                       (job_id, str(image_path), file_name, score, json.dumps(data), utils.get_image_creation_time(str(image_path))))
-            
+
+            # Assign UUID only if not already set (preserve existing)
+            meta_dict = data.get("metadata") if isinstance(data.get("metadata"), dict) else None
+            image_uuid = _generate_image_uuid(meta_dict)
+            c.execute(
+                "UPDATE images SET image_uuid = ? WHERE file_path = ? AND (image_uuid IS NULL OR image_uuid = '')",
+                (image_uuid, str(image_path))
+            )
+
             count += 1
         except Exception as e:
             logging.error(f"Failed to sync {json_file}: {e}")
@@ -2382,11 +2439,6 @@ def upsert_image(job_id, result):
     conn = get_db()
     c = conn.cursor()
     from modules import utils
-    
-    # DEBUG
-    logging.debug(f"DEBUG UPSERT ID: {result.get('image_name')}")
-    logging.debug(f"DEBUG UPSERT TECH: {result.get('score_technical')}")
-    logging.debug(f"DEBUG UPSERT GEN: {result.get('score_general')}")
 
     # Extract fields
     image_path = result.get("image_path", "")
@@ -2542,7 +2594,21 @@ def upsert_image(job_id, result):
     
     row = c.fetchone()
     image_id = row[0] if row else None
-            
+
+    # Assign image_uuid on creation (preserve existing UUID if already set)
+    if image_id:
+        try:
+            meta_dict = result.get("metadata") if isinstance(result.get("metadata"), dict) else (
+                json.loads(result.get("metadata")) if isinstance(result.get("metadata"), str) else None
+            )
+            new_uuid = _generate_image_uuid(meta_dict)
+            c.execute(
+                "UPDATE images SET image_uuid = ? WHERE id = ? AND (image_uuid IS NULL OR image_uuid = '')",
+                (new_uuid, image_id)
+            )
+        except Exception as _uuid_err:
+            logger.warning("Could not assign image_uuid for id %s: %s", image_id, _uuid_err)
+
     conn.commit()
     conn.close()
 
@@ -2554,7 +2620,7 @@ def upsert_image(job_id, result):
         register_image_path(image_id, image_path)
         # Also resolve Windows path for native viewer
         resolve_windows_path(image_id, image_path, verify=False)
-        
+
         event_manager.broadcast_threadsafe("image_scored", {
             "image_id": image_id,
             "file_path": image_path,
@@ -4551,6 +4617,99 @@ def get_embeddings_for_search(folder_path=None, limit=None):
         conn.close()
 
 
+def get_images_missing_embeddings(folder_path=None, limit=None):
+    """
+    Return image rows with image_embedding IS NULL.
+    Columns: id, file_path, thumbnail_path, thumbnail_path_win (for path resolution in WSL).
+    Optionally filter by folder_path and cap with limit.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        if folder_path:
+            norm = os.path.normpath(folder_path)
+            c.execute("SELECT id FROM folders WHERE path = ?", (norm,))
+            frow = c.fetchone()
+            if not frow:
+                return []
+            folder_id = frow[0]
+            query = """
+                SELECT id, file_path, thumbnail_path, thumbnail_path_win
+                FROM images
+                WHERE image_embedding IS NULL AND folder_id = ?
+                ORDER BY id
+            """
+            params = [folder_id]
+        else:
+            query = """
+                SELECT id, file_path, thumbnail_path, thumbnail_path_win
+                FROM images
+                WHERE image_embedding IS NULL
+                ORDER BY id
+            """
+            params = []
+
+        if limit:
+            query += " FETCH FIRST ? ROWS ONLY"
+            params.append(limit)
+
+        c.execute(query, tuple(params))
+        return c.fetchall()
+    except Exception as e:
+        logger.error("Error loading images missing embeddings: %s", e)
+        return []
+    finally:
+        conn.close()
+
+
+def get_images_for_tag_propagation(folder_path=None):
+    """
+    Return two lists for tag propagation:
+      untagged: [(image_id, file_path, embedding_bytes)] — images with embeddings but no keywords
+      tagged:   [(image_id, file_path, embedding_bytes, keywords_str)] — images with embeddings AND keywords
+
+    Optional folder_path narrows scope to a single folder.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        folder_filter = ""
+        params = []
+        if folder_path:
+            norm = os.path.normpath(folder_path)
+            c.execute("SELECT id FROM folders WHERE path = ?", (norm,))
+            frow = c.fetchone()
+            if not frow:
+                return [], []
+            folder_filter = " AND folder_id = ?"
+            params.append(frow[0])
+
+        # Untagged images with embeddings
+        q_untagged = (
+            "SELECT id, file_path, image_embedding FROM images "
+            "WHERE image_embedding IS NOT NULL "
+            "AND (keywords IS NULL OR keywords = '')" + folder_filter
+        )
+        c.execute(q_untagged, tuple(params))
+        untagged = [(row[0], row[1], bytes(row[2])) for row in c.fetchall()]
+
+        # Tagged images with embeddings
+        q_tagged = (
+            "SELECT id, file_path, image_embedding, keywords FROM images "
+            "WHERE image_embedding IS NOT NULL "
+            "AND keywords IS NOT NULL AND keywords != ''" + folder_filter
+        )
+        c.execute(q_tagged, tuple(params))
+        tagged = [(row[0], row[1], bytes(row[2]), row[3]) for row in c.fetchall()]
+
+        return untagged, tagged
+    except Exception as e:
+        logging.error("Error loading images for tag propagation: %s", e)
+        return [], []
+    finally:
+        conn.close()
+
+
 # ===========================================================================
 # Pipeline Phases — helper functions
 # ===========================================================================
@@ -4595,216 +4754,6 @@ def seed_pipeline_phases():
         conn.close()
     # Clear cache so it's rebuilt on next access
     _phase_id_cache.clear()
-
-
-def _backfill_phase_statuses():
-    """
-    Retroactive backfill: analyse every existing image record and infer
-    current phase status from DB columns AND filesystem state.
-
-    For each image, checks:
-      - Indexing:  image row exists → done
-      - Metadata:  thumbnail file actually exists on disk + XMP sidecar present
-      - Scoring:   score_general > 0  (with valid sub-scores)
-      - Culling:   stack_id set OR cull_decision present
-      - Keywords:  keywords field non-empty
-
-    All backfilled records are stamped with the current APP_VERSION.
-    Idempotent — only inserts rows that don't already exist.
-    """
-    from modules.version import APP_VERSION
-
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        # Resolve phase IDs
-        phase_ids = {}
-        c.execute("SELECT id, code FROM pipeline_phases")
-        for row in c.fetchall():
-            code = row[1].strip() if isinstance(row[1], str) else row[1]
-            phase_ids[code] = row[0]
-
-        if not phase_ids:
-            logger.info("Backfill: No pipeline phases found, skipping.")
-            return
-
-        # ── Fast-path: skip expensive scan if every image already has all phase rows ──
-        c.execute("SELECT COUNT(*) FROM images")
-        total_images = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM image_phase_status")
-        total_status_rows = c.fetchone()[0]
-        expected_rows = total_images * len(phase_ids)
-
-        if total_status_rows >= expected_rows and total_images > 0:
-            logger.info(
-                "Backfill: fast-path — %d status rows match %d images × %d phases, nothing to do.",
-                total_status_rows, total_images, len(phase_ids),
-            )
-            return
-        # ── End fast-path ──
-
-        now = datetime.datetime.now()
-
-        # Fetch all images with relevant columns in one query
-        c.execute(
-            "SELECT id, file_path, thumbnail_path, score_general, "
-            "       score_spaq, score_ava, score_liqe, "
-            "       keywords, stack_id, cull_decision, model_version "
-            "FROM images"
-        )
-        all_images = c.fetchall()
-        logger.info("Backfill: Analysing %d images for phase status...", len(all_images))
-
-        # Fetch existing status rows to avoid re-inserting
-        existing = set()
-        c.execute("SELECT image_id, phase_id FROM image_phase_status")
-        for row in c.fetchall():
-            existing.add((row[0], row[1]))
-
-        counts = {code: 0 for code in phase_ids}
-
-        for img in all_images:
-            img_id = img[0]
-            file_path = img[1] or ""
-            thumb_path = img[2] or ""
-            score_general = img[3]
-            score_spaq = img[4]
-            score_ava = img[5]
-            score_liqe = img[6]
-            keywords = img[7] or ""
-            stack_id = img[8]
-            cull_decision = img[9] or ""
-            model_version = img[10] or ""
-
-            # --- Phase: Indexing ---
-            if "indexing" in phase_ids:
-                pid = phase_ids["indexing"]
-                if (img_id, pid) not in existing:
-                    # Image row exists in DB → it's been indexed
-                    c.execute(
-                        "INSERT INTO image_phase_status "
-                        "(image_id, phase_id, status, app_version, updated_at, attempt_count) "
-                        "VALUES (?, ?, 'done', ?, ?, 0)",
-                        (img_id, pid, APP_VERSION, now)
-                    )
-                    existing.add((img_id, pid))
-                    counts["indexing"] += 1
-
-            # --- Phase: Metadata ---
-            if "metadata" in phase_ids:
-                pid = phase_ids["metadata"]
-                if (img_id, pid) not in existing:
-                    has_thumb = False
-                    has_sidecar = False
-
-                    # Check thumbnail actually exists on disk
-                    if thumb_path:
-                        try:
-                            has_thumb = os.path.exists(thumb_path)
-                        except Exception:
-                            pass
-
-                    # Check XMP sidecar exists
-                    if file_path:
-                        try:
-                            sidecar = file_path + ".xmp"
-                            # Also check common pattern: same name with .xmp extension
-                            base, _ = os.path.splitext(file_path)
-                            sidecar_alt = base + ".xmp"
-                            has_sidecar = os.path.exists(sidecar) or os.path.exists(sidecar_alt)
-                        except Exception:
-                            pass
-
-                    if has_thumb:
-                        # Thumbnail exists → metadata at least partially done
-                        status = "done" if has_sidecar else "done"  # thumb is sufficient
-                        c.execute(
-                            "INSERT INTO image_phase_status "
-                            "(image_id, phase_id, status, app_version, updated_at, attempt_count) "
-                            "VALUES (?, ?, ?, ?, ?, 0)",
-                            (img_id, pid, status, APP_VERSION, now)
-                        )
-                        existing.add((img_id, pid))
-                        counts["metadata"] += 1
-
-            # --- Phase: Scoring ---
-            if "scoring" in phase_ids:
-                pid = phase_ids["scoring"]
-                if (img_id, pid) not in existing:
-                    # Check that we have a valid general score
-                    has_scores = (
-                        score_general is not None
-                        and isinstance(score_general, (int, float))
-                        and score_general > 0
-                    )
-
-                    if has_scores:
-                        c.execute(
-                            "INSERT INTO image_phase_status "
-                            "(image_id, phase_id, status, app_version, executor_version, "
-                            " updated_at, attempt_count) "
-                            "VALUES (?, ?, 'done', ?, ?, ?, 0)",
-                            (img_id, pid, APP_VERSION, model_version, now)
-                        )
-                        existing.add((img_id, pid))
-                        counts["scoring"] += 1
-
-            # --- Phase: Culling ---
-            if "culling" in phase_ids:
-                pid = phase_ids["culling"]
-                if (img_id, pid) not in existing:
-                    has_culling = (
-                        stack_id is not None
-                        or (cull_decision and cull_decision.strip())
-                    )
-
-                    if has_culling:
-                        c.execute(
-                            "INSERT INTO image_phase_status "
-                            "(image_id, phase_id, status, app_version, updated_at, attempt_count) "
-                            "VALUES (?, ?, 'done', ?, ?, 0)",
-                            (img_id, pid, APP_VERSION, now)
-                        )
-                        existing.add((img_id, pid))
-                        counts["culling"] += 1
-
-            # --- Phase: Keywords ---
-            if "keywords" in phase_ids:
-                pid = phase_ids["keywords"]
-                if (img_id, pid) not in existing:
-                    has_keywords = bool(keywords and keywords.strip())
-
-                    if has_keywords:
-                        c.execute(
-                            "INSERT INTO image_phase_status "
-                            "(image_id, phase_id, status, app_version, updated_at, attempt_count) "
-                            "VALUES (?, ?, 'done', ?, ?, 0)",
-                            (img_id, pid, APP_VERSION, now)
-                        )
-                        existing.add((img_id, pid))
-                        counts["keywords"] += 1
-
-        conn.commit()
-
-        # Log summary
-        total = sum(counts.values())
-        if total > 0:
-            parts = [f"{code}={n}" for code, n in counts.items() if n > 0]
-            logger.info("Backfill complete: %d status rows created (%s)", total, ", ".join(parts))
-        else:
-            logger.info("Backfill: all images already have phase status rows.")
-
-    except Exception as e:
-        logger.error("Phase backfill error: %s", e)
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
 
 
 def get_phase_id(phase_code):
@@ -5054,11 +5003,10 @@ def get_folder_phase_summary(folder_path):
                 COALESCE(SUM(CASE WHEN ips.status = 'failed' THEN 1 ELSE 0 END), 0) as failed_count,
                 COALESCE(SUM(CASE WHEN ips.status = 'running' THEN 1 ELSE 0 END), 0) as running_count
             FROM pipeline_phases pp
-            CROSS JOIN images i
+            CROSS JOIN (SELECT id FROM images WHERE folder_id = ?) i
             LEFT JOIN image_phase_status ips
                 ON ips.image_id = i.id AND ips.phase_id = pp.id
             WHERE pp.enabled = 1
-              AND i.folder_id = ?
             GROUP BY pp.code, pp.name, pp.sort_order
             ORDER BY pp.sort_order
             """,

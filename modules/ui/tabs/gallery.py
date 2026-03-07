@@ -134,8 +134,6 @@ def get_gallery_data(page, page_size, sort_by, sort_order, rating_filter, label_
         debug.log_metric("Cache Hit Rate", f"{cache_hits}/{len(rows)} ({100*cache_hits/len(rows):.1f}%)" if len(rows)>0 else "0/0", "")
         debug.log_metric("Fallback Calls", f"{fallback_calls}", "")
 
-        print(f"DEBUG: get_gallery_data - Rows: {len(rows)}, Total Count: {total_count}, Images: {len(images)}, Raw Paths: {len(raw_paths)}")
-        
         return images, page_label, total_pages, raw_paths
         
     except Exception as e:
@@ -217,6 +215,53 @@ def export_database(export_format, cols_basic, cols_scores, cols_metadata, cols_
         return gr.update(value=f"❌ {msg}", visible=True)
 
 # Helper Actions Wrappers - defined in common, but wrappers for click events here
+def find_similar_handler(image_details, limit=20, folder_path=None):
+    """
+    Find images visually similar to the selected image.
+    Returns (gallery_images, status_markdown) for the Similar Images accordion.
+    """
+    if not image_details or not isinstance(image_details, dict):
+        return [], "Select an image first."
+    image_id = image_details.get("id")
+    if not image_id:
+        return [], "No image selected."
+    try:
+        from modules import similar_search, utils
+        wsl_folder = utils.convert_path_to_wsl(folder_path) if folder_path else None
+        result = similar_search.search_similar_images(
+            example_image_id=image_id,
+            limit=limit,
+            folder_path=wsl_folder,
+            min_similarity=0.80,
+        )
+    except Exception as e:
+        return [], f"Error: {e}"
+    if isinstance(result, dict) and "error" in result:
+        return [], result["error"]
+    if not result:
+        return [], "No similar images found."
+    images = []
+    for r in result:
+        file_path = r.get("file_path")
+        sim = r.get("similarity", 0)
+        image_id_r = r.get("image_id")
+        if not file_path:
+            continue
+        details = db.get_image_details(file_path)
+        p = None
+        if details:
+            p = thumbnails.get_thumb_wsl(details)
+        if not p:
+            p = utils.resolve_file_path(file_path, image_id_r) or utils.convert_path_to_local(file_path)
+        if p and os.path.exists(p):
+            label = f"{sim:.0%} similar"
+            images.append((p, label))
+    if not images:
+        return [], "No similar images found (thumbnails unavailable)."
+    status = f"Found {len(images)} similar image(s)."
+    return images, status
+
+
 def save_metadata_action(details, title, desc, keywords, rating, label, tagging_runner):
     if not details or not isinstance(details, dict):
          return "Error: No image selected.", gr.update(visible=True)
@@ -405,8 +450,6 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
             page, PAGE_SIZE, sort_by, sort_order, rating_filter, label_filter, keyword_filter, 
             min_gen, min_aes, min_tech, start_date, end_date, folder, stack_id
         )
-        
-        print(f"DEBUG: update_gallery - Returning {len(images)} images and {len(raw_paths)} raw_paths")
 
         # Details cleared must match detail_outputs list
         # We need a predictable list of default values for all detail outputs
@@ -618,8 +661,13 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
                     fix_btn = gr.Button("🔧 Fix Data", variant="secondary", size="sm", visible=False)
                     rerun_score_btn = gr.Button("🔄 Re-Run Scoring", variant="secondary", size="sm", visible=False)
                     rerun_tags_btn = gr.Button("🏷️ Re-Run Keywords", variant="secondary", size="sm", visible=False)
+                    find_similar_btn = gr.Button("🔍 Find Similar", variant="secondary", size="sm")
                     remove_db_btn = gr.Button("🗑️ Remove from DB", variant="stop", visible=True, size="sm")
                     delete_btn = gr.Button("🗑️ Delete NEF", variant="stop", visible=False, size="sm")
+                
+                with gr.Accordion("🔍 Similar Images", open=False) as similar_accordion:
+                    similar_gallery = gr.Gallery(label="Similar", columns=5, height=200, object_fit="cover", allow_preview=True)
+                    similar_status = gr.Markdown(value="")
                 
                 fix_status = gr.Textbox(label="Status", visible=False)
                 # delete_status defined implicitly in return of delete_nef if separate, 
@@ -714,6 +762,16 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
             fn=lambda d: common.rerun_keywords_wrapper(d, tagging_runner),
             inputs=[image_details],
             outputs=[fix_btn, fix_status]
+        )
+        
+        def find_similar_wrapper(details, folder):
+            imgs, msg = find_similar_handler(details, limit=20, folder_path=folder)
+            return imgs, msg
+        
+        find_similar_btn.click(
+            fn=find_similar_wrapper,
+            inputs=[image_details, current_folder_state],
+            outputs=[similar_gallery, similar_status]
         )
         
         save_btn.click(

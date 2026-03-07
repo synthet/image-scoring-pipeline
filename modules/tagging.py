@@ -16,6 +16,189 @@ TAGGER_VERSION = "1.0.0"  # bump when CLIP model or tagging logic changes
 # Setup logging
 logger = logging.getLogger(__name__)
 
+
+def propagate_tags(
+    folder_path: str = None,
+    dry_run: bool = True,
+    k: int = None,
+    min_similarity: float = None,
+    min_keyword_confidence: float = None,
+    min_support_neighbors: int = None,
+    write_mode: str = None,
+    max_keywords: int = None,
+) -> Dict:
+    """
+    Propagate keywords from tagged images to untagged neighbors using embedding similarity.
+
+    For each untagged image with a stored embedding:
+      1. Find k nearest *tagged* neighbors by cosine similarity.
+      2. Aggregate neighbor keywords with similarity-weighted voting.
+      3. Apply keywords that pass confidence, support, and anchor thresholds.
+
+    Args:
+        folder_path: Optional folder scope (None = all images).
+        dry_run: If True, compute candidates but do not write to DB.
+        k: Number of nearest neighbors to consider.
+        min_similarity: Minimum cosine similarity for the top neighbor (anchor).
+        min_keyword_confidence: Minimum weighted keyword score to accept.
+        min_support_neighbors: Minimum number of neighbors that must contain the keyword.
+        write_mode: 'replace_missing_only' (default) or 'append'.
+        max_keywords: Maximum keywords to propagate per image.
+
+    Returns:
+        Dict with 'propagated', 'skipped', 'total_untagged', and 'candidates' (dry_run only).
+    """
+    import numpy as np
+    from modules import config
+    from modules.similar_search import _normalize
+
+    # Load defaults from config
+    cfg = config.get_config_section("tagging")
+    k = k if k is not None else cfg.get("propagation_k", 5)
+    min_similarity = min_similarity if min_similarity is not None else cfg.get("propagation_min_similarity", 0.85)
+    min_keyword_confidence = min_keyword_confidence if min_keyword_confidence is not None else cfg.get("propagation_min_keyword_confidence", 0.60)
+    min_support_neighbors = min_support_neighbors if min_support_neighbors is not None else cfg.get("propagation_min_support_neighbors", 2)
+    write_mode = write_mode or cfg.get("propagation_write_mode", "replace_missing_only")
+    max_keywords = max_keywords if max_keywords is not None else cfg.get("propagation_max_keywords", 10)
+
+    # Fetch data
+    untagged, tagged = db.get_images_for_tag_propagation(folder_path=folder_path)
+
+    result = {
+        "propagated": 0,
+        "skipped": 0,
+        "total_untagged": len(untagged),
+        "total_tagged": len(tagged),
+    }
+
+    if not untagged:
+        logger.info("Tag propagation: no untagged images with embeddings found.")
+        return result
+    if not tagged:
+        logger.info("Tag propagation: no tagged images with embeddings found.")
+        result["skipped"] = len(untagged)
+        return result
+
+    # Build tagged matrix once
+    tagged_ids = [t[0] for t in tagged]
+    tagged_keywords = [t[3].split(",") for t in tagged]  # list of keyword lists
+    tagged_vecs = np.stack([np.frombuffer(t[2], dtype=np.float32) for t in tagged])
+    tagged_norm = _normalize(tagged_vecs)
+
+    # Collect all unique keywords across tagged images for indexing
+    all_kw = sorted({kw.strip() for kwl in tagged_keywords for kw in kwl if kw.strip()})
+    kw_to_idx = {kw: i for i, kw in enumerate(all_kw)}
+
+    # Build keyword presence matrix: (num_tagged, num_keywords) bool
+    kw_matrix = np.zeros((len(tagged_ids), len(all_kw)), dtype=np.float32)
+    for row_i, kwl in enumerate(tagged_keywords):
+        for kw in kwl:
+            kw = kw.strip()
+            if kw and kw in kw_to_idx:
+                kw_matrix[row_i, kw_to_idx[kw]] = 1.0
+
+    candidates_list = []  # for dry-run reporting
+
+    conn = None
+    cur = None
+    if not dry_run:
+        conn = db.get_db()
+        cur = conn.cursor()
+
+    try:
+        for img_id, file_path, emb_bytes in untagged:
+            query_vec = np.frombuffer(emb_bytes, dtype=np.float32)
+            query_norm = _normalize(query_vec)
+
+            # Cosine similarities to all tagged images
+            sims = tagged_norm @ query_norm  # shape: (num_tagged,)
+
+            # Top-k indices
+            top_k_idx = np.argsort(-sims)[:k]
+            top_sims = sims[top_k_idx]
+
+            # Anchor check: best neighbor must meet min_similarity
+            if top_sims[0] < min_similarity:
+                result["skipped"] += 1
+                continue
+
+            # Filter neighbors below min_similarity
+            valid_mask = top_sims >= min_similarity
+            top_k_idx = top_k_idx[valid_mask]
+            top_sims = top_sims[valid_mask]
+
+            if len(top_k_idx) == 0:
+                result["skipped"] += 1
+                continue
+
+            # Weighted voting for each keyword
+            # keyword_score = sum(sim_i * has_keyword_i) / sum(sim_i)
+            sim_total = top_sims.sum()
+            neighbor_kw = kw_matrix[top_k_idx]  # (n_neighbors, n_keywords)
+            weighted_scores = (top_sims[:, None] * neighbor_kw).sum(axis=0) / sim_total  # (n_keywords,)
+
+            # Support count: how many neighbors have each keyword
+            support_counts = neighbor_kw.sum(axis=0)  # (n_keywords,)
+
+            # Apply thresholds
+            accepted = []
+            for kw_idx, kw in enumerate(all_kw):
+                score = float(weighted_scores[kw_idx])
+                support = int(support_counts[kw_idx])
+                if score >= min_keyword_confidence and support >= min_support_neighbors:
+                    accepted.append((kw, score))
+
+            if not accepted:
+                result["skipped"] += 1
+                continue
+
+            # Sort by score descending, cap at max_keywords
+            accepted.sort(key=lambda x: -x[1])
+            accepted = accepted[:max_keywords]
+            new_keywords = [kw for kw, _ in accepted]
+
+            if dry_run:
+                candidates_list.append({
+                    "image_id": img_id,
+                    "file_path": file_path,
+                    "keywords": new_keywords,
+                    "top_neighbor_similarity": round(float(top_sims[0]), 4),
+                })
+                result["propagated"] += 1
+            else:
+                # Write to DB
+                tags_str = ",".join(new_keywords)
+                cur.execute("UPDATE images SET keywords = ? WHERE id = ?", (tags_str, img_id))
+                result["propagated"] += 1
+                logger.info("Propagated %d keywords to image %d: %s", len(new_keywords), img_id, tags_str)
+
+        if not dry_run and conn:
+            conn.commit()
+
+    except Exception as e:
+        logger.error("Tag propagation error: %s", e)
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        raise
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    if dry_run:
+        result["candidates"] = candidates_list
+
+    logger.info(
+        "Tag propagation complete: %d propagated, %d skipped, %d untagged, %d tagged (dry_run=%s)",
+        result["propagated"], result["skipped"], result["total_untagged"], result["total_tagged"], dry_run,
+    )
+    return result
+
 class KeywordScorer:
     """
     Uses CLIP (Contrastive Language-Image Pre-Training) to tag images with keywords.

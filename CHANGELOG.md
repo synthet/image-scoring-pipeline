@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [4.0.0] - 2026-03-06
+
+### Added
+- **Pipeline Tab**: New unified Pipeline tab replacing Folder Tree, Scoring, Keywords, Selection, Stacks, and Culling tabs. Single workflow view with folder tree, phase stepper, action bar, and job monitor (`modules/ui/tabs/pipeline.py`).
+- **Pipeline Orchestrator**: New `modules/pipeline_orchestrator.py` to coordinate pipeline phases and runner integration.
+- **Embedding Population Scripts**: Added `scripts/maintenance/populate_missing_embeddings.py` and `run_populate_missing_embeddings.bat` for backfilling embeddings.
+- **Design Documentation**: Added `docs/design/UI_PIPELINE_REDESIGN.md` and mockups for the pipeline-centric UI.
+- **Tag Propagation Tests**: Added `tests/test_tag_propagation.py`.
+
+### Changed
+- **UI Structure**: Reduced from 7+ tabs to 3 (Pipeline, Gallery, Settings). Gallery and Settings remain; Pipeline absorbs all processing workflows.
+- **Navigation & Assets**: Updated `modules/ui/navigation.py` and `modules/ui/assets.py` for new tab structure.
+- **API, DB, MCP**: Updated `modules/api.py`, `modules/db.py`, `modules/mcp_server.py` for pipeline integration.
+- **Similar Search & Tagging**: Modified `modules/similar_search.py` and `modules/tagging.py` for pipeline context.
+
+### Removed
+- **Legacy Tabs**: Removed `culling.py`, `folder_tree.py`, `scoring.py`, `selection.py`, `stacks.py`, `tagging.py` — functionality consolidated into Pipeline tab.
+
 ## [3.26.0] - 2026-03-03
 
 ### Added

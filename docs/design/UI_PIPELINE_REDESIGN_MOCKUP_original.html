@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pipeline-Centric UI Redesign — Mockup (Original)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --accent-primary: #58a6ff;
+      --accent-success: #3fb950;
+      --accent-danger: #f85149;
+      --text-muted: #6e7681;
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --border-color: #30363d;
+      --text-primary: #c9d1d9;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      font-size: 14px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+    }
+    .header-title {
+      font-weight: 600;
+      font-size: 16px;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+    }
+    .tab {
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    .tab.active {
+      background: var(--accent-primary);
+      color: #fff;
+    }
+    .tab:not(.active):hover {
+      background: rgba(88, 166, 255, 0.15);
+    }
+
+    /* Main layout */
+    .main {
+      display: flex;
+      height: calc(100vh - 52px);
+    }
+
+    /* Left: Folder Tree */
+    .sidebar {
+      width: 280px;
+      min-width: 280px;
+      border-right: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+      padding: 16px;
+      overflow-y: auto;
+    }
+    .sidebar-section {
+      margin-bottom: 16px;
+    }
+    .btn {
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:hover {
+      background: #21262d;
+      border-color: #8b949e;
+    }
+    .btn-primary {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: #79b8ff;
+      border-color: #79b8ff;
+    }
+    .tree {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.8;
+      margin: 12px 0;
+    }
+    .tree-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 0;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .tree-item:hover { background: rgba(88, 166, 255, 0.1); }
+    .tree-item.selected { background: rgba(88, 166, 255, 0.2); }
+    .tree-indent { margin-left: 16px; }
+    .tree-icon {
+      width: 14px;
+      text-align: center;
+      font-size: 10px;
+    }
+    .tree-icon.done { color: var(--accent-success); }
+    .tree-icon.partial { color: var(--accent-primary); }
+    .tree-icon.failed { color: var(--accent-danger); }
+    .tree-icon.empty { color: var(--text-muted); }
+    .divider {
+      height: 1px;
+      background: var(--border-color);
+      margin: 16px 0;
+    }
+    .selected-folder {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .selected-folder strong { color: var(--text-primary); }
+
+    /* Right: Pipeline Dashboard */
+    .dashboard {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    /* Section A: Pipeline Stepper */
+    .stepper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding: 20px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+    }
+    .stepper-nodes {
+      display: flex;
+      align-items: center;
+      flex: 1;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .stepper-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+    }
+    .node-row {
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+    .node-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .node-circle.done {
+      background: var(--accent-success);
+      border: 2px solid var(--accent-success);
+      color: #fff;
+    }
+    .node-circle.running {
+      background: var(--accent-primary);
+      border: 2px solid var(--accent-primary);
+      color: #fff;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .node-circle.not-started {
+      background: transparent;
+      border: 2px solid var(--text-muted);
+      color: var(--text-muted);
+    }
+    .node-circle.failed {
+      background: var(--accent-danger);
+      border: 2px solid var(--accent-danger);
+      color: #fff;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .connector {
+      flex: 1;
+      height: 2px;
+      margin: 0 4px;
+    }
+    .connector.done { background: var(--accent-success); }
+    .connector.running { background: var(--accent-primary); }
+    .connector.not-started { background: var(--text-muted); }
+    .node-label {
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 8px;
+      color: var(--text-primary);
+    }
+    .node-count {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Section B: Action Bar */
+    .action-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .btn-stop {
+      background: transparent;
+      border-color: var(--accent-danger);
+      color: var(--accent-danger);
+    }
+    .btn-stop:hover {
+      background: rgba(248, 81, 73, 0.15);
+    }
+
+    /* Section C: Phase Cards */
+    .phase-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .phase-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-left: 3px solid var(--status-color, var(--text-muted));
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .phase-card.done { --status-color: var(--accent-success); }
+    .phase-card.running { --status-color: var(--accent-primary); border-left-width: 3px; }
+    .phase-card.running { animation: card-pulse 2s ease-in-out infinite; }
+    @keyframes card-pulse {
+      0%, 100% { box-shadow: none; }
+      50% { box-shadow: 0 0 0 1px var(--accent-primary); }
+    }
+    .phase-card.not-started { --status-color: var(--text-muted); }
+    .phase-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .phase-card-title {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .phase-card-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: rgba(88, 166, 255, 0.2);
+      color: var(--accent-primary);
+    }
+    .phase-card-stats {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .phase-progress {
+      height: 6px;
+      background: var(--bg-primary);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .phase-progress-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+    .phase-card.done .phase-progress-fill { background: var(--accent-success); }
+    .phase-card.running .phase-progress-fill { background: var(--accent-primary); }
+    .phase-card.not-started .phase-progress-fill { background: var(--text-muted); width: 0% !important; }
+    .phase-card-options {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      cursor: pointer;
+    }
+    .phase-card-options:hover { color: var(--accent-primary); }
+
+    /* Section D: Active Job Monitor */
+    .job-monitor {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .job-monitor-header {
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .job-monitor-header .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .job-monitor-progress {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .job-monitor-bar {
+      height: 8px;
+      background: var(--bg-primary);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .job-monitor-bar-fill {
+      height: 100%;
+      background: var(--accent-primary);
+      border-radius: 4px;
+      width: 66.7%;
+    }
+    .job-console-toggle {
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 8px 0;
+    }
+    .job-console-toggle:hover { color: var(--accent-primary); }
+    .job-console {
+      margin-top: 8px;
+      padding: 12px;
+      background: var(--bg-primary);
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      max-height: 120px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <span class="header-title">Image Scoring WebUI</span>
+    <nav class="tabs">
+      <span class="tab active">Pipeline</span>
+      <span class="tab">Gallery</span>
+      <span class="tab">Settings</span>
+    </nav>
+  </header>
+
+  <main class="main">
+    <!-- Left: Folder Tree -->
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <button class="btn">Refresh</button>
+      </div>
+      <div class="tree">
+        <div class="tree-item">
+          <span class="tree-icon">📁</span>
+          <span>/ Photos</span>
+        </div>
+        <div class="tree-item tree-indent">
+          <span class="tree-icon">📁</span>
+          <span>+-- D300/</span>
+        </div>
+        <div class="tree-item tree-indent" style="margin-left: 32px;">
+          <span class="tree-icon">📁</span>
+          <span>+-- 28-70mm/</span>
+        </div>
+        <div class="tree-item tree-indent selected" style="margin-left: 48px;">
+          <span class="tree-icon done">✓</span>
+          <span>+-- 2015/</span>
+        </div>
+        <div class="tree-item tree-indent">
+          <span class="tree-icon">📁</span>
+          <span>+-- D90/</span>
+        </div>
+        <div class="tree-item tree-indent" style="margin-left: 32px;">
+          <span class="tree-icon">📁</span>
+          <span>+-- 10.5mm/</span>
+        </div>
+        <div class="tree-item tree-indent" style="margin-left: 48px;">
+          <span class="tree-icon partial">◐</span>
+          <span>+-- 2013/</span>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="selected-folder">
+        <strong>Selected Folder</strong><br>
+        D300/28-70mm/2015<br>
+        48 images
+      </div>
+      <button class="btn btn-primary" style="width: 100%;">Open in Gallery</button>
+      <div class="divider"></div>
+      <div class="selected-folder" style="font-size: 10px;">
+        <strong>Legend:</strong> ✓ all done · ◐ partial · ✗ failed · ○ not started
+      </div>
+    </aside>
+
+    <!-- Right: Pipeline Dashboard -->
+    <section class="dashboard">
+      <!-- A. Pipeline Stepper -->
+      <div class="stepper">
+        <div class="stepper-nodes">
+          <div class="stepper-node">
+            <div class="node-row">
+              <div class="node-circle done">1</div>
+              <div class="connector done"></div>
+            </div>
+            <span class="node-label">INDEX</span>
+            <span class="node-count">48/48</span>
+          </div>
+          <div class="stepper-node">
+            <div class="node-row">
+              <div class="node-circle done">2</div>
+              <div class="connector done"></div>
+            </div>
+            <span class="node-label">META</span>
+            <span class="node-count">48/48</span>
+          </div>
+          <div class="stepper-node">
+            <div class="node-row">
+              <div class="node-circle running">3</div>
+              <div class="connector running"></div>
+            </div>
+            <span class="node-label">SCORE</span>
+            <span class="node-count">32/48</span>
+          </div>
+          <div class="stepper-node">
+            <div class="node-row">
+              <div class="node-circle not-started">4</div>
+              <div class="connector not-started"></div>
+            </div>
+            <span class="node-label">CULL</span>
+            <span class="node-count">0/48</span>
+          </div>
+          <div class="stepper-node">
+            <div class="node-row">
+              <div class="node-circle not-started">5</div>
+            </div>
+            <span class="node-label">KEYWORDS</span>
+            <span class="node-count">0/48</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- B. Action Bar -->
+      <div class="action-bar">
+        <button class="btn btn-primary">Run All Pending</button>
+        <button class="btn btn-stop">Stop All</button>
+      </div>
+
+      <!-- C. Phase Cards -->
+      <div class="phase-cards">
+        <div class="phase-card running">
+          <div class="phase-card-header">
+            <span class="phase-card-title">Scoring</span>
+            <span class="phase-card-badge">Running</span>
+          </div>
+          <div class="phase-card-stats">32/48 images processed</div>
+          <div class="phase-progress">
+            <div class="phase-progress-fill" style="width: 66.7%;"></div>
+          </div>
+          <button class="btn" style="width: 100%;">Run Scoring</button>
+          <div class="phase-card-options">▸ Options (collapsed)</div>
+        </div>
+        <div class="phase-card not-started">
+          <div class="phase-card-header">
+            <span class="phase-card-title">Culling</span>
+          </div>
+          <div class="phase-card-stats">0/48 images processed</div>
+          <div class="phase-progress">
+            <div class="phase-progress-fill" style="width: 0%;"></div>
+          </div>
+          <button class="btn" style="width: 100%;">Run Culling</button>
+          <div class="phase-card-options">▸ Options (collapsed)</div>
+        </div>
+        <div class="phase-card not-started">
+          <div class="phase-card-header">
+            <span class="phase-card-title">Keywords</span>
+          </div>
+          <div class="phase-card-stats">0/48 images processed</div>
+          <div class="phase-progress">
+            <div class="phase-progress-fill" style="width: 0%;"></div>
+          </div>
+          <button class="btn" style="width: 100%;">Run Keywords</button>
+          <div class="phase-card-options">▸ Options (collapsed)</div>
+        </div>
+      </div>
+
+      <!-- Tag Propagation (utility section) -->
+      <div class="phase-card not-started" style="margin-bottom: 24px;">
+        <div class="phase-card-header">
+          <span class="phase-card-title">Tag Propagation</span>
+        </div>
+        <button class="btn" style="margin-bottom: 8px;">Propagate Tags from Similar Images</button>
+        <div class="phase-card-options">☐ Dry Run</div>
+      </div>
+
+      <!-- D. Active Job Monitor -->
+      <div class="job-monitor">
+        <div class="job-monitor-header">
+          <span class="status-dot"></span>
+          Active Job: Scoring
+        </div>
+        <div class="job-monitor-progress">32/48 (66.7%)</div>
+        <div class="job-monitor-bar">
+          <div class="job-monitor-bar-fill"></div>
+        </div>
+        <div class="job-console-toggle">▾ Console Output (expandable)</div>
+        <div class="job-console">
+[2025-03-06 14:32:01] Processing IMG_4521.NEF...
+[2025-03-06 14:32:03] Score: 0.82 (technical: 0.79, aesthetic: 0.85)
+[2025-03-06 14:32:04] Processing IMG_4522.NEF...
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

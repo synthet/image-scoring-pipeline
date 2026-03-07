@@ -2,6 +2,7 @@ import os
 import platform
 import warnings
 import logging
+from contextlib import asynccontextmanager
 import gradio as gr
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,8 +70,17 @@ def main():
     
     mcp_mount_error: str | None = None
 
+    @asynccontextmanager
+    async def lifespan(app):
+        import asyncio
+        loop = asyncio.get_running_loop()
+        event_manager.set_loop(loop)
+        print("EventManager: Event loop attached.")
+        yield
+
     # Create Main FastAPI App with comprehensive OpenAPI documentation
     app = FastAPI(
+        lifespan=lifespan,
         title="Image Scoring WebUI API",
         description="""
         REST API for the Image Scoring WebUI application.
@@ -168,7 +178,7 @@ def main():
     # Create UI and initialize engines (Gradio App)
     import modules.clustering as clustering
     clustering_runner = clustering.ClusteringRunner()
-    demo, runner, tagging_runner, selection_runner = app_module.create_ui()
+    demo, runner, tagging_runner, selection_runner, orchestrator = app_module.create_ui()
 
     
     # Setup MCP server if enabled
@@ -267,14 +277,6 @@ def main():
     # Note: inbrowser=False is default for uvicorn, handled by user opening browser
     print("Launching Uvicorn server at http://127.0.0.1:7860")
     
-    # Attach loop to event manager on startup
-    @app.on_event("startup")
-    async def startup_event():
-        import asyncio
-        loop = asyncio.get_running_loop()
-        event_manager.set_loop(loop)
-        print("EventManager: Event loop attached.")
-
     try:
         uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
     finally:

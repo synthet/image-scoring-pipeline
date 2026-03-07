@@ -237,9 +237,179 @@ class TestFindNearDuplicates:
         pair = result[0]
         assert (pair["image_id_a"] == 1 and pair["image_id_b"] == 2)
 
+class TestFindOutliers:
+    """Tests for find_outliers with mocked DB."""
+
+    DIM = 1280
+
+    def _make_cluster(self, n, seed=42):
+        """Create n similar unit vectors (tight cluster)."""
+        rng = np.random.RandomState(seed)
+        base = rng.randn(self.DIM).astype(np.float32)
+        base /= np.linalg.norm(base)
+        vecs = []
+        for _ in range(n):
+            v = base + rng.randn(self.DIM).astype(np.float32) * 0.02
+            v /= np.linalg.norm(v)
+            vecs.append(v)
+        return vecs
+
+    def test_returns_empty_for_small_folder(self):
+        """Folder below min_folder_size returns empty outliers with reason."""
+        vecs = self._make_cluster(5)
+        candidates = [(i, f"/img{i}.jpg", v.tobytes()) for i, v in enumerate(vecs, 1)]
+
+        with patch("modules.similar_search.db") as mock_db:
+            with patch("modules.config.get_config_value") as mock_cfg:
+                mock_cfg.side_effect = lambda k, d: {
+                    "similarity.outlier_z_threshold": 2.0,
+                    "similarity.outlier_k_neighbors": 3,
+                    "similarity.outlier_min_folder_size": 20,
+                }.get(k, d)
+                mock_db.get_embeddings_for_search.return_value = candidates
+
+                result = similar_search.find_outliers(folder_path="/photos")
+
+        assert result["outliers"] == []
+        assert result["stats"]["reason"] == "folder_too_small"
+
+    def test_detects_injected_outlier(self):
+        """A random vector injected into a tight cluster is flagged."""
+        vecs = self._make_cluster(25, seed=10)
+        # Inject a truly random outlier
+        rng = np.random.RandomState(99)
+        outlier = rng.randn(self.DIM).astype(np.float32)
+        outlier /= np.linalg.norm(outlier)
+        vecs.append(outlier)
+        outlier_id = len(vecs)
+
+        candidates = [(i, f"/img{i}.jpg", v.tobytes()) for i, v in enumerate(vecs, 1)]
+
+        with patch("modules.similar_search.db") as mock_db:
+            with patch("modules.config.get_config_value") as mock_cfg:
+                mock_cfg.side_effect = lambda k, d: {
+                    "similarity.outlier_z_threshold": 1.5,
+                    "similarity.outlier_k_neighbors": 5,
+                    "similarity.outlier_min_folder_size": 10,
+                }.get(k, d)
+                mock_db.get_embeddings_for_search.return_value = candidates
+
+                result = similar_search.find_outliers(folder_path="/photos")
+
+        flagged_ids = [o["image_id"] for o in result["outliers"]]
+        assert outlier_id in flagged_ids
+
+    def test_z_threshold_controls_sensitivity(self):
+        """Tighter threshold flags more images."""
+        vecs = self._make_cluster(25, seed=7)
+        # Add two moderately different vectors
+        rng = np.random.RandomState(77)
+        for _ in range(2):
+            v = rng.randn(self.DIM).astype(np.float32)
+            v /= np.linalg.norm(v)
+            vecs.append(v)
+
+        candidates = [(i, f"/img{i}.jpg", v.tobytes()) for i, v in enumerate(vecs, 1)]
+
+        def run_with_z(z_val):
+            with patch("modules.similar_search.db") as mock_db:
+                with patch("modules.config.get_config_value") as mock_cfg:
+                    mock_cfg.side_effect = lambda k, d: {
+                        "similarity.outlier_z_threshold": z_val,
+                        "similarity.outlier_k_neighbors": 5,
+                        "similarity.outlier_min_folder_size": 10,
+                    }.get(k, d)
+                    mock_db.get_embeddings_for_search.return_value = candidates
+                    return similar_search.find_outliers(folder_path="/photos")
+
+        loose = run_with_z(3.0)
+        tight = run_with_z(1.0)
+        assert len(tight["outliers"]) >= len(loose["outliers"])
+
+    def test_includes_explainability_fields(self):
+        """Flagged outliers include nearest_neighbors, and stats has folder info."""
+        vecs = self._make_cluster(25, seed=3)
+        rng = np.random.RandomState(42)
+        outlier = rng.randn(self.DIM).astype(np.float32)
+        outlier /= np.linalg.norm(outlier)
+        vecs.append(outlier)
+
+        candidates = [(i, f"/img{i}.jpg", v.tobytes()) for i, v in enumerate(vecs, 1)]
+
+        with patch("modules.similar_search.db") as mock_db:
+            with patch("modules.config.get_config_value") as mock_cfg:
+                mock_cfg.side_effect = lambda k, d: {
+                    "similarity.outlier_z_threshold": 1.5,
+                    "similarity.outlier_k_neighbors": 5,
+                    "similarity.outlier_min_folder_size": 10,
+                }.get(k, d)
+                mock_db.get_embeddings_for_search.return_value = candidates
+
+                result = similar_search.find_outliers(folder_path="/photos")
+
+        assert len(result["outliers"]) >= 1
+        o = result["outliers"][0]
+        assert "nearest_neighbors" in o
+        assert len(o["nearest_neighbors"]) <= 3
+        assert "similarity" in o["nearest_neighbors"][0]
+        assert "outlier_score" in o
+        assert "z_score" in o
+
+        stats = result["stats"]
+        assert "folder_mean" in stats
+        assert "folder_std" in stats
+        assert "z_threshold" in stats
+
+    def test_limit_respected(self):
+        """Results are capped at the limit parameter."""
+        vecs = self._make_cluster(25, seed=5)
+        # Add many outliers
+        rng = np.random.RandomState(88)
+        for _ in range(10):
+            v = rng.randn(self.DIM).astype(np.float32)
+            v /= np.linalg.norm(v)
+            vecs.append(v)
+
+        candidates = [(i, f"/img{i}.jpg", v.tobytes()) for i, v in enumerate(vecs, 1)]
+
+        with patch("modules.similar_search.db") as mock_db:
+            with patch("modules.config.get_config_value") as mock_cfg:
+                mock_cfg.side_effect = lambda k, d: {
+                    "similarity.outlier_z_threshold": 1.0,
+                    "similarity.outlier_k_neighbors": 5,
+                    "similarity.outlier_min_folder_size": 10,
+                }.get(k, d)
+                mock_db.get_embeddings_for_search.return_value = candidates
+
+                result = similar_search.find_outliers(folder_path="/photos", limit=3)
+
+        assert len(result["outliers"]) <= 3
+
+    def test_reports_embedding_missing(self):
+        """Images with None embeddings are reported in skipped list."""
+        vecs = self._make_cluster(22, seed=11)
+        candidates = [(i, f"/img{i}.jpg", v.tobytes()) for i, v in enumerate(vecs, 1)]
+        # Add two images with no embedding
+        candidates.append((100, "/missing1.jpg", None))
+        candidates.append((101, "/missing2.jpg", None))
+
+        with patch("modules.similar_search.db") as mock_db:
+            with patch("modules.config.get_config_value") as mock_cfg:
+                mock_cfg.side_effect = lambda k, d: {
+                    "similarity.outlier_z_threshold": 2.0,
+                    "similarity.outlier_k_neighbors": 5,
+                    "similarity.outlier_min_folder_size": 10,
+                }.get(k, d)
+                mock_db.get_embeddings_for_search.return_value = candidates
+
+                result = similar_search.find_outliers(folder_path="/photos")
+
+        assert len(result["skipped"]) == 2
+        assert result["skipped"][0]["anomaly_class"] == "embedding_missing"
+        assert result["skipped"][0]["image_id"] == 100
 
 
-@pytest.mark.firebird
+
 @pytest.mark.ml
 class TestSearchSimilarImagesIntegration:
     """Integration test: requires test DB and optional TF. Skip if no embeddings."""
