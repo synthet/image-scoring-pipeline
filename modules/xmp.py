@@ -412,6 +412,127 @@ def read_pick_reject_flag(image_path: str) -> int:
         logger.warning(f"Failed to read pick/reject flag from {xmp_path}: {e}")
         return 0
 
+
+def read_xmp_full(image_path: str) -> dict:
+    """
+    Read full XMP sidecar data for IMAGE_XMP cache.
+    
+    Returns dict with keys: rating, label, pick_status, burst_uuid, stack_id,
+    keywords, title, description, create_date, modify_date.
+    """
+    xmp_path = get_xmp_path(image_path)
+    result = {
+        'rating': None,
+        'label': None,
+        'pick_status': 0,
+        'burst_uuid': None,
+        'stack_id': None,
+        'keywords': None,
+        'title': None,
+        'description': None,
+        'create_date': None,
+        'modify_date': None,
+    }
+    
+    if not os.path.exists(xmp_path):
+        return result
+    
+    try:
+        tree = ET.parse(xmp_path)
+        root = tree.getroot()
+        
+        desc = root.find('.//rdf:Description', NAMESPACES)
+        if desc is None:
+            return result
+        
+        # Attributes
+        rating = desc.get(f'{{{NAMESPACES["xmp"]}}}Rating')
+        if rating:
+            try:
+                result['rating'] = int(rating)
+            except ValueError:
+                pass
+        
+        label = desc.get(f'{{{NAMESPACES["xmp"]}}}Label')
+        if label:
+            result['label'] = label
+        
+        pick = desc.get(f'{{{NAMESPACES["xmpDM"]}}}pick')
+        if pick:
+            try:
+                result['pick_status'] = int(pick)
+            except ValueError:
+                pass
+        
+        burst_uuid = desc.get(f'{{{NAMESPACES["xmp"]}}}BurstUUID')
+        if burst_uuid:
+            result['burst_uuid'] = burst_uuid
+        
+        stack_id = desc.get(f'{{{NAMESPACES["MicrosoftPhoto"]}}}StackId')
+        if stack_id:
+            result['stack_id'] = stack_id
+        
+        title = desc.get(f'{{{NAMESPACES["xmp"]}}}Title')
+        if title:
+            result['title'] = title
+        
+        description = desc.get(f'{{{NAMESPACES["xmp"]}}}Description')
+        if description:
+            result['description'] = description
+        
+        create_date = desc.get(f'{{{NAMESPACES["xmp"]}}}CreateDate')
+        if create_date:
+            result['create_date'] = create_date
+        
+        modify_date = desc.get(f'{{{NAMESPACES["xmp"]}}}ModifyDate')
+        if modify_date:
+            result['modify_date'] = modify_date
+        
+        # dc:subject (rdf:Bag with rdf:li)
+        dc_ns = NAMESPACES['dc']
+        subject = desc.find(f'.//{{{dc_ns}}}subject')
+        if subject is not None:
+            li_elems = subject.findall('.//rdf:li', NAMESPACES)
+            if not li_elems:
+                li_elems = subject.findall('.//{http://www.w3.org/1999/02/22-rdf-syntax-ns#}li')
+            if li_elems:
+                result['keywords'] = [li.text.strip() for li in li_elems if li.text and li.text.strip()]
+        
+        # dc:title / dc:description (rdf:Alt with rdf:li) - fallback if not in attributes
+        if not result['title']:
+            title_elem = desc.find(f'.//{{{dc_ns}}}title')
+            if title_elem is not None:
+                li = title_elem.find('.//rdf:li', NAMESPACES) or title_elem.find('.//{http://www.w3.org/1999/02/22-rdf-syntax-ns#}li')
+                if li is not None and li.text:
+                    result['title'] = li.text.strip()
+        
+        if not result['description']:
+            desc_elem = desc.find(f'.//{{{dc_ns}}}description')
+            if desc_elem is not None:
+                li = desc_elem.find('.//rdf:li', NAMESPACES) or desc_elem.find('.//{http://www.w3.org/1999/02/22-rdf-syntax-ns#}li')
+                if li is not None and li.text:
+                    result['description'] = li.text.strip()
+        
+    except Exception as e:
+        logger.warning(f"Failed to read XMP full {xmp_path}: {e}")
+    
+    return result
+
+
+def extract_and_upsert_xmp(image_path: str, image_id: int) -> bool:
+    """
+    Read XMP sidecar and upsert into IMAGE_XMP table.
+    
+    Returns True if XMP sidecar existed and upsert succeeded.
+    """
+    from modules import db
+    
+    if not xmp_exists(image_path):
+        return False
+    data = read_xmp_full(image_path)
+    return db.upsert_image_xmp(image_id, data)
+
+
 def write_culling_results(image_path: str, rating: int = None, label: str = None, 
                           is_picked: bool = None) -> bool:
     """

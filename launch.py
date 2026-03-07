@@ -24,31 +24,36 @@ def main():
     print("Launching WebUI...")
     
     # Firebird Server Management
+    # When FIREBIRD_USE_LOCAL_PATH=1, we use local file access (no server) - do NOT start the server
+    # or it will lock the file and cause "no permission" or "file in use" errors.
+    use_local = os.environ.get("FIREBIRD_USE_LOCAL_PATH", "").strip() in ("1", "true", "yes")
+    
     # The database file is on Windows, so we must ensure the Windows Firebird server is running.
     # We use 'firebird.exe -a' (Application mode) to listen for TCP connections from WSL.
     
     fb_exe_rel = os.path.join("Firebird", "firebird.exe")
     fb_root = os.path.abspath("Firebird")
     
-    # Check if Firebird is running
+    # Check if Firebird is running (skip when using local path)
     is_running = False
-    try:
-        # Check using Windows tasklist (works from WSL too if interop is on)
-        # We look for "firebird.exe"
-        output = subprocess.check_output(
-            ["tasklist.exe", "/FI", "IMAGENAME eq firebird.exe"], 
-            stderr=subprocess.STDOUT,
-            timeout=5
-        ).decode(errors='ignore')
-        if "firebird.exe" in output:
-            is_running = True
-    except FileNotFoundError:
-        # Check linux ps if tasklist.exe not on path (rare for WSL, but possible)
-        pass
-    except Exception as e:
-        print(f"Warning: Could not check for Firebird process: {e}")
+    if not use_local:
+        try:
+            # Check using Windows tasklist (works from WSL too if interop is on)
+            # We look for "firebird.exe"
+            output = subprocess.check_output(
+                ["tasklist.exe", "/FI", "IMAGENAME eq firebird.exe"], 
+                stderr=subprocess.STDOUT,
+                timeout=5
+            ).decode(errors='ignore')
+            if "firebird.exe" in output:
+                is_running = True
+        except FileNotFoundError:
+            # Check linux ps if tasklist.exe not on path (rare for WSL, but possible)
+            pass
+        except Exception as e:
+            print(f"Warning: Could not check for Firebird process: {e}")
 
-    if not is_running:
+    if not use_local and not is_running:
         print("Firebird Server not running. Attempting to start...")
         try:
             if platform.system() == "Windows":

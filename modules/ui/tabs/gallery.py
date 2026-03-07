@@ -542,7 +542,7 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
     # Re-declare display_details locally or import? 
     # I already defined `display_details` at module level.
     
-    with gr.TabItem("Gallery", id="gallery"):
+    with gr.TabItem("Gallery", id="gallery", visible=False):
         # Folder Context Bar
         with gr.Group(visible=False, elem_classes=["folder-context-bar"]) as folder_context_group:
             with gr.Row():
@@ -559,7 +559,8 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
                 with gr.Row():
                     sort_dropdown = gr.Dropdown(
                         choices=[
-                            ("📅 Date Added", "created_at"), 
+                            ("📅 Date Added", "created_at"),
+                            ("📷 Capture Date (EXIF)", "date_time_original"),
                             ("🆔 ID", "id"), 
                             ("⭐ General Score", "score_general"), 
                             ("🔧 Technical Score", "score_technical"), 

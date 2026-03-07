@@ -35,10 +35,11 @@ This document describes the schema of the Image Scoring Firebird database (`scor
         └──────────────────────┘
         
         │
-        ▼
-┌───────────────┐
-│  FILE_PATHS   │
-└───────────────┘
+        ├──────────────────┬──────────────────┐
+        ▼                  ▼                  ▼
+┌───────────────┐   ┌─────────────┐   ┌─────────────┐
+│  FILE_PATHS   │   │ IMAGE_EXIF  │   │ IMAGE_XMP   │
+└───────────────┘   └─────────────┘   └─────────────┘
 
 ┌──────────────────┐
 │ CLUSTER_PROGRESS │  (standalone)
@@ -157,6 +158,60 @@ Resolved paths for images (WSL, Windows, etc.). Multiple paths per image.
 **Foreign keys:** `FK_FILE_PATHS_IMAGES` → IMAGES(id) ON DELETE CASCADE
 
 **Indexes:** `IDX_FILE_PATHS_IMG_TYPE` (image_id, path_type)
+
+---
+
+### IMAGE_EXIF
+
+Cached EXIF metadata for gallery filtering and sorting. One row per image. Populated during scoring pipeline or via `scripts/maintenance/backfill_exif_xmp.py`.
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `image_id` | INTEGER | NO | Primary key, FK → IMAGES.id ON DELETE CASCADE |
+| `make` | VARCHAR(100) | YES | Camera manufacturer |
+| `model` | VARCHAR(200) | YES | Camera model |
+| `lens_model` | VARCHAR(255) | YES | Lens model |
+| `focal_length` | VARCHAR(50) | YES | Focal length (e.g. "600 mm") |
+| `focal_length_35mm` | SMALLINT | YES | 35mm equivalent |
+| `date_time_original` | TIMESTAMP | YES | Capture date |
+| `create_date` | TIMESTAMP | YES | Fallback date |
+| `exposure_time` | VARCHAR(30) | YES | Shutter speed |
+| `f_number` | VARCHAR(20) | YES | Aperture |
+| `iso` | SMALLINT | YES | ISO sensitivity |
+| `exposure_compensation` | VARCHAR(20) | YES | EV compensation |
+| `image_width` | INTEGER | YES | Pixel width |
+| `image_height` | INTEGER | YES | Pixel height |
+| `orientation` | SMALLINT | YES | Rotation (1–8) |
+| `flash` | SMALLINT | YES | Flash status |
+| `image_unique_id` | VARCHAR(64) | YES | For dedup/UUID |
+| `shutter_count` | INTEGER | YES | Shutter count |
+| `sub_sec_time_original` | VARCHAR(10) | YES | Sub-second precision |
+| `extracted_at` | TIMESTAMP | YES | When cached |
+
+**Indexes:** `date_time_original`, `make`, `model`, `lens_model`, `iso`
+
+---
+
+### IMAGE_XMP
+
+Cached XMP sidecar metadata. One row per image. Populated during scoring or backfill. Used for Lightroom sync and burst/stack grouping.
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `image_id` | INTEGER | NO | Primary key, FK → IMAGES.id ON DELETE CASCADE |
+| `rating` | SMALLINT | YES | 0–5 (sync with IMAGES.rating) |
+| `label` | VARCHAR(50) | YES | Color label |
+| `pick_status` | SMALLINT | YES | 1=picked, -1=reject, 0=unflagged |
+| `burst_uuid` | VARCHAR(64) | YES | Stack/burst grouping |
+| `stack_id` | VARCHAR(64) | YES | MicrosoftPhoto:StackId |
+| `keywords` | BLOB SUB_TYPE TEXT | YES | dc:subject (JSON array) |
+| `title` | VARCHAR(500) | YES | xmp:Title |
+| `description` | BLOB SUB_TYPE TEXT | YES | xmp:Description |
+| `create_date` | TIMESTAMP | YES | xmp:CreateDate |
+| `modify_date` | TIMESTAMP | YES | xmp:ModifyDate |
+| `extracted_at` | TIMESTAMP | YES | When cached |
+
+**Indexes:** `burst_uuid`, `pick_status`
 
 ---
 

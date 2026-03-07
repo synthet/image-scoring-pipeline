@@ -138,6 +138,9 @@ verify_result*.txt
 verify_stacks*.txt
 test_run.log
 test_verification*.log
+webui_out*.txt
+webui_error*.txt
+diverse_picks.txt
 
 
 backups/

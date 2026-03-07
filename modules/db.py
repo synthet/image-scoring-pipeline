@@ -67,6 +67,7 @@ ALLOWED_SORT_COLUMNS = {
     "score_spaq", "score_ava", "score_koniq", "score_paq2piq", "score_liqe",
     "rating", "file_name", "file_path", "created_at", "updated_at",
     "id", "label", "folder_id",
+    "date_time_original", "make", "model", "lens_model", "iso",
 }
 ALLOWED_SORT_ORDERS = {"asc", "desc"}
 
@@ -277,11 +278,20 @@ def get_db():
                  logger.debug("Could not build win_path for DSN: %s", e)
                  
              global _logged_dsn
-             dsn = f"inet://{host_ip}/{win_path}"
+             # FIREBIRD_USE_LOCAL_PATH=1: use WSL path (embedded) instead of inet - workaround for "file in use" on Windows server
+             use_local = os.environ.get("FIREBIRD_USE_LOCAL_PATH", "").strip() in ("1", "true", "yes")
+             if use_local:
+                 local_db = os.path.join(_PROJECT_ROOT, DB_FILE)
+                 dsn = local_db
+                 if not _logged_dsn:
+                     logger.info("WSL: Using local path (FIREBIRD_USE_LOCAL_PATH): %s", dsn)
+                     _logged_dsn = True
+             else:
+                 dsn = f"inet://{host_ip}/{win_path}"
              
-             # Auto-start Firebird Server if needed (WSL -> Windows)
+             # Auto-start Firebird Server if needed (WSL -> Windows) - skip when using local path
              # Skip auto-start in Docker for now as it's more complex to reach host process
-             if not is_docker and not _is_firebird_running(host_ip):
+             if not use_local and not is_docker and not _is_firebird_running(host_ip):
                  if not _logged_dsn:
                      logger.warning("WSL: Firebird Server not detected on %s:3050. Attempting to start...", host_ip)
                  
@@ -310,6 +320,12 @@ def get_db():
                 logger.debug("get_db connection successful")
         except Exception as e:
              logger.debug("get_db connect failed: %s", e)
+             if _is_wsl():
+                 logger.warning(
+                     "Firebird connection failed. Try: FIREBIRD_USE_LOCAL_PATH=1 run_webui.bat "
+                     "(uses local file instead of Windows server). Or ensure: Firebird server running on Windows, "
+                     "no other process has DB open, file exists (run migrate_to_firebird.py if needed)."
+                 )
              traceback.print_exc()
              raise e
         
@@ -628,10 +644,14 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
     finally:
         conn.close()
 
-def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
+def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None, use_exif_date=False, make_filter=None, model_filter=None, lens_filter=None, iso_min=None, iso_max=None):
     """
     Get paginated images AND total count using optimized approach.
     Uses same connection for both queries to reduce overhead.
+    
+    When use_exif_date=True, date_range uses EXIF date_time_original (fallback to created_at).
+    make_filter, model_filter, lens_filter: exact or LIKE match.
+    iso_min, iso_max: ISO range filter.
     
     Returns:
         tuple: (rows, total_count) where rows is list of image records and total_count is int
@@ -654,6 +674,22 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
     offset = (page - 1) * page_size
     if offset < 0: offset = 0
 
+    # Need EXIF join for: EXIF filters, EXIF sort, or use_exif_date
+    exif_sort_cols = {"date_time_original", "make", "model", "lens_model", "iso"}
+    need_exif_join = (
+        use_exif_date and date_range
+        or make_filter or model_filter or lens_filter or iso_min or iso_max
+        or sort_by in exif_sort_cols
+    )
+
+    tbl = "images"
+    if need_exif_join:
+        from_clause = " images LEFT JOIN image_exif ON images.id = image_exif.image_id"
+        tbl_prefix = "images."
+    else:
+        from_clause = " images"
+        tbl_prefix = ""
+
     # Build base query components
     params = []
     conditions = []
@@ -661,7 +697,7 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
     # Rating filter
     if rating_filter:
         placeholders = ','.join(['?'] * len(rating_filter))
-        conditions.append(f"rating IN ({placeholders})")
+        conditions.append(f"{tbl_prefix}rating IN ({placeholders})")
         params.extend(rating_filter)
     
     # Label filter    
@@ -672,52 +708,71 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         lbl_conds = []
         if clean_labels:
             placeholders = ','.join(['?'] * len(clean_labels))
-            lbl_conds.append(f"label IN ({placeholders})")
+            lbl_conds.append(f"{tbl_prefix}label IN ({placeholders})")
             params.extend(clean_labels)
             
         if has_none:
-            lbl_conds.append("(label IS NULL OR label = '')")
+            lbl_conds.append(f"({tbl_prefix}label IS NULL OR {tbl_prefix}label = '')")
             
         if lbl_conds:
             conditions.append(f"({' OR '.join(lbl_conds)})")
     
     # Keyword filter
     if keyword_filter and keyword_filter.strip():
-        conditions.append("keywords LIKE ?")
+        conditions.append(f"{tbl_prefix}keywords LIKE ?")
         params.append(f"%{keyword_filter.strip()}%")
     
     # Score Filters
     if min_score_general > 0:
-        conditions.append("score_general >= ?")
+        conditions.append(f"{tbl_prefix}score_general >= ?")
         params.append(min_score_general)
     
     if min_score_aesthetic > 0:
-        conditions.append("score_aesthetic >= ?")
+        conditions.append(f"{tbl_prefix}score_aesthetic >= ?")
         params.append(min_score_aesthetic)
 
     if min_score_technical > 0:
-        conditions.append("score_technical >= ?")
+        conditions.append(f"{tbl_prefix}score_technical >= ?")
         params.append(min_score_technical)
 
     # Date Filter
     if date_range:
         start_date, end_date = date_range
+        date_col = f"COALESCE(image_exif.date_time_original, images.created_at)" if (need_exif_join and use_exif_date) else f"{tbl_prefix}created_at"
         if start_date:
-            conditions.append("CAST(created_at AS DATE) >= CAST(? AS DATE)")
+            conditions.append(f"CAST({date_col} AS DATE) >= CAST(? AS DATE)")
             params.append(start_date)
         if end_date:
-            conditions.append("CAST(created_at AS DATE) <= CAST(? AS DATE)")
+            conditions.append(f"CAST({date_col} AS DATE) <= CAST(? AS DATE)")
             params.append(end_date)
+    
+    # EXIF filters
+    if need_exif_join:
+        if make_filter and make_filter.strip():
+            conditions.append("image_exif.make = ?")
+            params.append(make_filter.strip())
+        if model_filter and model_filter.strip():
+            conditions.append("image_exif.model = ?")
+            params.append(model_filter.strip())
+        if lens_filter and lens_filter.strip():
+            conditions.append("image_exif.lens_model LIKE ?")
+            params.append(f"%{lens_filter.strip()}%")
+        if iso_min is not None and iso_min > 0:
+            conditions.append("image_exif.iso >= ?")
+            params.append(iso_min)
+        if iso_max is not None and iso_max > 0:
+            conditions.append("image_exif.iso <= ?")
+            params.append(iso_max)
     
     # Folder filter
     if folder_path:
         folder_id = get_or_create_folder(folder_path)
-        conditions.append("folder_id = ?")
+        conditions.append(f"{tbl_prefix}folder_id = ?")
         params.append(folder_id)
 
     # Stack filter
     if stack_id:
-        conditions.append("stack_id = ?")
+        conditions.append(f"{tbl_prefix}stack_id = ?")
         params.append(stack_id)
 
     # Build WHERE clause
@@ -725,11 +780,21 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
     if conditions:
         where_clause = " WHERE " + " AND ".join(conditions)
     
+    # ORDER BY - EXIF columns need special handling
+    if need_exif_join and sort_by in exif_sort_cols:
+        nulls = " NULLS LAST" if order == "DESC" else " NULLS FIRST"
+        if sort_by == "date_time_original":
+            order_by = f"COALESCE(image_exif.date_time_original, images.created_at) {order}{nulls}"
+        else:
+            order_by = f"image_exif.{sort_by} {order}{nulls}"
+    else:
+        order_by = f"{tbl_prefix}{sort_by} {order}" if tbl_prefix else f"{sort_by} {order}"
+    
     try:
         # OPTIMIZATION: Use Window Function to get count and data in single query
         # This reduces DB round trips by 50%
         
-        query = f"SELECT *, COUNT(*) OVER() as total_count FROM images{where_clause} ORDER BY {sort_by} {order} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+        query = f"SELECT images.*, COUNT(*) OVER() as total_count FROM{from_clause}{where_clause} ORDER BY {order_by} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
         
         # Add pagination params
         params.extend([offset, page_size])
@@ -758,11 +823,11 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         # Fallback to separate queries if Window Function fails (e.g. old Firebird version)
         try:
              # Query 1: Get count
-             c.execute(f"SELECT COUNT(*) FROM images{where_clause}", tuple(params[:-2]))
+             c.execute(f"SELECT COUNT(*) FROM{from_clause}{where_clause}", tuple(params[:-2]))
              total_count = c.fetchone()[0]
              
              # Query 2: Get data
-             query_fallback = f"SELECT * FROM images{where_clause} ORDER BY {sort_by} {order} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+             query_fallback = f"SELECT images.* FROM{from_clause}{where_clause} ORDER BY {order_by} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
              c.execute(query_fallback, tuple(params))
              rows = c.fetchall()
              return rows, total_count
@@ -1091,6 +1156,82 @@ def _init_db_impl():
     if not _index_exists(c, 'IDX_CULLING_PICKS_IMAGE'):
         try: c.execute("CREATE INDEX idx_culling_picks_image ON culling_picks(image_id)")
         except Exception: pass
+    
+    # IMAGE_EXIF — cached EXIF metadata (one row per image)
+    if not _table_exists(c, 'IMAGE_EXIF'):
+        c.execute('''CREATE TABLE image_exif (
+            image_id INTEGER NOT NULL PRIMARY KEY,
+            make VARCHAR(100),
+            model VARCHAR(200),
+            lens_model VARCHAR(255),
+            focal_length VARCHAR(50),
+            focal_length_35mm SMALLINT,
+            date_time_original TIMESTAMP,
+            create_date TIMESTAMP,
+            exposure_time VARCHAR(30),
+            f_number VARCHAR(20),
+            iso SMALLINT,
+            exposure_compensation VARCHAR(20),
+            image_width INTEGER,
+            image_height INTEGER,
+            orientation SMALLINT,
+            flash SMALLINT,
+            image_unique_id VARCHAR(64),
+            shutter_count INTEGER,
+            sub_sec_time_original VARCHAR(10),
+            extracted_at TIMESTAMP
+        )''')
+        try: conn.commit()
+        except Exception: pass
+        c = conn.cursor()
+    
+    if _table_exists(c, 'IMAGE_EXIF') and not _constraint_exists(c, 'FK_IMAGE_EXIF_IMAGES'):
+        try:
+            c.execute("ALTER TABLE image_exif ADD CONSTRAINT fk_image_exif_images FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE")
+            conn.commit()
+        except Exception: pass
+        c = conn.cursor()
+    
+    if _table_exists(c, 'IMAGE_EXIF'):
+        for idx in ('IDX_IMAGE_EXIF_DATE', 'IDX_IMAGE_EXIF_MAKE', 'IDX_IMAGE_EXIF_MODEL', 'IDX_IMAGE_EXIF_LENS', 'IDX_IMAGE_EXIF_ISO'):
+            col = {'IDX_IMAGE_EXIF_DATE': 'date_time_original', 'IDX_IMAGE_EXIF_MAKE': 'make', 'IDX_IMAGE_EXIF_MODEL': 'model', 'IDX_IMAGE_EXIF_LENS': 'lens_model', 'IDX_IMAGE_EXIF_ISO': 'iso'}[idx]
+            if not _index_exists(c, idx):
+                try: c.execute(f"CREATE INDEX {idx.lower()} ON image_exif({col})")
+                except Exception: pass
+    
+    # IMAGE_XMP — cached XMP sidecar metadata (one row per image)
+    if not _table_exists(c, 'IMAGE_XMP'):
+        c.execute('''CREATE TABLE image_xmp (
+            image_id INTEGER NOT NULL PRIMARY KEY,
+            rating SMALLINT,
+            label VARCHAR(50),
+            pick_status SMALLINT,
+            burst_uuid VARCHAR(64),
+            stack_id VARCHAR(64),
+            keywords BLOB SUB_TYPE TEXT,
+            title VARCHAR(500),
+            description BLOB SUB_TYPE TEXT,
+            create_date TIMESTAMP,
+            modify_date TIMESTAMP,
+            extracted_at TIMESTAMP
+        )''')
+        try: conn.commit()
+        except Exception: pass
+        c = conn.cursor()
+    
+    if _table_exists(c, 'IMAGE_XMP') and not _constraint_exists(c, 'FK_IMAGE_XMP_IMAGES'):
+        try:
+            c.execute("ALTER TABLE image_xmp ADD CONSTRAINT fk_image_xmp_images FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE")
+            conn.commit()
+        except Exception: pass
+        c = conn.cursor()
+    
+    if _table_exists(c, 'IMAGE_XMP'):
+        for idx in ('IDX_IMAGE_XMP_BURST', 'IDX_IMAGE_XMP_PICK'):
+            col = {'IDX_IMAGE_XMP_BURST': 'burst_uuid', 'IDX_IMAGE_XMP_PICK': 'pick_status'}[idx]
+            if not _index_exists(c, idx):
+                try: c.execute(f"CREATE INDEX {idx.lower()} ON image_xmp({col})")
+                except Exception: pass
     
     try: conn.commit()
     except Exception: pass
@@ -2647,6 +2788,178 @@ def get_image_details(file_path):
         data['resolved_path'] = get_resolved_path(data['id'], verified_only=False)
         return data
     return {}
+
+
+def upsert_image_exif(image_id: int, data: dict) -> bool:
+    """
+    Upsert EXIF metadata for an image into IMAGE_EXIF.
+    data keys: make, model, lens_model, focal_length, focal_length_35mm,
+    date_time_original, create_date, exposure_time, f_number, iso,
+    exposure_compensation, image_width, image_height, orientation, flash,
+    image_unique_id, shutter_count, sub_sec_time_original
+    """
+    if not image_id or not isinstance(data, dict):
+        return False
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        extracted_at = datetime.datetime.now()
+        c.execute('''UPDATE OR INSERT INTO image_exif (
+            image_id, make, model, lens_model, focal_length, focal_length_35mm,
+            date_time_original, create_date, exposure_time, f_number, iso,
+            exposure_compensation, image_width, image_height, orientation, flash,
+            image_unique_id, shutter_count, sub_sec_time_original, extracted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        MATCHING (image_id)''', (
+            image_id,
+            data.get('make'),
+            data.get('model'),
+            data.get('lens_model'),
+            data.get('focal_length'),
+            _safe_int(data.get('focal_length_35mm')),
+            _parse_exif_timestamp(data.get('date_time_original')),
+            _parse_exif_timestamp(data.get('create_date')),
+            _str_or_none(data.get('exposure_time')),
+            _str_or_none(data.get('f_number')),
+            _safe_int(data.get('iso')),
+            _str_or_none(data.get('exposure_compensation')),
+            _safe_int(data.get('image_width')),
+            _safe_int(data.get('image_height')),
+            _safe_int(data.get('orientation')),
+            _safe_int(data.get('flash')),
+            _str_or_none(data.get('image_unique_id')),
+            _safe_int(data.get('shutter_count')),
+            _str_or_none(data.get('sub_sec_time_original')),
+            extracted_at,
+        ))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.warning("upsert_image_exif failed for image_id %s: %s", image_id, e)
+        try: conn.rollback()
+        except Exception: pass
+        return False
+    finally:
+        conn.close()
+
+
+def upsert_image_xmp(image_id: int, data: dict) -> bool:
+    """
+    Upsert XMP sidecar metadata for an image into IMAGE_XMP.
+    data keys: rating, label, pick_status, burst_uuid, stack_id, keywords,
+    title, description, create_date, modify_date
+    """
+    if not image_id or not isinstance(data, dict):
+        return False
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        extracted_at = datetime.datetime.now()
+        keywords_val = data.get('keywords')
+        if isinstance(keywords_val, list):
+            keywords_val = json.dumps(keywords_val) if keywords_val else None
+        elif not isinstance(keywords_val, str):
+            keywords_val = None
+        c.execute('''UPDATE OR INSERT INTO image_xmp (
+            image_id, rating, label, pick_status, burst_uuid, stack_id,
+            keywords, title, description, create_date, modify_date, extracted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        MATCHING (image_id)''', (
+            image_id,
+            _safe_int(data.get('rating')),
+            _str_or_none(data.get('label')),
+            _safe_int(data.get('pick_status')),
+            _str_or_none(data.get('burst_uuid')),
+            _str_or_none(data.get('stack_id')),
+            keywords_val,
+            _str_or_none(data.get('title')),
+            _str_or_none(data.get('description')),
+            _parse_exif_timestamp(data.get('create_date')),
+            _parse_exif_timestamp(data.get('modify_date')),
+            extracted_at,
+        ))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.warning("upsert_image_xmp failed for image_id %s: %s", image_id, e)
+        try: conn.rollback()
+        except Exception: pass
+        return False
+    finally:
+        conn.close()
+
+
+def get_image_exif(image_id: int) -> dict | None:
+    """Get cached EXIF metadata for an image. Returns None if not found."""
+    if not image_id:
+        return None
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT * FROM image_exif WHERE image_id = ?", (image_id,))
+        row = c.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_image_xmp(image_id: int) -> dict | None:
+    """Get cached XMP metadata for an image. Returns None if not found."""
+    if not image_id:
+        return None
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT * FROM image_xmp WHERE image_id = ?", (image_id,))
+        row = c.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def _safe_int(val):
+    """Convert value to int, return None for invalid/empty."""
+    if val is None:
+        return None
+    try:
+        return int(float(val)) if val != '' else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _str_or_none(val, max_len=None):
+    """Return string or None. Truncate if max_len given."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    if max_len and len(s) > max_len:
+        return s[:max_len]
+    return s
+
+
+def _parse_exif_timestamp(val):
+    """Parse EXIF/XMP timestamp strings to datetime. Returns None on failure."""
+    if val is None or (isinstance(val, str) and not val.strip()):
+        return None
+    if hasattr(val, 'year'):  # Already datetime
+        return val
+    s = str(val).strip()
+    formats = [
+        ("%Y:%m:%d %H:%M:%S", 19),
+        ("%Y-%m-%dT%H:%M:%S", 19),
+        ("%Y-%m-%d %H:%M:%S", 19),
+        ("%Y:%m:%d", 10),
+        ("%Y-%m-%d", 10),
+    ]
+    for fmt, min_len in formats:
+        if len(s) >= min_len:
+            try:
+                return datetime.datetime.strptime(s[:len(fmt)], fmt)
+            except ValueError:
+                continue
+    return None
 
 
 def get_stack_ids_for_image_ids(image_ids):
@@ -4968,10 +5281,10 @@ def get_all_phases(enabled_only=True):
 
 def get_folder_phase_summary(folder_path):
     """
-    Compute live phase status summary for a folder.
+    Compute live phase status summary for a folder and its subfolders.
 
     For each enabled phase, aggregates IMAGE_PHASE_STATUS rows across all
-    images in the folder:
+    images in the folder (and subfolders recursively):
       - 'done'        if ALL images have status='done' for that phase
       - 'partial'     if SOME images are done (but not all)
       - 'failed'      if ANY image has status='failed' (and none are done)
@@ -4982,12 +5295,18 @@ def get_folder_phase_summary(folder_path):
     """
     from modules import utils
 
-    # Resolve folder to folder_id
+    # Resolve folder to match db format
     wsl_path = utils.convert_path_to_wsl(folder_path) if hasattr(utils, 'convert_path_to_wsl') else folder_path
-    folder_id = get_or_create_folder(wsl_path) if wsl_path else get_or_create_folder(folder_path)
+    
+    # We still get_or_create to ensure the top-level folder is tracked
+    base_folder_id = get_or_create_folder(wsl_path) if wsl_path else get_or_create_folder(folder_path)
 
-    if not folder_id:
+    if not base_folder_id:
         return []
+
+    target_path = wsl_path if wsl_path else folder_path
+    path_like_unix = target_path + "/%"
+    path_like_win = target_path + "\\%"
 
     conn = get_db()
     c = conn.cursor()
@@ -5003,14 +5322,20 @@ def get_folder_phase_summary(folder_path):
                 COALESCE(SUM(CASE WHEN ips.status = 'failed' THEN 1 ELSE 0 END), 0) as failed_count,
                 COALESCE(SUM(CASE WHEN ips.status = 'running' THEN 1 ELSE 0 END), 0) as running_count
             FROM pipeline_phases pp
-            CROSS JOIN (SELECT id FROM images WHERE folder_id = ?) i
+            CROSS JOIN (
+                SELECT id FROM images 
+                WHERE folder_id IN (
+                    SELECT id FROM folders 
+                    WHERE path = ? OR path LIKE ? OR path LIKE ?
+                )
+            ) i
             LEFT JOIN image_phase_status ips
                 ON ips.image_id = i.id AND ips.phase_id = pp.id
             WHERE pp.enabled = 1
             GROUP BY pp.code, pp.name, pp.sort_order
             ORDER BY pp.sort_order
             """,
-            (folder_id,)
+            (target_path, path_like_unix, path_like_win)
         )
 
         result = []

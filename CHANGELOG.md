@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased]
+
+## [4.0.1] - 2026-03-07
+
+### Added
+- **Recursive Folder Scan**: Implemented recursive folder scanning in `get_folder_phase_summary`, allowing image counts to be aggregated across nested directories.
+- **EXIF/XMP Cache Tables**: New `IMAGE_EXIF` and `IMAGE_XMP` tables for caching metadata from EXIF and XMP sidecars. Enables gallery filtering by camera, lens, ISO, and capture date.
+- **EXIF Extractor**: New `modules/exif_extractor.py` using exiftool for structured EXIF extraction.
+- **XMP Full Read**: Extended `modules/xmp.py` with `read_xmp_full()` and `extract_and_upsert_xmp()` for sidecar cache sync.
+- **Gallery Sort by Capture Date**: Added "Capture Date (EXIF)" sort option and EXIF-based filters (make, model, lens, ISO).
+
+### Fixed
+- **Startup Tree View Interaction**: Disabled tree view interaction during initial image grid loading to prevent race conditions and unexpected state transitions.
+
+
+
 ## [4.0.0] - 2026-03-06
 
 ### Added

@@ -392,6 +392,14 @@ class ResultWorker(PipelineWorker):
         if job.status == "skipped":
             if self.progress_callback:
                 self.progress_callback(f"Skipped: {job.image_path}")
+            # Still cache EXIF/XMP for skipped images (already in DB)
+            if job.image_id:
+                try:
+                    from modules import exif_extractor
+                    exif_extractor.extract_and_upsert_exif(job.image_path, job.image_id)
+                    xmp.extract_and_upsert_xmp(job.image_path, job.image_id)
+                except Exception as ex_meta:
+                    logger.debug("EXIF/XMP cache failed for %s: %s", job.image_path, ex_meta)
                 
         elif job.status == "failed":
             if self.progress_callback:
@@ -475,6 +483,14 @@ class ResultWorker(PipelineWorker):
                                               app_version=APP_VERSION,
                                               executor_version=self.scorer.VERSION if self.scorer else None,
                                               job_id=job.job_id)
+
+                    # Cache EXIF and XMP metadata for gallery filtering
+                    try:
+                        from modules import exif_extractor
+                        exif_extractor.extract_and_upsert_exif(job.image_path, job.image_id)
+                        xmp.extract_and_upsert_xmp(job.image_path, job.image_id)
+                    except Exception as ex_meta:
+                        logger.debug("EXIF/XMP cache failed for %s: %s", job.image_path, ex_meta)
 
                 score = job.result["summary"]["weighted_scores"].get("general", 0)
                 if self.progress_callback:
