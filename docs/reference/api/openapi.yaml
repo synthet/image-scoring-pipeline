@@ -543,21 +543,33 @@ components:
         tagging_available: { type: boolean }
         clustering_available: { type: boolean, default: false }
 
-    ScoringStartRequest:
+    SelectorRequest:
       type: object
-      required: [input_path]
       properties:
-        input_path: { type: string, example: D:/Photos/2024 }
-        skip_existing: { type: boolean, default: true }
-        force_rescore: { type: boolean, default: false }
+        image_ids: { type: array, items: { type: integer } }
+        image_paths: { type: array, items: { type: string } }
+        folder_ids: { type: array, items: { type: integer } }
+        folder_paths: { type: array, items: { type: string } }
+        recursive: { type: boolean, default: true }
+
+    ScoringStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/SelectorRequest"
+        - type: object
+          properties:
+            input_path: { type: string, nullable: true, example: D:/Photos/2024 }
+            skip_existing: { type: boolean, default: true }
+            force_rescore: { type: boolean, default: false }
 
     TaggingStartRequest:
-      type: object
-      properties:
-        input_path: { type: string, default: '' }
-        custom_keywords: { type: array, items: { type: string } }
-        overwrite: { type: boolean, default: false }
-        generate_captions: { type: boolean, default: false }
+      allOf:
+        - $ref: "#/components/schemas/SelectorRequest"
+        - type: object
+          properties:
+            input_path: { type: string, default: '' }
+            custom_keywords: { type: array, items: { type: string } }
+            overwrite: { type: boolean, default: false }
+            generate_captions: { type: boolean, default: false }
 
     SingleImageRequest:
       type: object
@@ -574,12 +586,14 @@ components:
         generate_captions: { type: boolean, default: true }
 
     ClusteringStartRequest:
-      type: object
-      properties:
-        input_path: { type: string, nullable: true }
-        threshold: { type: number, nullable: true }
-        time_gap: { type: integer, nullable: true }
-        force_rescan: { type: boolean, default: false }
+      allOf:
+        - $ref: "#/components/schemas/SelectorRequest"
+        - type: object
+          properties:
+            input_path: { type: string, nullable: true }
+            threshold: { type: number, nullable: true }
+            time_gap: { type: integer, nullable: true }
+            force_rescan: { type: boolean, default: false }
 
     PipelineSubmitRequest:
       type: object

@@ -47,10 +47,42 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 import os
 from pathlib import Path
+from modules.selector_resolver import resolve_selectors
 
 
 # Request/Response Models with comprehensive descriptions for LLM agents
-class ScoringStartRequest(BaseModel):
+
+
+class SelectorRequest(BaseModel):
+    """Shared selector schema for batch operations."""
+
+    image_ids: Optional[List[int]] = Field(
+        None,
+        description="Specific image IDs to process.",
+        example=[101, 102]
+    )
+    image_paths: Optional[List[str]] = Field(
+        None,
+        description="Specific image file paths to process.",
+        example=["D:/Photos/2024/img001.jpg"]
+    )
+    folder_ids: Optional[List[int]] = Field(
+        None,
+        description="Folder IDs to process.",
+        example=[12]
+    )
+    folder_paths: Optional[List[str]] = Field(
+        None,
+        description="Folder paths to process.",
+        example=["D:/Photos/2024"]
+    )
+    recursive: bool = Field(
+        True,
+        description="If True, include subfolders when folder selectors are used.",
+        example=True
+    )
+
+class ScoringStartRequest(SelectorRequest):
     """Request model for starting a batch image scoring job.
     
     This endpoint initiates quality assessment of images using multiple AI models
@@ -71,8 +103,8 @@ class ScoringStartRequest(BaseModel):
             "force_rescore": false
         }
     """
-    input_path: str = Field(
-        ...,
+    input_path: Optional[str] = Field(
+        None,
         description="Directory path containing images to score. Supports Windows (D:\\...) and WSL (/mnt/...) paths.",
         example="D:/Photos/2024"
     )
@@ -96,7 +128,7 @@ class ScoringStartRequest(BaseModel):
     })
 
 
-class TaggingStartRequest(BaseModel):
+class TaggingStartRequest(SelectorRequest):
     """Request model for starting a batch image tagging/keyword extraction job.
     
     Uses CLIP (Contrastive Language-Image Pre-Training) to automatically tag images
@@ -117,7 +149,7 @@ class TaggingStartRequest(BaseModel):
             "generate_captions": true
         }
     """
-    input_path: str = Field(
+    input_path: Optional[str] = Field(
         "",
         description="Directory path containing images to tag. Empty string processes all images in database.",
         example="D:/Photos/2024"
@@ -339,7 +371,7 @@ class FindDuplicatesRequest(BaseModel):
     )
 
 
-class ClusteringStartRequest(BaseModel):
+class ClusteringStartRequest(SelectorRequest):
     """Request model for starting a clustering job.
 
     Clusters images in a folder based on visual similarity and temporal proximity.
@@ -382,8 +414,8 @@ class PipelineSubmitRequest(BaseModel):
         operations: List of operations to run in order. Valid: "score", "tag", "cluster".
         options: Optional per-operation options.
     """
-    input_path: str = Field(
-        ...,
+    input_path: Optional[str] = Field(
+        None,
         description="File or directory path to process.",
         example="D:/Photos/2024"
     )
@@ -834,20 +866,40 @@ def create_api_router() -> APIRouter:
                 data={"is_running": True}
             )
         
-        # Validate path
-        if not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
-        
+        if not any([request.input_path, request.image_ids, request.image_paths, request.folder_ids, request.folder_paths]):
+            raise HTTPException(status_code=400, detail="Provide input_path or at least one selector")
+
+        selector_folder_paths = list(request.folder_paths or [])
+        if request.input_path:
+            if not os.path.exists(request.input_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path not found: {request.input_path}"
+                )
+            selector_folder_paths.append(request.input_path)
+
+        selector_result = resolve_selectors(
+            image_ids=request.image_ids,
+            image_paths=request.image_paths,
+            folder_ids=request.folder_ids,
+            folder_paths=selector_folder_paths,
+            recursive=request.recursive,
+            index_missing=True,
+        )
+
         # Create job ID
         from modules import db
-        job_id = db.create_job(request.input_path)
-        
+        job_source = request.input_path or "SELECTOR_SCORING"
+        job_id = db.create_job(job_source)
+
         # Start batch
         skip_existing = not request.force_rescore if request.force_rescore else request.skip_existing
-        result = _scoring_runner.start_batch(request.input_path, job_id, skip_existing)
+        result = _scoring_runner.start_batch(
+            request.input_path,
+            job_id,
+            skip_existing,
+            resolved_image_ids=selector_result.get("resolved_image_ids")
+        )
         
         if result == "Started":
             return ApiResponse(
@@ -1063,22 +1115,35 @@ def create_api_router() -> APIRouter:
             )
         
         # Validate path if provided
-        if request.input_path and not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
-        
+        selector_folder_paths = list(request.folder_paths or [])
+        if request.input_path:
+            if not os.path.exists(request.input_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path not found: {request.input_path}"
+                )
+            selector_folder_paths.append(request.input_path)
+
+        selector_result = resolve_selectors(
+            image_ids=request.image_ids,
+            image_paths=request.image_paths,
+            folder_ids=request.folder_ids,
+            folder_paths=selector_folder_paths,
+            recursive=request.recursive,
+            index_missing=True,
+        )
+
         # Create job ID
         from modules import db
         job_id = db.create_job(request.input_path or "ALL_IMAGES_TAGGING")
-        
+
         result = _tagging_runner.start_batch(
             request.input_path,
             job_id=job_id,
             custom_keywords=request.custom_keywords,
             overwrite=request.overwrite,
-            generate_captions=request.generate_captions
+            generate_captions=request.generate_captions,
+            resolved_image_ids=selector_result.get("resolved_image_ids")
         )
         
         if result == "Started":
@@ -1583,12 +1648,23 @@ def create_api_router() -> APIRouter:
                 data={"is_running": True}
             )
 
-        # Validate path if provided
-        if request.input_path and not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
+        selector_folder_paths = list(request.folder_paths or [])
+        if request.input_path:
+            if not os.path.exists(request.input_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path not found: {request.input_path}"
+                )
+            selector_folder_paths.append(request.input_path)
+
+        selector_result = resolve_selectors(
+            image_ids=request.image_ids,
+            image_paths=request.image_paths,
+            folder_ids=request.folder_ids,
+            folder_paths=selector_folder_paths,
+            recursive=request.recursive,
+            index_missing=True,
+        )
 
         from modules import db
         job_id = db.create_job(request.input_path or "ALL_FOLDERS_CLUSTERING")
@@ -1598,7 +1674,8 @@ def create_api_router() -> APIRouter:
             threshold=request.threshold,
             time_gap=request.time_gap,
             force_rescan=request.force_rescan,
-            job_id=job_id
+            job_id=job_id,
+            resolved_image_ids=selector_result.get("resolved_image_ids")
         )
 
         if result == "Started":
