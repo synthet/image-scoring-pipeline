@@ -46,6 +46,8 @@ def create_ui():
         tagging_runner=tagging_runner,
         selection_runner=selection_runner
     )
+    recovery_info = orchestrator.recover_interrupted_jobs()
+    app_config["job_recovery"] = recovery_info
 
     # Register phase executors (binds phase codes to runner logic)
     phase_executors.register_all(

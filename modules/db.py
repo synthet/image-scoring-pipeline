@@ -22,6 +22,17 @@ logger = logging.getLogger(__name__)
 DEBUG_DB_CONNECTION = os.environ.get("DEBUG_DB_CONNECTION", "").lower() in ("1", "true", "yes")
 
 
+JOB_TERMINAL_STATES = {"completed", "failed", "canceled", "interrupted"}
+JOB_ALLOWED_TRANSITIONS = {
+    "pending": {"running", "canceled", "interrupted"},
+    "running": {"completed", "failed", "canceled", "interrupted"},
+    "interrupted": {"running", "canceled"},
+    "completed": set(),
+    "failed": set(),
+    "canceled": set(),
+}
+
+
 def _generate_image_uuid(metadata: dict | None) -> str:
     """
     Generate a UUID for an image.
@@ -1018,7 +1029,10 @@ def _init_db_impl():
             status VARCHAR(50),
             created_at TIMESTAMP,
             completed_at TIMESTAMP,
-            log BLOB SUB_TYPE TEXT
+            log BLOB SUB_TYPE TEXT,
+            current_phase VARCHAR(50),
+            next_phase_index INTEGER,
+            runner_state VARCHAR(50)
         )''')
         try: conn.commit()
         except Exception: pass
@@ -1521,6 +1535,36 @@ def _init_db_impl():
                     c = conn.cursor()
                 except Exception as m:
                     logger.debug("Adding jobs.job_type: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
+            if "current_phase" not in jobs_cols:
+                try:
+                    c.execute("ALTER TABLE jobs ADD current_phase VARCHAR(50)")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding jobs.current_phase: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
+            if "next_phase_index" not in jobs_cols:
+                try:
+                    c.execute("ALTER TABLE jobs ADD next_phase_index INTEGER")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding jobs.next_phase_index: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
+            if "runner_state" not in jobs_cols:
+                try:
+                    c.execute("ALTER TABLE jobs ADD runner_state VARCHAR(50)")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding jobs.runner_state: %s", m)
                     try: conn.rollback()
                     except Exception: pass
                     c = conn.cursor()
@@ -2394,7 +2438,8 @@ def get_images_by_folder(folder_path):
     _folder_images_cache[folder_path] = (now, result)
     return result
 
-def create_job(input_path, phase_code=None, job_type=None):
+def create_job(input_path, phase_code=None, job_type=None, status="pending", current_phase=None,
+               next_phase_index=None, runner_state=None):
     """
     Create a new job record.
 
@@ -2402,6 +2447,10 @@ def create_job(input_path, phase_code=None, job_type=None):
         input_path: Path being processed.
         phase_code: Optional phase code (e.g. 'scoring') — resolves to phase_id FK.
         job_type:   Optional legacy job type string (deprecated, use phase_code).
+        status:     Initial status (default: pending).
+        current_phase: Current orchestrator phase code.
+        next_phase_index: Next phase index in orchestrator order.
+        runner_state: High-level runner/orchestrator state.
     """
     conn = get_db()
     c = conn.cursor()
@@ -2413,8 +2462,9 @@ def create_job(input_path, phase_code=None, job_type=None):
             job_type = phase_code  # backfill legacy column
 
     c.execute(
-        "INSERT INTO jobs (input_path, phase_id, job_type, status, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id",
-        (input_path, phase_id, job_type, "pending", datetime.datetime.now())
+        """INSERT INTO jobs (input_path, phase_id, job_type, status, created_at, current_phase, next_phase_index, runner_state)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id""",
+        (input_path, phase_id, job_type, status, datetime.datetime.now(), current_phase, next_phase_index, runner_state)
     )
     row = c.fetchone()
     job_id = row[0] if row else None
@@ -2422,26 +2472,121 @@ def create_job(input_path, phase_code=None, job_type=None):
     conn.close()
     return job_id
 
-def update_job_status(job_id, status, log=None):
+
+def get_job(job_id):
     conn = get_db()
     c = conn.cursor()
-    if status in ["completed", "failed"]:
-        c.execute("UPDATE jobs SET status = ?, completed_at = ?, log = ? WHERE id = ?",
-                  (status, datetime.datetime.now(), log, job_id))
-    else:
-        c.execute("UPDATE jobs SET status = ?, log = ? WHERE id = ?",
-                  (status, log, job_id))
+    c.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    row = c.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def set_job_execution_cursor(job_id, current_phase=None, next_phase_index=None, runner_state=None):
+    """Persist pipeline execution cursor fields on a job row."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        "UPDATE jobs SET current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
+        (current_phase, next_phase_index, runner_state, job_id)
+    )
     conn.commit()
     conn.close()
-    
+
+
+def update_job_status(job_id, status, log=None, current_phase=None, next_phase_index=None, runner_state=None):
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("SELECT status, current_phase, next_phase_index, runner_state FROM jobs WHERE id = ?", (job_id,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        raise ValueError(f"Job not found: {job_id}")
+
+    old_status = (row[0] or "pending").strip().lower()
+    new_status = (status or "").strip().lower()
+
+    allowed_next = JOB_ALLOWED_TRANSITIONS.get(old_status)
+    if allowed_next is not None and old_status != new_status and new_status not in allowed_next:
+        conn.close()
+        raise ValueError(f"Invalid job status transition: {old_status} -> {new_status} (job_id={job_id})")
+
+    final_log = log
+    if final_log is None:
+        final_log = None
+
+    # Keep existing cursor values unless caller explicitly overrides
+    final_phase = current_phase if current_phase is not None else row[1]
+    final_next_idx = next_phase_index if next_phase_index is not None else row[2]
+    final_runner_state = runner_state if runner_state is not None else row[3]
+
+    if new_status in JOB_TERMINAL_STATES:
+        c.execute(
+            "UPDATE jobs SET status = ?, completed_at = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
+            (new_status, datetime.datetime.now(), final_log, final_phase, final_next_idx, final_runner_state, job_id),
+        )
+    else:
+        c.execute(
+            "UPDATE jobs SET status = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
+            (new_status, final_log, final_phase, final_next_idx, final_runner_state, job_id),
+        )
+    conn.commit()
+    conn.close()
+
     # Broadcast job status update
     try:
         from modules.events import event_manager
-        event_manager.broadcast_threadsafe(f"job_{status}", {
+        event_manager.broadcast_threadsafe(f"job_{new_status}", {
             "job_id": job_id,
-            "status": status
+            "status": new_status,
+            "current_phase": final_phase,
+            "next_phase_index": final_next_idx,
+            "runner_state": final_runner_state,
         })
-    except Exception: pass
+    except Exception:
+        pass
+
+
+def recover_running_jobs(mark_as="interrupted"):
+    """Mark stale running jobs as interrupted (or another provided state)."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id FROM jobs WHERE status = 'running'")
+    rows = c.fetchall()
+    recovered = [r[0] for r in rows]
+    if recovered:
+        c.execute(
+            "UPDATE jobs SET status = ?, completed_at = ?, runner_state = ? WHERE status = 'running'",
+            (mark_as, datetime.datetime.now(), mark_as),
+        )
+    conn.commit()
+    conn.close()
+    return recovered
+
+
+def get_interrupted_jobs(job_type=None, limit=100):
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 100
+
+    if job_type:
+        c.execute(
+            "SELECT * FROM jobs WHERE status = 'interrupted' AND job_type = ? ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY",
+            (job_type, limit),
+        )
+    else:
+        c.execute(
+            "SELECT * FROM jobs WHERE status = 'interrupted' ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY",
+            (limit,),
+        )
+
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
 
 def get_jobs(limit=50):
     conn = get_db()
