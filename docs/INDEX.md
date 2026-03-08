@@ -38,6 +38,7 @@ High-level system design and project layout.
 | Document | Description |
 |----------|-------------|
 | [DB_SCHEMA.md](technical/DB_SCHEMA.md) | Firebird database schema (tables, columns, relationships) |
+| [FIREBIRD_TO_POSTGRES_PGVECTOR_MIGRATION_PLAN_REFINED.md](technical/FIREBIRD_TO_POSTGRES_PGVECTOR_MIGRATION_PLAN_REFINED.md) | Refined coordinated migration plan from Firebird to PostgreSQL + pgvector |
 
 ---
 
@@ -264,3 +265,4 @@ These files are preserved for historical reference but describe features that ha
 - **API**: `reference/api/` — three-tier docs (REST, implementation, LLM schema)
 - **MCP**: `MCP_DEBUGGING_TOOLS.md` — complete MCP integration guide
 - **Feature docs**: Culling, Stacking, Keyword, Lazy Load — well-documented with design reviews
+
