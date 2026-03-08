@@ -48,6 +48,8 @@ from typing import Optional, List, Dict, Any
 import os
 from pathlib import Path
 
+from modules.job_dispatcher import JobDispatcher
+
 
 # Request/Response Models with comprehensive descriptions for LLM agents
 class ScoringStartRequest(BaseModel):
@@ -459,14 +461,17 @@ class ApiResponse(BaseModel):
 _scoring_runner = None
 _tagging_runner = None
 _clustering_runner = None
+_job_dispatcher = JobDispatcher()
 
 
 def set_runners(scoring_runner, tagging_runner, clustering_runner=None):
     """Set the runner instances for API access."""
-    global _scoring_runner, _tagging_runner, _clustering_runner
+    global _scoring_runner, _tagging_runner, _clustering_runner, _job_dispatcher
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
+    _job_dispatcher.set_runners(scoring_runner, tagging_runner, clustering_runner)
+    _job_dispatcher.start()
 
 
 def create_api_router() -> APIRouter:
@@ -827,40 +832,27 @@ def create_api_router() -> APIRouter:
         if _scoring_runner is None:
             raise HTTPException(status_code=503, detail="Scoring runner not available")
         
-        if _scoring_runner.is_running:
-            return ApiResponse(
-                success=False,
-                message="Scoring job is already running",
-                data={"is_running": True}
-            )
-        
         # Validate path
         if not os.path.exists(request.input_path):
             raise HTTPException(
                 status_code=400,
                 detail=f"Path not found: {request.input_path}"
             )
-        
-        # Create job ID
+
         from modules import db
-        job_id = db.create_job(request.input_path)
-        
-        # Start batch
         skip_existing = not request.force_rescore if request.force_rescore else request.skip_existing
-        result = _scoring_runner.start_batch(request.input_path, job_id, skip_existing)
-        
-        if result == "Started":
-            return ApiResponse(
-                success=True,
-                message="Scoring job started successfully",
-                data={"job_id": job_id, "input_path": request.input_path}
-            )
-        else:
-            return ApiResponse(
-                success=False,
-                message=result,
-                data={"error": result}
-            )
+        job_id, queue_position = db.enqueue_job(
+            request.input_path,
+            phase_code="scoring",
+            job_type="scoring",
+            queue_payload={"skip_existing": skip_existing, "input_path": request.input_path},
+        )
+
+        return ApiResponse(
+            success=True,
+            message="Scoring job queued",
+            data={"job_id": job_id, "input_path": request.input_path, "queue_position": queue_position}
+        )
     
     @router.post(
         "/scoring/stop",
@@ -1055,47 +1047,35 @@ def create_api_router() -> APIRouter:
         if _tagging_runner is None:
             raise HTTPException(status_code=503, detail="Tagging runner not available")
         
-        if _tagging_runner.is_running:
-            return ApiResponse(
-                success=False,
-                message="Tagging job is already running",
-                data={"is_running": True}
-            )
-        
         # Validate path if provided
         if request.input_path and not os.path.exists(request.input_path):
             raise HTTPException(
                 status_code=400,
                 detail=f"Path not found: {request.input_path}"
             )
-        
-        # Create job ID
+
         from modules import db
-        job_id = db.create_job(request.input_path or "ALL_IMAGES_TAGGING")
-        
-        result = _tagging_runner.start_batch(
-            request.input_path,
-            job_id=job_id,
-            custom_keywords=request.custom_keywords,
-            overwrite=request.overwrite,
-            generate_captions=request.generate_captions
+        job_id, queue_position = db.enqueue_job(
+            request.input_path or "ALL_IMAGES_TAGGING",
+            phase_code="keywords",
+            job_type="tagging",
+            queue_payload={
+                "input_path": request.input_path,
+                "custom_keywords": request.custom_keywords,
+                "overwrite": request.overwrite,
+                "generate_captions": request.generate_captions,
+            },
         )
-        
-        if result == "Started":
-            return ApiResponse(
-                success=True,
-                message="Tagging job started successfully",
-                data={
-                    "job_id": job_id,
-                    "input_path": request.input_path or "all images"
-                }
-            )
-        else:
-            return ApiResponse(
-                success=False,
-                message=result,
-                data={"error": result}
-            )
+
+        return ApiResponse(
+            success=True,
+            message="Tagging job queued",
+            data={
+                "job_id": job_id,
+                "input_path": request.input_path or "all images",
+                "queue_position": queue_position,
+            }
+        )
     
     @router.post(
         "/tagging/stop",
@@ -1443,7 +1423,24 @@ def create_api_router() -> APIRouter:
             return jobs
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-    
+
+    @router.get(
+        "/jobs/queue",
+        response_model=Dict[str, Any],
+        summary="Get queue state",
+        description="Returns dispatcher state and currently queued jobs."
+    )
+    async def get_jobs_queue(limit: int = 200):
+        from modules import db
+        try:
+            state = _job_dispatcher.get_state()
+            if limit:
+                state["queue"] = db.get_queued_jobs(limit=limit)
+                state["queue_size"] = len(state["queue"])
+            return state
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     @router.get(
         "/jobs/{job_id}",
         response_model=Dict[str, Any],
@@ -1463,8 +1460,7 @@ def create_api_router() -> APIRouter:
         """Get details for a specific job."""
         from modules import db
         try:
-            jobs = db.get_jobs(limit=1000)  # Get enough to find the job
-            job = next((j for j in jobs if j.get('id') == job_id), None)
+            job = db.get_job_by_id(job_id)
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
             return job
@@ -1472,7 +1468,27 @@ def create_api_router() -> APIRouter:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-            
+
+    @router.post(
+        "/jobs/{job_id}/cancel",
+        response_model=ApiResponse,
+        summary="Cancel a queued/running job",
+        description="Marks a queued job cancelled or requests cancellation for a running job."
+    )
+    async def cancel_job(job_id: int):
+        from modules import db
+        try:
+            result = db.request_cancel_job(job_id)
+            if not result.get("success"):
+                if result.get("reason") == "not_found":
+                    raise HTTPException(status_code=404, detail="Job not found")
+                return ApiResponse(success=False, message="Job cannot be cancelled", data=result)
+            return ApiResponse(success=True, message="Cancellation requested", data={"job_id": job_id, **result})
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     # ========== Similar Images Endpoint ==========
 
     @router.get(
@@ -1576,13 +1592,6 @@ def create_api_router() -> APIRouter:
         if _clustering_runner is None:
             raise HTTPException(status_code=503, detail="Clustering runner not available")
 
-        if _clustering_runner.is_running:
-            return ApiResponse(
-                success=False,
-                message="Clustering job is already running",
-                data={"is_running": True}
-            )
-
         # Validate path if provided
         if request.input_path and not os.path.exists(request.input_path):
             raise HTTPException(
@@ -1591,28 +1600,23 @@ def create_api_router() -> APIRouter:
             )
 
         from modules import db
-        job_id = db.create_job(request.input_path or "ALL_FOLDERS_CLUSTERING")
-
-        result = _clustering_runner.start_batch(
-            request.input_path,
-            threshold=request.threshold,
-            time_gap=request.time_gap,
-            force_rescan=request.force_rescan,
-            job_id=job_id
+        job_id, queue_position = db.enqueue_job(
+            request.input_path or "ALL_FOLDERS_CLUSTERING",
+            phase_code="culling",
+            job_type="clustering",
+            queue_payload={
+                "input_path": request.input_path,
+                "threshold": request.threshold,
+                "time_gap": request.time_gap,
+                "force_rescan": request.force_rescan,
+            },
         )
 
-        if result == "Started":
-            return ApiResponse(
-                success=True,
-                message="Clustering job started successfully",
-                data={"job_id": job_id, "input_path": request.input_path or "all folders"}
-            )
-        else:
-            return ApiResponse(
-                success=False,
-                message=result,
-                data={"error": result}
-            )
+        return ApiResponse(
+            success=True,
+            message="Clustering job queued",
+            data={"job_id": job_id, "input_path": request.input_path or "all folders", "queue_position": queue_position}
+        )
 
     @router.post(
         "/clustering/stop",
@@ -1878,8 +1882,6 @@ def create_api_router() -> APIRouter:
         if first_op == "score":
             if _scoring_runner is None:
                 raise HTTPException(status_code=503, detail="Scoring runner not available")
-            if _scoring_runner.is_running:
-                return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True})
 
             if is_file:
                 success, message = _scoring_runner.run_single_image(request.input_path)
@@ -1892,27 +1894,28 @@ def create_api_router() -> APIRouter:
                         "remaining_operations": remaining_ops,
                     }
                 )
-            else:
-                job_id = db.create_job(request.input_path)
-                result = _scoring_runner.start_batch(request.input_path, job_id, request.skip_existing)
-                if result == "Started":
-                    return ApiResponse(
-                        success=True,
-                        message="Pipeline started: scoring",
-                        data={
-                            "job_id": job_id,
-                            "input_path": request.input_path,
-                            "current_operation": "score",
-                            "remaining_operations": remaining_ops,
-                        }
-                    )
-                return ApiResponse(success=False, message=result, data={"error": result})
+
+            job_id, queue_position = db.enqueue_job(
+                request.input_path,
+                phase_code="scoring",
+                job_type="scoring",
+                queue_payload={"input_path": request.input_path, "skip_existing": request.skip_existing},
+            )
+            return ApiResponse(
+                success=True,
+                message="Pipeline queued: scoring",
+                data={
+                    "job_id": job_id,
+                    "input_path": request.input_path,
+                    "current_operation": "score",
+                    "remaining_operations": remaining_ops,
+                    "queue_position": queue_position,
+                }
+            )
 
         elif first_op == "tag":
             if _tagging_runner is None:
                 raise HTTPException(status_code=503, detail="Tagging runner not available")
-            if _tagging_runner.is_running:
-                return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True})
 
             if is_file:
                 success, message = _tagging_runner.run_single_image(
@@ -1929,51 +1932,53 @@ def create_api_router() -> APIRouter:
                         "remaining_operations": remaining_ops,
                     }
                 )
-            else:
-                job_id = db.create_job(request.input_path)
-                result = _tagging_runner.start_batch(
-                    request.input_path,
-                    job_id=job_id,
-                    custom_keywords=request.custom_keywords,
-                    overwrite=not request.skip_existing,
-                    generate_captions=request.generate_captions
-                )
-                if result == "Started":
-                    return ApiResponse(
-                        success=True,
-                        message="Pipeline started: tagging",
-                        data={
-                            "job_id": job_id,
-                            "input_path": request.input_path,
-                            "current_operation": "tag",
-                            "remaining_operations": remaining_ops,
-                        }
-                    )
-                return ApiResponse(success=False, message=result, data={"error": result})
+
+            job_id, queue_position = db.enqueue_job(
+                request.input_path,
+                phase_code="keywords",
+                job_type="tagging",
+                queue_payload={
+                    "input_path": request.input_path,
+                    "custom_keywords": request.custom_keywords,
+                    "overwrite": not request.skip_existing,
+                    "generate_captions": request.generate_captions,
+                },
+            )
+            return ApiResponse(
+                success=True,
+                message="Pipeline queued: tagging",
+                data={
+                    "job_id": job_id,
+                    "input_path": request.input_path,
+                    "current_operation": "tag",
+                    "remaining_operations": remaining_ops,
+                    "queue_position": queue_position,
+                }
+            )
 
         elif first_op == "cluster":
             if _clustering_runner is None:
                 raise HTTPException(status_code=503, detail="Clustering runner not available")
-            if _clustering_runner.is_running:
-                return ApiResponse(success=False, message="Clustering runner is busy", data={"is_running": True})
 
-            job_id = db.create_job(request.input_path)
-            result = _clustering_runner.start_batch(
+            job_id, queue_position = db.enqueue_job(
                 request.input_path,
-                threshold=request.clustering_threshold,
-                job_id=job_id
+                phase_code="culling",
+                job_type="clustering",
+                queue_payload={
+                    "input_path": request.input_path,
+                    "threshold": request.clustering_threshold,
+                },
             )
-            if result == "Started":
-                return ApiResponse(
-                    success=True,
-                    message="Pipeline started: clustering",
-                    data={
-                        "job_id": job_id,
-                        "input_path": request.input_path,
-                        "current_operation": "cluster",
-                        "remaining_operations": remaining_ops,
-                    }
-                )
-            return ApiResponse(success=False, message=result, data={"error": result})
+            return ApiResponse(
+                success=True,
+                message="Pipeline queued: clustering",
+                data={
+                    "job_id": job_id,
+                    "input_path": request.input_path,
+                    "current_operation": "cluster",
+                    "remaining_operations": remaining_ops,
+                    "queue_position": queue_position,
+                }
+            )
 
     return router
