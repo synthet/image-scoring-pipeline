@@ -372,6 +372,23 @@ class ClusteringStartRequest(BaseModel):
     )
 
 
+class ImportRegisterRequest(BaseModel):
+    """Request model for registering images from a folder (import without scoring).
+
+    Scans a folder for image files and adds them to the database.
+    Supports Windows (D:\\...) and WSL (/mnt/...) paths.
+    """
+    folder_path: str = Field(
+        ...,
+        description="Directory path containing images to import.",
+        example="D:/Photos/2024"
+    )
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {"folder_path": "D:/Photos/2024"}
+    })
+
+
 class PipelineSubmitRequest(BaseModel):
     """Request model for submitting images/folders to the processing pipeline.
 
@@ -1819,6 +1836,92 @@ def create_api_router() -> APIRouter:
             return stats
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
+    # ========== Import Register Endpoint ==========
+
+    @router.post(
+        "/import/register",
+        response_model=ApiResponse,
+        summary="Register images from folder (import without scoring)",
+        description="""
+        Scans a folder for image files and adds them to the database without scoring.
+        Skips images already in the database (by path or EXIF ImageUniqueID).
+        Supports Windows (D:\\...) and WSL (/mnt/...) paths.
+        """
+    )
+    async def import_register(request: ImportRegisterRequest):
+        """Register images from a folder via API (used by Electron when Gradio is available)."""
+        from modules.ui.app import _check_rate_limit
+        from modules import db, utils
+        from modules.exif_extractor import extract_exif
+
+        _check_rate_limit("import_register")
+
+        # Convert Windows path to WSL for backend access (Python runs in WSL)
+        folder_path = request.folder_path
+        try:
+            if (":" in folder_path or "\\" in folder_path) and hasattr(utils, "convert_path_to_wsl"):
+                folder_path = utils.convert_path_to_wsl(folder_path)
+        except Exception:
+            pass
+
+        if not os.path.isdir(folder_path):
+            raise HTTPException(status_code=400, detail=f"Path is not a directory or not found: {request.folder_path}")
+
+        IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".nef", ".arw", ".cr2", ".dng", ".heic", ".webp", ".tiff", ".tif", ".raw", ".orf", ".rw2"}
+        added = 0
+        skipped = 0
+        errors = []
+
+        try:
+            folder_id = db.get_or_create_folder(folder_path)
+            if not folder_id:
+                raise HTTPException(status_code=500, detail="Failed to get or create folder")
+
+            entries = os.listdir(folder_path)
+            for name in entries:
+                file_path = os.path.join(folder_path, name)
+                if not os.path.isfile(file_path):
+                    continue
+                ext = os.path.splitext(name)[1].lower()
+                if ext not in IMAGE_EXTENSIONS:
+                    continue
+
+                file_name = os.path.basename(name)
+                file_type = ext.lstrip(".") or "unknown"
+
+                if db.find_image_id_by_path(file_path):
+                    skipped += 1
+                    continue
+
+                image_uuid = None
+                try:
+                    exif_data = extract_exif(file_path)
+                    if exif_data:
+                        uid = exif_data.get("image_unique_id")
+                        if uid and isinstance(uid, str) and uid.strip():
+                            image_uuid = uid.strip()
+                            if db.find_image_id_by_uuid(image_uuid):
+                                skipped += 1
+                                continue
+                except Exception:
+                    pass
+
+                image_id = db.register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid)
+                if image_id:
+                    added += 1
+                else:
+                    errors.append(f"{file_name}: insert failed")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        return ApiResponse(
+            success=True,
+            message=f"Import complete: {added} added, {skipped} skipped",
+            data={"added": added, "skipped": skipped, "errors": errors}
+        )
 
     # ========== Pipeline Submit Endpoint ==========
 

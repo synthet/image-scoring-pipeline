@@ -1402,6 +1402,17 @@ def _init_db_impl():
                     conn.rollback()
                 except Exception:
                     pass
+        # Unique index on image_uuid to prevent duplicates (allows multiple NULLs)
+        if "image_uuid" in img_cols and not _index_exists(c, 'UQ_IMAGES_IMAGE_UUID'):
+            try:
+                c.execute("CREATE UNIQUE INDEX uq_images_image_uuid ON images(image_uuid)")
+                conn.commit()
+            except Exception as e:
+                logger.debug("Could not create unique index on image_uuid (may have existing duplicates): %s", e)
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
 
     except Exception as e:
         logger.error("Migration error: %s", e)
@@ -1897,6 +1908,66 @@ def get_folder_by_id(folder_id):
     row = c.fetchone()
     conn.close()
     return row[0] if row else None
+
+
+def find_image_id_by_path(file_path):
+    """Returns image id if exists by file_path, else None."""
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT id FROM images WHERE file_path = ?", (file_path,))
+        row = c.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def find_image_id_by_uuid(image_uuid):
+    """Returns image id if exists by image_uuid, else None."""
+    if not image_uuid or not isinstance(image_uuid, str) or not image_uuid.strip():
+        return None
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT id FROM images WHERE image_uuid = ?", (image_uuid.strip(),))
+        row = c.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid=None):
+    """
+    Insert a minimal image record for import (no scoring).
+    Returns the new image id, or None on failure.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute(
+            """INSERT INTO images (file_path, file_name, file_type, folder_id, image_uuid, created_at)
+               VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id""",
+            (file_path, file_name, file_type, folder_id, image_uuid or None)
+        )
+        row = c.fetchone()
+        conn.commit()
+        image_id = row[0] if row else None
+        if image_id:
+            register_image_path(image_id, file_path)
+            try:
+                resolve_windows_path(image_id, file_path, verify=False)
+            except Exception:
+                pass
+        return image_id
+    except Exception as e:
+        logger.warning("register_image_for_import failed for %s: %s", file_path, e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+    finally:
+        conn.close()
 
 
 def get_or_create_folder(folder_path, _depth=0):
@@ -2716,6 +2787,62 @@ def upsert_image(job_id, result):
              folder_id = get_or_create_folder(os.path.dirname(image_path))
         except Exception as e:
              logging.error(f"Error resolving folder for {image_path}: {e}")
+
+    # Prevent duplicates by image_uuid: if UUID exists in DB (different path), update that record instead of inserting
+    meta_dict = result.get("metadata") if isinstance(result.get("metadata"), dict) else (
+        json.loads(result.get("metadata")) if isinstance(result.get("metadata"), str) else None
+    )
+    image_uuid_val = _generate_image_uuid(meta_dict)
+    if image_uuid_val and image_uuid_val.strip():
+        existing_id = find_image_id_by_uuid(image_uuid_val)
+        if existing_id:
+            # Same image (by UUID) at different path — update existing record, don't insert
+            existing_path = None
+            try:
+                c2 = conn.cursor()
+                c2.execute("SELECT file_path FROM images WHERE id = ?", (existing_id,))
+                r = c2.fetchone()
+                if r:
+                    existing_path = r[0] if r else None
+            except Exception:
+                pass
+            if existing_path != image_path:
+                logger.info("Duplicate by UUID %s: updating existing id=%s path %s -> %s",
+                            image_uuid_val[:16], existing_id, existing_path, image_path)
+                c.execute(
+                    '''UPDATE images SET
+                       job_id=?, file_path=?, file_name=?, file_type=?,
+                       score=?, score_spaq=?, score_ava=?, score_koniq=?, score_paq2piq=?, score_liqe=?,
+                       score_technical=?, score_aesthetic=?, score_general=?, model_version=?,
+                       rating=?, label=?, keywords=?, title=?, description=?, metadata=?, scores_json=?,
+                       thumbnail_path=?, thumbnail_path_win=?, image_hash=?, folder_id=?
+                       WHERE id=?''',
+                    (job_id, image_path, file_name, file_type,
+                     score, score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
+                     score_technical, score_aesthetic, score_general, model_version,
+                     rating, label, keywords, title, description, metadata, json.dumps(result),
+                     thumbnail_path, thumbnail_path_win, image_hash, folder_id, existing_id)
+                )
+                conn.commit()
+                register_image_path(existing_id, image_path)
+                try:
+                    resolve_windows_path(existing_id, image_path, verify=False)
+                except Exception:
+                    pass
+                if image_path:
+                    invalidate_folder_images_cache(os.path.dirname(image_path))
+                event_manager.broadcast_threadsafe("image_scored", {
+                    "image_id": existing_id,
+                    "file_path": image_path,
+                    "score_general": score_general,
+                    "score_technical": score_technical,
+                    "score_aesthetic": score_aesthetic,
+                    "rating": rating,
+                    "label": label,
+                    "image_hash": image_hash
+                })
+                conn.close()
+                return
 
     # Firebird: We can use RETURNING!
     query = '''UPDATE OR INSERT INTO images 

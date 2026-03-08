@@ -1,85 +1,101 @@
-# Firebird Schema Optimization & Normalization Refactor Plan
+# DB Refactor Plan: Hybrid 3NF + Performance Hardening (Firebird, Backward-Compatible)
 
 ## Summary
-- Current state review found schema drift and integrity debt between live DB, runtime DDL, and docs:
-- Duplicate indexes on `IMAGES(folder_id)` and `IMAGES(stack_id)`, plus duplicate FK/index coverage in `CULLING_PICKS`.
-- High stack integrity drift in live data: `11,902` empty stacks, `12,004` stacks with `best_image_id` not in the stack, `57` stacks with missing best image.
-- Query-side side effects: read filters call folder creation (`get_or_create_folder`) instead of pure lookup, which can mutate data during reads.
-- DDL source-of-truth drift: runtime DDL in `modules/db.py`, stale SQLite-style migration in `sql/add_resolved_paths_table.sql`, and schema docs mismatch in `docs/technical/DB_SCHEMA.md`.
-- Chosen direction: Firebird-first, strict backward compatibility, phased rollout, path-unique identity, hard stack invariants.
+- Target model: **Hybrid 3NF** with **expand-contract** migration and **backward compatibility**.
+- Prioritize: integrity constraints + missing indexes first, then normalize high-impact domains (keywords + editable metadata), then query refactor.
+- Keep Firebird and existing app contracts stable while introducing normalized structures.
+
+## Current Findings (from live DB + workload)
+- Point lookups are under-indexed:
+  - `images.file_path` lookup averages ~136 ms.
+  - `images.image_uuid` lookup averages ~142 ms.
+  - Queries in `electron/db.ts` around lines 745 and 753.
+- Keyword discovery is scan-heavy:
+  - `SELECT DISTINCT CAST(keywords...) FROM images` averages ~3.5 s.
+  - Query in `electron/db.ts` around line 464.
+- Referential integrity gaps:
+  - `STACKS.BEST_IMAGE_ID` has 57 orphan references.
+  - Several relationship columns lack FKs (`IMAGES.JOB_ID`, `IMAGES.STACK_ID`, `IMAGE_PHASE_STATUS.JOB_ID`, `STACK_CACHE.*` refs).
+- Redundant constraints/indexes exist:
+  - Duplicate FK/index patterns on `CULLING_PICKS` (`FK_*` and `INTEG_13/14` paths).
+  - Duplicate single-column indexes on `IMAGES.FOLDER_ID` and `IMAGES.STACK_ID`.
+- Normal form issues:
+  - `IMAGES.KEYWORDS` as comma-separated text/BLOB violates 1NF for search.
+  - Editable metadata duplicated between `IMAGES` and `IMAGE_XMP`; `IMAGE_XMP` currently empty.
 
 ## Implementation Changes
-1. **Phase 0: Baseline + Migration Framework**
-- Add versioned migration ledger table (`SCHEMA_MIGRATIONS`) and stop ad-hoc schema mutation in `_init_db_impl` for new changes.
-- Define single DDL authority for Firebird (versioned SQL migrations) and mark legacy SQL script as deprecated.
-- Add pre/post migration health SQL checks as repeatable scripts (or MCP tool wrappers).
 
-2. **Phase 1: Integrity Repair + Non-Breaking Performance Fixes**
-- Data repair migration:
-- Recompute `STACKS.best_image_id` from current `IMAGES.stack_id` members.
-- Delete stacks with no members.
-- Null out `IMAGES.stack_id` values that reference non-existing stacks.
-- Remove duplicate FK constraints on `CULLING_PICKS` (keep one FK per relation) and keep only one supporting index per FK path.
-- Remove redundant single-column indexes:
-- Drop duplicate `IMAGES(folder_id)` indexes; keep one FK-backed path plus add targeted composite indexes.
-- Drop duplicate `IMAGES(stack_id)` index copy.
-- Drop redundant `JOBS(phase_id)` duplicate if FK index already covers it.
-- Add missing high-value indexes for current workload:
-- `IMAGES(created_at)`
-- `IMAGES(score_general)`
-- `IMAGES(rating)`
-- `IMAGES(label)`
-- `IMAGES(folder_id, score_general)` for gallery folder+score queries
-- `CULLING_PICKS(session_id, group_id, created_at)` for ordered session reads
-- Add guard constraints where compatible with current data:
-- `rating BETWEEN 0 AND 5 OR rating IS NULL`
-- enumerated checks for `cull_decision`, `jobs.status`, `image_phase_status.status`, label domain.
-- Refactor read paths to use pure lookup (`get_folder_id_by_path`) instead of `get_or_create_folder` in query APIs to prevent write-on-read.
+### 1) Phase 0: Baseline + Safety
+- Take full DB backup and capture a migration snapshot (live ingestion is active, row counts are changing).
+- Run pre-migration integrity report: duplicates, orphans, nullability, and lookup latency baselines.
 
-3. **Phase 2: Normalization (Compatibility-Preserving, Dual-Write)**
-- Introduce normalized score model:
-- `IMAGE_SCORES(image_id, score_code, score_value, model_version, updated_at)`
-- Backfill from `IMAGES` score columns.
-- Keep existing score columns in `IMAGES` as compatibility surface during transition.
-- Split cold/heavy payloads from hot rows:
-- `IMAGE_BLOBS(image_id, metadata_json, scores_json, keywords_json, description_text, embedding_blob, updated_at)`
-- Keep legacy columns readable; app writes both old/new during transition.
-- Add repository-layer writes so API/UI remain backward compatible while new tables are adopted incrementally.
-- Do not remove legacy columns in this phase.
+### 2) Phase 1: Integrity + Index Hardening (no contract break)
+- Data cleanup:
+  - Repair or null invalid `STACKS.BEST_IMAGE_ID` rows.
+- Add/strengthen constraints:
+  - `UQ_IMAGES_FILE_PATH (FILE_PATH)`.
+  - `UQ_IMAGES_IMAGE_UUID (IMAGE_UUID)` (nullable unique allowed).
+  - `UQ_FOLDERS_PATH (PATH)`.
+  - FKs:
+    - `IMAGES.JOB_ID -> JOBS.ID`
+    - `IMAGES.STACK_ID -> STACKS.ID`
+    - `STACKS.BEST_IMAGE_ID -> IMAGES.ID`
+    - `IMAGE_PHASE_STATUS.JOB_ID -> JOBS.ID`
+    - `STACK_CACHE.STACK_ID -> STACKS.ID`
+    - `STACK_CACHE.REP_IMAGE_ID -> IMAGES.ID`
+    - `STACK_CACHE.FOLDER_ID -> FOLDERS.ID`
+- Add/reshape indexes for hot paths:
+  - `IMAGES(FILE_PATH)` and `IMAGES(IMAGE_UUID)` (via unique constraints).
+  - `IMAGES(FOLDER_ID, SCORE_GENERAL DESC)`.
+  - `IMAGES(STACK_ID, SCORE_GENERAL DESC)`.
+- Remove redundant indexes/constraints only after validation:
+  - Keep one canonical index per access path on `IMAGES.FOLDER_ID` and `IMAGES.STACK_ID`.
+  - Remove duplicate legacy FK/index artifacts on `CULLING_PICKS`.
+- Recompute index statistics after changes.
 
-4. **Phase 3: Codebase DB Refactor**
-- Break `modules/db.py` into migration + repository modules (images, stacks, paths, pipeline, culling).
-- Replace repeated query builders with shared filter builder and typed parameter validation.
-- Add invariant repair utility callable from admin/MCP:
-- `repair_stacks()`, `dedupe_indexes_report()`, `schema_drift_report()`.
+### 3) Phase 2: Hybrid 3NF Normalization (backward-compatible dual-write)
+- Normalize keywords:
+  - New `KEYWORDS_DIM(KEYWORD_ID, KEYWORD_NORM UNIQUE, KEYWORD_DISPLAY)`.
+  - New `IMAGE_KEYWORDS(IMAGE_ID, KEYWORD_ID, SOURCE, CONFIDENCE, CREATED_AT, PK(IMAGE_ID, KEYWORD_ID))`.
+  - Backfill by splitting existing `IMAGES.KEYWORDS`.
+  - Add sync triggers/procedures so old `IMAGES.KEYWORDS` remains populated during transition.
+- Normalize editable metadata using existing table:
+  - Backfill `IMAGE_XMP` from `IMAGES` (rating, label, title, description, keywords, burst fields).
+  - Set `IMAGE_XMP` as canonical editable metadata store.
+  - Keep mirrored fields in `IMAGES` during compatibility window via dual-write triggers.
+- Add CHECK constraints for controlled enums (`label`, `cull_decision`, status domains), with optional later move to dim/FK model.
 
-## Public Interfaces / Behavioral Changes
-- No breaking API contract in this rollout.
-- New internal DB contract:
-- `get_folder_id_by_path(path)` (read-only lookup) replaces `get_or_create_folder` in query endpoints.
-- New maintenance operations exposed via MCP/admin endpoint:
-- `repair_stacks`
-- `check_schema_drift`
-- `check_index_redundancy`
-- Existing endpoints keep payload shape; performance and consistency improve under same API.
+### 4) Phase 3: Query Refactor in Electron (no IPC break)
+- Keep interface shape unchanged, update SQL internals in `electron/db.ts`:
+  - Replace keyword filter from `LIKE '%...%'` on blob/text with indexed `EXISTS` on `IMAGE_KEYWORDS`.
+  - Replace `getKeywords` scan with direct `KEYWORDS_DIM` read.
+  - Refactor folder image counts query to aggregate join instead of correlated subquery.
+  - Keep deterministic path join strategy for `file_paths` selection.
+
+### 5) Phase 4: Cutover + Deprecation
+- After consistency and performance gates pass, deprecate duplicate metadata columns from `IMAGES` in a major-version migration.
+- Keep compatibility views during one full release cycle before drop.
+
+## Public Interfaces / Contracts
+- **No breaking IPC/API change** in this cycle.
+- New DB objects: `KEYWORDS_DIM`, `IMAGE_KEYWORDS`, new constraints/indexes, compatibility triggers/views.
+- Existing read contracts stay intact while storage model improves underneath.
 
 ## Test Plan
-- Migration tests on copy of production DB:
-- Pre/post row counts by table.
-- Pre/post integrity assertions: zero orphan `stack_id`, zero empty stacks, `best_image_id` always member.
-- Constraint/index tests:
-- Ensure no duplicate FK constraints remain on `CULLING_PICKS`.
-- Ensure index set matches migration spec and no accidental drops of required FK indexes.
-- Functional regression tests:
-- Gallery filters/sorting (rating/label/score/date/folder) unchanged results.
-- Culling session queries maintain ordering and result shape.
-- Stack create/remove/dissolve workflows preserve invariants.
-- Performance checks:
-- Compare median latency for representative gallery and culling queries before vs after (target >=20% improvement on hot paths).
+- Integrity tests:
+  - Zero orphan FK rows for all enforced relationships.
+  - Unique constraints pass for `FILE_PATH`, `IMAGE_UUID`, `FOLDERS.PATH`.
+  - Dual-write consistency checks (`IMAGES.KEYWORDS` vs normalized keyword tables).
+- Functional regressions:
+  - `getImages`, `getImageDetails`, `getStacks`, `getFolders`, `getKeywords` return contract-equivalent data.
+- Performance acceptance (P95 targets):
+  - `find by file_path` and `find by image_uuid` under 25 ms.
+  - `getKeywords` under 150 ms warm.
+  - folder-filtered `getImages` no regression from current baseline.
+- Rollback:
+  - Backup restore rehearsal and migration down-script validation before production rollout.
 
 ## Assumptions
-- Firebird remains production DB for this refactor.
-- Strict backward compatibility is required for current WebUI/API/Electron consumers.
-- Canonical identity remains path-unique (one row per canonical file path).
-- Stack consistency is a hard invariant (enforced by migration + ongoing checks).
-- Legacy objects remain available during transition; destructive removals are deferred to a later cleanup release.
+- Decisions locked: **Hybrid 3NF**, **Expand-Contract**, **Backward-Compatible**.
+- Firebird remains the engine; additive schema evolution is acceptable.
+- Migration runs with controlled ingestion windows when performing backfill and constraint enforcement.
