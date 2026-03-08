@@ -2004,9 +2004,29 @@ def create_api_router() -> APIRouter:
         current_executor_version: Optional[str] = Query(None, description="Optional explicit executor version override"),
         force_run: bool = Query(False, description="If true, policy returns run decision as forced"),
     ):
+        from modules import db
+        from modules.phases import PhaseCode
+
+        phase_code_normalized = (phase_code or "").strip().lower()
+        valid_phase_codes = {code.value for code in PhaseCode}
+        if phase_code_normalized not in valid_phase_codes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid phase_code: '{phase_code}'. Valid: {sorted(valid_phase_codes)}",
+            )
+
+        conn = db.get_db()
+        try:
+            c = conn.cursor()
+            c.execute("SELECT id FROM images WHERE id = ?", (image_id,))
+            if c.fetchone() is None:
+                raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
+        finally:
+            conn.close()
+
         return explain_phase_run_decision(
             image_id=image_id,
-            phase_code=phase_code,
+            phase_code=phase_code_normalized,
             current_executor_version=current_executor_version,
             force_run=force_run,
         )

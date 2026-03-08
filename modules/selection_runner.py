@@ -98,6 +98,7 @@ class SelectionRunner:
                 "input_path": input_path
             })
 
+        images = []
         images_for_phase = []
         try:
             images = db.get_images_by_folder(input_path)
@@ -122,8 +123,14 @@ class SelectionRunner:
         except Exception as pe:
             log(f"Phase status pre-run update error: {pe}")
 
+        skipped_by_policy = max(0, len(images) - len(images_for_phase))
+        if skipped_by_policy:
+            log(f"Policy gated {len(images_for_phase)} image(s); {skipped_by_policy} remain unchanged.")
+
         cfg = SelectionConfig(force_rescan=force_rescan)
         try:
+            # SelectionService operates at folder scope; phase status updates are limited
+            # to policy-eligible images tracked in images_for_phase.
             summary = self._service.run(input_path, cfg=cfg, progress_cb=progress_cb)
 
             # Phase D (Culling) — mark attempted images in the processed folder as done

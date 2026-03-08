@@ -752,7 +752,7 @@ class ClusteringRunner:
                             current_executor_version=CLUSTER_VERSION,
                             force_run=force_rescan,
                         )
-                        if decision['stored_status'] == PhaseStatus.RUNNING:
+                        if decision.get('stored_status') == PhaseStatus.RUNNING:
                             db.set_image_phase_status(
                                 img['id'],
                                 PhaseCode.CULLING,

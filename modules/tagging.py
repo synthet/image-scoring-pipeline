@@ -502,12 +502,9 @@ class TaggingRunner:
             if existing and not overwrite:
                 skipped_count += 1
                 self.current_count += 1
-                # Mark as done — keywords already present
-                try:
-                    db.set_image_phase_status(row['id'], PhaseCode.KEYWORDS, PhaseStatus.DONE,
-                                              app_version=APP_VERSION, executor_version=TAGGER_VERSION)
-                except Exception:
-                    pass
+                # Do not overwrite phase state here. Policy may request a re-run
+                # (e.g. executor_version_changed), but user chose not to overwrite.
+                log(f"Skipping {os.path.basename(path)}: existing keywords and overwrite disabled")
                 continue
                 
             if not os.path.exists(path):
@@ -594,10 +591,17 @@ class TaggingRunner:
                 self.current_count += 1
                 # Phase E (Keywords) — failed for this image
                 try:
-                    db.set_image_phase_status(row['id'], PhaseCode.KEYWORDS, PhaseStatus.FAILED,
-                                              executor_version=TAGGER_VERSION,
-                                              job_id=job_id, error=str(e))
-                except Exception: pass
+                    db.set_image_phase_status(
+                        row['id'],
+                        PhaseCode.KEYWORDS,
+                        PhaseStatus.FAILED,
+                        app_version=APP_VERSION,
+                        executor_version=TAGGER_VERSION,
+                        job_id=job_id,
+                        error=str(e),
+                    )
+                except Exception:
+                    pass
             event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": self.current_count, "total": self.total_count})
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")
