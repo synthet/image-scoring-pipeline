@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-03-08
+
+### Added
+- **Phase Rerun Policy** (`modules/phases_policy.py`): Centralized logic for deciding if a processing phase (scoring, tagging, clustering) should execute or skip based on current vs. stored executor versions. Prevents redundant processing of already-completed phases.
+- **Diagnostics Endpoint**: Added GET `/api/diagnostics/phase-policy/{image_id}/{phase_code}` for deep inspection of rerun/skip decisions, returning stored vs. active versions and status details.
+- **PGVector Migration Plan**: Added `docs/technical/PGVECTOR_MIGRATION_PLAN_REFINED.md`, a detailed roadmap for migrating the Firebird database to PostgreSQL with pgvector for high-performance visual similarity search.
+
+### Changed
+- **Pipeline Integration**: Integrated `should_run_phase` policy checks across all runners: `modules/clustering.py`, `modules/pipeline.py`, `modules/selection_runner.py`, and `modules/tagging.py`.
+- **API Enhancements**: Main health and status endpoints now include more granular phase execution metadata.
+
 ## [4.1.0] - 2026-03-07
 
 ### Added
