@@ -11,6 +11,7 @@ from sklearn.cluster import AgglomerativeClustering
 from modules import db, utils, config
 from modules.events import event_manager
 from modules.phases import PhaseCode, PhaseStatus
+from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
 
 CLUSTER_VERSION = "1.0.0"  # bump when clustering algorithm or model changes
@@ -296,22 +297,17 @@ class ClusteringEngine:
         
         # Get processed folders early (needed for both paths)
         processed_folders = db.get_clustered_folders()
-
+        
         if target_image_ids is not None:
-            if not target_image_ids:
-                yield update_status("No images matched selectors.", 0, 0)
-                return
-
-            conn = db.get_db()
-            cur = conn.cursor()
-            placeholders = ",".join("?" * len(target_image_ids))
-            cur.execute(f"SELECT * FROM images WHERE id IN ({placeholders})", tuple(target_image_ids))
-            images_rows = cur.fetchall()
-            conn.close()
+            # --- Selector mode (target ID list) ---
+            rows = db.get_all_images(limit=-1)
+            selected_ids = {int(i) for i in target_image_ids}
+            images_rows = [row for row in rows if row.get('id') in selected_ids]
+            
             if not images_rows:
-                yield update_status("No images found for provided selectors.", 0, 0)
+                yield update_status("No images matched target IDs.", 0, 0)
                 return
-
+                
             by_folder = {}
             for row in images_rows:
                 p = row['file_path']
@@ -402,6 +398,34 @@ class ClusteringEngine:
 
         for folder in folders_to_process:
             rows = by_folder[folder]
+            runnable_rows = []
+            for r in rows:
+                decision = explain_phase_run_decision(
+                    r['id'],
+                    PhaseCode.CULLING,
+                    current_executor_version=CLUSTER_VERSION,
+                    force_run=force_rescan,
+                )
+                if decision['should_run']:
+                    runnable_rows.append(r)
+                else:
+                    logging.debug("Skipping culling image_id=%s: %s", r['id'], decision['reason'])
+
+            if not runnable_rows:
+                yield update_status(f"Skipping folder: {folder} (all images current)", processed_count, len(images_rows))
+                continue
+
+            for r in runnable_rows:
+                db.set_image_phase_status(
+                    r['id'],
+                    PhaseCode.CULLING,
+                    PhaseStatus.RUNNING,
+                    app_version=APP_VERSION,
+                    executor_version=CLUSTER_VERSION,
+                    job_id=job_id,
+                )
+
+            rows = runnable_rows
             yield update_status(f"Processing folder: {folder} ({len(rows)} images)...", processed_count, len(images_rows))
             
             folder_stacks = 0

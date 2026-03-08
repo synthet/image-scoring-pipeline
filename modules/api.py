@@ -48,6 +48,7 @@ from typing import Optional, List, Dict, Any
 import os
 import logging
 from pathlib import Path
+from modules.phases_policy import explain_phase_run_decision
 from modules.selector_resolver import resolve_selectors
 
 from modules.job_dispatcher import JobDispatcher
@@ -248,6 +249,20 @@ class TaggingSingleRequest(BaseModel):
             "generate_captions": True
         }
     })
+
+
+
+
+class PhaseDecisionResponse(BaseModel):
+    """Phase policy decision details for one image+phase."""
+    image_id: int
+    phase_code: str
+    should_run: bool
+    reason: str
+    force_run: bool
+    current_executor_version: Optional[str] = None
+    stored_status: Optional[str] = None
+    stored_executor_version: Optional[str] = None
 
 
 class StatusResponse(BaseModel):
@@ -2194,6 +2209,46 @@ def create_api_router() -> APIRouter:
                 "phase_plan": phase_rows,
                 "remaining_operations": request.operations[1:],
             },
+        )
+
+
+    @router.get(
+        "/phases/decision",
+        response_model=PhaseDecisionResponse,
+        summary="Explain phase run/skip decision",
+        description="Returns policy diagnostics describing why a phase would run or be skipped for an image."
+    )
+    async def get_phase_decision(
+        image_id: int = Query(..., description="Image ID"),
+        phase_code: str = Query(..., description="Phase code (scoring|culling|keywords|...)"),
+        current_executor_version: Optional[str] = Query(None, description="Optional explicit executor version override"),
+        force_run: bool = Query(False, description="If true, policy returns run decision as forced"),
+    ):
+        from modules import db
+        from modules.phases import PhaseCode
+
+        phase_code_normalized = (phase_code or "").strip().lower()
+        valid_phase_codes = {code.value for code in PhaseCode}
+        if phase_code_normalized not in valid_phase_codes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid phase_code: '{phase_code}'. Valid: {sorted(valid_phase_codes)}",
+            )
+
+        conn = db.get_db()
+        try:
+            c = conn.cursor()
+            c.execute("SELECT id FROM images WHERE id = ?", (image_id,))
+            if c.fetchone() is None:
+                raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
+        finally:
+            conn.close()
+
+        return explain_phase_run_decision(
+            image_id=image_id,
+            phase_code=phase_code_normalized,
+            current_executor_version=current_executor_version,
+            force_run=force_run,
         )
 
     return router
