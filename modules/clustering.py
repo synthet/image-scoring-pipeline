@@ -297,7 +297,11 @@ class ClusteringEngine:
         # Get processed folders early (needed for both paths)
         processed_folders = db.get_clustered_folders()
 
-        if target_image_ids:
+        if target_image_ids is not None:
+            if not target_image_ids:
+                yield update_status("No images matched selectors.", 0, 0)
+                return
+
             conn = db.get_db()
             cur = conn.cursor()
             placeholders = ",".join("?" * len(target_image_ids))
@@ -675,7 +679,10 @@ class ClusteringRunner:
         def target():
             self._run_internal(input_path, threshold, time_gap, force_rescan, job_id, resolved_image_ids=resolved_image_ids)
             self.is_running = False
-            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            if "Error" in self.status_message:
+                self.status_message = "Failed"
+            elif not self.status_message.startswith("Done"):
+                self.status_message = "Done"
             
         self._thread = threading.Thread(target=target)
         self._thread.start()

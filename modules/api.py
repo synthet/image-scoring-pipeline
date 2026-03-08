@@ -139,7 +139,7 @@ class TaggingStartRequest(SelectorRequest):
     with relevant keywords and optionally generate captions using BLIP.
     
     Attributes:
-        input_path: Directory path containing images to tag. Empty string processes all images in database.
+        input_path: Optional directory path containing images to tag.
         custom_keywords: Optional list of custom keywords to use instead of default set.
                        If None, uses default keywords (landscape, portrait, urban, etc.).
         overwrite: If True, overwrite existing keywords in database. Default: False.
@@ -154,8 +154,8 @@ class TaggingStartRequest(SelectorRequest):
         }
     """
     input_path: Optional[str] = Field(
-        "",
-        description="Directory path containing images to tag. Empty string processes all images in database.",
+        None,
+        description="Optional directory path containing images to tag.",
         example="D:/Photos/2024"
     )
     custom_keywords: Optional[List[str]] = Field(
@@ -435,8 +435,8 @@ class PipelineSubmitRequest(BaseModel):
         operations: List of operations to run in order. Valid: "score", "tag", "cluster".
         options: Optional per-operation options.
     """
-    input_path: Optional[str] = Field(
-        None,
+    input_path: str = Field(
+        ...,
         description="File or directory path to process.",
         example="D:/Photos/2024"
     )
@@ -925,6 +925,7 @@ def create_api_router() -> APIRouter:
         )
 
         from modules import db
+        resolved_count = len(selector_result.get("resolved_image_ids") or [])
         job_source = request.input_path or "SELECTOR_SCORING"
         skip_existing = not request.force_rescore if request.force_rescore else request.skip_existing
         queue_payload = {
@@ -944,7 +945,7 @@ def create_api_router() -> APIRouter:
         return ApiResponse(
             success=True,
             message="Scoring job queued",
-            data={"job_id": job_id, "input_path": request.input_path, "queue_position": queue_position}
+            data={"job_id": job_id, "input_path": request.input_path, "resolved_count": resolved_count, "queue_position": queue_position}
         )
     
     @router.post(
@@ -1126,7 +1127,7 @@ def create_api_router() -> APIRouter:
         - Title is auto-generated from caption (first 50 chars)
         
         **Path Handling:**
-        - Empty input_path processes all images in database
+        - Provide input_path and/or selectors (image_ids, image_paths, folder_ids, folder_paths)
         - Directory path processes images in that folder and subfolders
         - Paths are automatically converted between Windows/WSL formats
         
@@ -1164,7 +1165,8 @@ def create_api_router() -> APIRouter:
         )
 
         from modules import db
-        job_source = request.input_path or "ALL_IMAGES_TAGGING"
+        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        job_source = request.input_path or "SELECTOR_TAGGING"
         job_id, queue_position = db.enqueue_job(
             job_source,
             phase_code="keywords",
@@ -1185,7 +1187,8 @@ def create_api_router() -> APIRouter:
             message="Tagging job queued",
             data={
                 "job_id": job_id,
-                "input_path": request.input_path or "all images",
+                "input_path": request.input_path,
+                "resolved_count": resolved_count,
                 "queue_position": queue_position,
             }
         )
@@ -1729,7 +1732,8 @@ def create_api_router() -> APIRouter:
         )
 
         from modules import db
-        job_source = request.input_path or "ALL_FOLDERS_CLUSTERING"
+        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        job_source = request.input_path or "SELECTOR_CLUSTERING"
         job_id, queue_position = db.enqueue_job(
             job_source,
             phase_code="culling",
@@ -1748,7 +1752,7 @@ def create_api_router() -> APIRouter:
         return ApiResponse(
             success=True,
             message="Clustering job queued",
-            data={"job_id": job_id, "input_path": request.input_path or "all folders", "queue_position": queue_position}
+            data={"job_id": job_id, "input_path": request.input_path, "resolved_count": resolved_count, "queue_position": queue_position}
         )
 
     @router.post(
@@ -2068,6 +2072,8 @@ def create_api_router() -> APIRouter:
         from modules.ui.app import _check_rate_limit
         _check_rate_limit("pipeline_submit")
 
+        if not request.input_path or not request.input_path.strip():
+            raise HTTPException(status_code=400, detail="input_path is required")
         if not os.path.exists(request.input_path):
             raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
 

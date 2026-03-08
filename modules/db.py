@@ -9,10 +9,11 @@ import traceback
 
 # Firebird Import
 try:
-    from firebird.driver import connect, driver_config
+    from firebird.driver import connect, driver_config, create_database
 except ImportError:
     # Fallback/Mock for linting if package missing
-    connect = None 
+    connect = None
+    create_database = None 
 
 import shutil
 from modules import config
@@ -283,6 +284,13 @@ def get_db():
              if use_local:
                  local_db = os.path.join(_PROJECT_ROOT, DB_FILE)
                  dsn = local_db
+                 # Auto-create DB if missing (Firebird does not create on connect like SQLite)
+                 if not os.path.exists(local_db) and create_database:
+                     try:
+                         logger.info("WSL: Creating new Firebird database at %s", local_db)
+                         create_database(local_db, user=DB_USER, password=DB_PASS)
+                     except Exception as e:
+                         logger.warning("Could not auto-create DB: %s", e)
                  if not _logged_dsn:
                      logger.info("WSL: Using local path (FIREBIRD_USE_LOCAL_PATH): %s", dsn)
                      _logged_dsn = True
@@ -322,9 +330,8 @@ def get_db():
              logger.debug("get_db connect failed: %s", e)
              if _is_wsl():
                  logger.warning(
-                     "Firebird connection failed. Try: FIREBIRD_USE_LOCAL_PATH=1 run_webui.bat "
-                     "(uses local file instead of Windows server). Or ensure: Firebird server running on Windows, "
-                     "no other process has DB open, file exists (run migrate_to_firebird.py if needed)."
+                     "Firebird connection failed. Try: run_webui_local.bat (uses local file, auto-creates DB if missing). "
+                     "Or ensure: Firebird server running on Windows, no other process has DB open, file exists."
                  )
              traceback.print_exc()
              raise e

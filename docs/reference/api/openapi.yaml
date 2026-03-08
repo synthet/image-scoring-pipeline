@@ -626,7 +626,7 @@ components:
         - $ref: "#/components/schemas/SelectorRequest"
         - type: object
           properties:
-            input_path: { type: string, default: '' }
+            input_path: { type: string, nullable: true }
             custom_keywords: { type: array, items: { type: string } }
             overwrite: { type: boolean, default: false }
             generate_captions: { type: boolean, default: false }

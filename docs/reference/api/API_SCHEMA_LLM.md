@@ -152,7 +152,7 @@ Start a batch tagging job.
 **Request Body:**
 ```json
 {
-  "input_path": "string (default: '') - Directory path or empty for all images",
+  "input_path": "string (optional) - Directory path to scope tagging",
   "image_ids": "number[]",
   "image_paths": "string[]",
   "folder_ids": "number[]",
@@ -399,7 +399,7 @@ The OpenAPI schema includes:
 5. Logs may be truncated for very long outputs
 6. Operations are asynchronous unless noted as "blocking"
 7. Paths support both Windows and WSL formats automatically
-8. Empty string for `input_path` in tagging means "all images in database"
+8. Provide `input_path` or selector fields on tagging/clustering/scoring start requests
 
 ## Related Documents
 

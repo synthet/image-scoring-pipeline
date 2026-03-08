@@ -8,6 +8,9 @@ from typing import Any
 from modules import db, utils
 
 
+_MAX_IN_PARAMS = 500
+
+
 def _dedupe_ints(values: list[int] | None) -> list[int]:
     seen: set[int] = set()
     out: list[int] = []
@@ -95,6 +98,7 @@ def _fetch_folder_ids_by_paths(conn, folder_paths: list[str]) -> tuple[list[int]
     return resolved, missing
 
 
+
 def _expand_folder_ids(conn, folder_ids: list[int], recursive: bool) -> list[int]:
     if not recursive or not folder_ids:
         return folder_ids
@@ -104,9 +108,13 @@ def _expand_folder_ids(conn, folder_ids: list[int], recursive: bool) -> list[int
     cur = conn.cursor()
 
     while frontier:
-        placeholders = ",".join("?" * len(frontier))
-        cur.execute(f"SELECT id FROM folders WHERE parent_id IN ({placeholders})", tuple(frontier))
-        children = [int(row[0]) for row in cur.fetchall()]
+        children: list[int] = []
+        for i in range(0, len(frontier), _MAX_IN_PARAMS):
+            batch = frontier[i:i + _MAX_IN_PARAMS]
+            placeholders = ",".join("?" * len(batch))
+            cur.execute(f"SELECT id FROM folders WHERE parent_id IN ({placeholders})", tuple(batch))
+            children.extend(int(row[0]) for row in cur.fetchall())
+
         frontier = [fid for fid in children if fid not in seen]
         seen.update(frontier)
 
@@ -116,11 +124,15 @@ def _expand_folder_ids(conn, folder_ids: list[int], recursive: bool) -> list[int
 def _fetch_image_ids_by_folder_ids(conn, folder_ids: list[int]) -> list[int]:
     if not folder_ids:
         return []
-    cur = conn.cursor()
-    placeholders = ",".join("?" * len(folder_ids))
-    cur.execute(f"SELECT id FROM images WHERE folder_id IN ({placeholders})", tuple(folder_ids))
-    return [int(row[0]) for row in cur.fetchall()]
 
+    cur = conn.cursor()
+    image_ids: list[int] = []
+    for i in range(0, len(folder_ids), _MAX_IN_PARAMS):
+        batch = folder_ids[i:i + _MAX_IN_PARAMS]
+        placeholders = ",".join("?" * len(batch))
+        cur.execute(f"SELECT id FROM images WHERE folder_id IN ({placeholders})", tuple(batch))
+        image_ids.extend(int(row[0]) for row in cur.fetchall())
+    return image_ids
 
 def resolve_selectors(
     image_ids: list[int] | None = None,
@@ -130,7 +142,12 @@ def resolve_selectors(
     recursive: bool = True,
     index_missing: bool = True,
 ) -> dict[str, Any]:
-    """Resolve mixed selectors and return deduplicated image IDs for execution."""
+    """Resolve mixed selectors and return deduplicated image IDs for execution.
+
+    Note: `index_missing=True` uses `db.sync_folder_to_db`, which currently registers
+    images from scoring JSON sidecars. Raw/unscored files may remain unresolved until
+    they are imported/registered through an explicit ingest flow.
+    """
     normalized_image_ids = _dedupe_ints(image_ids)
     normalized_folder_ids = _dedupe_ints(folder_ids)
     normalized_image_paths = _dedupe_strs(image_paths)

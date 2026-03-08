@@ -350,7 +350,10 @@ class TaggingRunner:
         def target():
             self._run_batch_internal(input_path, custom_keywords, overwrite, generate_captions, job_id=job_id, resolved_image_ids=resolved_image_ids)
             self.is_running = False
-            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            if "Error" in self.status_message:
+                self.status_message = "Failed"
+            elif not self.status_message.startswith("Done"):
+                self.status_message = "Done"
             
         self._thread = threading.Thread(target=target)
         self._thread.start()
@@ -423,7 +426,20 @@ class TaggingRunner:
             self.status_message = "Error DB"
             return
 
-        if resolved_image_ids:
+        if resolved_image_ids is not None:
+             if not resolved_image_ids:
+                 log("No images matched selectors.")
+                 self.status_message = "Done (no images)"
+                 self.total_count = 0
+                 self.current_count = 0
+                 if job_id:
+                     db.update_job_status(job_id, "completed", "\n".join(self.log_history))
+                     event_manager.broadcast_threadsafe("job_completed", {
+                         "job_id": job_id,
+                         "status": "completed"
+                     })
+                 return
+
              selected_ids = {int(i) for i in resolved_image_ids}
              all_images = [row for row in rows if row.get('id') in selected_ids]
              log(f"Selector mode enabled. Matched {len(all_images)} images by ID.")

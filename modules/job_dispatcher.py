@@ -100,7 +100,7 @@ class JobDispatcher:
             skip_existing = bool(payload.get("skip_existing", True))
             resolved_image_ids = payload.get("resolved_image_ids")
             return self.scoring_runner.start_batch(
-                input_path, job_id, skip_existing, resolved_image_ids=resolved_image_ids
+                payload.get("input_path", input_path), job_id, skip_existing, resolved_image_ids=resolved_image_ids
             ) == "Started"
 
         if phase in ("tag", "tagging", "keywords"):

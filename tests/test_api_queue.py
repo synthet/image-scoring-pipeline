@@ -147,3 +147,12 @@ def test_pipeline_submit_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Failed to enqueue pipeline job for operation: cluster"
+
+
+def test_pipeline_submit_requires_input_path(monkeypatch):
+    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+
+    with _build_client() as client:
+        response = client.post("/api/pipeline/submit", json={"operations": ["score"]})
+
+    assert response.status_code == 422
