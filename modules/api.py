@@ -48,13 +48,45 @@ from typing import Optional, List, Dict, Any
 import os
 import logging
 from pathlib import Path
+from modules.selector_resolver import resolve_selectors
 
 from modules.job_dispatcher import JobDispatcher
 
 logger = logging.getLogger(__name__)
 
 # Request/Response Models with comprehensive descriptions for LLM agents
-class ScoringStartRequest(BaseModel):
+
+
+class SelectorRequest(BaseModel):
+    """Shared selector schema for batch operations."""
+
+    image_ids: Optional[List[int]] = Field(
+        None,
+        description="Specific image IDs to process.",
+        example=[101, 102]
+    )
+    image_paths: Optional[List[str]] = Field(
+        None,
+        description="Specific image file paths to process.",
+        example=["D:/Photos/2024/img001.jpg"]
+    )
+    folder_ids: Optional[List[int]] = Field(
+        None,
+        description="Folder IDs to process.",
+        example=[12]
+    )
+    folder_paths: Optional[List[str]] = Field(
+        None,
+        description="Folder paths to process.",
+        example=["D:/Photos/2024"]
+    )
+    recursive: bool = Field(
+        True,
+        description="If True, include subfolders when folder selectors are used.",
+        example=True
+    )
+
+class ScoringStartRequest(SelectorRequest):
     """Request model for starting a batch image scoring job.
     
     This endpoint initiates quality assessment of images using multiple AI models
@@ -75,8 +107,8 @@ class ScoringStartRequest(BaseModel):
             "force_rescore": false
         }
     """
-    input_path: str = Field(
-        ...,
+    input_path: Optional[str] = Field(
+        None,
         description="Directory path containing images to score. Supports Windows (D:\\...) and WSL (/mnt/...) paths.",
         example="D:/Photos/2024"
     )
@@ -100,14 +132,14 @@ class ScoringStartRequest(BaseModel):
     })
 
 
-class TaggingStartRequest(BaseModel):
+class TaggingStartRequest(SelectorRequest):
     """Request model for starting a batch image tagging/keyword extraction job.
     
     Uses CLIP (Contrastive Language-Image Pre-Training) to automatically tag images
     with relevant keywords and optionally generate captions using BLIP.
     
     Attributes:
-        input_path: Directory path containing images to tag. Empty string processes all images in database.
+        input_path: Optional directory path containing images to tag.
         custom_keywords: Optional list of custom keywords to use instead of default set.
                        If None, uses default keywords (landscape, portrait, urban, etc.).
         overwrite: If True, overwrite existing keywords in database. Default: False.
@@ -121,9 +153,9 @@ class TaggingStartRequest(BaseModel):
             "generate_captions": true
         }
     """
-    input_path: str = Field(
-        "",
-        description="Directory path containing images to tag. Empty string processes all images in database.",
+    input_path: Optional[str] = Field(
+        None,
+        description="Optional directory path containing images to tag.",
         example="D:/Photos/2024"
     )
     custom_keywords: Optional[List[str]] = Field(
@@ -343,7 +375,7 @@ class FindDuplicatesRequest(BaseModel):
     )
 
 
-class ClusteringStartRequest(BaseModel):
+class ClusteringStartRequest(SelectorRequest):
     """Request model for starting a clustering job.
 
     Clusters images in a folder based on visual similarity and temporal proximity.
@@ -870,21 +902,42 @@ def create_api_router() -> APIRouter:
 
         if _scoring_runner is None:
             raise HTTPException(status_code=503, detail="Scoring runner not available")
-        
-        # Validate path
-        if not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
+
+        if not any([request.input_path, request.image_ids, request.image_paths, request.folder_ids, request.folder_paths]):
+            raise HTTPException(status_code=400, detail="Provide input_path or at least one selector")
+
+        selector_folder_paths = list(request.folder_paths or [])
+        if request.input_path:
+            if not os.path.exists(request.input_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path not found: {request.input_path}"
+                )
+            selector_folder_paths.append(request.input_path)
+
+        selector_result = resolve_selectors(
+            image_ids=request.image_ids,
+            image_paths=request.image_paths,
+            folder_ids=request.folder_ids,
+            folder_paths=selector_folder_paths,
+            recursive=request.recursive,
+            index_missing=True,
+        )
 
         from modules import db
+        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        job_source = request.input_path or "SELECTOR_SCORING"
         skip_existing = not request.force_rescore if request.force_rescore else request.skip_existing
+        queue_payload = {
+            "skip_existing": skip_existing,
+            "input_path": request.input_path,
+            "resolved_image_ids": selector_result.get("resolved_image_ids"),
+        }
         job_id, queue_position = db.enqueue_job(
-            request.input_path,
+            job_source,
             phase_code="scoring",
             job_type="scoring",
-            queue_payload={"skip_existing": skip_existing, "input_path": request.input_path},
+            queue_payload=queue_payload,
         )
         if job_id is None:
             raise HTTPException(status_code=500, detail="Failed to enqueue scoring job")
@@ -892,7 +945,7 @@ def create_api_router() -> APIRouter:
         return ApiResponse(
             success=True,
             message="Scoring job queued",
-            data={"job_id": job_id, "input_path": request.input_path, "queue_position": queue_position}
+            data={"job_id": job_id, "input_path": request.input_path, "resolved_count": resolved_count, "queue_position": queue_position}
         )
     
     @router.post(
@@ -1074,7 +1127,7 @@ def create_api_router() -> APIRouter:
         - Title is auto-generated from caption (first 50 chars)
         
         **Path Handling:**
-        - Empty input_path processes all images in database
+        - Provide input_path and/or selectors (image_ids, image_paths, folder_ids, folder_paths)
         - Directory path processes images in that folder and subfolders
         - Paths are automatically converted between Windows/WSL formats
         
@@ -1090,16 +1143,32 @@ def create_api_router() -> APIRouter:
         if _tagging_runner is None:
             raise HTTPException(status_code=503, detail="Tagging runner not available")
         
-        # Validate path if provided
-        if request.input_path and not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
+        if not any([request.input_path, request.image_ids, request.image_paths, request.folder_ids, request.folder_paths]):
+            raise HTTPException(status_code=400, detail="Provide input_path or at least one selector")
+
+        selector_folder_paths = list(request.folder_paths or [])
+        if request.input_path:
+            if not os.path.exists(request.input_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path not found: {request.input_path}"
+                )
+            selector_folder_paths.append(request.input_path)
+
+        selector_result = resolve_selectors(
+            image_ids=request.image_ids,
+            image_paths=request.image_paths,
+            folder_ids=request.folder_ids,
+            folder_paths=selector_folder_paths,
+            recursive=request.recursive,
+            index_missing=True,
+        )
 
         from modules import db
+        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        job_source = request.input_path or "SELECTOR_TAGGING"
         job_id, queue_position = db.enqueue_job(
-            request.input_path or "ALL_IMAGES_TAGGING",
+            job_source,
             phase_code="keywords",
             job_type="tagging",
             queue_payload={
@@ -1107,6 +1176,7 @@ def create_api_router() -> APIRouter:
                 "custom_keywords": request.custom_keywords,
                 "overwrite": request.overwrite,
                 "generate_captions": request.generate_captions,
+                "resolved_image_ids": selector_result.get("resolved_image_ids"),
             },
         )
         if job_id is None:
@@ -1117,7 +1187,8 @@ def create_api_router() -> APIRouter:
             message="Tagging job queued",
             data={
                 "job_id": job_id,
-                "input_path": request.input_path or "all images",
+                "input_path": request.input_path,
+                "resolved_count": resolved_count,
                 "queue_position": queue_position,
             }
         )
@@ -1639,16 +1710,32 @@ def create_api_router() -> APIRouter:
         if _clustering_runner is None:
             raise HTTPException(status_code=503, detail="Clustering runner not available")
 
-        # Validate path if provided
-        if request.input_path and not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
+        if not any([request.input_path, request.image_ids, request.image_paths, request.folder_ids, request.folder_paths]):
+            raise HTTPException(status_code=400, detail="Provide input_path or at least one selector")
+
+        selector_folder_paths = list(request.folder_paths or [])
+        if request.input_path:
+            if not os.path.exists(request.input_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path not found: {request.input_path}"
+                )
+            selector_folder_paths.append(request.input_path)
+
+        selector_result = resolve_selectors(
+            image_ids=request.image_ids,
+            image_paths=request.image_paths,
+            folder_ids=request.folder_ids,
+            folder_paths=selector_folder_paths,
+            recursive=request.recursive,
+            index_missing=True,
+        )
 
         from modules import db
+        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        job_source = request.input_path or "SELECTOR_CLUSTERING"
         job_id, queue_position = db.enqueue_job(
-            request.input_path or "ALL_FOLDERS_CLUSTERING",
+            job_source,
             phase_code="culling",
             job_type="clustering",
             queue_payload={
@@ -1656,6 +1743,7 @@ def create_api_router() -> APIRouter:
                 "threshold": request.threshold,
                 "time_gap": request.time_gap,
                 "force_rescan": request.force_rescan,
+                "resolved_image_ids": selector_result.get("resolved_image_ids"),
             },
         )
         if job_id is None:
@@ -1664,7 +1752,7 @@ def create_api_router() -> APIRouter:
         return ApiResponse(
             success=True,
             message="Clustering job queued",
-            data={"job_id": job_id, "input_path": request.input_path or "all folders", "queue_position": queue_position}
+            data={"job_id": job_id, "input_path": request.input_path, "resolved_count": resolved_count, "queue_position": queue_position}
         )
 
     @router.post(
@@ -1984,6 +2072,8 @@ def create_api_router() -> APIRouter:
         from modules.ui.app import _check_rate_limit
         _check_rate_limit("pipeline_submit")
 
+        if not request.input_path or not request.input_path.strip():
+            raise HTTPException(status_code=400, detail="input_path is required")
         if not os.path.exists(request.input_path):
             raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
 

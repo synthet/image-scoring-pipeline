@@ -333,7 +333,7 @@ class TaggingRunner:
     def get_status(self):
         return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
         
-    def start_batch(self, input_path: str, job_id: int = None, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False):
+    def start_batch(self, input_path: str, job_id: int = None, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False, resolved_image_ids: List[int] = None):
         if self.is_running:
             return "Error: Already running."
             
@@ -348,15 +348,18 @@ class TaggingRunner:
             job_id = db.create_job(input_path or "ALL_IMAGES_TAGGING")
             
         def target():
-            self._run_batch_internal(input_path, custom_keywords, overwrite, generate_captions, job_id=job_id)
+            self._run_batch_internal(input_path, custom_keywords, overwrite, generate_captions, job_id=job_id, resolved_image_ids=resolved_image_ids)
             self.is_running = False
-            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            if "Error" in self.status_message:
+                self.status_message = "Failed"
+            elif not self.status_message.startswith("Done"):
+                self.status_message = "Done"
             
         self._thread = threading.Thread(target=target)
         self._thread.start()
         return "Started"
 
-    def _run_batch_internal(self, input_path: str, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False, job_id: int = None):
+    def _run_batch_internal(self, input_path: str, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False, job_id: int = None, resolved_image_ids: List[int] = None):
         """
         Internal sync runner for tagging process.
         """
@@ -367,7 +370,7 @@ class TaggingRunner:
             # print(msg, flush=True)
 
         # Convert Windows path to WSL path if running in WSL
-        if ":" in input_path and input_path[1] == ":":
+        if input_path and ":" in input_path and len(input_path) > 1 and input_path[1] == ":":
             drive = input_path[0].lower()
             path = input_path[2:].replace("\\", "/")
             wsl_path = f"/mnt/{drive}{path}"
@@ -423,7 +426,24 @@ class TaggingRunner:
             self.status_message = "Error DB"
             return
 
-        if not input_path or not input_path.strip():
+        if resolved_image_ids is not None:
+             if not resolved_image_ids:
+                 log("No images matched selectors.")
+                 self.status_message = "Done (no images)"
+                 self.total_count = 0
+                 self.current_count = 0
+                 if job_id:
+                     db.update_job_status(job_id, "completed", "\n".join(self.log_history))
+                     event_manager.broadcast_threadsafe("job_completed", {
+                         "job_id": job_id,
+                         "status": "completed"
+                     })
+                 return
+
+             selected_ids = {int(i) for i in resolved_image_ids}
+             all_images = [row for row in rows if row.get('id') in selected_ids]
+             log(f"Selector mode enabled. Matched {len(all_images)} images by ID.")
+        elif not input_path or not input_path.strip():
              log("Input path empty. Processing all images in DB...")
              all_images = [row for row in rows]
         elif os.path.isdir(input_path):

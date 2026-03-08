@@ -98,7 +98,10 @@ class JobDispatcher:
             if not self.scoring_runner:
                 return False
             skip_existing = bool(payload.get("skip_existing", True))
-            return self.scoring_runner.start_batch(input_path, job_id, skip_existing) == "Started"
+            resolved_image_ids = payload.get("resolved_image_ids")
+            return self.scoring_runner.start_batch(
+                payload.get("input_path", input_path), job_id, skip_existing, resolved_image_ids=resolved_image_ids
+            ) == "Started"
 
         if phase in ("tag", "tagging", "keywords"):
             if not self.tagging_runner:
@@ -109,6 +112,7 @@ class JobDispatcher:
                 custom_keywords=payload.get("custom_keywords"),
                 overwrite=bool(payload.get("overwrite", False)),
                 generate_captions=bool(payload.get("generate_captions", False)),
+                resolved_image_ids=payload.get("resolved_image_ids"),
             ) == "Started"
 
         if phase in ("cluster", "clustering"):
@@ -120,6 +124,7 @@ class JobDispatcher:
                 time_gap=payload.get("time_gap"),
                 force_rescan=bool(payload.get("force_rescan", False)),
                 job_id=job_id,
+                resolved_image_ids=payload.get("resolved_image_ids"),
             ) == "Started"
 
         if phase in ("selection", "culling"):

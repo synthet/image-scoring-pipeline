@@ -72,3 +72,31 @@ def test_dispatcher_supports_culling_alias(monkeypatch):
     _, kwargs = selection_runner.calls[0]
     assert kwargs["job_id"] == 55
     assert kwargs["force_rescan"] is False
+
+
+def test_dispatcher_scoring_selector_payload_preserves_none_input_path(monkeypatch):
+    scoring_runner = DummyRunner()
+    dispatcher = JobDispatcher(scoring_runner=scoring_runner)
+
+    queued_job = {
+        "id": 77,
+        "job_type": "scoring",
+        "input_path": "SELECTOR_SCORING",
+        "queue_payload": json.dumps({
+            "input_path": None,
+            "skip_existing": True,
+            "resolved_image_ids": [],
+        }),
+    }
+
+    monkeypatch.setattr("modules.job_dispatcher.db.dequeue_next_job", lambda: queued_job)
+    monkeypatch.setattr("modules.job_dispatcher.db.update_job_status", lambda *args, **kwargs: None)
+
+    dispatcher._tick()
+
+    assert len(scoring_runner.calls) == 1
+    args, kwargs = scoring_runner.calls[0]
+    assert args[0] is None
+    assert args[1] == 77
+    assert args[2] is True
+    assert kwargs["resolved_image_ids"] == []
