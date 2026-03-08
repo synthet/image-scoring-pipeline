@@ -150,6 +150,7 @@ Model specifications, scoring strategy, and fallback systems.
 | Document | Description |
 |----------|-------------|
 | [WINDOWS_SCRIPTS_README.md](setup/WINDOWS_SCRIPTS_README.md) | Windows batch/PS scripts for GPU runner |
+| [WINDOWS_NATIVE_WEBUI_PLAN.md](setup/WINDOWS_NATIVE_WEBUI_PLAN.md) | Plan: Run Gradio WebUI natively on Windows (no WSL) |
 
 ---
 

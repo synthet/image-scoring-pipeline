@@ -126,6 +126,31 @@ pip install -r requirements.txt
 
 ---
 
+### Option 3b: Windows Native WebUI
+
+**Why?** Run the Gradio WebUI natively on Windows without WSL. CPU-only, no VILA.
+
+**Prerequisites:** Python 3.10+, Firebird binaries in `Firebird/` (firebird.exe, fbclient.dll — see [Firebird 5.0](https://firebirdsql.org/en/firebird-5-0/) Embedded package).
+
+**Setup:**
+
+```batch
+scripts\setup\setup_windows_native.bat
+```
+
+**Launch:**
+
+```batch
+run_webui_windows.bat
+```
+
+**Limitations:**
+- CPU-only TensorFlow (no GPU)
+- No VILA model
+- Slower than WSL2/Docker with GPU
+
+---
+
 ### Quick Test
 
 After setup, verify your installation:

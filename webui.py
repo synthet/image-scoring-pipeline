@@ -213,7 +213,7 @@ def main():
     print(f"Starting WebUI on {platform.system()}...")
     
     # Configure server endpoints using the FastAPI app directly
-    app_module.setup_server_endpoints(app, runner, tagging_runner)
+    app_module.setup_server_endpoints(app, runner, tagging_runner, clustering_runner)
     
     # Mount MCP SSE endpoints (if enabled) onto the final app instance.
     # MUST be mounted BEFORE Gradio to avoid being shadowed by Gradio's catch-all route at /

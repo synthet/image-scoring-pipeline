@@ -65,6 +65,11 @@ def main():
         action="store_true",
         help="Report count and paths only, do not write to DB",
     )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Process all images. By default only images without cached EXIF/XMP are processed.",
+    )
     args = parser.parse_args()
 
     db.init_db()
@@ -72,14 +77,24 @@ def main():
     conn = db.get_db()
     c = conn.cursor()
 
-    query = "SELECT id, file_path FROM images"
+    # Base: images in DB
+    query = "SELECT i.id, i.file_path FROM images i"
+    where_parts = []
     params = []
+    if not args.all:
+        # Only images without cached EXIF/XMP
+        if not args.xmp_only:
+            where_parts.append("NOT EXISTS (SELECT 1 FROM image_exif e WHERE e.image_id = i.id)")
+        if not args.exif_only:
+            where_parts.append("NOT EXISTS (SELECT 1 FROM image_xmp x WHERE x.image_id = i.id)")
     if args.folder:
         folder_id = db.get_or_create_folder(args.folder)
         if folder_id:
-            query += " WHERE folder_id = ?"
+            where_parts.append("i.folder_id = ?")
             params.append(folder_id)
-    query += " ORDER BY id"
+    if where_parts:
+        query += " WHERE " + " AND ".join(where_parts)
+    query += " ORDER BY i.id"
 
     c.execute(query, tuple(params))
     rows = c.fetchall()
@@ -90,7 +105,7 @@ def main():
         rows = rows[: args.limit]
     to_process = len(rows)
 
-    logger.info("Found %d images to process (limit=%s)", to_process, args.limit or "none")
+    logger.info("Found %d images to process (limit=%s, uncached_only=%s)", to_process, args.limit or "none", not args.all)
 
     if args.dry_run:
         for i, row in enumerate(rows[:10]):

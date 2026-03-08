@@ -727,10 +727,10 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
         first_btn.click(fn=first_page, inputs=filter_inputs_base, outputs=[current_page, gallery, page_label, current_paths] + detail_outputs)
         last_btn.click(fn=last_page, inputs=filter_inputs_base, outputs=[current_page, gallery, page_label, current_paths] + detail_outputs)
         
-        # Filter Changes
+        # Filter Changes (always_last debounces slider drags to avoid flickering)
         for inp in filter_inputs_base[:-2]: # exclude folder_state and stack_state
             # When filter changes, go to first page
-             inp.change(fn=first_page, inputs=filter_inputs_base, outputs=[current_page, gallery, page_label, current_paths] + detail_outputs)
+             inp.change(fn=first_page, inputs=filter_inputs_base, outputs=[current_page, gallery, page_label, current_paths] + detail_outputs, trigger_mode="always_last")
              
         # Reset Folder
         reset_folder_btn.click(

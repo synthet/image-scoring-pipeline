@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-03-07
+
+### Added
+- **Windows Native WebUI**: New `run_webui_windows.bat` and `scripts/setup/setup_windows_native.bat` for running the Gradio WebUI natively on Windows (no WSL). CPU-only, no VILA. Documented in README Option 3b and `docs/setup/WINDOWS_NATIVE_WEBUI_PLAN.md`.
+- **API Expansion** (`modules/api.py`): New clustering endpoints (start, stop, status), data query endpoints (images, folders, stacks, stats), pipeline submit, raw-preview utility. Clustering status added to `/api/status` and `/api/health`.
+- **API Documentation**: Added `docs/reference/api/openapi.yaml` (standalone OpenAPI 3.0 schema) and `docs/technical/API_CONTRACT.md` (concise endpoint and model reference).
+
+### Changed
+- **API Reference**: Updated `docs/reference/api/API.md` with full endpoint documentation for clustering, data queries, pipeline, and utilities.
+- **Environments**: Updated `docs/setup/ENVIRONMENTS.md` with Windows native setup details.
+- **Backfill Scripts**: Enhanced `scripts/maintenance/backfill_exif_xmp.py` and `run_backfill_exif_xmp.bat` with improved argument handling and feedback.
+
 ## [4.0.1] - 2026-03-07
 
 ### Added

@@ -73,7 +73,7 @@ def create_ui():
         current_stack_state = gr.State(None)
         
         # Status Polling Timer
-        status_timer = gr.Timer(value=1.0)
+        status_timer = gr.Timer(value=2.0)
 
         
         with gr.Tabs() as main_tabs:
@@ -168,12 +168,12 @@ _SQL_FORBIDDEN_PATTERNS = re.compile(
 )
 
 
-def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None):
+def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None):
     """Configures FastAPI endpoints for the Gradio app."""
 
     # Setup REST API endpoints
     from modules import api
-    api.set_runners(scoring_runner, tagging_runner)
+    api.set_runners(scoring_runner, tagging_runner, clustering_runner)
     api_router = api.create_api_router()
     fastapi_app.include_router(api_router)
     

@@ -1170,7 +1170,7 @@ def _init_db_impl():
             create_date TIMESTAMP,
             exposure_time VARCHAR(30),
             f_number VARCHAR(20),
-            iso SMALLINT,
+            iso INTEGER,
             exposure_compensation VARCHAR(20),
             image_width INTEGER,
             image_height INTEGER,
@@ -1198,6 +1198,13 @@ def _init_db_impl():
             if not _index_exists(c, idx):
                 try: c.execute(f"CREATE INDEX {idx.lower()} ON image_exif({col})")
                 except Exception: pass
+        # Migration: iso SMALLINT overflows for high ISO (e.g. 51200). Change to INTEGER.
+        try:
+            c.execute("ALTER TABLE image_exif ALTER COLUMN iso TYPE INTEGER")
+            conn.commit()
+        except Exception:
+            pass  # Column may already be INTEGER or Firebird < 4
+        c = conn.cursor()
     
     # IMAGE_XMP — cached XMP sidecar metadata (one row per image)
     if not _table_exists(c, 'IMAGE_XMP'):

@@ -8,7 +8,7 @@ This document describes each Python environment referenced in the image-scoring 
 |-------------|----------|---------|---------|
 | **Web UI / app (default)** | `~/.venvs/tf` (WSL) | Main app: TensorFlow, Firebird, Gradio, MCP | `run_webui.bat`, all WSL-invoked scripts |
 | **Tests** | `~/.venvs/image-scoring-tests` (WSL) | Pytest WSL-marked tests | `run_wsl_tests.sh`, `Run-WSLTests.ps1` |
-| **Windows native (optional)** | `.venv` (project root) | CPU-only, no VILA | Manual use per README Option 3 |
+| **Windows native (optional)** | `.venv` (project root) | Windows native WebUI + CLI (CPU, no VILA) | `run_webui_windows.bat` |
 
 **Default for the Web UI:** The app is started by **`run_webui.bat`**, which runs in **WSL** and uses **`~/.venvs/tf`**. No project-local `.venv` is used for the Web UI. Any project-local `.venv*` directory is gitignored and excluded from pytest.
 
@@ -45,14 +45,9 @@ This document describes each Python environment referenced in the image-scoring 
 
 ## 3. `.venv` (project root, Windows)
 
-- **Purpose:** Optional **Windows-native** virtual environment for CPU-only use (no VILA, no GPU). Documented as "Option 3" in the main README.
-- **Used by:** No script in the repo activates it automatically. You create and activate it yourself when following the Windows-native setup:
-  ```powershell
-  python -m venv .venv
-  .venv\Scripts\Activate.ps1
-  pip install -r requirements.txt
-  python launch.py   # or webui.py
-  ```
+- **Purpose:** **Windows-native** virtual environment for WebUI and CLI (CPU-only, no VILA, no GPU). Documented as "Option 3" and "Option 3b" in the main README.
+- **Used by:** **`run_webui_windows.bat`** — activates this venv and runs `python launch.py` (which then runs `webui.py`). You can also activate it manually for CLI use.
+- **Setup:** Run `scripts\setup\setup_windows_native.bat` to create the venv and install dependencies.
 - **Limitations:** CPU-only, no VILA; not the same environment as the Web UI when started via `run_webui.bat` (which uses WSL + `~/.venvs/tf`).
 
 ---

@@ -2,6 +2,9 @@ import gradio as gr
 from modules import db
 from modules import ui_tree
 
+# Cache for timer-based status updates to avoid unnecessary SSE pushes
+_last_status_cache = {"state": None}
+
 
 def _parse_phase_summary(folder_path):
     """
@@ -261,7 +264,7 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
     # Return order must match monitor_outputs in app.py:
     # stepper, scoring_card, culling_card, keywords_card,
     # monitor, console, run_all, stop_all, sc_run, cu_run, kw_run
-    return (
+    result = (
         res_stepper,
         res_sc,
         res_cu,
@@ -274,6 +277,14 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
         gr.update(interactive=not_running),  # culling_run
         gr.update(interactive=not_running),  # keywords_run
     )
+
+    # Skip SSE push if nothing changed since last tick
+    cache_key = (res_stepper, res_sc, res_cu, res_kw, monitor_html, console_out, is_running)
+    if cache_key == _last_status_cache["state"]:
+        return tuple(gr.skip() for _ in range(11))
+    _last_status_cache["state"] = cache_key
+
+    return result
 
 
 # --- HTML Helpers ---

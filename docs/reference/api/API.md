@@ -6,7 +6,9 @@ The Image Scoring WebUI exposes a REST API layer for programmatic access to scor
 
 For LLM agents and automated tools, the API schema is available in multiple formats:
 
-- **OpenAPI JSON Schema**: `http://127.0.0.1:7860/openapi.json` - Complete OpenAPI 3.0 specification
+- **OpenAPI JSON Schema**: `http://127.0.0.1:7860/openapi.json` - Complete OpenAPI 3.0 specification (runtime)
+- **OpenAPI YAML**: [openapi.yaml](openapi.yaml) - Standalone OpenAPI 3.0 schema (source)
+- **API Contract Summary**: [API_CONTRACT.md](../../technical/API_CONTRACT.md) - Concise endpoint and model reference
 - **Simplified Schema**: `http://127.0.0.1:7860/api/schema` - LLM-optimized format
 - **Interactive Docs**: `http://127.0.0.1:7860/docs` - Swagger UI for interactive exploration
 - **ReDoc**: `http://127.0.0.1:7860/redoc` - Alternative documentation interface
@@ -90,6 +92,7 @@ GET /api/scoring/status
 ```http
 POST /api/scoring/fix-db
 ```
+No request body. Processes all incomplete records in the database.
 
 **Response:**
 ```json
@@ -215,7 +218,90 @@ GET /api/status
       "total": 0
     },
     "log": ""
+  },
+  "clustering": {
+    "available": true,
+    "is_running": false,
+    "status_message": "Idle",
+    "progress": { "current": 0, "total": 0 },
+    "log": ""
   }
+}
+```
+
+### Clustering Operations
+
+#### Start Clustering
+```http
+POST /api/clustering/start
+Content-Type: application/json
+
+{
+  "input_path": "/path/to/folder",
+  "threshold": 0.15,
+  "time_gap": 5,
+  "force_rescan": false
+}
+```
+
+#### Stop Clustering
+```http
+POST /api/clustering/stop
+```
+
+#### Get Clustering Status
+```http
+GET /api/clustering/status
+```
+
+### Data Query Endpoints
+
+#### Query Images (paginated)
+```http
+GET /api/images?page=1&page_size=50&sort_by=score&order=desc&rating=3,4,5&folder_path=/path
+```
+
+#### Get Image Details
+```http
+GET /api/images/{image_id}
+```
+
+#### Get Folders
+```http
+GET /api/folders
+```
+
+#### Get Stacks
+```http
+GET /api/stacks?folder_path=/path
+```
+
+#### Get Stack Images
+```http
+GET /api/stacks/{stack_id}/images
+```
+
+#### Get Database Stats
+```http
+GET /api/stats
+```
+Returns: `total_images`, `by_rating`, `by_label`, `score_distribution`, `average_scores`, `total_folders`, `total_stacks`, `jobs_by_status`, `images_today`. Does not include `scored_images` or `tagged_images`. May include `error` on exception.
+
+### Pipeline Submit
+
+Submit to the score→tag→cluster pipeline. Starts the first operation immediately; returns `remaining_operations` for chaining.
+
+```http
+POST /api/pipeline/submit
+Content-Type: application/json
+
+{
+  "input_path": "/path/to/folder",
+  "operations": ["score", "tag", "cluster"],
+  "skip_existing": true,
+  "custom_keywords": ["landscape"],
+  "generate_captions": false,
+  "clustering_threshold": 0.15
 }
 ```
 
@@ -229,7 +315,8 @@ GET /api/health
 {
   "status": "healthy",
   "scoring_available": true,
-  "tagging_available": true
+  "tagging_available": true,
+  "clustering_available": true
 }
 ```
 
@@ -255,6 +342,14 @@ GET /api/jobs/recent?limit=10
 ```http
 GET /api/jobs/{job_id}
 ```
+
+### Utilities
+
+#### Get RAW File Preview
+```http
+GET /api/raw-preview?path=<url-encoded-file-path>
+```
+Use query param `path` (not `file_path`). Returns a JPEG image.
 
 ## Error Responses
 
@@ -326,6 +421,8 @@ curl -X POST http://127.0.0.1:7860/api/scoring/stop
 ## Related Documents
 
 - [Docs index](../../README.md)
+- [API contract summary](../../technical/API_CONTRACT.md) - Concise endpoint and model reference
+- [OpenAPI schema](openapi.yaml) - Standalone OpenAPI 3.0 YAML
 - [API schema for LLMs](API_SCHEMA_LLM.md)
 - [API schema implementation notes](API_SCHEMA_IMPLEMENTATION.md)
 - [MCP debugging tools](../../technical/MCP_DEBUGGING_TOOLS.md)

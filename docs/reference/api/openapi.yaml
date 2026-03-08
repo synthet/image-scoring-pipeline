@@ -1,0 +1,619 @@
+openapi: 3.0.3
+info:
+  title: Image Scoring WebUI API
+  description: REST API for image quality assessment, tagging, clustering, and data queries.
+  version: 1.0.0
+
+servers:
+  - url: http://127.0.0.1:7860/api
+    description: Local development
+
+tags:
+  - name: Scoring
+  - name: Tagging
+  - name: Clustering
+  - name: Data
+  - name: Pipeline
+  - name: General
+  - name: Jobs
+  - name: Utilities
+
+paths:
+  # --- Scoring ---
+  /scoring/start:
+    post:
+      tags: [Scoring]
+      summary: Start batch image scoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoringStartRequest'
+      responses:
+        '200':
+          description: Job started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: Invalid path
+        '503':
+          description: Scoring runner not available
+
+  /scoring/stop:
+    post:
+      tags: [Scoring]
+      summary: Stop scoring job
+      responses:
+        '200':
+          description: Stop confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /scoring/status:
+    get:
+      tags: [Scoring]
+      summary: Get scoring status
+      responses:
+        '200':
+          description: Current scoring job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+
+  /scoring/fix-db:
+    post:
+      tags: [Scoring]
+      summary: Fix database (re-score incomplete)
+      description: No request body. Processes all incomplete records in the database.
+      responses:
+        '200':
+          description: Fix operation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /scoring/single:
+    post:
+      tags: [Scoring]
+      summary: Score single image
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SingleImageRequest'
+      responses:
+        '200':
+          description: Scoring result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /scoring/fix-image:
+    post:
+      tags: [Scoring]
+      summary: Fix image metadata (recalculate from existing data)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SingleImageRequest'
+      responses:
+        '200':
+          description: Fix result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # --- Tagging ---
+  /tagging/start:
+    post:
+      tags: [Tagging]
+      summary: Start batch tagging
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaggingStartRequest'
+      responses:
+        '200':
+          description: Tagging job started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /tagging/stop:
+    post:
+      tags: [Tagging]
+      summary: Stop tagging job
+      responses:
+        '200':
+          description: Stop confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /tagging/status:
+    get:
+      tags: [Tagging]
+      summary: Get tagging status
+      responses:
+        '200':
+          description: Current tagging job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+
+  /tagging/single:
+    post:
+      tags: [Tagging]
+      summary: Tag single image
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaggingSingleRequest'
+      responses:
+        '200':
+          description: Tagging result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # --- Clustering ---
+  /clustering/start:
+    post:
+      tags: [Clustering]
+      summary: Start clustering job
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusteringStartRequest'
+      responses:
+        '200':
+          description: Clustering job started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: Path not found
+        '503':
+          description: Clustering runner not available
+
+  /clustering/stop:
+    post:
+      tags: [Clustering]
+      summary: Stop clustering job
+      responses:
+        '200':
+          description: Stop confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /clustering/status:
+    get:
+      tags: [Clustering]
+      summary: Get clustering status
+      responses:
+        '200':
+          description: Current clustering job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+
+  # --- Data Queries ---
+  /images:
+    get:
+      tags: [Data]
+      summary: Query images with filters
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - name: sort_by
+          in: query
+          schema: { type: string, default: score, enum: [score, date, name, rating, score_general, score_aesthetic, score_technical] }
+        - name: order
+          in: query
+          schema: { type: string, default: desc, enum: [asc, desc] }
+        - name: rating
+          in: query
+          schema: { type: string, description: Comma-separated ratings }
+        - name: label
+          in: query
+          schema: { type: string, description: Comma-separated labels }
+        - name: keyword
+          in: query
+          schema: { type: string }
+        - name: min_score_general
+          in: query
+          schema: { type: number, minimum: 0, maximum: 1, default: 0 }
+        - name: min_score_aesthetic
+          in: query
+          schema: { type: number, minimum: 0, maximum: 1, default: 0 }
+        - name: min_score_technical
+          in: query
+          schema: { type: number, minimum: 0, maximum: 1, default: 0 }
+        - name: folder_path
+          in: query
+          schema: { type: string }
+        - name: stack_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Paginated image list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  images: { type: array, items: { type: object } }
+                  total: { type: integer }
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  total_pages: { type: integer }
+
+  /images/{image_id}:
+    get:
+      tags: [Data]
+      summary: Get image details by ID
+      parameters:
+        - name: image_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Full image details
+          content:
+            application/json:
+              schema: { type: object }
+        '404':
+          description: Image not found
+
+  /folders:
+    get:
+      tags: [Data]
+      summary: Get folder list
+      responses:
+        '200':
+          description: All folders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders: { type: array, items: { type: object } }
+                  count: { type: integer }
+
+  /stacks:
+    get:
+      tags: [Data]
+      summary: Get stacks listing
+      parameters:
+        - name: folder_path
+          in: query
+          schema: { type: string }
+        - name: sort_by
+          in: query
+          schema: { type: string, default: score_general }
+        - name: order
+          in: query
+          schema: { type: string, default: desc, enum: [asc, desc] }
+      responses:
+        '200':
+          description: Stacks with cover images
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stacks: { type: array, items: { type: object } }
+                  count: { type: integer }
+
+  /stacks/{stack_id}/images:
+    get:
+      tags: [Data]
+      summary: Get images in a stack
+      parameters:
+        - name: stack_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Images in stack
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  images: { type: array, items: { type: object } }
+                  count: { type: integer }
+                  stack_id: { type: integer }
+
+  /stats:
+    get:
+      tags: [Data]
+      summary: Get database statistics
+      responses:
+        '200':
+          description: Database stats (DatabaseStats schema)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseStats'
+        '500':
+          description: Database error (response may include error field)
+
+  # --- Utilities ---
+  /raw-preview:
+    get:
+      tags: [Utilities]
+      summary: Get RAW file preview
+      description: Extracts or generates a JPEG preview for a RAW image file. Use query param path (not file_path).
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string, description: Full path to the image file (URL encoded) }
+      responses:
+        '200':
+          description: JPEG image
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        '404':
+          description: File not found
+        '500':
+          description: Failed to generate preview
+
+  # --- Pipeline ---
+  /pipeline/submit:
+    post:
+      tags: [Pipeline]
+      summary: Submit to processing pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineSubmitRequest'
+      responses:
+        '200':
+          description: Pipeline started or operation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: Invalid path, operations, or clustering on single file
+        '503':
+          description: Runner not available
+
+  # --- General ---
+  /status:
+    get:
+      tags: [General]
+      summary: Get all runners status
+      responses:
+        '200':
+          description: Status of scoring, tagging, clustering
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scoring:
+                    type: object
+                    properties:
+                      available: { type: boolean }
+                      is_running: { type: boolean }
+                      status_message: { type: string }
+                      progress: { type: object }
+                      log: { type: string }
+                      job_type: { type: string, nullable: true }
+                  tagging:
+                    type: object
+                    properties:
+                      available: { type: boolean }
+                      is_running: { type: boolean }
+                      status_message: { type: string }
+                      progress: { type: object }
+                      log: { type: string }
+                  clustering:
+                    type: object
+                    properties:
+                      available: { type: boolean }
+                      is_running: { type: boolean }
+                      status_message: { type: string }
+                      progress: { type: object }
+                      log: { type: string }
+
+  /health:
+    get:
+      tags: [General]
+      summary: Health check
+      responses:
+        '200':
+          description: API health
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /schema:
+    get:
+      tags: [General]
+      summary: Get API schema (LLM-optimized)
+      responses:
+        '200':
+          description: Simplified schema for LLM agents
+
+  # --- Jobs ---
+  /jobs/recent:
+    get:
+      tags: [Jobs]
+      summary: Get recent jobs
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 10 }
+      responses:
+        '200':
+          description: Recent job history
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object }
+
+  /jobs/{job_id}:
+    get:
+      tags: [Jobs]
+      summary: Get job details
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema: { type: object }
+        '404':
+          description: Job not found
+
+components:
+  schemas:
+    ApiResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        data: { type: object, nullable: true }
+
+    StatusResponse:
+      type: object
+      required: [is_running, status_message, progress, log]
+      properties:
+        is_running: { type: boolean }
+        status_message: { type: string }
+        progress:
+          type: object
+          properties:
+            current: { type: integer }
+            total: { type: integer }
+        log: { type: string }
+        job_type: { type: string, nullable: true }
+
+    HealthResponse:
+      type: object
+      required: [status, scoring_available, tagging_available]
+      properties:
+        status: { type: string, example: healthy }
+        scoring_available: { type: boolean }
+        tagging_available: { type: boolean }
+        clustering_available: { type: boolean, default: false }
+
+    ScoringStartRequest:
+      type: object
+      required: [input_path]
+      properties:
+        input_path: { type: string, example: D:/Photos/2024 }
+        skip_existing: { type: boolean, default: true }
+        force_rescore: { type: boolean, default: false }
+
+    TaggingStartRequest:
+      type: object
+      properties:
+        input_path: { type: string, default: '' }
+        custom_keywords: { type: array, items: { type: string } }
+        overwrite: { type: boolean, default: false }
+        generate_captions: { type: boolean, default: false }
+
+    SingleImageRequest:
+      type: object
+      required: [file_path]
+      properties:
+        file_path: { type: string }
+
+    TaggingSingleRequest:
+      type: object
+      required: [file_path]
+      properties:
+        file_path: { type: string }
+        custom_keywords: { type: array, items: { type: string } }
+        generate_captions: { type: boolean, default: true }
+
+    ClusteringStartRequest:
+      type: object
+      properties:
+        input_path: { type: string, nullable: true }
+        threshold: { type: number, nullable: true }
+        time_gap: { type: integer, nullable: true }
+        force_rescan: { type: boolean, default: false }
+
+    PipelineSubmitRequest:
+      type: object
+      required: [input_path]
+      properties:
+        input_path: { type: string }
+        operations:
+          type: array
+          items: { type: string, enum: [score, tag, cluster] }
+          default: [score, tag]
+        skip_existing: { type: boolean, default: true }
+        custom_keywords: { type: array, items: { type: string } }
+        generate_captions: { type: boolean, default: false }
+        clustering_threshold: { type: number }
+
+    DatabaseStats:
+      type: object
+      description: Response from GET /api/stats. Does not include scored_images or tagged_images.
+      properties:
+        total_images: { type: integer }
+        by_rating: { type: object, additionalProperties: { type: integer } }
+        by_label: { type: object, additionalProperties: { type: integer } }
+        score_distribution: { type: object, additionalProperties: { type: integer } }
+        average_scores:
+          type: object
+          properties:
+            general: { type: number }
+            technical: { type: number }
+            aesthetic: { type: number }
+            spaq: { type: number }
+            koniq: { type: number }
+            liqe: { type: number }
+        total_folders: { type: integer }
+        total_stacks: { type: integer }
+        jobs_by_status: { type: object, additionalProperties: { type: integer } }
+        images_today: { type: integer }
+        error: { type: string, description: Present only when an exception occurred }

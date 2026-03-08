@@ -177,7 +177,7 @@ Cached EXIF metadata for gallery filtering and sorting. One row per image. Popul
 | `create_date` | TIMESTAMP | YES | Fallback date |
 | `exposure_time` | VARCHAR(30) | YES | Shutter speed |
 | `f_number` | VARCHAR(20) | YES | Aperture |
-| `iso` | SMALLINT | YES | ISO sensitivity |
+| `iso` | INTEGER | YES | ISO sensitivity (INTEGER for high ISO e.g. 51200) |
 | `exposure_compensation` | VARCHAR(20) | YES | EV compensation |
 | `image_width` | INTEGER | YES | Pixel width |
 | `image_height` | INTEGER | YES | Pixel height |

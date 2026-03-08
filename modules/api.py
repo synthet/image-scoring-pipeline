@@ -2,7 +2,8 @@
 REST API layer for the Image Scoring WebUI.
 
 Provides endpoints to trigger actions (start/stop/refresh/fetch) and retrieve
-the status of running actions for both scoring and tagging operations.
+the status of running actions for scoring, tagging, and clustering operations.
+Includes data query endpoints for Electron app integration.
 
 Endpoints:
     Scoring:
@@ -11,13 +12,29 @@ Endpoints:
         GET /api/scoring/status - Get scoring job status
         POST /api/scoring/fix-db - Start database fix operation
         POST /api/scoring/single - Score a single image
-        
+
     Tagging:
         POST /api/tagging/start - Start batch tagging
         POST /api/tagging/stop - Stop running tagging job
         GET /api/tagging/status - Get tagging job status
         POST /api/tagging/single - Tag a single image
-        
+
+    Clustering:
+        POST /api/clustering/start - Start clustering job
+        POST /api/clustering/stop - Stop running clustering job
+        GET /api/clustering/status - Get clustering job status
+
+    Data Queries:
+        GET /api/images - Query images with filters and pagination
+        GET /api/images/{image_id} - Get single image details
+        GET /api/folders - Get folder listing
+        GET /api/stacks - Get stacks listing
+        GET /api/stacks/{stack_id}/images - Get images in a stack
+        GET /api/stats - Get database statistics
+
+    Pipeline:
+        POST /api/pipeline/submit - Submit to processing pipeline
+
     General:
         GET /api/status - Get status of all runners
         GET /api/health - Health check endpoint
@@ -288,11 +305,17 @@ class HealthResponse(BaseModel):
         description="True if tagging runner is initialized and available.",
         example=True
     )
+    clustering_available: bool = Field(
+        False,
+        description="True if clustering runner is initialized and available.",
+        example=True
+    )
 
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "status": "healthy",
             "scoring_available": True,
+            "clustering_available": True,
         }
     })
 
@@ -313,6 +336,79 @@ class FindDuplicatesRequest(BaseModel):
         None,
         description="Max number of duplicate pairs to return (defaults to configured duplicate_max_pairs).",
         example=5000
+    )
+
+
+class ClusteringStartRequest(BaseModel):
+    """Request model for starting a clustering job.
+
+    Clusters images in a folder based on visual similarity and temporal proximity.
+
+    Attributes:
+        input_path: Directory path containing images to cluster. If empty, clusters all unprocessed folders.
+        threshold: Distance threshold for clustering (lower = stricter grouping).
+        time_gap: Time gap in seconds for burst grouping.
+        force_rescan: If True, re-cluster even if already processed.
+    """
+    input_path: Optional[str] = Field(
+        None,
+        description="Directory path containing images to cluster. None clusters all unprocessed.",
+        example="D:/Photos/2024"
+    )
+    threshold: Optional[float] = Field(
+        None,
+        description="Distance threshold for clustering (lower = stricter).",
+        example=0.15
+    )
+    time_gap: Optional[int] = Field(
+        None,
+        description="Time gap in seconds for burst grouping.",
+        example=5
+    )
+    force_rescan: bool = Field(
+        False,
+        description="If True, re-cluster folders even if already processed.",
+        example=False
+    )
+
+
+class PipelineSubmitRequest(BaseModel):
+    """Request model for submitting images/folders to the processing pipeline.
+
+    Chains requested operations sequentially (score -> tag -> cluster).
+
+    Attributes:
+        input_path: File or directory path to process.
+        operations: List of operations to run in order. Valid: "score", "tag", "cluster".
+        options: Optional per-operation options.
+    """
+    input_path: str = Field(
+        ...,
+        description="File or directory path to process.",
+        example="D:/Photos/2024"
+    )
+    operations: List[str] = Field(
+        ["score", "tag"],
+        description="Operations to run in order. Valid values: 'score', 'tag', 'cluster'.",
+        example=["score", "tag", "cluster"]
+    )
+    skip_existing: bool = Field(
+        True,
+        description="Skip images that already have results for each operation.",
+        example=True
+    )
+    custom_keywords: Optional[List[str]] = Field(
+        None,
+        description="Custom keywords for tagging (if 'tag' is in operations)."
+    )
+    generate_captions: bool = Field(
+        False,
+        description="Generate captions during tagging.",
+        example=False
+    )
+    clustering_threshold: Optional[float] = Field(
+        None,
+        description="Distance threshold for clustering (if 'cluster' is in operations)."
     )
 
 
@@ -362,13 +458,15 @@ class ApiResponse(BaseModel):
 # Global references to runners (set by webui.py)
 _scoring_runner = None
 _tagging_runner = None
+_clustering_runner = None
 
 
-def set_runners(scoring_runner, tagging_runner):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None):
     """Set the runner instances for API access."""
-    global _scoring_runner, _tagging_runner
+    global _scoring_runner, _tagging_runner, _clustering_runner
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
+    _clustering_runner = clustering_runner
 
 
 def create_api_router() -> APIRouter:
@@ -517,11 +615,102 @@ def create_api_router() -> APIRouter:
                         "description": "Tag a single image"
                     }
                 },
+                "clustering": {
+                    "start": {
+                        "method": "POST",
+                        "path": "/api/clustering/start",
+                        "description": "Start clustering job (group similar images into stacks)",
+                        "request_body": {
+                            "type": "object",
+                            "properties": {
+                                "input_path": {"type": "string", "description": "Folder path (null for all)"},
+                                "threshold": {"type": "number"},
+                                "time_gap": {"type": "integer"},
+                                "force_rescan": {"type": "boolean", "default": False}
+                            }
+                        }
+                    },
+                    "stop": {
+                        "method": "POST",
+                        "path": "/api/clustering/stop",
+                        "description": "Stop running clustering job"
+                    },
+                    "status": {
+                        "method": "GET",
+                        "path": "/api/clustering/status",
+                        "description": "Get current clustering job status"
+                    }
+                },
+                "data": {
+                    "images": {
+                        "method": "GET",
+                        "path": "/api/images",
+                        "description": "Query images with filters, sorting, and pagination",
+                        "query_params": {
+                            "page": {"type": "integer", "default": 1},
+                            "page_size": {"type": "integer", "default": 50},
+                            "sort_by": {"type": "string", "default": "score"},
+                            "order": {"type": "string", "default": "desc"},
+                            "rating": {"type": "string", "description": "Comma-separated ratings"},
+                            "label": {"type": "string", "description": "Comma-separated labels"},
+                            "keyword": {"type": "string"},
+                            "folder_path": {"type": "string"},
+                            "stack_id": {"type": "integer"},
+                            "min_score_general": {"type": "number"},
+                            "min_score_aesthetic": {"type": "number"},
+                            "min_score_technical": {"type": "number"}
+                        }
+                    },
+                    "image_details": {
+                        "method": "GET",
+                        "path": "/api/images/{image_id}",
+                        "description": "Get full details for a single image"
+                    },
+                    "folders": {
+                        "method": "GET",
+                        "path": "/api/folders",
+                        "description": "Get all folders in the database"
+                    },
+                    "stacks": {
+                        "method": "GET",
+                        "path": "/api/stacks",
+                        "description": "Get stacks listing with cover images"
+                    },
+                    "stack_images": {
+                        "method": "GET",
+                        "path": "/api/stacks/{stack_id}/images",
+                        "description": "Get all images in a stack"
+                    },
+                    "stats": {
+                        "method": "GET",
+                        "path": "/api/stats",
+                        "description": "Get comprehensive database statistics"
+                    }
+                },
+                "pipeline": {
+                    "submit": {
+                        "method": "POST",
+                        "path": "/api/pipeline/submit",
+                        "description": "Submit image/folder to processing pipeline (score -> tag -> cluster)",
+                        "request_body": {
+                            "type": "object",
+                            "required": ["input_path"],
+                            "properties": {
+                                "input_path": {"type": "string"},
+                                "operations": {"type": "array", "items": {"type": "string"}, "default": ["score", "tag"]},
+                                "skip_existing": {"type": "boolean", "default": True},
+                                "custom_keywords": {"type": "array", "items": {"type": "string"}},
+                                "generate_captions": {"type": "boolean", "default": False},
+                                "clustering_threshold": {"type": "number"}
+                            }
+                        }
+                    }
+                },
                 "general": {
                     "status": {
                         "method": "GET",
                         "path": "/api/status",
-                        "description": "Get status of all runners"
+                        "description": "Get status of all runners (scoring, tagging, clustering)"
                     },
                     "health": {
                         "method": "GET",
@@ -1030,9 +1219,10 @@ def create_api_router() -> APIRouter:
         """Get status of all runners."""
         status = {
             "scoring": {"available": False},
-            "tagging": {"available": False}
+            "tagging": {"available": False},
+            "clustering": {"available": False}
         }
-        
+
         if _scoring_runner:
             try:
                 is_running, log, status_msg, current, total = _scoring_runner.get_status()
@@ -1046,7 +1236,7 @@ def create_api_router() -> APIRouter:
                 }
             except Exception as e:
                 status["scoring"]["error"] = str(e)
-        
+
         if _tagging_runner:
             try:
                 is_running, log, status_msg, current, total = _tagging_runner.get_status()
@@ -1059,7 +1249,20 @@ def create_api_router() -> APIRouter:
                 }
             except Exception as e:
                 status["tagging"]["error"] = str(e)
-        
+
+        if _clustering_runner:
+            try:
+                is_running, log, status_msg, current, total = _clustering_runner.get_status()
+                status["clustering"] = {
+                    "available": True,
+                    "is_running": is_running,
+                    "status_message": status_msg,
+                    "progress": {"current": current, "total": total},
+                    "log": log[-2000:] if log else ""
+                }
+            except Exception as e:
+                status["clustering"]["error"] = str(e)
+
         return status
     
     @router.get(
@@ -1085,7 +1288,8 @@ def create_api_router() -> APIRouter:
         return HealthResponse(
             status="healthy",
             scoring_available=_scoring_runner is not None,
-            tagging_available=_tagging_runner is not None
+            tagging_available=_tagging_runner is not None,
+            clustering_available=_clustering_runner is not None
         )
     
     # ========== Utility Endpoints ==========
@@ -1348,5 +1552,428 @@ def create_api_router() -> APIRouter:
             )
         except Exception as e:
             return ApiResponse(success=False, message=str(e))
-    
+
+    # ========== Clustering Endpoints ==========
+
+    @router.post(
+        "/clustering/start",
+        response_model=ApiResponse,
+        summary="Start clustering job",
+        description="""
+        Starts a clustering job that groups visually similar images into stacks.
+
+        Uses MobileNetV2 embeddings and cosine similarity to find groups of related images.
+        Optionally uses EXIF timestamps for burst detection.
+
+        The job runs asynchronously. Use GET /api/clustering/status to monitor progress.
+        """
+    )
+    async def start_clustering(request: ClusteringStartRequest):
+        """Start a batch clustering job."""
+        from modules.ui.app import _check_rate_limit
+        _check_rate_limit("clustering_start")
+
+        if _clustering_runner is None:
+            raise HTTPException(status_code=503, detail="Clustering runner not available")
+
+        if _clustering_runner.is_running:
+            return ApiResponse(
+                success=False,
+                message="Clustering job is already running",
+                data={"is_running": True}
+            )
+
+        # Validate path if provided
+        if request.input_path and not os.path.exists(request.input_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Path not found: {request.input_path}"
+            )
+
+        from modules import db
+        job_id = db.create_job(request.input_path or "ALL_FOLDERS_CLUSTERING")
+
+        result = _clustering_runner.start_batch(
+            request.input_path,
+            threshold=request.threshold,
+            time_gap=request.time_gap,
+            force_rescan=request.force_rescan,
+            job_id=job_id
+        )
+
+        if result == "Started":
+            return ApiResponse(
+                success=True,
+                message="Clustering job started successfully",
+                data={"job_id": job_id, "input_path": request.input_path or "all folders"}
+            )
+        else:
+            return ApiResponse(
+                success=False,
+                message=result,
+                data={"error": result}
+            )
+
+    @router.post(
+        "/clustering/stop",
+        response_model=ApiResponse,
+        summary="Stop clustering job",
+        description="Sends a stop signal to the currently running clustering job."
+    )
+    async def stop_clustering():
+        """Stop the currently running clustering job."""
+        if _clustering_runner is None:
+            raise HTTPException(status_code=503, detail="Clustering runner not available")
+
+        if not _clustering_runner.is_running:
+            return ApiResponse(
+                success=False,
+                message="No clustering job is currently running",
+                data={"is_running": False}
+            )
+
+        _clustering_runner.stop()
+        return ApiResponse(
+            success=True,
+            message="Stop signal sent to clustering job",
+            data={"is_running": _clustering_runner.is_running}
+        )
+
+    @router.get(
+        "/clustering/status",
+        response_model=StatusResponse,
+        summary="Get clustering status",
+        description="Returns the current status of the clustering job including progress and logs."
+    )
+    async def get_clustering_status():
+        """Get the current status of the clustering job."""
+        if _clustering_runner is None:
+            raise HTTPException(status_code=503, detail="Clustering runner not available")
+
+        is_running, log_text, status_message, current, total = _clustering_runner.get_status()
+
+        return StatusResponse(
+            is_running=is_running,
+            status_message=status_message,
+            progress={"current": current, "total": total},
+            log=log_text,
+            job_type="clustering"
+        )
+
+    # ========== Data Query Endpoints (for Electron integration) ==========
+
+    @router.get(
+        "/images",
+        summary="Query images with filters",
+        description="""
+        Returns a paginated list of images with optional filtering by rating, label,
+        keyword, score ranges, folder, and stack. Supports sorting and pagination.
+
+        This endpoint replaces direct DB access from the Electron app.
+        """
+    )
+    async def query_images(
+        page: int = Query(1, ge=1, description="Page number (1-based)"),
+        page_size: int = Query(50, ge=1, le=500, description="Items per page"),
+        sort_by: str = Query("score", description="Sort field (score, date, name, rating, score_general, score_aesthetic, score_technical)"),
+        order: str = Query("desc", description="Sort order: asc or desc"),
+        rating: Optional[str] = Query(None, description="Comma-separated ratings to filter (e.g. '3,4,5')"),
+        label: Optional[str] = Query(None, description="Comma-separated labels to filter (e.g. 'Green,Blue')"),
+        keyword: Optional[str] = Query(None, description="Keyword to filter by (partial match)"),
+        min_score_general: float = Query(0, ge=0, le=1, description="Minimum general score"),
+        min_score_aesthetic: float = Query(0, ge=0, le=1, description="Minimum aesthetic score"),
+        min_score_technical: float = Query(0, ge=0, le=1, description="Minimum technical score"),
+        folder_path: Optional[str] = Query(None, description="Filter by folder path"),
+        stack_id: Optional[int] = Query(None, description="Filter by stack ID"),
+    ):
+        """Query images with filtering, sorting, and pagination."""
+        from modules import db
+
+        rating_filter = [int(r) for r in rating.split(",")] if rating else None
+        label_filter = label.split(",") if label else None
+
+        try:
+            images, total_count = db.get_images_paginated_with_count(
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by,
+                order=order,
+                rating_filter=rating_filter,
+                label_filter=label_filter,
+                keyword_filter=keyword,
+                min_score_general=min_score_general,
+                min_score_aesthetic=min_score_aesthetic,
+                min_score_technical=min_score_technical,
+                folder_path=folder_path,
+                stack_id=stack_id,
+            )
+
+            return {
+                "images": [dict(img) for img in images],
+                "total": total_count,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (total_count + page_size - 1) // page_size if page_size > 0 else 0,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/images/{image_id}",
+        summary="Get image details by ID",
+        description="Returns full details for a single image including all scores, metadata, and file paths."
+    )
+    async def get_image_by_id(image_id: int):
+        """Get detailed information for a single image."""
+        from modules import db
+
+        conn = db.get_db()
+        try:
+            c = conn.cursor()
+            c.execute("SELECT * FROM images WHERE id = ?", (image_id,))
+            row = c.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
+
+            data = dict(row)
+            data['file_paths'] = db.get_all_paths(image_id)
+            data['resolved_path'] = db.get_resolved_path(image_id, verified_only=False)
+            return data
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            conn.close()
+
+    @router.get(
+        "/folders",
+        summary="Get folder list",
+        description="Returns all folders in the database with their paths. Use folder_path query param on /api/images to browse folder contents."
+    )
+    async def get_folders():
+        """Get all folders in the database."""
+        from modules import db
+        try:
+            folders = db.get_all_folders()
+            return {"folders": folders, "count": len(folders)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/stacks",
+        summary="Get stacks listing",
+        description="Returns stacks (image groups) with cover images and metadata. Optionally filter by folder."
+    )
+    async def get_stacks(
+        folder_path: Optional[str] = Query(None, description="Filter stacks by folder path"),
+        sort_by: str = Query("score_general", description="Sort field for cover image selection"),
+        order: str = Query("desc", description="Sort order: asc or desc"),
+    ):
+        """Get stacks with cover images for display."""
+        from modules import db
+        try:
+            stacks = db.get_stacks_for_display(
+                folder_path=folder_path,
+                sort_by=sort_by,
+                order=order
+            )
+            return {
+                "stacks": [dict(s) if hasattr(s, 'keys') else s for s in stacks],
+                "count": len(stacks),
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/stacks/{stack_id}/images",
+        summary="Get images in a stack",
+        description="Returns all images belonging to a specific stack, sorted by general score descending."
+    )
+    async def get_stack_images(stack_id: int):
+        """Get all images in a stack."""
+        from modules import db
+        try:
+            images = db.get_images_in_stack(stack_id)
+            return {
+                "images": [dict(img) for img in images],
+                "count": len(images),
+                "stack_id": stack_id,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/stats",
+        summary="Get database statistics",
+        description="""
+        Returns comprehensive database statistics including total counts,
+        score distributions, averages by rating/label, folder and stack counts.
+        """
+    )
+    async def get_stats():
+        """Get comprehensive database statistics."""
+        from modules.mcp_server import get_database_stats
+        try:
+            stats = get_database_stats()
+            return stats
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # ========== Pipeline Submit Endpoint ==========
+
+    @router.post(
+        "/pipeline/submit",
+        response_model=ApiResponse,
+        summary="Submit to processing pipeline",
+        description="""
+        Submits an image file or folder for sequential processing through the pipeline.
+
+        Operations are executed in order: score -> tag -> cluster.
+        Only the first applicable operation is started immediately; subsequent operations
+        should be triggered by the Electron app after the previous one completes
+        (via status polling or WebSocket events).
+
+        For single files, only 'score' and 'tag' operations are supported.
+        'cluster' requires a folder path.
+        """
+    )
+    async def submit_pipeline(request: PipelineSubmitRequest):
+        """Submit image/folder to the processing pipeline."""
+        from modules.ui.app import _check_rate_limit
+        _check_rate_limit("pipeline_submit")
+
+        if not os.path.exists(request.input_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Path not found: {request.input_path}"
+            )
+
+        valid_ops = {"score", "tag", "cluster"}
+        invalid_ops = [op for op in request.operations if op not in valid_ops]
+        if invalid_ops:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid operations: {invalid_ops}. Valid: {sorted(valid_ops)}"
+            )
+
+        if not request.operations:
+            raise HTTPException(status_code=400, detail="At least one operation is required")
+
+        is_file = os.path.isfile(request.input_path)
+
+        # For single files, clustering is not supported
+        if is_file and "cluster" in request.operations:
+            raise HTTPException(
+                status_code=400,
+                detail="Clustering requires a folder path, not a single file"
+            )
+
+        from modules import db
+
+        # Start the first operation in the pipeline
+        first_op = request.operations[0]
+        remaining_ops = request.operations[1:]
+
+        if first_op == "score":
+            if _scoring_runner is None:
+                raise HTTPException(status_code=503, detail="Scoring runner not available")
+            if _scoring_runner.is_running:
+                return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True})
+
+            if is_file:
+                success, message = _scoring_runner.run_single_image(request.input_path)
+                return ApiResponse(
+                    success=success,
+                    message=message,
+                    data={
+                        "file_path": request.input_path,
+                        "completed_operation": "score",
+                        "remaining_operations": remaining_ops,
+                    }
+                )
+            else:
+                job_id = db.create_job(request.input_path)
+                result = _scoring_runner.start_batch(request.input_path, job_id, request.skip_existing)
+                if result == "Started":
+                    return ApiResponse(
+                        success=True,
+                        message="Pipeline started: scoring",
+                        data={
+                            "job_id": job_id,
+                            "input_path": request.input_path,
+                            "current_operation": "score",
+                            "remaining_operations": remaining_ops,
+                        }
+                    )
+                return ApiResponse(success=False, message=result, data={"error": result})
+
+        elif first_op == "tag":
+            if _tagging_runner is None:
+                raise HTTPException(status_code=503, detail="Tagging runner not available")
+            if _tagging_runner.is_running:
+                return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True})
+
+            if is_file:
+                success, message = _tagging_runner.run_single_image(
+                    request.input_path,
+                    request.custom_keywords,
+                    request.generate_captions
+                )
+                return ApiResponse(
+                    success=success,
+                    message=message,
+                    data={
+                        "file_path": request.input_path,
+                        "completed_operation": "tag",
+                        "remaining_operations": remaining_ops,
+                    }
+                )
+            else:
+                job_id = db.create_job(request.input_path)
+                result = _tagging_runner.start_batch(
+                    request.input_path,
+                    job_id=job_id,
+                    custom_keywords=request.custom_keywords,
+                    overwrite=not request.skip_existing,
+                    generate_captions=request.generate_captions
+                )
+                if result == "Started":
+                    return ApiResponse(
+                        success=True,
+                        message="Pipeline started: tagging",
+                        data={
+                            "job_id": job_id,
+                            "input_path": request.input_path,
+                            "current_operation": "tag",
+                            "remaining_operations": remaining_ops,
+                        }
+                    )
+                return ApiResponse(success=False, message=result, data={"error": result})
+
+        elif first_op == "cluster":
+            if _clustering_runner is None:
+                raise HTTPException(status_code=503, detail="Clustering runner not available")
+            if _clustering_runner.is_running:
+                return ApiResponse(success=False, message="Clustering runner is busy", data={"is_running": True})
+
+            job_id = db.create_job(request.input_path)
+            result = _clustering_runner.start_batch(
+                request.input_path,
+                threshold=request.clustering_threshold,
+                job_id=job_id
+            )
+            if result == "Started":
+                return ApiResponse(
+                    success=True,
+                    message="Pipeline started: clustering",
+                    data={
+                        "job_id": job_id,
+                        "input_path": request.input_path,
+                        "current_operation": "cluster",
+                        "remaining_operations": remaining_ops,
+                    }
+                )
+            return ApiResponse(success=False, message=result, data={"error": result})
+
     return router

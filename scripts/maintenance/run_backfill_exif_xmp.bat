@@ -2,7 +2,8 @@
 REM Backfill EXIF and XMP metadata into IMAGE_EXIF/IMAGE_XMP tables.
 REM Runs in WSL with same env as WebUI (requires Firebird connection).
 REM
-REM Usage: run_backfill_exif_xmp.bat [--limit N] [--folder path] [--dry-run]
+REM Usage: run_backfill_exif_xmp.bat [--limit N] [--folder path] [--dry-run] [--all]
+REM By default processes only images without cached EXIF/XMP. Use --all to reprocess everything.
 for %%I in ("%~dp0..\..") do set "PROJECT_ROOT=%%~fI"
 setlocal enabledelayedexpansion
 set "WSL_PATH=!PROJECT_ROOT:\=/!"
