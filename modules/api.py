@@ -886,6 +886,8 @@ def create_api_router() -> APIRouter:
             job_type="scoring",
             queue_payload={"skip_existing": skip_existing, "input_path": request.input_path},
         )
+        if job_id is None:
+            raise HTTPException(status_code=500, detail="Failed to enqueue scoring job")
 
         return ApiResponse(
             success=True,
@@ -977,6 +979,8 @@ def create_api_router() -> APIRouter:
         - Updating metadata for images scored before metadata features were added
         
         The operation runs asynchronously. Monitor progress with GET /api/scoring/status.
+
+        Note: this endpoint starts immediately and intentionally bypasses the persisted queue.
         """,
         response_description="Fix operation start confirmation"
     )
@@ -1105,6 +1109,8 @@ def create_api_router() -> APIRouter:
                 "generate_captions": request.generate_captions,
             },
         )
+        if job_id is None:
+            raise HTTPException(status_code=500, detail="Failed to enqueue tagging job")
 
         return ApiResponse(
             success=True,
@@ -1511,7 +1517,7 @@ def create_api_router() -> APIRouter:
     @router.post(
         "/jobs/{job_id}/cancel",
         response_model=ApiResponse,
-        summary="Cancel a queued/running job",
+        summary="Cancel a queued job",
         description="Cancels queued jobs. Running jobs currently return running_not_supported."
     )
     async def cancel_job(job_id: int):
@@ -1652,6 +1658,8 @@ def create_api_router() -> APIRouter:
                 "force_rescan": request.force_rescan,
             },
         )
+        if job_id is None:
+            raise HTTPException(status_code=500, detail="Failed to enqueue clustering job")
 
         return ApiResponse(
             success=True,
@@ -2079,6 +2087,9 @@ def create_api_router() -> APIRouter:
                     "force_rescan": request.clustering_force_rescan,
                 },
             )
+
+        if job_id is None:
+            raise HTTPException(status_code=500, detail=f"Failed to enqueue pipeline job for operation: {first_op}")
 
         phase_rows = db.create_job_phases(job_id, phase_plan_codes)
 

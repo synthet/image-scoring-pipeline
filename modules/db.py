@@ -2712,14 +2712,6 @@ def dequeue_next_job():
         conn.close()
 
 
-def get_job_by_id(job_id):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
-    row = c.fetchone()
-    conn.close()
-    return dict(row) if row else None
-
 
 def get_queued_jobs(limit=200):
     try:
@@ -5992,3 +5984,4 @@ def _launch_firebird_server_wsl(fb_exe_path):
         subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
         print(f"Failed to launch Firebird Server: {e}")
+

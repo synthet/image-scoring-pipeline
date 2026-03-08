@@ -94,3 +94,56 @@ def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
     }
     assert created_phase_codes["job_id"] == 321
     assert created_phase_codes["phase_codes"] == ["culling"]
+
+
+def test_scoring_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+    monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
+
+    with _build_client() as client:
+        response = client.post("/api/scoring/start", json={"input_path": str(tmp_path)})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to enqueue scoring job"
+
+
+def test_tagging_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(api, "_tagging_runner", _RunnerStub())
+    monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
+
+    with _build_client() as client:
+        response = client.post("/api/tagging/start", json={"input_path": str(tmp_path)})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to enqueue tagging job"
+
+
+def test_clustering_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
+    monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
+
+    with _build_client() as client:
+        response = client.post("/api/clustering/start", json={"input_path": str(tmp_path)})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to enqueue clustering job"
+
+
+def test_pipeline_submit_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
+    monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
+
+    body = {
+        "input_path": str(tmp_path),
+        "operations": ["cluster"],
+        "clustering_threshold": 0.2,
+    }
+    with _build_client() as client:
+        response = client.post("/api/pipeline/submit", json=body)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to enqueue pipeline job for operation: cluster"
