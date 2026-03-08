@@ -412,6 +412,14 @@ class PipelineSubmitRequest(BaseModel):
     )
 
 
+class PipelinePhaseControlRequest(BaseModel):
+    """Request model for skip/retry controls on a pipeline phase."""
+    input_path: str = Field(..., description="Folder path for phase control operation.")
+    phase_code: str = Field(..., description="Phase code (e.g. scoring, culling, keywords).")
+    reason: Optional[str] = Field(None, description="Skip reason when action=skip.")
+    actor: Optional[str] = Field(None, description="Actor identifier who initiated action.")
+
+
 class ApiResponse(BaseModel):
     """Standard API response model for operation results.
     
@@ -1975,5 +1983,79 @@ def create_api_router() -> APIRouter:
                     }
                 )
             return ApiResponse(success=False, message=result, data={"error": result})
+
+
+    @router.post(
+        "/pipeline/phase/skip",
+        response_model=ApiResponse,
+        summary="Skip a pipeline phase",
+        description="Marks all images in a folder phase as skipped, storing reason and actor."
+    )
+    async def skip_pipeline_phase(request: PipelinePhaseControlRequest):
+        from modules.ui.app import _check_rate_limit
+        from modules import db
+        _check_rate_limit("pipeline_phase_skip")
+
+        if not os.path.exists(request.input_path):
+            raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
+
+        updated = db.set_folder_phase_status(
+            folder_path=request.input_path,
+            phase_code=request.phase_code,
+            status="skipped",
+            reason=request.reason or "manual_skip",
+            actor=request.actor or "api_user",
+        )
+        return ApiResponse(
+            success=True,
+            message=f"Phase '{request.phase_code}' marked as skipped",
+            data={"updated_images": updated, "phase_code": request.phase_code}
+        )
+
+    @router.post(
+        "/pipeline/phase/retry",
+        response_model=ApiResponse,
+        summary="Retry a skipped pipeline phase",
+        description="Converts skipped statuses to running and starts the selected phase runner."
+    )
+    async def retry_pipeline_phase(request: PipelinePhaseControlRequest):
+        from modules.ui.app import _check_rate_limit
+        from modules import db
+        _check_rate_limit("pipeline_phase_retry")
+
+        if not os.path.exists(request.input_path):
+            raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
+
+        updated = db.set_folder_phase_status(
+            folder_path=request.input_path,
+            phase_code=request.phase_code,
+            status="running",
+        )
+
+        phase = request.phase_code.strip().lower()
+        if phase == "scoring":
+            if _scoring_runner is None:
+                raise HTTPException(status_code=503, detail="Scoring runner not available")
+            job_id = db.create_job(request.input_path, phase_code="scoring")
+            result = _scoring_runner.start_batch(request.input_path, job_id, True)
+        elif phase == "keywords":
+            if _tagging_runner is None:
+                raise HTTPException(status_code=503, detail="Tagging runner not available")
+            job_id = db.create_job(request.input_path, phase_code="keywords")
+            result = _tagging_runner.start_batch(request.input_path, job_id=job_id, overwrite=False, generate_captions=False)
+        elif phase == "culling":
+            if _clustering_runner is None:
+                raise HTTPException(status_code=503, detail="Clustering runner not available")
+            job_id = db.create_job(request.input_path, phase_code="culling")
+            result = _clustering_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported phase_code: {request.phase_code}")
+
+        return ApiResponse(
+            success=(result == "Started"),
+            message=f"Retry {request.phase_code}: {result}",
+            data={"updated_images": updated, "phase_code": request.phase_code}
+        )
+
 
     return router

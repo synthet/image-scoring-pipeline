@@ -1424,7 +1424,9 @@ def _init_db_impl():
                 name        VARCHAR(100) NOT NULL,
                 description BLOB SUB_TYPE TEXT,
                 sort_order  INTEGER DEFAULT 0 NOT NULL,
-                enabled     SMALLINT DEFAULT 1 NOT NULL
+                enabled     SMALLINT DEFAULT 1 NOT NULL,
+                optional    SMALLINT DEFAULT 0 NOT NULL,
+                default_skip SMALLINT DEFAULT 0 NOT NULL
             )''')
             conn.commit()
             c = conn.cursor()
@@ -1433,6 +1435,31 @@ def _init_db_impl():
                 c.execute("CREATE UNIQUE INDEX uq_pipeline_phases_code ON pipeline_phases(code)")
                 conn.commit()
                 c = conn.cursor()
+
+        # PIPELINE_PHASES — add optional/default_skip columns if missing
+        if _table_exists(c, 'PIPELINE_PHASES'):
+            c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'PIPELINE_PHASES'")
+            pp_cols = [row[0].strip().lower() for row in c.fetchall()]
+            if 'optional' not in pp_cols:
+                try:
+                    c.execute("ALTER TABLE pipeline_phases ADD optional SMALLINT DEFAULT 0 NOT NULL")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding pipeline_phases.optional: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
+            if 'default_skip' not in pp_cols:
+                try:
+                    c.execute("ALTER TABLE pipeline_phases ADD default_skip SMALLINT DEFAULT 0 NOT NULL")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding pipeline_phases.default_skip: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
 
         # IMAGE_PHASE_STATUS — per-image per-phase tracking
         if not _table_exists(c, 'IMAGE_PHASE_STATUS'):
@@ -1448,7 +1475,9 @@ def _init_db_impl():
                 last_error       BLOB SUB_TYPE TEXT,
                 started_at       TIMESTAMP,
                 finished_at      TIMESTAMP,
-                updated_at       TIMESTAMP
+                updated_at       TIMESTAMP,
+                skip_reason      BLOB SUB_TYPE TEXT,
+                skipped_by       VARCHAR(255)
             )''')
             conn.commit()
             c = conn.cursor()
@@ -1472,6 +1501,31 @@ def _init_db_impl():
                 c.execute("CREATE INDEX idx_ips_status ON image_phase_status(status)")
                 conn.commit()
                 c = conn.cursor()
+
+        # IMAGE_PHASE_STATUS — add skip metadata columns if missing
+        if _table_exists(c, 'IMAGE_PHASE_STATUS'):
+            c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'IMAGE_PHASE_STATUS'")
+            ips_cols = [row[0].strip().lower() for row in c.fetchall()]
+            if 'skip_reason' not in ips_cols:
+                try:
+                    c.execute("ALTER TABLE image_phase_status ADD skip_reason BLOB SUB_TYPE TEXT")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding image_phase_status.skip_reason: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
+            if 'skipped_by' not in ips_cols:
+                try:
+                    c.execute("ALTER TABLE image_phase_status ADD skipped_by VARCHAR(255)")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding image_phase_status.skipped_by: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
 
         # Foreign keys for IMAGE_PHASE_STATUS (safe add)
         if _table_exists(c, 'IMAGE_PHASE_STATUS'):
@@ -5056,11 +5110,18 @@ def seed_pipeline_phases():
             code = phase["code"].value if hasattr(phase["code"], "value") else str(phase["code"])
             # Check if already exists
             c.execute("SELECT id FROM pipeline_phases WHERE code = ?", (code,))
-            if c.fetchone() is None:
+            existing = c.fetchone()
+            if existing is None:
                 c.execute(
-                    "INSERT INTO pipeline_phases (code, name, description, sort_order, enabled) "
-                    "VALUES (?, ?, ?, ?, 1)",
-                    (code, phase["name"], phase.get("description", ""), phase["sort_order"])
+                    "INSERT INTO pipeline_phases (code, name, description, sort_order, enabled, optional, default_skip) "
+                    "VALUES (?, ?, ?, ?, 1, ?, ?)",
+                    (code, phase["name"], phase.get("description", ""), phase["sort_order"],
+                     1 if phase.get("optional") else 0, 1 if phase.get("default_skip") else 0)
+                )
+            else:
+                c.execute(
+                    "UPDATE pipeline_phases SET optional = ?, default_skip = ? WHERE code = ?",
+                    (1 if phase.get("optional") else 0, 1 if phase.get("default_skip") else 0, code)
                 )
         conn.commit()
         logger.info("Pipeline phases seeded successfully.")
@@ -5106,7 +5167,7 @@ def get_phase_id(phase_code):
 
 def set_image_phase_status(image_id, phase_code, status,
                             app_version=None, executor_version=None,
-                            job_id=None, error=None):
+                            job_id=None, error=None, skip_reason=None, skipped_by=None):
     """
     Upsert a row in IMAGE_PHASE_STATUS for (image_id, phase).
 
@@ -5121,6 +5182,8 @@ def set_image_phase_status(image_id, phase_code, status,
         executor_version: Executor/model version string.
         job_id:           FK to jobs.id.
         error:            Error message string (for failed status).
+        skip_reason:      Optional skip reason (for skipped status).
+        skipped_by:       Optional actor id/name that skipped phase.
     """
     from modules.phases import PhaseStatus
 
@@ -5188,6 +5251,16 @@ def set_image_phase_status(image_id, phase_code, status,
                 # Clear error on success
                 fields.append("last_error = NULL")
 
+            if status == PhaseStatus.SKIPPED:
+                fields.append("skip_reason = ?")
+                params.append(skip_reason)
+                fields.append("skipped_by = ?")
+                params.append(skipped_by)
+            elif status == PhaseStatus.RUNNING:
+                # Explicit rerun clears prior skip metadata
+                fields.append("skip_reason = NULL")
+                fields.append("skipped_by = NULL")
+
             params.append(row_id)
             c.execute(
                 f"UPDATE image_phase_status SET {', '.join(fields)} WHERE id = ?",
@@ -5203,10 +5276,10 @@ def set_image_phase_status(image_id, phase_code, status,
             c.execute(
                 "INSERT INTO image_phase_status "
                 "(image_id, phase_id, status, app_version, executor_version, "
-                " job_id, attempt_count, last_error, started_at, finished_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " job_id, attempt_count, last_error, started_at, finished_at, updated_at, skip_reason, skipped_by) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (image_id, phase_id, status, app_version, executor_version,
-                 job_id, 0, error, started, finished, now)
+                 job_id, 0, error, started, finished, now, skip_reason if status == PhaseStatus.SKIPPED else None, skipped_by if status == PhaseStatus.SKIPPED else None)
             )
 
         conn.commit()
@@ -5233,7 +5306,7 @@ def get_image_phase_statuses(image_id):
     try:
         c.execute(
             "SELECT pp.code, ips.status, ips.executor_version, ips.app_version, "
-            "       ips.updated_at, ips.attempt_count, ips.last_error "
+            "       ips.updated_at, ips.attempt_count, ips.last_error, ips.skip_reason, ips.skipped_by "
             "FROM image_phase_status ips "
             "JOIN pipeline_phases pp ON pp.id = ips.phase_id "
             "WHERE ips.image_id = ? "
@@ -5250,6 +5323,8 @@ def get_image_phase_statuses(image_id):
                 "updated_at": row[4],
                 "attempt_count": row[5],
                 "last_error": row[6],
+                "skip_reason": row[7],
+                "skipped_by": row[8],
             }
         return result
     finally:
@@ -5266,7 +5341,7 @@ def get_all_phases(enabled_only=True):
     conn = get_db()
     c = conn.cursor()
     try:
-        query = "SELECT id, code, name, description, sort_order, enabled FROM pipeline_phases"
+        query = "SELECT id, code, name, description, sort_order, enabled, optional, default_skip FROM pipeline_phases"
         if enabled_only:
             query += " WHERE enabled = 1"
         query += " ORDER BY sort_order"
@@ -5280,6 +5355,8 @@ def get_all_phases(enabled_only=True):
                 "description": row[3],
                 "sort_order": row[4],
                 "enabled": row[5],
+                "optional": bool(row[6]),
+                "default_skip": bool(row[7]),
             })
         return result
     finally:
@@ -5327,7 +5404,9 @@ def get_folder_phase_summary(folder_path):
                 COUNT(i.id) as total_images,
                 COALESCE(SUM(CASE WHEN ips.status = 'done' THEN 1 ELSE 0 END), 0) as done_count,
                 COALESCE(SUM(CASE WHEN ips.status = 'failed' THEN 1 ELSE 0 END), 0) as failed_count,
-                COALESCE(SUM(CASE WHEN ips.status = 'running' THEN 1 ELSE 0 END), 0) as running_count
+                COALESCE(SUM(CASE WHEN ips.status = 'running' THEN 1 ELSE 0 END), 0) as running_count,
+                COALESCE(SUM(CASE WHEN ips.status = 'skipped' THEN 1 ELSE 0 END), 0) as skipped_count,
+                pp.optional
             FROM pipeline_phases pp
             CROSS JOIN (
                 SELECT id FROM images 
@@ -5339,7 +5418,7 @@ def get_folder_phase_summary(folder_path):
             LEFT JOIN image_phase_status ips
                 ON ips.image_id = i.id AND ips.phase_id = pp.id
             WHERE pp.enabled = 1
-            GROUP BY pp.code, pp.name, pp.sort_order
+            GROUP BY pp.code, pp.name, pp.sort_order, pp.optional
             ORDER BY pp.sort_order
             """,
             (target_path, path_like_unix, path_like_win)
@@ -5354,14 +5433,21 @@ def get_folder_phase_summary(folder_path):
             done = row[4] or 0
             failed = row[5] or 0
             running = row[6] or 0
+            skipped = row[7] or 0
+            is_optional = bool(row[8])
 
+            advance_ready = done + skipped if is_optional else done
             if total == 0:
                 status = "not_started"
             elif done == total:
                 status = "done"
+            elif skipped == total and is_optional:
+                status = "skipped"
+            elif advance_ready == total and is_optional:
+                status = "done"
             elif running > 0:
                 status = "partial"
-            elif done > 0:
+            elif done > 0 or skipped > 0:
                 status = "partial"
             elif failed > 0:
                 status = "failed"
@@ -5375,6 +5461,9 @@ def get_folder_phase_summary(folder_path):
                 "status": status,
                 "done_count": done,
                 "total_count": total,
+                "skipped_count": skipped,
+                "optional": is_optional,
+                "advance_ready": advance_ready == total if total > 0 else False,
             })
 
         return result
@@ -5384,6 +5473,65 @@ def get_folder_phase_summary(folder_path):
     finally:
         conn.close()
 
+
+
+
+def set_folder_phase_status(folder_path, phase_code, status, reason=None, actor=None, app_version=None, executor_version=None, job_id=None):
+    """
+    Bulk update image_phase_status for all images in a folder/subfolders.
+
+    Args:
+        folder_path: Target folder path.
+        phase_code:  Phase code or enum.
+        status:      PhaseStatus value to apply to each image.
+        reason:      Optional skip reason (for skipped status).
+        actor:       Optional user/actor label (for skipped status).
+        app_version: Optional app version stamp.
+        executor_version: Optional executor version stamp.
+        job_id: Optional job id associated with this transition.
+
+    Returns:
+        int: number of image rows updated.
+    """
+    from modules import utils
+
+    if not folder_path:
+        return 0
+
+    wsl_path = utils.convert_path_to_wsl(folder_path) if hasattr(utils, 'convert_path_to_wsl') else folder_path
+    target_path = wsl_path if wsl_path else folder_path
+    path_like_unix = target_path + "/%"
+    path_like_win = target_path + "\\%"
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute(
+            """
+            SELECT i.id
+            FROM images i
+            JOIN folders f ON f.id = i.folder_id
+            WHERE f.path = ? OR f.path LIKE ? OR f.path LIKE ?
+            """,
+            (target_path, path_like_unix, path_like_win)
+        )
+        image_ids = [row[0] for row in c.fetchall()]
+    finally:
+        conn.close()
+
+    for image_id in image_ids:
+        set_image_phase_status(
+            image_id=image_id,
+            phase_code=phase_code,
+            status=status,
+            app_version=app_version,
+            executor_version=executor_version,
+            job_id=job_id,
+            skip_reason=reason,
+            skipped_by=actor,
+        )
+
+    return len(image_ids)
 
 def _is_firebird_running(host_ip, port=3050):
     import socket
