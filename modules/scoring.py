@@ -47,7 +47,7 @@ class ScoringRunner:
         """
         return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
 
-    def start_batch(self, input_path, job_id, skip_existing=False):
+    def start_batch(self, input_path, job_id, skip_existing=False, resolved_image_ids=None):
         """
         Starts batch processing in a background thread. Non-blocking.
         """
@@ -62,7 +62,7 @@ class ScoringRunner:
         self.total_count = 0
         
         # Convert Windows path to WSL path if running in WSL (legacy check)
-        if ":" in input_path and input_path[1] == ":":
+        if input_path and ":" in input_path and len(input_path) > 1 and input_path[1] == ":":
             drive = input_path[0].lower()
             path = input_path[2:].replace("\\", "/")
             wsl_path = f"/mnt/{drive}{path}"
@@ -71,22 +71,25 @@ class ScoringRunner:
                  if os.path.exists(wsl_path):
                      input_path = wsl_path
                      
-        if not os.path.exists(input_path):
+        if resolved_image_ids is None and (not input_path or not os.path.exists(input_path)):
             self.log_history.append(f"Error: Path not found: {input_path}")
             self.is_running = False
             self.status_message = "Failed (Path not found)"
             return "Path not found"
 
         def target():
-            self._run_batch_internal(input_path, job_id, skip_existing)
+            self._run_batch_internal(input_path, job_id, skip_existing, resolved_image_ids=resolved_image_ids)
             self.is_running = False
-            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            if "Error" in self.status_message:
+                self.status_message = "Failed"
+            elif not self.status_message.startswith("Done"):
+                self.status_message = "Done"
 
         self._thread = threading.Thread(target=target)
         self._thread.start()
         return "Started"
 
-    def _run_batch_internal(self, input_path, job_id, skip_existing):
+    def _run_batch_internal(self, input_path, job_id, skip_existing, resolved_image_ids=None):
         """
         Internal synchronous runner.
         """
@@ -156,7 +159,31 @@ class ScoringRunner:
         
         try:
             # process_directory now blocks until all workers are done
-            processor.process_directory(input_path, input_path)
+            if resolved_image_ids is not None:
+                if not resolved_image_ids:
+                    log("No images matched selectors.")
+                    self.status_message = "Done (no images)"
+                    db.update_job_status(job_id, "completed", "\n".join(self.log_history))
+                    event_manager.broadcast_threadsafe("job_completed", {"job_id": job_id, "status": "completed"})
+                    return
+
+                conn = db.get_db()
+                cur = conn.cursor()
+                placeholders = ",".join("?" * len(resolved_image_ids))
+                cur.execute(f"SELECT id, file_path FROM images WHERE id IN ({placeholders})", tuple(resolved_image_ids))
+                rows = cur.fetchall()
+                conn.close()
+
+                id_to_path = {int(r[0]): r[1] for r in rows if r[1] and os.path.exists(r[1])}
+                jobs = [
+                    pipeline.ImageJob(image_path=id_to_path[i], job_id=job_id, skip_existing=skip_existing)
+                    for i in resolved_image_ids
+                    if i in id_to_path
+                ]
+                log(f"Selector mode: resolved {len(jobs)} images for scoring.")
+                processor.process_list(jobs, job_id_override=job_id)
+            else:
+                processor.process_directory(input_path, input_path)
             
             # Cleanup
             self.current_processor = None
@@ -194,7 +221,10 @@ class ScoringRunner:
         def target():
             self._fix_db_internal(job_id)
             self.is_running = False
-            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            if "Error" in self.status_message:
+                self.status_message = "Failed"
+            elif not self.status_message.startswith("Done"):
+                self.status_message = "Done"
             
         self._thread = threading.Thread(target=target)
         self._thread.start()

@@ -22,6 +22,16 @@ Currently, no authentication is required. All endpoints are publicly accessible.
 
 ## Endpoint Categories
 
+### Shared Selector Fields (batch start endpoints)
+- `image_ids: number[]`
+- `image_paths: string[]`
+- `folder_ids: number[]`
+- `folder_paths: string[]`
+- `recursive: boolean` (default `true`)
+
+Selectors can be mixed; overlaps are deduplicated and each image is processed once.
+
+
 ### 1. Scoring Operations
 
 #### POST /api/scoring/start
@@ -30,7 +40,12 @@ Start a batch image scoring job.
 **Request Body:**
 ```json
 {
-  "input_path": "string (required) - Directory path containing images",
+  "input_path": "string (optional when selectors are used)",
+  "image_ids": "number[]",
+  "image_paths": "string[]",
+  "folder_ids": "number[]",
+  "folder_paths": "string[]",
+  "recursive": "boolean (default: true)",
   "skip_existing": "boolean (default: true) - Skip images with complete scores",
   "force_rescore": "boolean (default: false) - Force re-scoring of all images"
 }
@@ -137,7 +152,12 @@ Start a batch tagging job.
 **Request Body:**
 ```json
 {
-  "input_path": "string (default: '') - Directory path or empty for all images",
+  "input_path": "string (optional) - Directory path to scope tagging",
+  "image_ids": "number[]",
+  "image_paths": "string[]",
+  "folder_ids": "number[]",
+  "folder_paths": "string[]",
+  "recursive": "boolean (default: true)",
   "custom_keywords": "array<string> | null - Custom keywords or null for defaults",
   "overwrite": "boolean (default: false) - Overwrite existing keywords",
   "generate_captions": "boolean (default: false) - Generate captions using BLIP"
@@ -379,7 +399,7 @@ The OpenAPI schema includes:
 5. Logs may be truncated for very long outputs
 6. Operations are asynchronous unless noted as "blocking"
 7. Paths support both Windows and WSL formats automatically
-8. Empty string for `input_path` in tagging means "all images in database"
+8. Provide `input_path` or selector fields on tagging/clustering/scoring start requests
 
 ## Related Documents
 

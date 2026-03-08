@@ -245,7 +245,7 @@ class ClusteringEngine:
         burst_uuid = utils.read_burst_uuid(row['file_path'])
         return burst_uuid
 
-    def cluster_images(self, distance_threshold=None, time_gap_seconds=None, force_rescan=None, target_folder=None, job_id=None):
+    def cluster_images(self, distance_threshold=None, time_gap_seconds=None, force_rescan=None, target_folder=None, job_id=None, target_image_ids=None):
         """
         Main function to load images from DB, cluster them, and update DB.
         Enforces: 1. Folder Isolation 2. Time Gap Splitting 3. Persistence
@@ -262,13 +262,13 @@ class ClusteringEngine:
         self.total = 0
         
         try:
-            yield from self._cluster_images_impl(distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id)
+            yield from self._cluster_images_impl(distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id, target_image_ids=target_image_ids)
         finally:
             # Always mark as not running when done
             self.is_running = False
             self.status_message = "Idle"
             
-    def _cluster_images_impl(self, distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id=None):
+    def _cluster_images_impl(self, distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id=None, target_image_ids=None):
         """Internal implementation of cluster_images."""
         import datetime
         import json
@@ -298,7 +298,27 @@ class ClusteringEngine:
         # Get processed folders early (needed for both paths)
         processed_folders = db.get_clustered_folders()
         
-        if target_folder:
+        if target_image_ids is not None:
+            # --- Selector mode (target ID list) ---
+            rows = db.get_all_images(limit=-1)
+            selected_ids = {int(i) for i in target_image_ids}
+            images_rows = [row for row in rows if row.get('id') in selected_ids]
+            
+            if not images_rows:
+                yield update_status("No images matched target IDs.", 0, 0)
+                return
+                
+            by_folder = {}
+            for row in images_rows:
+                p = row['file_path']
+                if not p:
+                    continue
+                folder = os.path.normpath(os.path.dirname(p))
+                by_folder.setdefault(folder, []).append(row)
+            folders_to_process = list(by_folder.keys())
+            yield update_status(f"Selector mode: {len(images_rows)} images across {len(folders_to_process)} folders.", 0, len(images_rows))
+
+        elif target_folder:
             # --- Single folder mode ---
             images_rows = db.get_images_by_folder(target_folder)
             if not images_rows:
@@ -626,9 +646,12 @@ class ClusteringEngine:
 
             # Phase D (Culling) — mark all images in this folder as done
             for r in rows:
-                db.set_image_phase_status(r['id'], PhaseCode.CULLING, PhaseStatus.DONE,
-                                          app_version=APP_VERSION, executor_version=CLUSTER_VERSION,
-                                          job_id=job_id)
+                try:
+                    db.set_image_phase_status(r['id'], PhaseCode.CULLING, PhaseStatus.DONE,
+                                              app_version=APP_VERSION, executor_version=CLUSTER_VERSION,
+                                              job_id=job_id)
+                except Exception:
+                    pass
 
             yield update_status(f"Finished {folder}. Created {folder_stacks} stacks.", processed_count, len(images_rows))
             
@@ -665,7 +688,7 @@ class ClusteringRunner:
         """Returns (is_running, log_text, status_message, current, total)"""
         return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
         
-    def start_batch(self, input_path, threshold=None, time_gap=None, force_rescan=False, job_id=None):
+    def start_batch(self, input_path, threshold=None, time_gap=None, force_rescan=False, job_id=None, resolved_image_ids=None):
         """Starts clustering in background."""
         if self.is_running:
             return "Error: Already running."
@@ -678,15 +701,18 @@ class ClusteringRunner:
         self.stop_event.clear()
         
         def target():
-            self._run_internal(input_path, threshold, time_gap, force_rescan, job_id)
+            self._run_internal(input_path, threshold, time_gap, force_rescan, job_id, resolved_image_ids=resolved_image_ids)
             self.is_running = False
-            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            if "Error" in self.status_message:
+                self.status_message = "Failed"
+            elif not self.status_message.startswith("Done"):
+                self.status_message = "Done"
             
         self._thread = threading.Thread(target=target)
         self._thread.start()
         return "Started"
         
-    def _run_internal(self, input_path, threshold, time_gap, force_rescan, job_id=None):
+    def _run_internal(self, input_path, threshold, time_gap, force_rescan, job_id=None, resolved_image_ids=None):
         def log(msg):
             self.log_history.append(msg)
             
@@ -708,7 +734,8 @@ class ClusteringRunner:
                 time_gap_seconds=time_gap,
                 force_rescan=force_rescan,
                 target_folder=input_path,
-                job_id=job_id
+                job_id=job_id,
+                target_image_ids=resolved_image_ids
             ):
                 if self.stop_event.is_set():
                     log("Stopped by user.")
@@ -742,28 +769,6 @@ class ClusteringRunner:
         except Exception as e:
             log(f"Error: {e}")
             self.status_message = f"Error: {e}"
-            if input_path:
-                try:
-                    images = db.get_images_by_folder(input_path) or []
-                    for img in images:
-                        decision = explain_phase_run_decision(
-                            img['id'],
-                            PhaseCode.CULLING,
-                            current_executor_version=CLUSTER_VERSION,
-                            force_run=force_rescan,
-                        )
-                        if decision.get('stored_status') == PhaseStatus.RUNNING:
-                            db.set_image_phase_status(
-                                img['id'],
-                                PhaseCode.CULLING,
-                                PhaseStatus.FAILED,
-                                app_version=APP_VERSION,
-                                executor_version=CLUSTER_VERSION,
-                                job_id=job_id,
-                                error=str(e),
-                            )
-                except Exception as phase_err:
-                    log(f"Phase status failure update error: {phase_err}")
             if job_id:
                 db.update_job_status(job_id, "failed", str(e))
                 event_manager.broadcast_threadsafe("job_completed", {

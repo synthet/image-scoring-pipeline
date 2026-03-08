@@ -6,11 +6,10 @@ import queue
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration
 from typing import List, Dict, Optional, Tuple
-from modules import db, thumbnails, utils, xmp
+from modules import db, thumbnails, xmp
 from modules.events import event_manager
 from modules.phases import PhaseCode, PhaseStatus
 from modules.version import APP_VERSION
-from modules.phases_policy import explain_phase_run_decision
 
 TAGGER_VERSION = "1.0.0"  # bump when CLIP model or tagging logic changes
 
@@ -279,7 +278,6 @@ class CaptionGenerator:
     Uses BLIP for image captioning.
     """
     def __init__(self, model_name: str = "Salesforce/blip-image-captioning-base", device: str = None):
-        import torch
         self.model_name = model_name
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
@@ -301,7 +299,6 @@ class CaptionGenerator:
         self.load_model()
         try:
             image = Image.open(image_path).convert('RGB')
-            import torch
             inputs = self.processor(image, return_tensors="pt").to(self.device)
             # Load max_new_tokens from config
             from modules import config
@@ -334,7 +331,7 @@ class TaggingRunner:
     def get_status(self):
         return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
         
-    def start_batch(self, input_path: str, job_id: int = None, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False):
+    def start_batch(self, input_path: str, job_id: int = None, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False, resolved_image_ids: List[int] = None):
         if self.is_running:
             return "Error: Already running."
             
@@ -349,15 +346,18 @@ class TaggingRunner:
             job_id = db.create_job(input_path or "ALL_IMAGES_TAGGING")
             
         def target():
-            self._run_batch_internal(input_path, custom_keywords, overwrite, generate_captions, job_id=job_id)
+            self._run_batch_internal(input_path, custom_keywords, overwrite, generate_captions, job_id=job_id, resolved_image_ids=resolved_image_ids)
             self.is_running = False
-            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            if "Error" in self.status_message:
+                self.status_message = "Failed"
+            elif not self.status_message.startswith("Done"):
+                self.status_message = "Done"
             
         self._thread = threading.Thread(target=target)
         self._thread.start()
         return "Started"
 
-    def _run_batch_internal(self, input_path: str, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False, job_id: int = None):
+    def _run_batch_internal(self, input_path: str, custom_keywords: List[str] = None, overwrite: bool = False, generate_captions: bool = False, job_id: int = None, resolved_image_ids: List[int] = None):
         """
         Internal sync runner for tagging process.
         """
@@ -365,10 +365,9 @@ class TaggingRunner:
         
         def log(msg):
             self.log_history.append(msg)
-            # print(msg, flush=True)
 
         # Convert Windows path to WSL path if running in WSL
-        if ":" in input_path and input_path[1] == ":":
+        if input_path and ":" in input_path and len(input_path) > 1 and input_path[1] == ":":
             drive = input_path[0].lower()
             path = input_path[2:].replace("\\", "/")
             wsl_path = f"/mnt/{drive}{path}"
@@ -378,7 +377,7 @@ class TaggingRunner:
                      input_path = wsl_path
                      
         self.stop_event.clear()
-        log(f"Starting Tagging process on {input_path}...")
+        log(f"Starting Tagging process on {input_path or 'Selected Images'}...")
         self.status_message = "Running..."
         
         # Notify job started
@@ -424,49 +423,66 @@ class TaggingRunner:
             self.status_message = "Error DB"
             return
 
-        if not input_path or not input_path.strip():
+        if resolved_image_ids is not None:
+             if not resolved_image_ids:
+                 log("No images matched selectors.")
+                 self.status_message = "Done (no images)"
+                 self.total_count = 0
+                 self.current_count = 0
+                 if job_id:
+                     db.update_job_status(job_id, "completed", "\n".join(self.log_history))
+                     event_manager.broadcast_threadsafe("job_completed", {
+                         "job_id": job_id,
+                         "status": "completed"
+                     })
+                 return
+
+             selected_ids = {int(i) for i in resolved_image_ids}
+             all_images = [row for row in rows if row.get('id') in selected_ids]
+             log(f"Selector mode enabled. Matched {len(all_images)} images by ID.")
+        elif not input_path or not input_path.strip():
              log("Input path empty. Processing all images in DB...")
              all_images = [row for row in rows]
         elif os.path.isdir(input_path):
              import pathlib
-             # Normalize input_path for comparison (handles Windows/WSL)
-             p_in_str = utils.convert_path_to_local(input_path)
-             p_in = pathlib.Path(p_in_str).resolve()
-
-             # Filter rows by path — convert DB paths to local format for correct matching
+             p_in = pathlib.Path(input_path).resolve()
+             
+             # Filter rows by path
              for row in rows:
-                 fp_raw = row['file_path']
-                 fp_local = utils.convert_path_to_local(fp_raw) if fp_raw else fp_raw
-                 f_path = pathlib.Path(fp_local).resolve()
+                 f_path = pathlib.Path(row['file_path']).resolve()
+                 # Check if file is inside input_path
                  try:
                      f_path.relative_to(p_in)
                      all_images.append(row)
-                 except (ValueError, TypeError):
+                 except ValueError:
                      continue
         else:
             log(f"Input path not found or not a directory: {input_path}")
             self.status_message = "Error Path"
             return
 
-        if len(all_images) == 0 and rows and input_path and os.path.isdir(input_path):
-            sample = rows[0].get("file_path", "") if rows else ""
-            p_in_str = utils.convert_path_to_local(input_path)
-            log(f"Path filter returned 0 images (input={p_in_str}, sample_db_path={str(sample)[:80]}...)")
+        # Filtering logic for phase policy
+        final_images = []
+        for row in all_images:
+            decision = explain_phase_run_decision(
+                row['id'],
+                PhaseCode.KEYWORDS,
+                current_executor_version=TAGGER_VERSION,
+                force_run=overwrite
+            )
+            if decision['should_run']:
+                final_images.append(row)
+            else:
+                logger.debug("Skipping keywords image_id=%s: %s", row['id'], decision['reason'])
 
-        # Check folder level status if not overwriting (optimization)
-        processed_folders = set()
-        if not overwrite and os.path.isdir(input_path):
-             if db.is_folder_keywords_processed(input_path):
-                 log(f"Skipping fully processed folder: {input_path}")
-                 self.status_message = "Skipped (Processed)"
-                 return
-
+        all_images = final_images
         log(f"Found {len(all_images)} images to process.")
         self.total_count = len(all_images)
         self.current_count = 0
         
         processed_count = 0
         skipped_count = 0
+        processed_folders = set()
         
         for row in all_images:
             if self.stop_event.is_set():
@@ -485,111 +501,64 @@ class TaggingRunner:
                 wsl_p = f"/mnt/{drive}{p}"
                 path = wsl_p
 
-            decision = explain_phase_run_decision(
+            db.set_image_phase_status(
                 row['id'],
                 PhaseCode.KEYWORDS,
-                current_executor_version=TAGGER_VERSION,
-                force_run=overwrite,
+                PhaseStatus.RUNNING,
+                app_version=APP_VERSION,
+                executor_version=TAGGER_VERSION,
+                job_id=job_id,
             )
-            if not decision["should_run"]:
-                skipped_count += 1
-                self.current_count += 1
-                log(f"Skipping {os.path.basename(path)}: {decision['reason']}")
-                continue
 
-            # Check overwrite
-            existing = row['keywords']
-            if existing and not overwrite:
-                skipped_count += 1
-                self.current_count += 1
-                # Do not overwrite phase state here. Policy may request a re-run
-                # (e.g. executor_version_changed), but user chose not to overwrite.
-                log(f"Skipping {os.path.basename(path)}: existing keywords and overwrite disabled")
-                continue
-                
-            if not os.path.exists(path):
-                log(f"Skipping missing file: {path}")
-                self.current_count += 1
-                continue
-                
-            # Process
-            log(f"Tagging: {os.path.basename(path)}...")
-            
-            # Determine inference path (use thumbnail for NEF/RAW)
-            inference_path = path
-            ext = os.path.splitext(path)[1].lower()
-            if ext in ['.nef', '.nrw', '.arw', '.cr2', '.cr3', '.dng']:
-                 from modules.thumbnails import get_thumb_wsl
-                 thumb_path = get_thumb_wsl(row)  # tagging runs in WSL
-
-                 if thumb_path and os.path.exists(thumb_path):
-                     inference_path = thumb_path
-                 else:
-                     log(f"  [Warning] No thumbnail found for RAW file, inference might fail: {os.path.basename(path)}")
-            
             try:
+                # Determine inference path (NEF vs Thumbnail)
+                inference_path = path
+                ext = os.path.splitext(path)[1].lower()
+                if ext in ['.nef', '.nrw', '.arw', '.cr2', '.cr3', '.dng']:
+                    from modules.thumbnails import get_thumb_wsl
+                    thumb_path = get_thumb_wsl(row)
+                    if thumb_path and os.path.exists(thumb_path):
+                        inference_path = thumb_path
+
+                # Run inference
+                tags = self.scorer.predict(inference_path, keywords=custom_keywords)
+                caption = ""
+                title = ""
+                if generate_captions:
+                    caption = self.captioner.generate(inference_path)
+                    import textwrap
+                    title = textwrap.shorten(caption, width=50, placeholder="...")
+
+                # Update DB and Write Metadata
+                if tags or caption:
+                    tags_str = ",".join(tags)
+                    # Update local DB
+                    db.update_image_fields_batch([(row['id'], {
+                        "keywords": tags_str,
+                        "title": title if title else row.get('title'),
+                        "description": caption if caption else row.get('description')
+                    })])
+                    
+                    # Store embedding if not already present? 
+                    # Tagging typically doesn't generate NEW embeddings, it uses original ones if needed.
+                    
+                    # Write to XMP sidecar & File
+                    self.write_metadata(original_windows_path, tags, title, caption)
+                    processed_count += 1
+                else:
+                    skipped_count += 1
+
                 db.set_image_phase_status(
                     row['id'],
                     PhaseCode.KEYWORDS,
-                    PhaseStatus.RUNNING,
+                    PhaseStatus.DONE,
                     app_version=APP_VERSION,
                     executor_version=TAGGER_VERSION,
                     job_id=job_id,
                 )
-                tags = self.scorer.predict(inference_path, keywords=custom_keywords)
-                caption = ""
-                title = ""
-                
-                if generate_captions:
-                     caption = self.captioner.generate(inference_path)
-                     import textwrap
-                     title = textwrap.shorten(caption, width=50, placeholder="...")
-                     
-                if tags or caption:
-                    tags_str = ",".join(tags)
-                    # Update DB
-                    conn = db.get_db()
-                    c = conn.cursor()
-                    
-                    if caption:
-                         c.execute("UPDATE images SET keywords = ?, title = ?, description = ? WHERE id = ?", 
-                                   (tags_str, title, caption, row['id']))
-                         log(f"  -> Caption: {caption}")
-                    else:
-                         c.execute("UPDATE images SET keywords = ? WHERE id = ?", (tags_str, row['id']))
-                         
-                    conn.commit()
-                    conn.close()
-                    log(f"  -> Tags: {tags_str}")
-                    processed_count += 1
-                    self.current_count += 1
-
-                    # Phase E (Keywords) — done for this image
-                    db.set_image_phase_status(row['id'], PhaseCode.KEYWORDS, PhaseStatus.DONE,
-                                              app_version=APP_VERSION, executor_version=TAGGER_VERSION,
-                                              job_id=job_id)
-                    
-                    # Write Metadata
-                    if self.write_metadata(path, tags, title, caption):
-                         log("  -> Metadata written to file.")
-                    else:
-                         log("  -> Metadata write failed (check connection/permissions).")
-                    
-                else:
-                    log("  -> No tags found.")
-                    self.current_count += 1
-                    db.set_image_phase_status(
-                        row['id'],
-                        PhaseCode.KEYWORDS,
-                        PhaseStatus.SKIPPED,
-                        app_version=APP_VERSION,
-                        executor_version=TAGGER_VERSION,
-                        job_id=job_id,
-                    )
             except Exception as e:
-                log(f"Request failed: {e}")
-                self.current_count += 1
-                # Phase E (Keywords) — failed for this image
+                log(f"Error processing {path}: {e}")
+                skipped_count += 1
                 try:
                     db.set_image_phase_status(
                         row['id'],
@@ -602,7 +571,10 @@ class TaggingRunner:
                     )
                 except Exception:
                     pass
-            event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": self.current_count, "total": self.total_count})
+
+            self.current_count += 1
+            if self.current_count % 5 == 0:
+                event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": self.current_count, "total": self.total_count})
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")
 
@@ -627,13 +599,8 @@ class TaggingRunner:
     def write_metadata(self, image_path: str, keywords: List[str], title: str = "", description: str = "", rating: int = 0, label: str = "") -> bool:
         """
         Write keywords and metadata to image using unified XMP module.
-        
-        Uses XMP sidecar files for non-destructive workflow by default.
-        Also writes embedded metadata for maximum compatibility.
         """
         try:
-            # Use the unified XMP module for consistent metadata handling
-            # Write to both sidecar (non-destructive) and embedded (compatibility)
             success = xmp.write_metadata_unified(
                 image_path=image_path,
                 rating=rating if rating and rating > 0 else None,
@@ -641,14 +608,12 @@ class TaggingRunner:
                 keywords=keywords if keywords else None,
                 title=title if title else None,
                 description=description if description else None,
-                use_sidecar=True,   # Non-destructive XMP sidecar
-                use_embedded=True   # Also write embedded for compatibility
+                use_sidecar=True,
+                use_embedded=True
             )
-            
             if success:
                 logger.info(f"Metadata written for {os.path.basename(image_path)}")
             return success
-            
         except Exception as e:
             logger.error(f"Metadata write failed: {e}")
             return False
@@ -690,7 +655,7 @@ class TaggingRunner:
              row = db.get_image_details(file_path)
              if row:
                 from modules.thumbnails import get_thumb_wsl
-                thumb_path = get_thumb_wsl(row)  # tagging runs in WSL
+                thumb_path = get_thumb_wsl(row)
                 if thumb_path and os.path.exists(thumb_path):
                     inference_path = thumb_path
         
