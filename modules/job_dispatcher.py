@@ -1,7 +1,6 @@
 import json
 import logging
 import threading
-import time
 from typing import Any, Dict, Optional
 
 from modules import db
@@ -12,19 +11,28 @@ logger = logging.getLogger(__name__)
 class JobDispatcher:
     """Dispatches queued jobs and ensures only one active job starts at a time."""
 
-    def __init__(self, scoring_runner=None, tagging_runner=None, clustering_runner=None, poll_interval: float = 1.0):
+    def __init__(
+        self,
+        scoring_runner=None,
+        tagging_runner=None,
+        clustering_runner=None,
+        selection_runner=None,
+        poll_interval: float = 1.0,
+    ):
         self.scoring_runner = scoring_runner
         self.tagging_runner = tagging_runner
         self.clustering_runner = clustering_runner
+        self.selection_runner = selection_runner
         self.poll_interval = max(0.2, float(poll_interval or 1.0))
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._dispatch_lock = threading.Lock()
 
-    def set_runners(self, scoring_runner=None, tagging_runner=None, clustering_runner=None):
+    def set_runners(self, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None):
         self.scoring_runner = scoring_runner
         self.tagging_runner = tagging_runner
         self.clustering_runner = clustering_runner
+        self.selection_runner = selection_runner
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -114,6 +122,15 @@ class JobDispatcher:
                 job_id=job_id,
             ) == "Started"
 
+        if phase in ("selection", "culling"):
+            if not self.selection_runner:
+                return False
+            return self.selection_runner.start_batch(
+                payload.get("input_path", input_path),
+                job_id=job_id,
+                force_rescan=bool(payload.get("force_rescan", False)),
+            ) == "Started"
+
         logger.warning("Unknown queued job_type=%s for job_id=%s", phase, job_id)
         return False
 
@@ -125,6 +142,7 @@ class JobDispatcher:
             self._runner_busy(self.scoring_runner),
             self._runner_busy(self.tagging_runner),
             self._runner_busy(self.clustering_runner),
+            self._runner_busy(self.selection_runner),
         ])
 
     def _get_active_runner(self) -> Optional[str]:
@@ -134,4 +152,6 @@ class JobDispatcher:
             return "tagging"
         if self._runner_busy(self.clustering_runner):
             return "clustering"
+        if self._runner_busy(self.selection_runner):
+            return "selection"
         return None

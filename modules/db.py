@@ -2631,16 +2631,13 @@ def create_job(input_path, phase_code=None, job_type=None, status="pending", que
 
 
 def enqueue_job(input_path, phase_code, job_type=None, queue_payload=None):
-    """Create a queued job and assign queue_position at the end of the queue."""
+    """Create a queued job with a stable internal sort key and dense display position."""
     conn = get_db()
     c = conn.cursor()
     phase_id = get_phase_id(phase_code) if phase_code else None
     if job_type is None:
         job_type = phase_code
 
-    c.execute("SELECT COALESCE(MAX(queue_position), 0) FROM jobs WHERE status = 'queued'")
-    next_pos_row = c.fetchone()
-    next_pos = (next_pos_row[0] if next_pos_row else 0) + 1
     now = datetime.datetime.now()
     payload_json = json.dumps(queue_payload) if queue_payload is not None else None
 
@@ -2649,15 +2646,34 @@ def enqueue_job(input_path, phase_code, job_type=None, queue_payload=None):
         INSERT INTO jobs (
             input_path, phase_id, job_type, status, queue_position,
             created_at, enqueued_at, queue_payload, cancel_requested
-        ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, 0) RETURNING id
+        ) VALUES (?, ?, ?, 'queued', NULL, ?, ?, ?, 0) RETURNING id
         """,
-        (input_path, phase_id, job_type, next_pos, now, now, payload_json)
+        (input_path, phase_id, job_type, now, now, payload_json)
     )
     row = c.fetchone()
     job_id = row[0] if row else None
+    if job_id is None:
+        conn.rollback()
+        conn.close()
+        return None, 0
+
+    # Persist a stable queue ordering key using the DB identity.
+    c.execute("UPDATE jobs SET queue_position = ? WHERE id = ?", (job_id, job_id))
+
+    # Return dense user-facing queue position (1..N), not the internal sort key.
+    c.execute(
+        """
+        SELECT COUNT(*) FROM jobs
+        WHERE status = 'queued' AND COALESCE(queue_position, id) <= ?
+        """,
+        (job_id,)
+    )
+    pos_row = c.fetchone()
+    display_position = int(pos_row[0] or 0) if pos_row else 0
+
     conn.commit()
     conn.close()
-    return job_id, next_pos
+    return job_id, display_position
 
 
 def dequeue_next_job():
@@ -2667,9 +2683,9 @@ def dequeue_next_job():
     try:
         c.execute(
             """
-            SELECT id, queue_position FROM jobs
+            SELECT id FROM jobs
             WHERE status = 'queued' AND COALESCE(cancel_requested, 0) = 0
-            ORDER BY queue_position ASC, enqueued_at ASC, id ASC
+            ORDER BY COALESCE(queue_position, id) ASC, enqueued_at ASC, id ASC
             FETCH FIRST 1 ROWS ONLY
             """
         )
@@ -2678,7 +2694,6 @@ def dequeue_next_job():
             return None
 
         job_id = int(row[0])
-        queue_position = int(row[1] or 0)
         now = datetime.datetime.now()
         c.execute(
             """
@@ -2691,15 +2706,6 @@ def dequeue_next_job():
         if c.rowcount == 0:
             conn.rollback()
             return None
-
-        if queue_position > 0:
-            c.execute(
-                """
-                UPDATE jobs SET queue_position = queue_position - 1
-                WHERE status = 'queued' AND queue_position IS NOT NULL AND queue_position > ?
-                """,
-                (queue_position,)
-            )
         conn.commit()
         return get_job_by_id(job_id)
     finally:
@@ -2716,23 +2722,28 @@ def get_job_by_id(job_id):
 
 
 def get_queued_jobs(limit=200):
-    conn = get_db()
-    c = conn.cursor()
     try:
         limit = int(limit)
     except (ValueError, TypeError):
         limit = 200
-    limit = max(1, min(limit, 1000))
+    if limit <= 0:
+        return []
+    limit = min(limit, 1000)
+
+    conn = get_db()
+    c = conn.cursor()
     c.execute(
         """
         SELECT * FROM jobs
         WHERE status = 'queued'
-        ORDER BY queue_position ASC, enqueued_at ASC, id ASC
+        ORDER BY COALESCE(queue_position, id) ASC, enqueued_at ASC, id ASC
         FETCH FIRST ? ROWS ONLY
         """,
         (limit,)
     )
     rows = [dict(r) for r in c.fetchall()]
+    for idx, row in enumerate(rows, start=1):
+        row["queue_position"] = idx
     conn.close()
     return rows
 
@@ -2751,29 +2762,40 @@ def request_cancel_job(job_id):
         conn.close()
         return {"success": False, "reason": "already_finished", "status": status}
 
+    if status == "running":
+        conn.close()
+        return {"success": False, "reason": "running_not_supported", "status": status}
+
+    if status != "queued":
+        conn.close()
+        return {"success": False, "reason": "not_cancellable_state", "status": status}
+
     now = datetime.datetime.now()
-    if status == "queued":
-        c.execute("SELECT queue_position FROM jobs WHERE id = ?", (job_id,))
-        pos_row = c.fetchone()
-        old_pos = int(pos_row[0]) if pos_row and pos_row[0] else None
-        c.execute(
-            "UPDATE jobs SET status = 'cancelled', cancel_requested = 1, finished_at = ?, completed_at = ? WHERE id = ?",
-            (now, now, job_id)
-        )
-        if old_pos:
-            c.execute(
-                """
-                UPDATE jobs SET queue_position = queue_position - 1
-                WHERE status = 'queued' AND queue_position IS NOT NULL AND queue_position > ?
-                """,
-                (old_pos,)
-            )
-    else:
-        c.execute("UPDATE jobs SET cancel_requested = 1 WHERE id = ?", (job_id,))
+    c.execute(
+        """
+        UPDATE jobs
+        SET status = 'cancelled', cancel_requested = 1, queue_position = NULL, finished_at = ?, completed_at = ?
+        WHERE id = ? AND status = 'queued'
+        """,
+        (now, now, job_id)
+    )
+    if c.rowcount == 0:
+        conn.rollback()
+        c.execute("SELECT status FROM jobs WHERE id = ?", (job_id,))
+        latest = c.fetchone()
+        conn.close()
+        latest_status = (latest[0] or "").strip().lower() if latest else "not_found"
+        if latest_status == "running":
+            return {"success": False, "reason": "running_not_supported", "status": latest_status}
+        if latest_status in ("completed", "failed", "cancelled"):
+            return {"success": False, "reason": "already_finished", "status": latest_status}
+        if latest_status == "not_found":
+            return {"success": False, "reason": "not_found"}
+        return {"success": False, "reason": "cancel_failed", "status": latest_status}
 
     conn.commit()
     conn.close()
-    return {"success": True, "reason": "cancel_requested", "status": status}
+    return {"success": True, "reason": "cancelled", "status": status}
 
 
 def create_job_phases(job_id, phase_codes):

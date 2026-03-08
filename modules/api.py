@@ -46,10 +46,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 import os
+import logging
 from pathlib import Path
 
 from modules.job_dispatcher import JobDispatcher
 
+logger = logging.getLogger(__name__)
 
 # Request/Response Models with comprehensive descriptions for LLM agents
 class ScoringStartRequest(BaseModel):
@@ -429,6 +431,14 @@ class PipelineSubmitRequest(BaseModel):
         None,
         description="Distance threshold for clustering (if 'cluster' is in operations)."
     )
+    clustering_time_gap: Optional[int] = Field(
+        None,
+        description="Time gap in seconds for clustering burst grouping (if 'cluster' is in operations)."
+    )
+    clustering_force_rescan: bool = Field(
+        False,
+        description="If True, force re-clustering even when folder was already clustered."
+    )
 
 
 class ApiResponse(BaseModel):
@@ -478,17 +488,27 @@ class ApiResponse(BaseModel):
 _scoring_runner = None
 _tagging_runner = None
 _clustering_runner = None
+_selection_runner = None
 _job_dispatcher = JobDispatcher()
 
 
-def set_runners(scoring_runner, tagging_runner, clustering_runner=None):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None):
     """Set the runner instances for API access."""
-    global _scoring_runner, _tagging_runner, _clustering_runner, _job_dispatcher
+    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _job_dispatcher
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
-    _job_dispatcher.set_runners(scoring_runner, tagging_runner, clustering_runner)
+    _selection_runner = selection_runner
+    _job_dispatcher.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner)
     _job_dispatcher.start()
+
+
+def stop_dispatcher():
+    """Stop background dispatcher thread, used during server shutdown."""
+    try:
+        _job_dispatcher.stop()
+    except Exception as exc:
+        logger.warning("Failed to stop JobDispatcher cleanly: %s", exc)
 
 
 def create_api_router() -> APIRouter:
@@ -723,7 +743,9 @@ def create_api_router() -> APIRouter:
                                 "skip_existing": {"type": "boolean", "default": True},
                                 "custom_keywords": {"type": "array", "items": {"type": "string"}},
                                 "generate_captions": {"type": "boolean", "default": False},
-                                "clustering_threshold": {"type": "number"}
+                                "clustering_threshold": {"type": "number"},
+                                "clustering_time_gap": {"type": "integer"},
+                                "clustering_force_rescan": {"type": "boolean", "default": False}
                             }
                         }
                     }
@@ -1451,9 +1473,8 @@ def create_api_router() -> APIRouter:
         from modules import db
         try:
             state = _job_dispatcher.get_state()
-            if limit:
-                state["queue"] = db.get_queued_jobs(limit=limit)
-                state["queue_size"] = len(state["queue"])
+            state["queue"] = db.get_queued_jobs(limit=limit)
+            state["queue_size"] = len(state["queue"])
             return state
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -1491,7 +1512,7 @@ def create_api_router() -> APIRouter:
         "/jobs/{job_id}/cancel",
         response_model=ApiResponse,
         summary="Cancel a queued/running job",
-        description="Marks a queued job cancelled or requests cancellation for a running job."
+        description="Cancels queued jobs. Running jobs currently return running_not_supported."
     )
     async def cancel_job(job_id: int):
         from modules import db
@@ -1500,6 +1521,8 @@ def create_api_router() -> APIRouter:
             if not result.get("success"):
                 if result.get("reason") == "not_found":
                     raise HTTPException(status_code=404, detail="Job not found")
+                if result.get("reason") == "running_not_supported":
+                    return ApiResponse(success=False, message="Running job cancellation is not supported yet", data=result)
                 return ApiResponse(success=False, message="Job cannot be cancelled", data=result)
             return ApiResponse(success=True, message="Cancellation requested", data={"job_id": job_id, **result})
         except HTTPException:
@@ -1938,9 +1961,11 @@ def create_api_router() -> APIRouter:
         Submits an image file or folder for sequential processing through the pipeline.
 
         Operations are executed in order: score -> tag -> cluster.
-        Only the first applicable operation is started immediately; subsequent operations
-        should be triggered by the Electron app after the previous one completes
-        (via status polling or WebSocket events).
+        For folder submissions, only the first applicable operation is queued immediately;
+        subsequent operations should be triggered by the Electron app after the previous
+        one completes (via status polling or WebSocket events).
+
+        For single-file submissions, the first operation runs immediately.
 
         For single files, only 'score' and 'tag' operations are supported.
         'cluster' requires a folder path.
@@ -2004,51 +2029,71 @@ def create_api_router() -> APIRouter:
                 },
             )
 
-        job_id = db.create_job(request.input_path, job_type="pipeline")
-        phase_rows = db.create_job_phases(job_id, phase_plan)
+        # API operations map to persisted phase codes used by DB phase/status sync.
+        op_to_phase_code = {
+            "score": "scoring",
+            "tag": "keywords",
+            "cluster": "culling",
+        }
+        op_to_label = {
+            "score": "scoring",
+            "tag": "tagging",
+            "cluster": "clustering",
+        }
+        phase_plan_codes = [op_to_phase_code.get(op, op) for op in request.operations]
 
         if first_op == "score":
             if _scoring_runner is None:
                 raise HTTPException(status_code=503, detail="Scoring runner not available")
-            if _scoring_runner.is_running:
-                return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True, "job_id": job_id, "phase_plan": phase_rows})
-            result = _scoring_runner.start_batch(request.input_path, job_id, request.skip_existing)
-            op_name = "scoring"
+            job_id, queue_position = db.enqueue_job(
+                request.input_path,
+                phase_code="scoring",
+                job_type="scoring",
+                queue_payload={"input_path": request.input_path, "skip_existing": request.skip_existing},
+            )
         elif first_op == "tag":
             if _tagging_runner is None:
                 raise HTTPException(status_code=503, detail="Tagging runner not available")
-            if _tagging_runner.is_running:
-                return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True, "job_id": job_id, "phase_plan": phase_rows})
-            result = _tagging_runner.start_batch(
+            job_id, queue_position = db.enqueue_job(
                 request.input_path,
-                job_id=job_id,
-                custom_keywords=request.custom_keywords,
-                overwrite=not request.skip_existing,
-                generate_captions=request.generate_captions,
+                phase_code="keywords",
+                job_type="tagging",
+                queue_payload={
+                    "input_path": request.input_path,
+                    "custom_keywords": request.custom_keywords,
+                    "overwrite": not request.skip_existing,
+                    "generate_captions": request.generate_captions,
+                },
             )
-            op_name = "tagging"
         else:
             if _clustering_runner is None:
                 raise HTTPException(status_code=503, detail="Clustering runner not available")
-            if _clustering_runner.is_running:
-                return ApiResponse(success=False, message="Clustering runner is busy", data={"is_running": True, "job_id": job_id, "phase_plan": phase_rows})
-            result = _clustering_runner.start_batch(request.input_path, threshold=request.clustering_threshold, job_id=job_id)
-            op_name = "clustering"
-
-        if result == "Started":
-            return ApiResponse(
-                success=True,
-                message=f"Pipeline started: {op_name}",
-                data={
-                    "job_id": job_id,
+            job_id, queue_position = db.enqueue_job(
+                request.input_path,
+                phase_code="culling",
+                job_type="clustering",
+                queue_payload={
                     "input_path": request.input_path,
-                    "current_operation": first_op,
-                    "phase_plan": db.get_job_phases(job_id),
+                    "threshold": request.clustering_threshold,
+                    "time_gap": request.clustering_time_gap,
+                    "force_rescan": request.clustering_force_rescan,
                 },
             )
 
-        db.set_job_phase_state(job_id, first_op, "failed", error_message=result)
-        db.update_job_status(job_id, "failed", result)
-        return ApiResponse(success=False, message=result, data={"error": result, "job_id": job_id, "phase_plan": db.get_job_phases(job_id)})
+        phase_rows = db.create_job_phases(job_id, phase_plan_codes)
+
+        return ApiResponse(
+            success=True,
+            message=f"Pipeline queued: {op_to_label[first_op]}",
+            data={
+                "job_id": job_id,
+                "input_path": request.input_path,
+                "current_operation": first_op,
+                "queue_position": queue_position,
+                "phase_plan": phase_rows,
+                "remaining_operations": request.operations[1:],
+            },
+        )
 
     return router
+

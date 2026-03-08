@@ -170,8 +170,12 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
     def _run_culling(path, force):
         if not path:
             return
-        job_id = db.create_job(path, phase_code="culling")
-        selection_runner.start_batch(path, job_id, force_rescan=force)
+        db.enqueue_job(
+            path,
+            phase_code="culling",
+            job_type="selection",
+            queue_payload={"input_path": path, "force_rescan": force},
+        )
 
     def _run_tagging(path, overwrite, captions):
         if not path:
