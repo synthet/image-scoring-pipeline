@@ -6,7 +6,7 @@ import queue
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration
 from typing import List, Dict, Optional, Tuple
-from modules import db, thumbnails, xmp
+from modules import db, thumbnails, utils, xmp
 from modules.events import event_manager
 from modules.phases import PhaseCode, PhaseStatus
 from modules.version import APP_VERSION
@@ -429,23 +429,29 @@ class TaggingRunner:
              all_images = [row for row in rows]
         elif os.path.isdir(input_path):
              import pathlib
-             p_in = pathlib.Path(input_path).resolve()
-             
-             # Filter rows by path
+             # Normalize input_path for comparison (handles Windows/WSL)
+             p_in_str = utils.convert_path_to_local(input_path)
+             p_in = pathlib.Path(p_in_str).resolve()
+
+             # Filter rows by path — convert DB paths to local format for correct matching
              for row in rows:
-                 f_path = pathlib.Path(row['file_path']).resolve()
-                 # Check if file is inside input_path
+                 fp_raw = row['file_path']
+                 fp_local = utils.convert_path_to_local(fp_raw) if fp_raw else fp_raw
+                 f_path = pathlib.Path(fp_local).resolve()
                  try:
                      f_path.relative_to(p_in)
                      all_images.append(row)
-                 except ValueError:
+                 except (ValueError, TypeError):
                      continue
         else:
             log(f"Input path not found or not a directory: {input_path}")
             self.status_message = "Error Path"
             return
 
-
+        if len(all_images) == 0 and rows and input_path and os.path.isdir(input_path):
+            sample = rows[0].get("file_path", "") if rows else ""
+            p_in_str = utils.convert_path_to_local(input_path)
+            log(f"Path filter returned 0 images (input={p_in_str}, sample_db_path={str(sample)[:80]}...)")
 
         # Check folder level status if not overwriting (optimization)
         processed_folders = set()

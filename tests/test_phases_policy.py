@@ -33,3 +33,37 @@ def test_policy_runs_when_done_but_version_changed(monkeypatch):
     decision = phases_policy.explain_phase_run_decision(1, PhaseCode.KEYWORDS)
     assert decision["should_run"] is True
     assert decision["reason"] == "executor_version_changed"
+def test_policy_skips_when_running(monkeypatch):
+    monkeypatch.setattr(
+        phases_policy.db,
+        "get_image_phase_statuses",
+        lambda image_id: {"scoring": {"status": "running"}},
+    )
+    decision = phases_policy.explain_phase_run_decision(1, PhaseCode.SCORING)
+    assert decision["should_run"] is False
+    assert decision["reason"] == "already_running"
+
+
+def test_policy_runs_when_failed(monkeypatch):
+    monkeypatch.setattr(
+        phases_policy.db,
+        "get_image_phase_statuses",
+        lambda image_id: {"scoring": {"status": "failed"}},
+    )
+    decision = phases_policy.explain_phase_run_decision(1, PhaseCode.SCORING)
+    assert decision["should_run"] is True
+    assert decision["reason"] == "status_failed"
+
+
+def test_policy_force_run(monkeypatch):
+    monkeypatch.setattr(
+        phases_policy.db,
+        "get_image_phase_statuses",
+        lambda image_id: {"scoring": {"status": "done", "executor_version": "1.0.0"}},
+    )
+    # Even if versions match, force_run should trigger run
+    decision = phases_policy.explain_phase_run_decision(
+        1, PhaseCode.SCORING, current_executor_version="1.0.0", force_run=True
+    )
+    assert decision["should_run"] is True
+    assert decision["reason"] == "force_run_requested"
