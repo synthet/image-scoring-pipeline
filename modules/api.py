@@ -1463,10 +1463,10 @@ def create_api_router() -> APIRouter:
         """Get details for a specific job."""
         from modules import db
         try:
-            jobs = db.get_jobs(limit=1000)  # Get enough to find the job
-            job = next((j for j in jobs if j.get('id') == job_id), None)
+            job = db.get_job_by_id(job_id)
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
+            job["phases"] = db.get_job_phases(job_id)
             return job
         except HTTPException:
             raise
@@ -1844,136 +1844,98 @@ def create_api_router() -> APIRouter:
         _check_rate_limit("pipeline_submit")
 
         if not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
+            raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
 
         valid_ops = {"score", "tag", "cluster"}
         invalid_ops = [op for op in request.operations if op not in valid_ops]
         if invalid_ops:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid operations: {invalid_ops}. Valid: {sorted(valid_ops)}"
-            )
-
+            raise HTTPException(status_code=400, detail=f"Invalid operations: {invalid_ops}. Valid: {sorted(valid_ops)}")
         if not request.operations:
             raise HTTPException(status_code=400, detail="At least one operation is required")
 
         is_file = os.path.isfile(request.input_path)
-
-        # For single files, clustering is not supported
         if is_file and "cluster" in request.operations:
-            raise HTTPException(
-                status_code=400,
-                detail="Clustering requires a folder path, not a single file"
-            )
+            raise HTTPException(status_code=400, detail="Clustering requires a folder path, not a single file")
 
         from modules import db
-
-        # Start the first operation in the pipeline
         first_op = request.operations[0]
-        remaining_ops = request.operations[1:]
+        phase_plan = list(request.operations)
+
+        if is_file:
+            if first_op == "score":
+                if _scoring_runner is None:
+                    raise HTTPException(status_code=503, detail="Scoring runner not available")
+                if _scoring_runner.is_running:
+                    return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True})
+                success, message = _scoring_runner.run_single_image(request.input_path)
+            elif first_op == "tag":
+                if _tagging_runner is None:
+                    raise HTTPException(status_code=503, detail="Tagging runner not available")
+                if _tagging_runner.is_running:
+                    return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True})
+                success, message = _tagging_runner.run_single_image(
+                    request.input_path,
+                    request.custom_keywords,
+                    request.generate_captions,
+                )
+            else:
+                raise HTTPException(status_code=400, detail="Single-file pipeline supports score/tag only")
+
+            return ApiResponse(
+                success=success,
+                message=message,
+                data={
+                    "file_path": request.input_path,
+                    "completed_operation": first_op,
+                    "phase_plan": [{"phase_order": 0, "phase_code": first_op, "state": "completed"}],
+                },
+            )
+
+        job_id = db.create_job(request.input_path, job_type="pipeline")
+        phase_rows = db.create_job_phases(job_id, phase_plan)
 
         if first_op == "score":
             if _scoring_runner is None:
                 raise HTTPException(status_code=503, detail="Scoring runner not available")
             if _scoring_runner.is_running:
-                return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True})
-
-            if is_file:
-                success, message = _scoring_runner.run_single_image(request.input_path)
-                return ApiResponse(
-                    success=success,
-                    message=message,
-                    data={
-                        "file_path": request.input_path,
-                        "completed_operation": "score",
-                        "remaining_operations": remaining_ops,
-                    }
-                )
-            else:
-                job_id = db.create_job(request.input_path)
-                result = _scoring_runner.start_batch(request.input_path, job_id, request.skip_existing)
-                if result == "Started":
-                    return ApiResponse(
-                        success=True,
-                        message="Pipeline started: scoring",
-                        data={
-                            "job_id": job_id,
-                            "input_path": request.input_path,
-                            "current_operation": "score",
-                            "remaining_operations": remaining_ops,
-                        }
-                    )
-                return ApiResponse(success=False, message=result, data={"error": result})
-
+                return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True, "job_id": job_id, "phase_plan": phase_rows})
+            result = _scoring_runner.start_batch(request.input_path, job_id, request.skip_existing)
+            op_name = "scoring"
         elif first_op == "tag":
             if _tagging_runner is None:
                 raise HTTPException(status_code=503, detail="Tagging runner not available")
             if _tagging_runner.is_running:
-                return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True})
-
-            if is_file:
-                success, message = _tagging_runner.run_single_image(
-                    request.input_path,
-                    request.custom_keywords,
-                    request.generate_captions
-                )
-                return ApiResponse(
-                    success=success,
-                    message=message,
-                    data={
-                        "file_path": request.input_path,
-                        "completed_operation": "tag",
-                        "remaining_operations": remaining_ops,
-                    }
-                )
-            else:
-                job_id = db.create_job(request.input_path)
-                result = _tagging_runner.start_batch(
-                    request.input_path,
-                    job_id=job_id,
-                    custom_keywords=request.custom_keywords,
-                    overwrite=not request.skip_existing,
-                    generate_captions=request.generate_captions
-                )
-                if result == "Started":
-                    return ApiResponse(
-                        success=True,
-                        message="Pipeline started: tagging",
-                        data={
-                            "job_id": job_id,
-                            "input_path": request.input_path,
-                            "current_operation": "tag",
-                            "remaining_operations": remaining_ops,
-                        }
-                    )
-                return ApiResponse(success=False, message=result, data={"error": result})
-
-        elif first_op == "cluster":
+                return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True, "job_id": job_id, "phase_plan": phase_rows})
+            result = _tagging_runner.start_batch(
+                request.input_path,
+                job_id=job_id,
+                custom_keywords=request.custom_keywords,
+                overwrite=not request.skip_existing,
+                generate_captions=request.generate_captions,
+            )
+            op_name = "tagging"
+        else:
             if _clustering_runner is None:
                 raise HTTPException(status_code=503, detail="Clustering runner not available")
             if _clustering_runner.is_running:
-                return ApiResponse(success=False, message="Clustering runner is busy", data={"is_running": True})
+                return ApiResponse(success=False, message="Clustering runner is busy", data={"is_running": True, "job_id": job_id, "phase_plan": phase_rows})
+            result = _clustering_runner.start_batch(request.input_path, threshold=request.clustering_threshold, job_id=job_id)
+            op_name = "clustering"
 
-            job_id = db.create_job(request.input_path)
-            result = _clustering_runner.start_batch(
-                request.input_path,
-                threshold=request.clustering_threshold,
-                job_id=job_id
+        if result == "Started":
+            return ApiResponse(
+                success=True,
+                message=f"Pipeline started: {op_name}",
+                data={
+                    "job_id": job_id,
+                    "input_path": request.input_path,
+                    "current_operation": first_op,
+                    "phase_plan": db.get_job_phases(job_id),
+                },
             )
-            if result == "Started":
-                return ApiResponse(
-                    success=True,
-                    message="Pipeline started: clustering",
-                    data={
-                        "job_id": job_id,
-                        "input_path": request.input_path,
-                        "current_operation": "cluster",
-                        "remaining_operations": remaining_ops,
-                    }
-                )
-            return ApiResponse(success=False, message=result, data={"error": result})
+
+        db.set_job_phase_state(job_id, first_op, "failed", error_message=result)
+        db.update_job_status(job_id, "failed", result)
+        return ApiResponse(success=False, message=result, data={"error": result, "job_id": job_id, "phase_plan": db.get_job_phases(job_id)})
 
     return router
