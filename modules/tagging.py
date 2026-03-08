@@ -10,6 +10,7 @@ from modules import db, thumbnails, xmp
 from modules.events import event_manager
 from modules.phases import PhaseCode, PhaseStatus
 from modules.version import APP_VERSION
+from modules.phases_policy import explain_phase_run_decision
 
 TAGGER_VERSION = "1.0.0"  # bump when CLIP model or tagging logic changes
 
@@ -478,6 +479,18 @@ class TaggingRunner:
                 wsl_p = f"/mnt/{drive}{p}"
                 path = wsl_p
 
+            decision = explain_phase_run_decision(
+                row['id'],
+                PhaseCode.KEYWORDS,
+                current_executor_version=TAGGER_VERSION,
+                force_run=overwrite,
+            )
+            if not decision["should_run"]:
+                skipped_count += 1
+                self.current_count += 1
+                log(f"Skipping {os.path.basename(path)}: {decision['reason']}")
+                continue
+
             # Check overwrite
             existing = row['keywords']
             if existing and not overwrite:
@@ -512,6 +525,14 @@ class TaggingRunner:
                      log(f"  [Warning] No thumbnail found for RAW file, inference might fail: {os.path.basename(path)}")
             
             try:
+                db.set_image_phase_status(
+                    row['id'],
+                    PhaseCode.KEYWORDS,
+                    PhaseStatus.RUNNING,
+                    app_version=APP_VERSION,
+                    executor_version=TAGGER_VERSION,
+                    job_id=job_id,
+                )
                 tags = self.scorer.predict(inference_path, keywords=custom_keywords)
                 caption = ""
                 title = ""
@@ -554,6 +575,14 @@ class TaggingRunner:
                 else:
                     log("  -> No tags found.")
                     self.current_count += 1
+                    db.set_image_phase_status(
+                        row['id'],
+                        PhaseCode.KEYWORDS,
+                        PhaseStatus.SKIPPED,
+                        app_version=APP_VERSION,
+                        executor_version=TAGGER_VERSION,
+                        job_id=job_id,
+                    )
             except Exception as e:
                 log(f"Request failed: {e}")
                 self.current_count += 1

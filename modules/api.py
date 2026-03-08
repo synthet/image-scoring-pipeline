@@ -47,6 +47,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 import os
 from pathlib import Path
+from modules.phases_policy import explain_phase_run_decision
 
 
 # Request/Response Models with comprehensive descriptions for LLM agents
@@ -212,6 +213,20 @@ class TaggingSingleRequest(BaseModel):
             "generate_captions": True
         }
     })
+
+
+
+
+class PhaseDecisionResponse(BaseModel):
+    """Phase policy decision details for one image+phase."""
+    image_id: int
+    phase_code: str
+    should_run: bool
+    reason: str
+    force_run: bool
+    current_executor_version: Optional[str] = None
+    stored_status: Optional[str] = None
+    stored_executor_version: Optional[str] = None
 
 
 class StatusResponse(BaseModel):
@@ -1975,5 +1990,25 @@ def create_api_router() -> APIRouter:
                     }
                 )
             return ApiResponse(success=False, message=result, data={"error": result})
+
+
+    @router.get(
+        "/phases/decision",
+        response_model=PhaseDecisionResponse,
+        summary="Explain phase run/skip decision",
+        description="Returns policy diagnostics describing why a phase would run or be skipped for an image."
+    )
+    async def get_phase_decision(
+        image_id: int = Query(..., description="Image ID"),
+        phase_code: str = Query(..., description="Phase code (scoring|culling|keywords|...)"),
+        current_executor_version: Optional[str] = Query(None, description="Optional explicit executor version override"),
+        force_run: bool = Query(False, description="If true, policy returns run decision as forced"),
+    ):
+        return explain_phase_run_decision(
+            image_id=image_id,
+            phase_code=phase_code,
+            current_executor_version=current_executor_version,
+            force_run=force_run,
+        )
 
     return router

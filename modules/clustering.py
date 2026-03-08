@@ -11,6 +11,7 @@ from sklearn.cluster import AgglomerativeClustering
 from modules import db, utils, config
 from modules.events import event_manager
 from modules.phases import PhaseCode, PhaseStatus
+from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
 
 CLUSTER_VERSION = "1.0.0"  # bump when clustering algorithm or model changes
@@ -377,6 +378,34 @@ class ClusteringEngine:
 
         for folder in folders_to_process:
             rows = by_folder[folder]
+            runnable_rows = []
+            for r in rows:
+                decision = explain_phase_run_decision(
+                    r['id'],
+                    PhaseCode.CULLING,
+                    current_executor_version=CLUSTER_VERSION,
+                    force_run=force_rescan,
+                )
+                if decision['should_run']:
+                    runnable_rows.append(r)
+                else:
+                    logging.debug("Skipping culling image_id=%s: %s", r['id'], decision['reason'])
+
+            if not runnable_rows:
+                yield update_status(f"Skipping folder: {folder} (all images current)", processed_count, len(images_rows))
+                continue
+
+            for r in runnable_rows:
+                db.set_image_phase_status(
+                    r['id'],
+                    PhaseCode.CULLING,
+                    PhaseStatus.RUNNING,
+                    app_version=APP_VERSION,
+                    executor_version=CLUSTER_VERSION,
+                    job_id=job_id,
+                )
+
+            rows = runnable_rows
             yield update_status(f"Processing folder: {folder} ({len(rows)} images)...", processed_count, len(images_rows))
             
             folder_stacks = 0
@@ -597,12 +626,9 @@ class ClusteringEngine:
 
             # Phase D (Culling) — mark all images in this folder as done
             for r in rows:
-                try:
-                    db.set_image_phase_status(r['id'], PhaseCode.CULLING, PhaseStatus.DONE,
-                                              app_version=APP_VERSION, executor_version=CLUSTER_VERSION,
-                                              job_id=job_id)
-                except Exception:
-                    pass
+                db.set_image_phase_status(r['id'], PhaseCode.CULLING, PhaseStatus.DONE,
+                                          app_version=APP_VERSION, executor_version=CLUSTER_VERSION,
+                                          job_id=job_id)
 
             yield update_status(f"Finished {folder}. Created {folder_stacks} stacks.", processed_count, len(images_rows))
             
@@ -716,6 +742,28 @@ class ClusteringRunner:
         except Exception as e:
             log(f"Error: {e}")
             self.status_message = f"Error: {e}"
+            if input_path:
+                try:
+                    images = db.get_images_by_folder(input_path) or []
+                    for img in images:
+                        decision = explain_phase_run_decision(
+                            img['id'],
+                            PhaseCode.CULLING,
+                            current_executor_version=CLUSTER_VERSION,
+                            force_run=force_rescan,
+                        )
+                        if decision['stored_status'] == PhaseStatus.RUNNING:
+                            db.set_image_phase_status(
+                                img['id'],
+                                PhaseCode.CULLING,
+                                PhaseStatus.FAILED,
+                                app_version=APP_VERSION,
+                                executor_version=CLUSTER_VERSION,
+                                job_id=job_id,
+                                error=str(e),
+                            )
+                except Exception as phase_err:
+                    log(f"Phase status failure update error: {phase_err}")
             if job_id:
                 db.update_job_status(job_id, "failed", str(e))
                 event_manager.broadcast_threadsafe("job_completed", {

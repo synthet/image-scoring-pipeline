@@ -9,6 +9,7 @@ from modules.selection import SelectionService, SelectionConfig
 from modules import db
 from modules.events import event_manager
 from modules.phases import PhaseCode, PhaseStatus
+from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
 
 
@@ -97,18 +98,59 @@ class SelectionRunner:
                 "input_path": input_path
             })
 
-        cfg = SelectionConfig(force_rescan=force_rescan)
-        summary = self._service.run(input_path, cfg=cfg, progress_cb=progress_cb)
-
-        # Phase D (Culling) — mark images in the processed folder as done
+        images_for_phase = []
         try:
             images = db.get_images_by_folder(input_path)
             if images:
                 for img in images:
-                    db.set_image_phase_status(img['id'], PhaseCode.CULLING, PhaseStatus.DONE,
-                                              app_version=APP_VERSION, job_id=job_id)
+                    decision = explain_phase_run_decision(
+                        img['id'],
+                        PhaseCode.CULLING,
+                        current_executor_version="1.0.0",
+                        force_run=force_rescan,
+                    )
+                    if decision['should_run']:
+                        images_for_phase.append(img)
+                        db.set_image_phase_status(
+                            img['id'],
+                            PhaseCode.CULLING,
+                            PhaseStatus.RUNNING,
+                            app_version=APP_VERSION,
+                            executor_version="1.0.0",
+                            job_id=job_id,
+                        )
         except Exception as pe:
-            log(f"Phase status update error: {pe}")
+            log(f"Phase status pre-run update error: {pe}")
+
+        cfg = SelectionConfig(force_rescan=force_rescan)
+        try:
+            summary = self._service.run(input_path, cfg=cfg, progress_cb=progress_cb)
+
+            # Phase D (Culling) — mark attempted images in the processed folder as done
+            try:
+                for img in images_for_phase:
+                    db.set_image_phase_status(
+                        img['id'],
+                        PhaseCode.CULLING,
+                        PhaseStatus.DONE,
+                        app_version=APP_VERSION,
+                        executor_version="1.0.0",
+                        job_id=job_id,
+                    )
+            except Exception as pe:
+                log(f"Phase status update error: {pe}")
+        except Exception as e:
+            for img in images_for_phase:
+                db.set_image_phase_status(
+                    img['id'],
+                    PhaseCode.CULLING,
+                    PhaseStatus.FAILED,
+                    app_version=APP_VERSION,
+                    executor_version="1.0.0",
+                    job_id=job_id,
+                    error=str(e),
+                )
+            raise
 
         with self._lock:
             self._status_message = summary.status
