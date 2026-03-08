@@ -1087,6 +1087,9 @@ def _init_db_impl():
             parent_id INTEGER,
             is_fully_scored INTEGER DEFAULT 0,
             is_keywords_processed INTEGER DEFAULT 0,
+            phase_agg_dirty INTEGER DEFAULT 1,
+            phase_agg_updated_at TIMESTAMP,
+            phase_agg_json BLOB SUB_TYPE TEXT,
             created_at TIMESTAMP
         )''')
         try: conn.commit()
@@ -1103,6 +1106,19 @@ def _init_db_impl():
 
         if "is_keywords_processed" not in folder_cols:
              try: c.execute("ALTER TABLE folders ADD is_keywords_processed INTEGER DEFAULT 0")
+             except Exception: pass
+
+        # Phase aggregate cache (phase-aware replacement for legacy booleans)
+        if "phase_agg_dirty" not in folder_cols:
+             try: c.execute("ALTER TABLE folders ADD phase_agg_dirty INTEGER DEFAULT 1")
+             except Exception: pass
+
+        if "phase_agg_updated_at" not in folder_cols:
+             try: c.execute("ALTER TABLE folders ADD phase_agg_updated_at TIMESTAMP")
+             except Exception: pass
+
+        if "phase_agg_json" not in folder_cols:
+             try: c.execute("ALTER TABLE folders ADD phase_agg_json BLOB SUB_TYPE TEXT")
              except Exception: pass
         
         try: conn.commit()
@@ -1680,6 +1696,9 @@ def update_image_folder_id(image_hash=None, image_id=None):
         if row:
              img_id = row[0]
              path = row[1]
+             c.execute("SELECT folder_id FROM images WHERE id = ?", (img_id,))
+             old_row = c.fetchone()
+             old_folder_id = old_row[0] if old_row else None
              if path:
                  dirname = os.path.dirname(path)
                  dirname = os.path.normpath(dirname)
@@ -1693,6 +1712,10 @@ def update_image_folder_id(image_hash=None, image_id=None):
                  c = conn.cursor()
                  c.execute("UPDATE images SET folder_id = ? WHERE id = ?", (fid, img_id))
                  conn.commit()
+                 if fid:
+                     invalidate_folder_phase_aggregates(folder_id=fid)
+                 if old_folder_id and old_folder_id != fid:
+                     invalidate_folder_phase_aggregates(folder_id=old_folder_id)
     except Exception as e:
         print(f"Error updating folder_id: {e}")
     finally:
@@ -1899,6 +1922,52 @@ def get_folder_by_id(folder_id):
     return row[0] if row else None
 
 
+def _get_folder_ancestor_ids(folder_id):
+    """Return folder_id plus all parents up to root."""
+    if not folder_id:
+        return []
+
+    conn = get_db()
+    c = conn.cursor()
+    seen = set()
+    ids = []
+    current = folder_id
+    try:
+        while current and current not in seen:
+            seen.add(current)
+            ids.append(current)
+            c.execute("SELECT parent_id FROM folders WHERE id = ?", (current,))
+            row = c.fetchone()
+            current = row[0] if row else None
+    finally:
+        conn.close()
+    return ids
+
+
+def invalidate_folder_phase_aggregates(folder_id=None, folder_path=None):
+    """
+    Mark phase aggregate cache dirty for the target folder and all its parents.
+    """
+    if not folder_id and folder_path:
+        folder_id = get_or_create_folder(folder_path)
+
+    ancestor_ids = _get_folder_ancestor_ids(folder_id)
+    if not ancestor_ids:
+        return
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        placeholders = ",".join(["?"] * len(ancestor_ids))
+        c.execute(
+            f"UPDATE folders SET phase_agg_dirty = 1 WHERE id IN ({placeholders})",
+            tuple(ancestor_ids)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_or_create_folder(folder_path, _depth=0):
     """
     Gets folder ID from cache/DB, creating it if it doesn't exist.
@@ -1991,7 +2060,10 @@ def get_or_create_folder(folder_path, _depth=0):
                   (folder_path, parent_id, datetime.datetime.now()))
         row = c.fetchone()
         conn.commit()
-        return row[0] if row else None
+        created_id = row[0] if row else None
+        if created_id:
+            invalidate_folder_phase_aggregates(folder_id=created_id)
+        return created_id
     except Exception as e:
         # Race condition or error?
         # Retry select
@@ -2202,6 +2274,34 @@ def get_all_folders():
     conn.close()
     
     return [row['path'] for row in rows]
+
+
+def backfill_folder_phase_aggregates(limit=None):
+    """
+    Maintenance helper to recalculate folder phase aggregate caches.
+    Marks all folders dirty, then recomputes deepest folders first.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("UPDATE folders SET phase_agg_dirty = 1")
+        conn.commit()
+
+        c.execute("SELECT path FROM folders ORDER BY CHAR_LENGTH(path) DESC")
+        rows = c.fetchall()
+    finally:
+        conn.close()
+
+    paths = [r[0] for r in rows if r and r[0]]
+    if isinstance(limit, int) and limit > 0:
+        paths = paths[:limit]
+
+    recomputed = 0
+    for path in paths:
+        get_folder_phase_summary(path)
+        recomputed += 1
+
+    return {"recomputed": recomputed, "total": len(paths)}
 
 
 def delete_folder_cache_entry(folder_path: str, delete_descendants: bool = True) -> dict:
@@ -2569,12 +2669,20 @@ def sync_folder_to_db(folder_path, job_id=None):
                 (image_uuid, str(image_path))
             )
 
+            folder_id = get_or_create_folder(os.path.dirname(str(image_path))) if image_path else None
+            if folder_id:
+                touched_folder_ids.add(folder_id)
+
             count += 1
         except Exception as e:
             logging.error(f"Failed to sync {json_file}: {e}")
             
     conn.commit()
     conn.close()
+    if touched_folder_ids:
+        for fid in touched_folder_ids:
+            invalidate_folder_phase_aggregates(folder_id=fid)
+
     if count > 0:
         event_manager.broadcast_threadsafe("folder_scanned", {"folder_path": folder_path, "new_images": count})
     return count
@@ -2717,6 +2825,14 @@ def upsert_image(job_id, result):
         except Exception as e:
              logging.error(f"Error resolving folder for {image_path}: {e}")
 
+    existing_image = None
+    if image_path:
+        try:
+            c.execute("SELECT id, folder_id FROM images WHERE file_path = ?", (image_path,))
+            existing_image = c.fetchone()
+        except Exception:
+            existing_image = None
+
     # Firebird: We can use RETURNING!
     query = '''UPDATE OR INSERT INTO images 
                   (job_id, file_path, file_name, file_type, 
@@ -2757,11 +2873,18 @@ def upsert_image(job_id, result):
         except Exception as _uuid_err:
             logger.warning("Could not assign image_uuid for id %s: %s", image_id, _uuid_err)
 
+    old_folder_id = existing_image[1] if existing_image else None
+
     conn.commit()
     conn.close()
 
     if image_path:
         invalidate_folder_images_cache(os.path.dirname(image_path))
+
+    if folder_id:
+        invalidate_folder_phase_aggregates(folder_id=folder_id)
+    if old_folder_id and old_folder_id != folder_id:
+        invalidate_folder_phase_aggregates(folder_id=old_folder_id)
 
     # Register path in file_paths
     if image_id:
@@ -5130,6 +5253,7 @@ def set_image_phase_status(image_id, phase_code, status,
         return
 
     now = datetime.datetime.now()
+    folder_id = None
 
     conn = get_db()
     c = conn.cursor()
@@ -5209,6 +5333,10 @@ def set_image_phase_status(image_id, phase_code, status,
                  job_id, 0, error, started, finished, now)
             )
 
+        c.execute("SELECT folder_id FROM images WHERE id = ?", (image_id,))
+        frow = c.fetchone()
+        folder_id = frow[0] if frow else None
+
         conn.commit()
     except Exception as e:
         logger.error("set_image_phase_status failed (img=%s, phase=%s): %s",
@@ -5219,6 +5347,9 @@ def set_image_phase_status(image_id, phase_code, status,
             pass
     finally:
         conn.close()
+
+    if folder_id:
+        invalidate_folder_phase_aggregates(folder_id=folder_id)
 
 
 def get_image_phase_statuses(image_id):
@@ -5286,38 +5417,55 @@ def get_all_phases(enabled_only=True):
         conn.close()
 
 
+def _derive_folder_phase_status(total, done, running, failed, skipped):
+    """Derive normalized folder status from per-image phase counts."""
+    if total <= 0:
+        return "not_started"
+    if done == total:
+        return "done"
+    if running > 0:
+        return "running"
+    if failed > 0 and done == 0 and skipped == 0:
+        return "failed"
+    if skipped == total:
+        return "skipped"
+    if done > 0 or failed > 0 or skipped > 0:
+        return "partial"
+    return "not_started"
+
+
 def get_folder_phase_summary(folder_path):
     """
-    Compute live phase status summary for a folder and its subfolders.
+    Return phase status summary for a folder and descendants.
 
-    For each enabled phase, aggregates IMAGE_PHASE_STATUS rows across all
-    images in the folder (and subfolders recursively):
-      - 'done'        if ALL images have status='done' for that phase
-      - 'partial'     if SOME images are done (but not all)
-      - 'failed'      if ANY image has status='failed' (and none are done)
-      - 'not_started' otherwise
-
-    Returns:
-        list[dict]: [{code, name, sort_order, status, done_count, total_count}, ...]
+    Uses folder-level cache (`folders.phase_agg_json`) and recomputes live data
+    when `phase_agg_dirty = 1`.
     """
     from modules import utils
 
-    # Resolve folder to match db format
     wsl_path = utils.convert_path_to_wsl(folder_path) if hasattr(utils, 'convert_path_to_wsl') else folder_path
-    
-    # We still get_or_create to ensure the top-level folder is tracked
-    base_folder_id = get_or_create_folder(wsl_path) if wsl_path else get_or_create_folder(folder_path)
-
+    target_path = wsl_path if wsl_path else folder_path
+    base_folder_id = get_or_create_folder(target_path)
     if not base_folder_id:
         return []
-
-    target_path = wsl_path if wsl_path else folder_path
-    path_like_unix = target_path + "/%"
-    path_like_win = target_path + "\\%"
 
     conn = get_db()
     c = conn.cursor()
     try:
+        c.execute(
+            "SELECT phase_agg_dirty, phase_agg_json FROM folders WHERE id = ?",
+            (base_folder_id,)
+        )
+        cache_row = c.fetchone()
+        if cache_row and (cache_row[0] or 0) == 0 and cache_row[1]:
+            try:
+                return json.loads(cache_row[1])
+            except Exception:
+                pass
+
+        path_like_unix = target_path + "/%"
+        path_like_win = target_path + "\\%"
+
         c.execute(
             """
             SELECT
@@ -5327,12 +5475,13 @@ def get_folder_phase_summary(folder_path):
                 COUNT(i.id) as total_images,
                 COALESCE(SUM(CASE WHEN ips.status = 'done' THEN 1 ELSE 0 END), 0) as done_count,
                 COALESCE(SUM(CASE WHEN ips.status = 'failed' THEN 1 ELSE 0 END), 0) as failed_count,
-                COALESCE(SUM(CASE WHEN ips.status = 'running' THEN 1 ELSE 0 END), 0) as running_count
+                COALESCE(SUM(CASE WHEN ips.status = 'running' THEN 1 ELSE 0 END), 0) as running_count,
+                COALESCE(SUM(CASE WHEN ips.status = 'skipped' THEN 1 ELSE 0 END), 0) as skipped_count
             FROM pipeline_phases pp
             CROSS JOIN (
-                SELECT id FROM images 
+                SELECT id FROM images
                 WHERE folder_id IN (
-                    SELECT id FROM folders 
+                    SELECT id FROM folders
                     WHERE path = ? OR path LIKE ? OR path LIKE ?
                 )
             ) i
@@ -5346,6 +5495,7 @@ def get_folder_phase_summary(folder_path):
         )
 
         result = []
+        scoring_done = False
         for row in c.fetchall():
             code = row[0].strip() if isinstance(row[0], str) else row[0]
             name = row[1].strip() if isinstance(row[1], str) else row[1]
@@ -5354,19 +5504,11 @@ def get_folder_phase_summary(folder_path):
             done = row[4] or 0
             failed = row[5] or 0
             running = row[6] or 0
+            skipped = row[7] or 0
 
-            if total == 0:
-                status = "not_started"
-            elif done == total:
-                status = "done"
-            elif running > 0:
-                status = "partial"
-            elif done > 0:
-                status = "partial"
-            elif failed > 0:
-                status = "failed"
-            else:
-                status = "not_started"
+            status = _derive_folder_phase_status(total, done, running, failed, skipped)
+            if code == 'scoring' and status == 'done':
+                scoring_done = True
 
             result.append({
                 "code": code,
@@ -5374,9 +5516,17 @@ def get_folder_phase_summary(folder_path):
                 "sort_order": sort_order,
                 "status": status,
                 "done_count": done,
+                "failed_count": failed,
+                "running_count": running,
+                "skipped_count": skipped,
                 "total_count": total,
             })
 
+        c.execute(
+            "UPDATE folders SET phase_agg_dirty = 0, phase_agg_updated_at = ?, phase_agg_json = ?, is_fully_scored = ? WHERE id = ?",
+            (datetime.datetime.now(), json.dumps(result), 1 if scoring_done else 0, base_folder_id)
+        )
+        conn.commit()
         return result
     except Exception as e:
         logger.error("get_folder_phase_summary failed for '%s': %s", folder_path, e)
