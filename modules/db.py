@@ -2502,15 +2502,6 @@ def create_job_phases(job_id, phase_codes):
     return rows
 
 
-def _get_job_phase_rows(conn, job_id):
-    c = conn.cursor()
-    c.execute(
-        "SELECT id, phase_order, phase_code, state FROM job_phases WHERE job_id = ? ORDER BY phase_order",
-        (job_id,),
-    )
-    return c.fetchall()
-
-
 def set_job_phase_state(job_id, phase_code, state, error_message=None):
     """Update state metadata for one phase of a job and auto-advance next pending phase."""
     conn = get_db()
@@ -2606,8 +2597,11 @@ def update_job_status(job_id, status, log=None):
                 phase_row = c.fetchone()
                 if phase_row:
                     phase_code = phase_row[0]
-            if not phase_code:
+            if not phase_code and job_row[1] != "pipeline":
                 phase_code = job_row[1]
+            if not phase_code and job_row[1] == "pipeline":
+                # API pipeline jobs: job_phases has codes like "score","tag","cluster"
+                phase_code = get_next_running_job_phase(job_id)
 
         if phase_code:
             phase_state = "running"

@@ -1881,13 +1881,18 @@ def create_api_router() -> APIRouter:
             else:
                 raise HTTPException(status_code=400, detail="Single-file pipeline supports score/tag only")
 
+            phase_plan = [
+                {"phase_order": i, "phase_code": op, "state": "completed" if i == 0 else "pending"}
+                for i, op in enumerate(request.operations)
+            ]
             return ApiResponse(
                 success=success,
                 message=message,
                 data={
                     "file_path": request.input_path,
                     "completed_operation": first_op,
-                    "phase_plan": [{"phase_order": 0, "phase_code": first_op, "state": "completed"}],
+                    "phase_plan": phase_plan,
+                    "remaining_operations": request.operations[1:],
                 },
             )
 
