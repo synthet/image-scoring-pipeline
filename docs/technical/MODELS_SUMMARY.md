@@ -23,15 +23,15 @@ A state-of-the-art model (2023) that uses CLIP (Contrastive Language-Image Pre-t
 - **Range**: 0.0 - 1.0
 - **Speed**: Moderate (runs as subprocess).
 
-## 3. VILA (Vision-Language Aesthetics)
-*TensorFlow Implementation*
-
-**Status: DISABLED**
-Originally integrated for semantic scoring, but removed due to persistent instability with TensorFlow Hub loading and dependencies. Replaced by LIQE.
-
-## 4. Model Correlation
+## 3. Model Correlation
 *Based on internal testing (v2.5.0)*
 
 - **High Correlation**: KONIQ <-> SPAQ (They generally agree).
 - **Moderate**: KONIQ <-> PAQ2PIQ.
 - **Low Correlation**: Technical Models <-> Aesthetic Models (AVA/LIQE). This is expected; a blur can be artistic (Good Aesthetic) but technically poor (Low Sharpness). The weighted score balances this.
+
+## Deprecated: VILA (Vision-Language Aesthetics)
+
+**Status: DISABLED (v2.5.1+)** — Replaced by LIQE.
+
+Originally integrated for semantic scoring, but removed due to persistent instability with TensorFlow Hub loading and dependencies. Documentation preserved in [docs/archive/vila/](../archive/vila/).

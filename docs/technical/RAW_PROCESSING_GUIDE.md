@@ -6,7 +6,7 @@ The MUSIQ image quality assessment system now supports Nikon RAW files (.NEF, .N
 
 1. **Detect RAW files** - Automatically identify .NEF, .NRW, .CR2, .CR3, .ARW, .DNG, .ORF, .PEF, .RAF, .RW2, .X3F files
 2. **Extract temporary JPEGs** - Convert RAW files to temporary JPEGs for processing
-3. **Process with models** - Run MUSIQ and VILA models on the converted JPEGs
+3. **Process with models** - Run MUSIQ and LIQE models on the converted JPEGs
 4. **Map results back** - Link quality scores to original RAW files
 5. **Clean up** - Automatically remove temporary files after processing
 

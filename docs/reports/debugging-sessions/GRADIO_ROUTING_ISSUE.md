@@ -223,7 +223,7 @@ Run separate FastAPI server on different port for image serving.
 
 - `modules/ui/app.py`: `setup_server_endpoints()` function
 - `webui.py`: Endpoint setup and launch sequence
-- `docs/engineering/debugging/FULLSCREEN_IMAGE_INVESTIGATION.md`: Parent investigation
+- `docs/reports/debugging-sessions/FULLSCREEN_IMAGE_INVESTIGATION.md`: Parent investigation
 
 ## References
 

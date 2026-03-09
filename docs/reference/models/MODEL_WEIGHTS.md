@@ -27,7 +27,7 @@ Here are the models and weights currently used in your project to calculate the 
 
 - [Docs index](../../README.md)
 - [Weighted scoring strategy](../../technical/WEIGHTED_SCORING_STRATEGY.md)
-- [Multi-model scoring](../../technical/README_MULTI_MODEL.md)
+- [Multi-model scoring](../../technical/MULTI_MODEL_SCORING.md)
 - [Technical summary](../../technical/TECHNICAL_SUMMARY.md)
-- [Suggested scoring adjustments](../../reports/suggested_scoring_adjustments.md)
+- [Suggested scoring adjustments](../../plans/models/SUGGESTED_SCORING_ADJUSTMENTS.md)
 

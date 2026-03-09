@@ -10,7 +10,7 @@ The app runs via WSL using two launcher variants:
 
 All three invoke WSL's `~/.venvs/tf` venv and run `python launch.py` → `webui.py`.
 
-**Windows native support today is CLI-only** (Option 3 in README): CPU scoring via `.venv`, no WebUI, no VILA.
+**Windows native support today is CLI-only** (Option 3 in README): CPU scoring via `.venv`, no WebUI, no GPU models (LIQE runs on CPU when GPU unavailable).
 
 ### What Already Works on Windows
 
@@ -44,7 +44,7 @@ flowchart TB
 | **Firebird**   | Ready                 | Binaries in `Firebird/`; `db.py` + `launch.py` already handle Windows     |
 | **TensorFlow** | CPU only              | TF dropped Windows GPU after 2.10; `tensorflow-cpu` in requirements works |
 | **PyTorch**    | CPU + GPU supported   | CUDA works natively on Windows; needed for LIQE model                     |
-| **VILA**       | Not supported         | README marks VILA as ❌ for Windows native; acceptable limitation          |
+| **LIQE (GPU)** | CPU fallback only     | GPU models run on CPU when no CUDA; acceptable limitation                 |
 | **Gradio**     | Supported             | No platform-specific issues                                               |
 
 ---
@@ -125,7 +125,7 @@ Add **Option 3b: Windows Native WebUI** after existing Option 3:
 - Prerequisites: Python 3.10+, Firebird binaries in `Firebird/`
 - Setup: run `scripts/setup/setup_windows_native.bat`
 - Launch: run `run_webui_windows.bat`
-- Limitations: CPU-only TensorFlow, no VILA model
+- Limitations: CPU-only TensorFlow, no GPU acceleration
 
 #### `docs/setup/ENVIRONMENTS.md`
 
@@ -182,6 +182,6 @@ For users wanting GPU acceleration:
 | ----------------------------------- | ----------------------------------------------------------------- |
 | `firebird-driver` import fails      | Setup script verifies install; `Firebird/` on PATH                |
 | TF model OOM on CPU                 | Already uses `tensorflow-cpu`; no GPU memory issues               |
-| VILA model called on Windows        | Code already gates VILA; README documents limitation              |
+| GPU model called on Windows        | Code already gates GPU models; README documents limitation        |
 | Existing WSL workflows break        | No changes to WSL launchers; this is additive only                |
 | `.venv` conflicts with existing use | `.venv` was already documented for Windows CLI in ENVIRONMENTS.md |

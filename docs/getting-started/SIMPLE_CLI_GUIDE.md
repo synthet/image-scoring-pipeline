@@ -3,7 +3,7 @@
 A minimal, CPU-only Python CLI tool for scoring image aesthetic/quality using a simplified MUSIQ-style algorithm.
 
 > [!NOTE]
-> This is a simplified educational tool. For the actual scoring pipeline used in production (with GPU support, RAW conversion, and full Hybrid models), see [INSTRUCTIONS_RUN_SCORING.md](INSTRUCTIONS_RUN_SCORING.md).
+> This is a simplified educational tool. For the actual scoring pipeline used in production (with GPU support, RAW conversion, and full Hybrid models), see [SCORING_GUIDE.md](SCORING_GUIDE.md).
 
 ## Quick Setup
 

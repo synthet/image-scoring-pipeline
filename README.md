@@ -10,7 +10,7 @@ A comprehensive **AI-powered Digital Asset Management** tool for photographers a
 - ⚡ **GPU Acceleration**: CUDA support for 10-15x faster batch processing
 - 🐳 **Multiple Deployment Options**: Docker, WSL2, or native Windows
 
-**📚 [Complete Documentation Index](docs/README.md)** | **🚀 [Quick Reference](docs/getting-started/QUICK_REFERENCE.md)** | **📊 [Test Status](docs/TEST_STATUS.md)**
+**📚 [Complete Documentation Index](docs/README.md)** | **🚀 [Quick Reference](docs/gallery/QUICK_REFERENCE.md)** | **📊 [Test Status](docs/testing/TEST_STATUS.md)**
 
 ## Quick Setup
 
@@ -230,7 +230,7 @@ python scripts/python/keyword_extractor.py --input-dir "D:/Photos" --confidence-
 extract_keywords.bat "D:\Photos\NEF_Files"
 ```
 
-📖 **See:** [Scoring Instructions](docs/getting-started/INSTRUCTIONS_RUN_SCORING.md) | [Keyword Extraction Guide](docs/technical/README_KEYWORD_EXTRACTION.md)
+📖 **See:** [Scoring Guide](docs/getting-started/SCORING_GUIDE.md) | [Keyword Extraction Guide](docs/technical/KEYWORD_EXTRACTION_GUIDE.md)
 
 ---
 
@@ -349,7 +349,7 @@ The tool uses a **triple fallback mechanism** for maximum reliability:
 
 **Reliability**: 99.9%+ uptime with automatic fallback between sources.
 
-📖 **See:** [Triple Fallback System](docs/technical/TRIPLE_FALLBACK_SYSTEM.md) | [Model Source Testing](docs/technical/MODEL_SOURCE_TESTING.md)
+📖 **See:** [Triple Fallback System](docs/archive/TRIPLE_FALLBACK_SYSTEM.md) | [Model Source Testing](docs/technical/MODEL_SOURCE_TESTING.md)
 
 ---
 
@@ -407,7 +407,7 @@ The tool uses a **triple fallback mechanism** for maximum reliability:
 - **Database locked**: Ensure only one instance is running
 - **Missing scores**: Check logs in WebUI or `logs/` directory
 
-📖 **See also:** [Project Review](docs/technical/PROJECT_REVIEW_DETAILED_2026-01-31.md) | [Test Status](docs/TEST_STATUS.md)
+📖 **See also:** [Project Review](docs/reports/project-reviews/PROJECT_REVIEW_DETAILED_2026-01-31.md) | [Test Status](docs/testing/TEST_STATUS.md)
 
 ---
 
@@ -473,14 +473,14 @@ The tool uses a **triple fallback mechanism** for maximum reliability:
 
 **Key Documents:**
 - [Quick Reference](docs/getting-started/QUICK_REFERENCE.md) - Command cheat sheet
-- [Scoring Instructions](docs/getting-started/INSTRUCTIONS_RUN_SCORING.md) - Detailed scoring guide
+- [Scoring Guide](docs/getting-started/SCORING_GUIDE.md) - Detailed scoring guide
 - [WSL2 Setup Guide](docs/setup/WSL2_TENSORFLOW_GPU_SETUP.md) - GPU setup in WSL2
 - [Windows/WSL Deployment](docs/setup/WINDOWS_WSL_DEPLOYMENT.md) - Full deployment guide
-- [Gallery Generator](docs/gallery/GALLERY_GENERATOR_README.md) - Gallery creation guide
-- [Keyword Extraction](docs/technical/README_KEYWORD_EXTRACTION.md) - AI keyword extraction
-- [Triple Fallback System](docs/technical/TRIPLE_FALLBACK_SYSTEM.md) - Model loading reliability
+- [Gallery Creation](docs/gallery/GALLERY_CREATION.md) - Gallery creation guide
+   - [Keyword Extraction](docs/technical/KEYWORD_EXTRACTION_GUIDE.md) - AI keyword extraction
+- [Triple Fallback System](docs/archive/TRIPLE_FALLBACK_SYSTEM.md) - Model loading reliability
 - [MCP Debugging Tools](docs/technical/MCP_DEBUGGING_TOOLS.md) - Advanced debugging
-- [Architecture Documentation](docs/ARCHITECTURE.md) - System overview and design
+- [Architecture Documentation](docs/technical/ARCHITECTURE.md) - System overview and design
 
 
 ---

@@ -144,7 +144,7 @@ The normalized scores allow comparison across models:
 ## Related Documents
 
 - [Docs index](../README.md)
-- [Current model weights](../reference/models/current_model_weights.md)
+- [Model weights](../reference/models/MODEL_WEIGHTS.md)
 - [Weighted scoring strategy](WEIGHTED_SCORING_STRATEGY.md)
 - [Model fallback mechanism](MODEL_FALLBACK_MECHANISM.md)
 - [Model source testing](MODEL_SOURCE_TESTING.md)

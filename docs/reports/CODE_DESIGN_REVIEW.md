@@ -9,7 +9,7 @@ This document contains the consolidated Code and Design Review for both the **Im
 ## Part 1: Image Scoring System (Backend/Pipeline)
 
 ### Project Overview
-A sophisticated AI-powered digital asset management system for photographers. Multi-model scoring (MUSIQ, LIQE, VILA), multi-threaded pipeline, Gradio WebUI + FastAPI backend, Firebird SQL database, MCP integration for AI agent automation.
+A sophisticated AI-powered digital asset management system for photographers. Multi-model scoring (MUSIQ, LIQE), multi-threaded pipeline, Gradio WebUI + FastAPI backend, Firebird SQL database, MCP integration for AI agent automation.
 **Codebase**: ~14,350 LOC (modules) | 40 test files (~4,729 LOC) | Python 3.11
 
 ### Architecture Assessment

@@ -72,6 +72,9 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.exif_only and args.xmp_only:
+        parser.error("--exif-only and --xmp-only are mutually exclusive")
+
     db.init_db()
 
     conn = db.get_db()
@@ -89,9 +92,11 @@ def main():
             where_parts.append("NOT EXISTS (SELECT 1 FROM image_xmp x WHERE x.image_id = i.id)")
     if args.folder:
         folder_id = db.get_or_create_folder(args.folder)
-        if folder_id:
-            where_parts.append("i.folder_id = ?")
-            params.append(folder_id)
+        if not folder_id:
+            logger.error("Folder not found or could not be created: %s", args.folder)
+            sys.exit(1)
+        where_parts.append("i.folder_id = ?")
+        params.append(folder_id)
     if where_parts:
         query += " WHERE " + " AND ".join(where_parts)
     query += " ORDER BY i.id"
@@ -106,6 +111,10 @@ def main():
     to_process = len(rows)
 
     logger.info("Found %d images to process (limit=%s, uncached_only=%s)", to_process, args.limit or "none", not args.all)
+
+    if to_process == 0:
+        logger.info("No images to process.")
+        return
 
     if args.dry_run:
         for i, row in enumerate(rows[:10]):
@@ -131,6 +140,7 @@ def main():
                 exif_ok += 1
             else:
                 exif_fail += 1
+                logger.debug("EXIF extraction failed: %s", file_path)
 
         if not args.exif_only:
             if extract_and_upsert_xmp(file_path, img_id):

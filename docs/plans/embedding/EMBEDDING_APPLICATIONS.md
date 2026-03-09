@@ -1,6 +1,6 @@
 # Possible Applications of `image_embedding`
 
-The project already stores a **MobileNetV2 1280-d feature vector** per image during clustering ([modules/clustering.py](../../modules/clustering.py), lines 492-499) and consumes it in two places: **Agglomerative Clustering** for stack creation and **cosine-similarity search** in [modules/similar_search.py](../../modules/similar_search.py). Below are seven additional applications, each with a concrete sketch of where it plugs into the existing code.
+The project already stores a **MobileNetV2 1280-d feature vector** per image during clustering ([modules/clustering.py](../../../modules/clustering.py), lines 492-499) and consumes it in two places: **Agglomerative Clustering** for stack creation and **cosine-similarity search** in [modules/similar_search.py](../../../modules/similar_search.py). Below are seven additional applications, each with a concrete sketch of where it plugs into the existing code.
 
 Detailed per-feature specs:
 
@@ -17,7 +17,7 @@ Detailed per-feature specs:
 
 ## 1. Diversity-Aware Selection (highest impact)
 
-**Problem:** The current selection policy ([modules/selection.py](../../modules/selection.py)) ranks images inside a stack purely by `score_general` and then applies a fixed 33/33/34% pick/reject/neutral split. When a stack contains several near-identical shots, the top picks can be visually redundant.
+**Problem:** The current selection policy ([modules/selection.py](../../../modules/selection.py)) ranks images inside a stack purely by `score_general` and then applies a fixed 33/33/34% pick/reject/neutral split. When a stack contains several near-identical shots, the top picks can be visually redundant.
 
 **Idea:** After sorting by score, penalize candidates that are too similar to already-picked images. This produces a set of picks that are both high-quality *and* visually varied.
 
