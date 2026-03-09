@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-03-08
+
+### Fixed
+- **Run Keywords**: Fixed "Run Keywords" button doing nothing when clicked. TaggingRunner now uses `db.get_images_by_folder()` (folder_id-based lookup) instead of pathlib filtering, matching SelectionRunner and avoiding path format mismatch (Windows vs WSL). Added missing `update_image_fields_batch` in `db.py` for batch keyword/title/description updates. Added missing `explain_phase_run_decision` import in `tagging.py`.
+
 ## [4.2.0] - 2026-03-08
 
 ### Added

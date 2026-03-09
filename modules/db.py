@@ -4122,6 +4122,47 @@ def create_stack(name, best_image_id=None):
         conn.close()
     return stack_id
 
+def update_image_fields_batch(updates):
+    """
+    Batch updates multiple fields for multiple images.
+    updates: list of (image_id, dict) where dict has field_name -> value.
+    Valid fields: keywords, title, description, rating, label, etc. (see valid_fields in update_image_field)
+    """
+    valid_fields = {
+        'burst_uuid', 'rating', 'label', 'score_general', 'score_aesthetic',
+        'score_technical', 'keywords', 'title', 'description', 'stack_id',
+        'thumbnail_path', 'thumbnail_path_win', 'metadata', 'image_hash',
+        'cull_decision', 'cull_policy_version'
+    }
+    if not updates:
+        return
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        for image_id, fields in updates:
+            if not isinstance(fields, dict):
+                continue
+            for fname, val in fields.items():
+                if fname not in valid_fields:
+                    continue
+                c.execute(f"UPDATE images SET {fname} = ? WHERE id = ?", (val, image_id))
+        conn.commit()
+        invalidate_folder_images_cache()
+        for image_id, fields in updates:
+            if isinstance(fields, dict):
+                try:
+                    event_manager.broadcast_threadsafe("image_updated", {
+                        "image_id": image_id,
+                        "updates": fields
+                    })
+                except Exception:
+                    pass
+    except Exception as e:
+        logging.error(f"Failed batch update_image_fields: {e}")
+    finally:
+        conn.close()
+
+
 def update_image_stack_batch(updates):
     """
     Batch updates image stack_ids.

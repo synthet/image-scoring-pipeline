@@ -9,6 +9,7 @@ from typing import List, Dict, Optional, Tuple
 from modules import db, thumbnails, xmp
 from modules.events import event_manager
 from modules.phases import PhaseCode, PhaseStatus
+from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
 
 TAGGER_VERSION = "1.0.0"  # bump when CLIP model or tagging logic changes
@@ -414,16 +415,14 @@ class TaggingRunner:
 
         log("Scanning for images...")
         all_images = []
-        
-        # Fetch all images from DB (limit=-1 for no limit)
-        try:
-            rows = db.get_all_images(limit=-1)
-        except Exception as e:
-            log(f"Error fetching from DB: {e}")
-            self.status_message = "Error DB"
-            return
 
         if resolved_image_ids is not None:
+             try:
+                 rows = db.get_all_images(limit=-1)
+             except Exception as e:
+                 log(f"Error fetching from DB: {e}")
+                 self.status_message = "Error DB"
+                 return
              if not resolved_image_ids:
                  log("No images matched selectors.")
                  self.status_message = "Done (no images)"
@@ -442,20 +441,17 @@ class TaggingRunner:
              log(f"Selector mode enabled. Matched {len(all_images)} images by ID.")
         elif not input_path or not input_path.strip():
              log("Input path empty. Processing all images in DB...")
+             try:
+                 rows = db.get_all_images(limit=-1)
+             except Exception as e:
+                 log(f"Error fetching from DB: {e}")
+                 self.status_message = "Error DB"
+                 return
              all_images = [row for row in rows]
         elif os.path.isdir(input_path):
-             import pathlib
-             p_in = pathlib.Path(input_path).resolve()
-             
-             # Filter rows by path
-             for row in rows:
-                 f_path = pathlib.Path(row['file_path']).resolve()
-                 # Check if file is inside input_path
-                 try:
-                     f_path.relative_to(p_in)
-                     all_images.append(row)
-                 except ValueError:
-                     continue
+             # Use folder_id-based lookup (same as SelectionRunner) to avoid
+             # path format mismatch (Windows vs WSL) when filtering by file_path.
+             all_images = db.get_images_by_folder(input_path)
         else:
             log(f"Input path not found or not a directory: {input_path}")
             self.status_message = "Error Path"
