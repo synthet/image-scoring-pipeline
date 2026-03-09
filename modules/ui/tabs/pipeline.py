@@ -130,7 +130,7 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
 
                 # PANEL: Active Job Monitor
                 with gr.Group(elem_classes=["panel", "monitor-card"]):
-                    components["monitor_html"] = gr.HTML(_build_idle_html())
+                    components["monitor_html"] = gr.HTML(_build_idle_html(recovery_info=app_config.get("job_recovery"), queued_jobs=[]))
                     with gr.Accordion("Console Output", open=False):
                         components["console_output"] = gr.Textbox(
                             lines=12, label="", max_lines=12, interactive=False, elem_classes=["console-code"]
@@ -268,7 +268,11 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
     if is_running:
         monitor_html = _build_monitor_html(mon_name, mon_msg, mon_cur, mon_tot, queued_jobs)
     else:
-        monitor_html = _build_idle_html(queued_jobs)
+        status = orchestrator.get_status()
+        monitor_html = _build_idle_html(
+            recovery_info=status.get("recovery"),
+            queued_jobs=queued_jobs,
+        )
 
     not_running = not is_running
 
@@ -342,13 +346,20 @@ def _render_queue_html(queued_jobs):
     return "".join(lines)
 
 
-def _build_idle_html(queued_jobs=None):
+def _build_idle_html(recovery_info=None, queued_jobs=None):
+    base = "<div class='panel-body'><p>No active jobs in the pipeline.</p>"
+    if recovery_info:
+        recovered = recovery_info.get("recovered_running_jobs") or []
+        interrupted = recovery_info.get("interrupted_pipeline_jobs") or []
+        auto_resumed = recovery_info.get("auto_resumed")
+        if recovered or interrupted or auto_resumed:
+            base += (
+                f"<p><strong>Recovery:</strong> marked {len(recovered)} running job(s) as interrupted; "
+                f"found {len(interrupted)} interrupted pipeline job(s); "
+                f"auto-resumed: {'yes' if auto_resumed else 'no'}.</p>"
+            )
     queued_jobs = queued_jobs or []
-    return (
-        "<div class='panel-body'><p>No active jobs in the pipeline.</p>"
-        + _render_queue_html(queued_jobs)
-        + "</div>"
-    )
+    return base + _render_queue_html(queued_jobs) + "</div>"
 
 
 def _build_monitor_html(name, msg, current, total, queued_jobs=None):

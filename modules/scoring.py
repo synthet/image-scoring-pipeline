@@ -1,4 +1,3 @@
-
 import os
 import threading
 import json
@@ -535,18 +534,21 @@ class ScoringRunner:
         processor.current_job_id = job_id
         
         try:
-            # Create a dummy job entry in DB
-            db.create_job(job_id, "manual_scoring", 1, file_path)
-            db.update_job_status(job_id, "running")
-            
-            processor.process_list([job], job_id_override=job_id)
+            # Create a dedicated job row in DB for manual scoring
+            db_job_id = db.create_job(file_path, job_type="manual_scoring", status="running", runner_state="running")
+            if db_job_id:
+                job.job_id = db_job_id
+                processor.current_job_id = db_job_id
+
+            processor.process_list([job], job_id_override=(db_job_id or job_id))
             
             # Check result
             # Retrieve latest data to confirm
             details = db.get_image_details(file_path)
             gen = details.get('score_general', 0)
             
-            db.update_job_status(job_id, "completed")
+            if db_job_id:
+                db.update_job_status(db_job_id, "completed", runner_state="completed")
             self.status_message = "Idle"
             return True, f"Scoring Complete. General Score: {gen:.2f}"
             

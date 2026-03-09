@@ -1537,9 +1537,9 @@ def create_api_router() -> APIRouter:
         Each job entry includes:
         - id: Unique job identifier
         - input_path: Path that was processed
-        - status: Job status (pending, running, completed, failed)
+        - status: Job status (pending, running, completed, failed, canceled, interrupted)
         - created_at: Job creation timestamp
-        - updated_at: Last update timestamp
+        - current_phase / next_phase_index / runner_state: Persisted execution cursor fields
         - log: Job log output (if available)
         
         **Query Parameters:**
