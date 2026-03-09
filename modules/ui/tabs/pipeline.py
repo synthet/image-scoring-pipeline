@@ -130,7 +130,7 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
 
                 # PANEL: Active Job Monitor
                 with gr.Group(elem_classes=["panel", "monitor-card"]):
-                    components["monitor_html"] = gr.HTML(_build_idle_html(app_config.get("job_recovery")))
+                    components["monitor_html"] = gr.HTML(_build_idle_html(recovery_info=app_config.get("job_recovery"), queued_jobs=[]))
                     with gr.Accordion("Console Output", open=False):
                         components["console_output"] = gr.Textbox(
                             lines=12, label="", max_lines=12, interactive=False, elem_classes=["console-code"]
@@ -160,20 +160,32 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
     def _run_scoring(path, force):
         if not path:
             return
-        job_id = db.create_job(path, phase_code="scoring")
-        scoring_runner.start_batch(path, job_id, skip_existing=not force)
+        db.enqueue_job(
+            path,
+            phase_code="scoring",
+            job_type="scoring",
+            queue_payload={"input_path": path, "skip_existing": not force},
+        )
 
     def _run_culling(path, force):
         if not path:
             return
-        job_id = db.create_job(path, phase_code="culling")
-        selection_runner.start_batch(path, job_id, force_rescan=force)
+        db.enqueue_job(
+            path,
+            phase_code="culling",
+            job_type="selection",
+            queue_payload={"input_path": path, "force_rescan": force},
+        )
 
     def _run_tagging(path, overwrite, captions):
         if not path:
             return
-        job_id = db.create_job(path, phase_code="keywords")
-        tagging_runner.start_batch(path, job_id, overwrite=overwrite, generate_captions=captions)
+        db.enqueue_job(
+            path,
+            phase_code="keywords",
+            job_type="tagging",
+            queue_payload={"input_path": path, "overwrite": overwrite, "generate_captions": captions},
+        )
 
     def _run_all_pending(path):
         if not path:
@@ -251,10 +263,16 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
         scoring_runner, tagging_runner, selection_runner
     )
 
+    queued_jobs = db.get_queued_jobs(limit=5)
+
     if is_running:
-        monitor_html = _build_monitor_html(mon_name, mon_msg, mon_cur, mon_tot)
+        monitor_html = _build_monitor_html(mon_name, mon_msg, mon_cur, mon_tot, queued_jobs)
     else:
-        monitor_html = _build_idle_html(orchestrator.get_status().get("recovery"))
+        status = orchestrator.get_status()
+        monitor_html = _build_idle_html(
+            recovery_info=status.get("recovery"),
+            queued_jobs=queued_jobs,
+        )
 
     not_running = not is_running
 
@@ -314,7 +332,21 @@ def _build_folder_summary(path, count):
     """
 
 
-def _build_idle_html(recovery_info=None):
+def _render_queue_html(queued_jobs):
+    if not queued_jobs:
+        return "<p class='phase-stats'>Queue: empty</p>"
+
+    lines = ["<div class='phase-stats'>Queue:</div>", "<ul class='phase-stats'>"]
+    for job in queued_jobs:
+        lines.append(
+            f"<li>#{job.get('id')} {job.get('job_type') or 'job'} "
+            f"(position {job.get('queue_position')})</li>"
+        )
+    lines.append("</ul>")
+    return "".join(lines)
+
+
+def _build_idle_html(recovery_info=None, queued_jobs=None):
     base = "<div class='panel-body'><p>No active jobs in the pipeline.</p>"
     if recovery_info:
         recovered = recovery_info.get("recovered_running_jobs") or []
@@ -326,10 +358,12 @@ def _build_idle_html(recovery_info=None):
                 f"found {len(interrupted)} interrupted pipeline job(s); "
                 f"auto-resumed: {'yes' if auto_resumed else 'no'}.</p>"
             )
-    return base + "</div>"
+    queued_jobs = queued_jobs or []
+    return base + _render_queue_html(queued_jobs) + "</div>"
 
 
-def _build_monitor_html(name, msg, current, total):
+def _build_monitor_html(name, msg, current, total, queued_jobs=None):
+    queued_jobs = queued_jobs or []
     pct = (current / total * 100) if total > 0 else 0
     return f"""
     <div class="panel-body">
@@ -338,6 +372,7 @@ def _build_monitor_html(name, msg, current, total):
       </div>
       <div class="phase-stats">{msg} ({current}/{total})</div>
       <div class="progress"><div class="progress-fill" style="width: {pct:.1f}%;"></div></div>
+      {_render_queue_html(queued_jobs)}
     </div>
     """
 

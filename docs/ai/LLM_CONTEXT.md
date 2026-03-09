@@ -45,7 +45,7 @@ Legacy/original helper scripts (still present but not the primary docs path):
 
 ## Scoring weights
 
-See **[current_model_weights.md](../reference/models/current_model_weights.md)**.
+See **[MODEL_WEIGHTS.md](../reference/models/MODEL_WEIGHTS.md)**.
 
 ## Critical rules / invariants
 

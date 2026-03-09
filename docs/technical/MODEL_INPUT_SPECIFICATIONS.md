@@ -18,7 +18,7 @@ This document describes the input format, score ranges, and constraints for the 
 ### Input Format
 
 - **Type:** Raw JPEG bytes (TensorFlow Hub `image_bytes_tensor`)
-- **Parameter name:** `image_bytes_tensor` (MUSIQ) or `image_bytes` (VILA)
+- **Parameter name:** `image_bytes_tensor` (MUSIQ)
 - **Preprocessing:** None required. The model handles variable sizes and aspect ratios internally.
 
 ### Documentation

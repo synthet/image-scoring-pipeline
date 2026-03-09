@@ -392,6 +392,66 @@ paths:
         '500':
           description: Failed to generate preview
 
+  /similar:
+    get:
+      tags: [Utilities]
+      summary: Find similar images
+      description: Find images visually similar to a given image using embedding-based cosine similarity.
+      parameters:
+        - name: image_id
+          in: query
+          required: true
+          schema: { type: integer, description: ID of the query image }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - name: folder_path
+          in: query
+          schema: { type: string, nullable: true }
+        - name: min_similarity
+          in: query
+          schema: { type: number, default: 0.80, minimum: 0, maximum: 1 }
+      responses:
+        '200':
+          description: Similar images with similarity scores
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query_image_id: { type: integer }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        image_id: { type: integer }
+                        file_path: { type: string }
+                        similarity: { type: number }
+                  count: { type: integer }
+        '404':
+          description: Query image not found
+
+  /duplicates/find:
+    post:
+      tags: [Utilities]
+      summary: Find near-duplicate image pairs
+      description: Find near-duplicate image pairs in the database using embedding similarity.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindDuplicatesRequest'
+      responses:
+        '200':
+          description: Duplicate pairs found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '500':
+          description: Search failed
+
   # --- Pipeline ---
   /pipeline/submit:
     post:
@@ -543,21 +603,33 @@ components:
         tagging_available: { type: boolean }
         clustering_available: { type: boolean, default: false }
 
-    ScoringStartRequest:
+    SelectorRequest:
       type: object
-      required: [input_path]
       properties:
-        input_path: { type: string, example: D:/Photos/2024 }
-        skip_existing: { type: boolean, default: true }
-        force_rescore: { type: boolean, default: false }
+        image_ids: { type: array, items: { type: integer } }
+        image_paths: { type: array, items: { type: string } }
+        folder_ids: { type: array, items: { type: integer } }
+        folder_paths: { type: array, items: { type: string } }
+        recursive: { type: boolean, default: true }
+
+    ScoringStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/SelectorRequest"
+        - type: object
+          properties:
+            input_path: { type: string, nullable: true, example: D:/Photos/2024 }
+            skip_existing: { type: boolean, default: true }
+            force_rescore: { type: boolean, default: false }
 
     TaggingStartRequest:
-      type: object
-      properties:
-        input_path: { type: string, default: '' }
-        custom_keywords: { type: array, items: { type: string } }
-        overwrite: { type: boolean, default: false }
-        generate_captions: { type: boolean, default: false }
+      allOf:
+        - $ref: "#/components/schemas/SelectorRequest"
+        - type: object
+          properties:
+            input_path: { type: string, nullable: true }
+            custom_keywords: { type: array, items: { type: string } }
+            overwrite: { type: boolean, default: false }
+            generate_captions: { type: boolean, default: false }
 
     SingleImageRequest:
       type: object
@@ -574,12 +646,22 @@ components:
         generate_captions: { type: boolean, default: true }
 
     ClusteringStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/SelectorRequest"
+        - type: object
+          properties:
+            input_path: { type: string, nullable: true }
+            threshold: { type: number, nullable: true }
+            time_gap: { type: integer, nullable: true }
+            force_rescan: { type: boolean, default: false }
+
+    FindDuplicatesRequest:
       type: object
+      description: Request for finding near-duplicate image pairs
       properties:
-        input_path: { type: string, nullable: true }
-        threshold: { type: number, nullable: true }
-        time_gap: { type: integer, nullable: true }
-        force_rescan: { type: boolean, default: false }
+        threshold: { type: number, nullable: true, description: Min cosine similarity (default 0.98) }
+        folder_path: { type: string, nullable: true, description: Restrict search to folder }
+        limit: { type: integer, nullable: true, description: Max pairs to return }
 
     PipelineSubmitRequest:
       type: object

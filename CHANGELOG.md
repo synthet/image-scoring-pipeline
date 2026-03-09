@@ -9,10 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-03-08
+
+### Changed
+- Version bump to 4.3.0.
+
+## [4.2.1] - 2026-03-08
+
+### Fixed
+- **Run Keywords**: Fixed "Run Keywords" button doing nothing when clicked. TaggingRunner now uses `db.get_images_by_folder()` (folder_id-based lookup) instead of pathlib filtering, matching SelectionRunner and avoiding path format mismatch (Windows vs WSL). Added missing `update_image_fields_batch` in `db.py` for batch keyword/title/description updates. Added missing `explain_phase_run_decision` import in `tagging.py`.
+
+## [4.2.0] - 2026-03-08
+
+### Added
+- **Phase Rerun Policy** (`modules/phases_policy.py`): Centralized logic for deciding if a processing phase (scoring, tagging, clustering) should execute or skip based on current vs. stored executor versions. Prevents redundant processing of already-completed phases.
+- **Diagnostics Endpoint**: Added GET `/api/diagnostics/phase-policy/{image_id}/{phase_code}` for deep inspection of rerun/skip decisions, returning stored vs. active versions and status details.
+- **PGVector Migration Plan**: Added `docs/technical/PGVECTOR_MIGRATION_PLAN_REFINED.md`, a detailed roadmap for migrating the Firebird database to PostgreSQL with pgvector for high-performance visual similarity search.
+
+### Changed
+- **Pipeline Integration**: Integrated `should_run_phase` policy checks across all runners: `modules/clustering.py`, `modules/pipeline.py`, `modules/selection_runner.py`, and `modules/tagging.py`.
+- **API Enhancements**: Main health and status endpoints now include more granular phase execution metadata.
+
 ## [4.1.0] - 2026-03-07
 
 ### Added
-- **Windows Native WebUI**: New `run_webui_windows.bat` and `scripts/setup/setup_windows_native.bat` for running the Gradio WebUI natively on Windows (no WSL). CPU-only, no VILA. Documented in README Option 3b and `docs/setup/WINDOWS_NATIVE_WEBUI_PLAN.md`.
+- **Windows Native WebUI**: New `run_webui_windows.bat` and `scripts/setup/setup_windows_native.bat` for running the Gradio WebUI natively on Windows (no WSL). CPU-only, no VILA. Documented in README Option 3b and `docs/plans/setup/WINDOWS_NATIVE_WEBUI_PLAN.md`.
 - **API Expansion** (`modules/api.py`): New clustering endpoints (start, stop, status), data query endpoints (images, folders, stacks, stats), pipeline submit, raw-preview utility. Clustering status added to `/api/status` and `/api/health`.
 - **API Documentation**: Added `docs/reference/api/openapi.yaml` (standalone OpenAPI 3.0 schema) and `docs/technical/API_CONTRACT.md` (concise endpoint and model reference).
 
@@ -41,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pipeline Tab**: New unified Pipeline tab replacing Folder Tree, Scoring, Keywords, Selection, Stacks, and Culling tabs. Single workflow view with folder tree, phase stepper, action bar, and job monitor (`modules/ui/tabs/pipeline.py`).
 - **Pipeline Orchestrator**: New `modules/pipeline_orchestrator.py` to coordinate pipeline phases and runner integration.
 - **Embedding Population Scripts**: Added `scripts/maintenance/populate_missing_embeddings.py` and `run_populate_missing_embeddings.bat` for backfilling embeddings.
-- **Design Documentation**: Added `docs/design/UI_PIPELINE_REDESIGN.md` and mockups for the pipeline-centric UI.
+- **Design Documentation**: Added `docs/plans/UI_PIPELINE_REDESIGN.md` and mockups for the pipeline-centric UI.
 - **Tag Propagation Tests**: Added `tests/test_tag_propagation.py`.
 
 ### Changed

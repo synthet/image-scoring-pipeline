@@ -4,7 +4,6 @@ import os
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-import sqlite3
 import logging
 from modules import db, thumbnails
 

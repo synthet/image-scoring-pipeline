@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__image-scoring__check_database_health",
+      "mcp__firebird-admin__list_tables",
+      "mcp__firebird-admin__get_table_schema",
+      "mcp__firebird-admin__run_sql",
+      "Bash(grep -n \"get_folder_tree\\\\|folder.*tree\" d:/Projects/image-scoring/modules/*.py)"
+    ]
+  }
+}
