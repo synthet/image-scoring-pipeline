@@ -50,6 +50,23 @@ def test_db(tmp_path_factory):
     db.DB_PATH = original_path
 
 
+
+
+def _insert_image_with_folder(folder: str, filename: str):
+    folder_id = db.get_or_create_folder(folder)
+    conn = db.get_db()
+    c = conn.cursor()
+    path = f"{folder}/{filename}"
+    c.execute(
+        "INSERT INTO images (file_path, folder_id, file_name) VALUES (?, ?, ?) RETURNING id",
+        (path, folder_id, filename)
+    )
+    row = c.fetchone()
+    conn.commit()
+    conn.close()
+    return row[0] if row else None
+
+
 def _add_test_image(folder="test_phases_folder", filename="test.jpg"):
     """Insert a minimal image row and return its id."""
     conn = db.get_db()
@@ -233,3 +250,42 @@ class TestFolderPhaseSummary:
     def test_done_when_all_done(self, test_db):
         """get_folder_phase_summary returns 'done' when all images in a folder are done."""
         pytest.skip("Requires full folder insert fixture — covered in integration tests")
+
+
+    def test_running_failed_skipped_semantics(self, test_db):
+        base = f"phase_semantics_{uuid.uuid4().hex[:6]}"
+
+        # running wins while active work exists
+        img1 = _insert_image_with_folder(base, "run_1.jpg")
+        img2 = _insert_image_with_folder(base, "run_2.jpg")
+        db.set_image_phase_status(img1, PhaseCode.SCORING, PhaseStatus.RUNNING)
+        summary = {r['code']: r for r in db.get_folder_phase_summary(base)}
+        assert summary['scoring']['status'] == 'running'
+
+        # failed when no done/skipped/running exists and at least one failed
+        fail_folder = f"{base}_failed"
+        fimg = _insert_image_with_folder(fail_folder, "fail_1.jpg")
+        _insert_image_with_folder(fail_folder, "fail_2.jpg")
+        db.set_image_phase_status(fimg, PhaseCode.KEYWORDS, PhaseStatus.FAILED)
+        fsum = {r['code']: r for r in db.get_folder_phase_summary(fail_folder)}
+        assert fsum['keywords']['status'] == 'failed'
+
+        # skipped when every image is skipped
+        skip_folder = f"{base}_skipped"
+        simg1 = _insert_image_with_folder(skip_folder, "skip_1.jpg")
+        simg2 = _insert_image_with_folder(skip_folder, "skip_2.jpg")
+        db.set_image_phase_status(simg1, PhaseCode.METADATA, PhaseStatus.SKIPPED)
+        db.set_image_phase_status(simg2, PhaseCode.METADATA, PhaseStatus.SKIPPED)
+        ssum = {r['code']: r for r in db.get_folder_phase_summary(skip_folder)}
+        assert ssum['metadata']['status'] == 'skipped'
+
+    def test_phase_aggregate_invalidated_on_status_update(self, test_db):
+        folder = f"phase_invalidate_{uuid.uuid4().hex[:6]}"
+        img = _insert_image_with_folder(folder, "inv.jpg")
+
+        first = {r['code']: r for r in db.get_folder_phase_summary(folder)}
+        assert first['scoring']['status'] == 'not_started'
+
+        db.set_image_phase_status(img, PhaseCode.SCORING, PhaseStatus.DONE)
+        second = {r['code']: r for r in db.get_folder_phase_summary(folder)}
+        assert second['scoring']['status'] == 'done'

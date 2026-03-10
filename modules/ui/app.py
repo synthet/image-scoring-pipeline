@@ -46,6 +46,8 @@ def create_ui():
         tagging_runner=tagging_runner,
         selection_runner=selection_runner
     )
+    recovery_info = orchestrator.recover_interrupted_jobs()
+    app_config["job_recovery"] = recovery_info
 
     # Register phase executors (binds phase codes to runner logic)
     phase_executors.register_all(
@@ -168,15 +170,19 @@ _SQL_FORBIDDEN_PATTERNS = re.compile(
 )
 
 
-def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None):
+def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None):
     """Configures FastAPI endpoints for the Gradio app."""
 
     # Setup REST API endpoints
     from modules import api
-    api.set_runners(scoring_runner, tagging_runner, clustering_runner)
+    api.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner)
     api_router = api.create_api_router()
     fastapi_app.include_router(api_router)
-    
+
+    @fastapi_app.on_event("shutdown")
+    async def _shutdown_dispatcher():
+        api.stop_dispatcher()
+
     @fastapi_app.get("/manifest.json")
     async def manifest_endpoint():
         """Serve a minimal web app manifest to prevent 404 errors."""

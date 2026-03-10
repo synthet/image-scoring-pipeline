@@ -1,6 +1,6 @@
 # Source Folder Reorganization Plan (D90 & D300)
 
-This plan outlines how to use the existing `fix_backup_structure.py` script to reorganize the **source** folders `D:\Photos\D90` and `D:\Photos\D300` so that their internal structure follows the `{camera}/{lens}/{year}/{date}/filename` convention based on EXIF metadata.
+This plan outlines how to use the existing `scripts/backup/fix_backup_structure.py` script to reorganize the **source** folders `D:\Photos\D90` and `D:\Photos\D300` so that their internal structure follows the `{camera}/{lens}/{year}/{date}/filename` convention based on EXIF metadata.
 
 ## Overview
 Even though the script uses the `--backup` argument name, it can safely be pointed to the `D:\Photos` drive to reorganize files in-place using the `--by-metadata` mode.
@@ -11,7 +11,7 @@ Even though the script uses the `--backup` argument name, it can safely be point
 Run these commands to generate a list of moves without actually modifying any files.
 1. **D90 Dry-Run**:
    ```powershell
-   python fix_backup_structure.py --by-metadata --backup D:\Photos --folder D90
+   python scripts/backup/fix_backup_structure.py --by-metadata --backup D:\Photos --folder D90
    ```
 2. **D300 Dry-Run**:
    ```powershell
@@ -23,11 +23,11 @@ Run these commands to generate a list of moves without actually modifying any fi
 Once the dry-runs are verified, run the commands with the `--execute` flag.
 1. **D90 Execution**:
    ```powershell
-   python fix_backup_structure.py --by-metadata --backup D:\Photos --folder D90 --execute
+   python scripts/backup/fix_backup_structure.py --by-metadata --backup D:\Photos --folder D90 --execute
    ```
 2. **D300 Execution**:
    ```powershell
-   python fix_backup_structure.py --by-metadata --backup D:\Photos --folder D300 --execute
+   python scripts/backup/fix_backup_structure.py --by-metadata --backup D:\Photos --folder D300 --execute
    ```
 
 ## Database Update Plan
@@ -35,7 +35,7 @@ Once the dry-runs are verified, run the commands with the `--execute` flag.
 > [!WARNING]
 > Moving files on the `D:\` drive will invalidate their paths in the Firebird database (`images.file_path`). You MUST update the database paths immediately after execution to maintain pipeline and UI functionality.
 
-Since `fix_backup_structure.py` generates a detailed execution log of every file moved, we can use this log to safely update the database paths without needing to re-index the entire library.
+Since `scripts/backup/fix_backup_structure.py` generates a detailed execution log of every file moved, we can use this log to safely update the database paths without needing to re-index the entire library.
 
 ### Phase 3: Update Database Paths
 
@@ -109,8 +109,8 @@ Since `fix_backup_structure.py` generates a detailed execution log of every file
 3. **Execute Database Updates**:
    Run the updater script on each execution log generated in Phase 2.
    ```powershell
-   python update_db_paths.py logs\fix_metadata_execute_D90_...log
-   python update_db_paths.py logs\fix_metadata_execute_D300_...log
+   python scripts/maintenance/update_db_paths.py scripts/backup/logs/fix_metadata_execute_D90_...log
+   python scripts/maintenance/update_db_paths.py scripts/backup/logs/fix_metadata_execute_D300_...log
    ```
    *Replace the `...` with the exact timestamp from your actual log files.*
 

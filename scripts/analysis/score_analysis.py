@@ -363,7 +363,7 @@ def run_verify_norm(out):
     out.append("  1. Backfill fix (pipeline.py): Now passes normalized_score when reusing DB scores.")
     out.append("")
     out.append("Remaining considerations:")
-    out.append("  2. repro_score_calc.py: applies (liqe-1)/4 to values that may already be normalized.")
+    out.append("  2. scripts/archive/repro_score_calc.py: applies (liqe-1)/4 to values that may already be normalized.")
     out.append("  3. recalc_scores.py: uses v>1.01 heuristic for raw vs normalized; fragile.")
     out.append("  4. Verify LIQE raw range: run scripts/analysis/check_liqe_range.py <image_path>")
 

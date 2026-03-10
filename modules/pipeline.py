@@ -17,6 +17,7 @@ from modules import db, thumbnails, xmp
 from modules import score_normalization as snorm
 from modules import config as app_config
 from modules.phases import PhaseCode, PhaseStatus
+from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
 from scripts.python.run_all_musiq_models import MultiModelMUSIQ
 from modules.liqe import LiqeScorer
@@ -139,6 +140,17 @@ class PrepWorker(PipelineWorker):
                         db.update_image_path(image_hash, job.image_path)
                     
                     # Skip Logic
+                    decision = explain_phase_run_decision(
+                        image_id,
+                        PhaseCode.SCORING,
+                        current_executor_version=self.scorer.VERSION,
+                        force_run=not job.skip_existing,
+                    )
+                    if not decision["should_run"]:
+                        job.status = "skipped"
+                        self.output_queue.put(job)
+                        return
+
                     if job.skip_existing:
                         # Check version/validity
                         current_ver = self.scorer.VERSION
@@ -265,6 +277,16 @@ class PrepWorker(PipelineWorker):
             # If we want to parallelize LIQE (CPU) vs MUSIQ (GPU/TF), we can do it here.
             # But let's keep it simple for now and do LIQE in Scoring thread unless it bottlenecks.
             
+            if job.image_id:
+                db.set_image_phase_status(
+                    job.image_id,
+                    PhaseCode.SCORING,
+                    PhaseStatus.RUNNING,
+                    app_version=APP_VERSION,
+                    executor_version=self.scorer.VERSION if self.scorer else None,
+                    job_id=job.job_id,
+                )
+
             self.output_queue.put(job)
             
         except Exception as e:
@@ -404,6 +426,16 @@ class ResultWorker(PipelineWorker):
         elif job.status == "failed":
             if self.progress_callback:
                 self.progress_callback(f"FAILED: {job.image_path} - {job.error}")
+            if job.image_id:
+                db.set_image_phase_status(
+                    job.image_id,
+                    PhaseCode.SCORING,
+                    PhaseStatus.FAILED,
+                    app_version=APP_VERSION,
+                    executor_version=self.scorer.VERSION if self.scorer else None,
+                    job_id=job.job_id,
+                    error=job.error,
+                )
                 
         elif job.status == "success":
             # Write Metadata using unified XMP module
