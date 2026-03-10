@@ -39,7 +39,7 @@ This document describes each Python environment referenced in the image-scoring 
   - **`scripts/wsl/setup_wsl_test_env.sh`** — creates this venv and installs test/ML deps.
   - **`scripts/powershell/Run-WSLTests.ps1`** — invokes the WSL test script; default `$VenvDir` is `~/.venvs/image-scoring-tests`.
 - **Override:** Set `VENV_DIR` (e.g. `VENV_DIR=~/.venvs/image-scoring-tests`) when calling the shell scripts; use `-VenvDir` in the PowerShell script.
-- **Docs:** [WSL Tests](../testing/WSL_TESTS.md), [Test Status](../TEST_STATUS.md).
+- **Docs:** [WSL Tests](../testing/WSL_TESTS.md), [Test Status](../testing/TEST_STATUS.md).
 
 ---
 

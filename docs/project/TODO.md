@@ -145,7 +145,7 @@ From `docs/technical/CULLING_FEATURE.md`:
 ## Related Documents
 
 - [Docs index](../README.md)
-- [Current model weights](../reference/models/current_model_weights.md)
+- [Model weights](../reference/models/MODEL_WEIGHTS.md)
 - [Weighted scoring strategy](../technical/WEIGHTED_SCORING_STRATEGY.md)
 - [Culling feature](../technical/CULLING_FEATURE.md)
 - [In-browser RAW preview](../technical/INBROWSER_RAW_PREVIEW.md)

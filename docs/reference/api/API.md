@@ -27,6 +27,16 @@ Currently, the API does not require authentication. Consider adding authenticati
 
 ## Endpoints
 
+### Shared Selector Options
+- `image_ids`
+- `image_paths`
+- `folder_ids`
+- `folder_paths`
+- `recursive` (default `true`)
+
+Overlapping selectors are deduplicated before execution.
+
+
 ### Scoring Operations
 
 #### Start Batch Scoring
@@ -36,6 +46,9 @@ Content-Type: application/json
 
 {
   "input_path": "/path/to/images",
+  "folder_paths": ["/path/to/images"],
+  "image_ids": [101, 102],
+  "recursive": true,
   "skip_existing": true,
   "force_rescore": false
 }
@@ -147,6 +160,9 @@ Content-Type: application/json
 
 {
   "input_path": "/path/to/images",
+  "folder_ids": [12],
+  "image_paths": ["/path/to/images/a.jpg"],
+  "recursive": true,
   "custom_keywords": ["landscape", "sunset"],
   "overwrite": false,
   "generate_captions": true

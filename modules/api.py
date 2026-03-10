@@ -46,11 +46,48 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 import os
+import logging
 from pathlib import Path
+from modules.phases_policy import explain_phase_run_decision
+from modules.selector_resolver import resolve_selectors
 
+from modules.job_dispatcher import JobDispatcher
+
+logger = logging.getLogger(__name__)
 
 # Request/Response Models with comprehensive descriptions for LLM agents
-class ScoringStartRequest(BaseModel):
+
+
+class SelectorRequest(BaseModel):
+    """Shared selector schema for batch operations."""
+
+    image_ids: Optional[List[int]] = Field(
+        None,
+        description="Specific image IDs to process.",
+        example=[101, 102]
+    )
+    image_paths: Optional[List[str]] = Field(
+        None,
+        description="Specific image file paths to process.",
+        example=["D:/Photos/2024/img001.jpg"]
+    )
+    folder_ids: Optional[List[int]] = Field(
+        None,
+        description="Folder IDs to process.",
+        example=[12]
+    )
+    folder_paths: Optional[List[str]] = Field(
+        None,
+        description="Folder paths to process.",
+        example=["D:/Photos/2024"]
+    )
+    recursive: bool = Field(
+        True,
+        description="If True, include subfolders when folder selectors are used.",
+        example=True
+    )
+
+class ScoringStartRequest(SelectorRequest):
     """Request model for starting a batch image scoring job.
     
     This endpoint initiates quality assessment of images using multiple AI models
@@ -71,8 +108,8 @@ class ScoringStartRequest(BaseModel):
             "force_rescore": false
         }
     """
-    input_path: str = Field(
-        ...,
+    input_path: Optional[str] = Field(
+        None,
         description="Directory path containing images to score. Supports Windows (D:\\...) and WSL (/mnt/...) paths.",
         example="D:/Photos/2024"
     )
@@ -96,14 +133,14 @@ class ScoringStartRequest(BaseModel):
     })
 
 
-class TaggingStartRequest(BaseModel):
+class TaggingStartRequest(SelectorRequest):
     """Request model for starting a batch image tagging/keyword extraction job.
     
     Uses CLIP (Contrastive Language-Image Pre-Training) to automatically tag images
     with relevant keywords and optionally generate captions using BLIP.
     
     Attributes:
-        input_path: Directory path containing images to tag. Empty string processes all images in database.
+        input_path: Optional directory path containing images to tag.
         custom_keywords: Optional list of custom keywords to use instead of default set.
                        If None, uses default keywords (landscape, portrait, urban, etc.).
         overwrite: If True, overwrite existing keywords in database. Default: False.
@@ -117,9 +154,9 @@ class TaggingStartRequest(BaseModel):
             "generate_captions": true
         }
     """
-    input_path: str = Field(
-        "",
-        description="Directory path containing images to tag. Empty string processes all images in database.",
+    input_path: Optional[str] = Field(
+        None,
+        description="Optional directory path containing images to tag.",
         example="D:/Photos/2024"
     )
     custom_keywords: Optional[List[str]] = Field(
@@ -212,6 +249,20 @@ class TaggingSingleRequest(BaseModel):
             "generate_captions": True
         }
     })
+
+
+
+
+class PhaseDecisionResponse(BaseModel):
+    """Phase policy decision details for one image+phase."""
+    image_id: int
+    phase_code: str
+    should_run: bool
+    reason: str
+    force_run: bool
+    current_executor_version: Optional[str] = None
+    stored_status: Optional[str] = None
+    stored_executor_version: Optional[str] = None
 
 
 class StatusResponse(BaseModel):
@@ -339,7 +390,7 @@ class FindDuplicatesRequest(BaseModel):
     )
 
 
-class ClusteringStartRequest(BaseModel):
+class ClusteringStartRequest(SelectorRequest):
     """Request model for starting a clustering job.
 
     Clusters images in a folder based on visual similarity and temporal proximity.
@@ -370,6 +421,23 @@ class ClusteringStartRequest(BaseModel):
         description="If True, re-cluster folders even if already processed.",
         example=False
     )
+
+
+class ImportRegisterRequest(BaseModel):
+    """Request model for registering images from a folder (import without scoring).
+
+    Scans a folder for image files and adds them to the database.
+    Supports Windows (D:\\...) and WSL (/mnt/...) paths.
+    """
+    folder_path: str = Field(
+        ...,
+        description="Directory path containing images to import.",
+        example="D:/Photos/2024"
+    )
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {"folder_path": "D:/Photos/2024"}
+    })
 
 
 class PipelineSubmitRequest(BaseModel):
@@ -409,6 +477,14 @@ class PipelineSubmitRequest(BaseModel):
     clustering_threshold: Optional[float] = Field(
         None,
         description="Distance threshold for clustering (if 'cluster' is in operations)."
+    )
+    clustering_time_gap: Optional[int] = Field(
+        None,
+        description="Time gap in seconds for clustering burst grouping (if 'cluster' is in operations)."
+    )
+    clustering_force_rescan: bool = Field(
+        False,
+        description="If True, force re-clustering even when folder was already clustered."
     )
 
 
@@ -459,14 +535,27 @@ class ApiResponse(BaseModel):
 _scoring_runner = None
 _tagging_runner = None
 _clustering_runner = None
+_selection_runner = None
+_job_dispatcher = JobDispatcher()
 
 
-def set_runners(scoring_runner, tagging_runner, clustering_runner=None):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None):
     """Set the runner instances for API access."""
-    global _scoring_runner, _tagging_runner, _clustering_runner
+    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _job_dispatcher
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
+    _selection_runner = selection_runner
+    _job_dispatcher.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner)
+    _job_dispatcher.start()
+
+
+def stop_dispatcher():
+    """Stop background dispatcher thread, used during server shutdown."""
+    try:
+        _job_dispatcher.stop()
+    except Exception as exc:
+        logger.warning("Failed to stop JobDispatcher cleanly: %s", exc)
 
 
 def create_api_router() -> APIRouter:
@@ -701,7 +790,9 @@ def create_api_router() -> APIRouter:
                                 "skip_existing": {"type": "boolean", "default": True},
                                 "custom_keywords": {"type": "array", "items": {"type": "string"}},
                                 "generate_captions": {"type": "boolean", "default": False},
-                                "clustering_threshold": {"type": "number"}
+                                "clustering_threshold": {"type": "number"},
+                                "clustering_time_gap": {"type": "integer"},
+                                "clustering_force_rescan": {"type": "boolean", "default": False}
                             }
                         }
                     }
@@ -826,41 +917,51 @@ def create_api_router() -> APIRouter:
 
         if _scoring_runner is None:
             raise HTTPException(status_code=503, detail="Scoring runner not available")
-        
-        if _scoring_runner.is_running:
-            return ApiResponse(
-                success=False,
-                message="Scoring job is already running",
-                data={"is_running": True}
-            )
-        
-        # Validate path
-        if not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
-        
-        # Create job ID
+
+        if not any([request.input_path, request.image_ids, request.image_paths, request.folder_ids, request.folder_paths]):
+            raise HTTPException(status_code=400, detail="Provide input_path or at least one selector")
+
+        selector_folder_paths = list(request.folder_paths or [])
+        if request.input_path:
+            if not os.path.exists(request.input_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path not found: {request.input_path}"
+                )
+            selector_folder_paths.append(request.input_path)
+
+        selector_result = resolve_selectors(
+            image_ids=request.image_ids,
+            image_paths=request.image_paths,
+            folder_ids=request.folder_ids,
+            folder_paths=selector_folder_paths,
+            recursive=request.recursive,
+            index_missing=True,
+        )
+
         from modules import db
-        job_id = db.create_job(request.input_path)
-        
-        # Start batch
+        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        job_source = request.input_path or "SELECTOR_SCORING"
         skip_existing = not request.force_rescore if request.force_rescore else request.skip_existing
-        result = _scoring_runner.start_batch(request.input_path, job_id, skip_existing)
-        
-        if result == "Started":
-            return ApiResponse(
-                success=True,
-                message="Scoring job started successfully",
-                data={"job_id": job_id, "input_path": request.input_path}
-            )
-        else:
-            return ApiResponse(
-                success=False,
-                message=result,
-                data={"error": result}
-            )
+        queue_payload = {
+            "skip_existing": skip_existing,
+            "input_path": request.input_path,
+            "resolved_image_ids": selector_result.get("resolved_image_ids"),
+        }
+        job_id, queue_position = db.enqueue_job(
+            job_source,
+            phase_code="scoring",
+            job_type="scoring",
+            queue_payload=queue_payload,
+        )
+        if job_id is None:
+            raise HTTPException(status_code=500, detail="Failed to enqueue scoring job")
+
+        return ApiResponse(
+            success=True,
+            message="Scoring job queued",
+            data={"job_id": job_id, "input_path": request.input_path, "resolved_count": resolved_count, "queue_position": queue_position}
+        )
     
     @router.post(
         "/scoring/stop",
@@ -946,6 +1047,8 @@ def create_api_router() -> APIRouter:
         - Updating metadata for images scored before metadata features were added
         
         The operation runs asynchronously. Monitor progress with GET /api/scoring/status.
+
+        Note: this endpoint starts immediately and intentionally bypasses the persisted queue.
         """,
         response_description="Fix operation start confirmation"
     )
@@ -1039,7 +1142,7 @@ def create_api_router() -> APIRouter:
         - Title is auto-generated from caption (first 50 chars)
         
         **Path Handling:**
-        - Empty input_path processes all images in database
+        - Provide input_path and/or selectors (image_ids, image_paths, folder_ids, folder_paths)
         - Directory path processes images in that folder and subfolders
         - Paths are automatically converted between Windows/WSL formats
         
@@ -1055,47 +1158,55 @@ def create_api_router() -> APIRouter:
         if _tagging_runner is None:
             raise HTTPException(status_code=503, detail="Tagging runner not available")
         
-        if _tagging_runner.is_running:
-            return ApiResponse(
-                success=False,
-                message="Tagging job is already running",
-                data={"is_running": True}
-            )
-        
-        # Validate path if provided
-        if request.input_path and not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
-        
-        # Create job ID
-        from modules import db
-        job_id = db.create_job(request.input_path or "ALL_IMAGES_TAGGING")
-        
-        result = _tagging_runner.start_batch(
-            request.input_path,
-            job_id=job_id,
-            custom_keywords=request.custom_keywords,
-            overwrite=request.overwrite,
-            generate_captions=request.generate_captions
+        if not any([request.input_path, request.image_ids, request.image_paths, request.folder_ids, request.folder_paths]):
+            raise HTTPException(status_code=400, detail="Provide input_path or at least one selector")
+
+        selector_folder_paths = list(request.folder_paths or [])
+        if request.input_path:
+            if not os.path.exists(request.input_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path not found: {request.input_path}"
+                )
+            selector_folder_paths.append(request.input_path)
+
+        selector_result = resolve_selectors(
+            image_ids=request.image_ids,
+            image_paths=request.image_paths,
+            folder_ids=request.folder_ids,
+            folder_paths=selector_folder_paths,
+            recursive=request.recursive,
+            index_missing=True,
         )
-        
-        if result == "Started":
-            return ApiResponse(
-                success=True,
-                message="Tagging job started successfully",
-                data={
-                    "job_id": job_id,
-                    "input_path": request.input_path or "all images"
-                }
-            )
-        else:
-            return ApiResponse(
-                success=False,
-                message=result,
-                data={"error": result}
-            )
+
+        from modules import db
+        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        job_source = request.input_path or "SELECTOR_TAGGING"
+        job_id, queue_position = db.enqueue_job(
+            job_source,
+            phase_code="keywords",
+            job_type="tagging",
+            queue_payload={
+                "input_path": request.input_path,
+                "custom_keywords": request.custom_keywords,
+                "overwrite": request.overwrite,
+                "generate_captions": request.generate_captions,
+                "resolved_image_ids": selector_result.get("resolved_image_ids"),
+            },
+        )
+        if job_id is None:
+            raise HTTPException(status_code=500, detail="Failed to enqueue tagging job")
+
+        return ApiResponse(
+            success=True,
+            message="Tagging job queued",
+            data={
+                "job_id": job_id,
+                "input_path": request.input_path,
+                "resolved_count": resolved_count,
+                "queue_position": queue_position,
+            }
+        )
     
     @router.post(
         "/tagging/stop",
@@ -1426,9 +1537,9 @@ def create_api_router() -> APIRouter:
         Each job entry includes:
         - id: Unique job identifier
         - input_path: Path that was processed
-        - status: Job status (pending, running, completed, failed)
+        - status: Job status (pending, running, completed, failed, canceled, interrupted)
         - created_at: Job creation timestamp
-        - updated_at: Last update timestamp
+        - current_phase / next_phase_index / runner_state: Persisted execution cursor fields
         - log: Job log output (if available)
         
         **Query Parameters:**
@@ -1443,7 +1554,23 @@ def create_api_router() -> APIRouter:
             return jobs
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-    
+
+    @router.get(
+        "/jobs/queue",
+        response_model=Dict[str, Any],
+        summary="Get queue state",
+        description="Returns dispatcher state and currently queued jobs."
+    )
+    async def get_jobs_queue(limit: int = 200):
+        from modules import db
+        try:
+            state = _job_dispatcher.get_state()
+            state["queue"] = db.get_queued_jobs(limit=limit)
+            state["queue_size"] = len(state["queue"])
+            return state
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     @router.get(
         "/jobs/{job_id}",
         response_model=Dict[str, Any],
@@ -1463,16 +1590,38 @@ def create_api_router() -> APIRouter:
         """Get details for a specific job."""
         from modules import db
         try:
-            jobs = db.get_jobs(limit=1000)  # Get enough to find the job
-            job = next((j for j in jobs if j.get('id') == job_id), None)
+            job = db.get_job_by_id(job_id)
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
+            job["phases"] = db.get_job_phases(job_id)
             return job
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-            
+
+    @router.post(
+        "/jobs/{job_id}/cancel",
+        response_model=ApiResponse,
+        summary="Cancel a queued job",
+        description="Cancels queued jobs. Running jobs currently return running_not_supported."
+    )
+    async def cancel_job(job_id: int):
+        from modules import db
+        try:
+            result = db.request_cancel_job(job_id)
+            if not result.get("success"):
+                if result.get("reason") == "not_found":
+                    raise HTTPException(status_code=404, detail="Job not found")
+                if result.get("reason") == "running_not_supported":
+                    return ApiResponse(success=False, message="Running job cancellation is not supported yet", data=result)
+                return ApiResponse(success=False, message="Job cannot be cancelled", data=result)
+            return ApiResponse(success=True, message="Cancellation requested", data={"job_id": job_id, **result})
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     # ========== Similar Images Endpoint ==========
 
     @router.get(
@@ -1576,43 +1725,50 @@ def create_api_router() -> APIRouter:
         if _clustering_runner is None:
             raise HTTPException(status_code=503, detail="Clustering runner not available")
 
-        if _clustering_runner.is_running:
-            return ApiResponse(
-                success=False,
-                message="Clustering job is already running",
-                data={"is_running": True}
-            )
+        if not any([request.input_path, request.image_ids, request.image_paths, request.folder_ids, request.folder_paths]):
+            raise HTTPException(status_code=400, detail="Provide input_path or at least one selector")
 
-        # Validate path if provided
-        if request.input_path and not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
+        selector_folder_paths = list(request.folder_paths or [])
+        if request.input_path:
+            if not os.path.exists(request.input_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Path not found: {request.input_path}"
+                )
+            selector_folder_paths.append(request.input_path)
 
-        from modules import db
-        job_id = db.create_job(request.input_path or "ALL_FOLDERS_CLUSTERING")
-
-        result = _clustering_runner.start_batch(
-            request.input_path,
-            threshold=request.threshold,
-            time_gap=request.time_gap,
-            force_rescan=request.force_rescan,
-            job_id=job_id
+        selector_result = resolve_selectors(
+            image_ids=request.image_ids,
+            image_paths=request.image_paths,
+            folder_ids=request.folder_ids,
+            folder_paths=selector_folder_paths,
+            recursive=request.recursive,
+            index_missing=True,
         )
 
-        if result == "Started":
-            return ApiResponse(
-                success=True,
-                message="Clustering job started successfully",
-                data={"job_id": job_id, "input_path": request.input_path or "all folders"}
-            )
-        else:
-            return ApiResponse(
-                success=False,
-                message=result,
-                data={"error": result}
-            )
+        from modules import db
+        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        job_source = request.input_path or "SELECTOR_CLUSTERING"
+        job_id, queue_position = db.enqueue_job(
+            job_source,
+            phase_code="culling",
+            job_type="clustering",
+            queue_payload={
+                "input_path": request.input_path,
+                "threshold": request.threshold,
+                "time_gap": request.time_gap,
+                "force_rescan": request.force_rescan,
+                "resolved_image_ids": selector_result.get("resolved_image_ids"),
+            },
+        )
+        if job_id is None:
+            raise HTTPException(status_code=500, detail="Failed to enqueue clustering job")
+
+        return ApiResponse(
+            success=True,
+            message="Clustering job queued",
+            data={"job_id": job_id, "input_path": request.input_path, "resolved_count": resolved_count, "queue_position": queue_position}
+        )
 
     @router.post(
         "/clustering/stop",
@@ -1820,6 +1976,92 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    # ========== Import Register Endpoint ==========
+
+    @router.post(
+        "/import/register",
+        response_model=ApiResponse,
+        summary="Register images from folder (import without scoring)",
+        description="""
+        Scans a folder for image files and adds them to the database without scoring.
+        Skips images already in the database (by path or EXIF ImageUniqueID).
+        Supports Windows (D:\\...) and WSL (/mnt/...) paths.
+        """
+    )
+    async def import_register(request: ImportRegisterRequest):
+        """Register images from a folder via API (used by Electron when Gradio is available)."""
+        from modules.ui.app import _check_rate_limit
+        from modules import db, utils
+        from modules.exif_extractor import extract_exif
+
+        _check_rate_limit("import_register")
+
+        # Convert Windows path to WSL for backend access (Python runs in WSL)
+        folder_path = request.folder_path
+        try:
+            if (":" in folder_path or "\\" in folder_path) and hasattr(utils, "convert_path_to_wsl"):
+                folder_path = utils.convert_path_to_wsl(folder_path)
+        except Exception:
+            pass
+
+        if not os.path.isdir(folder_path):
+            raise HTTPException(status_code=400, detail=f"Path is not a directory or not found: {request.folder_path}")
+
+        IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".nef", ".arw", ".cr2", ".dng", ".heic", ".webp", ".tiff", ".tif", ".raw", ".orf", ".rw2"}
+        added = 0
+        skipped = 0
+        errors = []
+
+        try:
+            folder_id = db.get_or_create_folder(folder_path)
+            if not folder_id:
+                raise HTTPException(status_code=500, detail="Failed to get or create folder")
+
+            entries = os.listdir(folder_path)
+            for name in entries:
+                file_path = os.path.join(folder_path, name)
+                if not os.path.isfile(file_path):
+                    continue
+                ext = os.path.splitext(name)[1].lower()
+                if ext not in IMAGE_EXTENSIONS:
+                    continue
+
+                file_name = os.path.basename(name)
+                file_type = ext.lstrip(".") or "unknown"
+
+                if db.find_image_id_by_path(file_path):
+                    skipped += 1
+                    continue
+
+                image_uuid = None
+                try:
+                    exif_data = extract_exif(file_path)
+                    if exif_data:
+                        uid = exif_data.get("image_unique_id")
+                        if uid and isinstance(uid, str) and uid.strip():
+                            image_uuid = uid.strip()
+                            if db.find_image_id_by_uuid(image_uuid):
+                                skipped += 1
+                                continue
+                except Exception:
+                    pass
+
+                image_id = db.register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid)
+                if image_id:
+                    added += 1
+                else:
+                    errors.append(f"{file_name}: insert failed")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        return ApiResponse(
+            success=True,
+            message=f"Import complete: {added} added, {skipped} skipped",
+            data={"added": added, "skipped": skipped, "errors": errors}
+        )
+
     # ========== Pipeline Submit Endpoint ==========
 
     @router.post(
@@ -1830,9 +2072,11 @@ def create_api_router() -> APIRouter:
         Submits an image file or folder for sequential processing through the pipeline.
 
         Operations are executed in order: score -> tag -> cluster.
-        Only the first applicable operation is started immediately; subsequent operations
-        should be triggered by the Electron app after the previous one completes
-        (via status polling or WebSocket events).
+        For folder submissions, only the first applicable operation is queued immediately;
+        subsequent operations should be triggered by the Electron app after the previous
+        one completes (via status polling or WebSocket events).
+
+        For single-file submissions, the first operation runs immediately.
 
         For single files, only 'score' and 'tag' operations are supported.
         'cluster' requires a folder path.
@@ -1843,137 +2087,169 @@ def create_api_router() -> APIRouter:
         from modules.ui.app import _check_rate_limit
         _check_rate_limit("pipeline_submit")
 
+        if not request.input_path or not request.input_path.strip():
+            raise HTTPException(status_code=400, detail="input_path is required")
         if not os.path.exists(request.input_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path not found: {request.input_path}"
-            )
+            raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
 
         valid_ops = {"score", "tag", "cluster"}
         invalid_ops = [op for op in request.operations if op not in valid_ops]
         if invalid_ops:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid operations: {invalid_ops}. Valid: {sorted(valid_ops)}"
-            )
-
+            raise HTTPException(status_code=400, detail=f"Invalid operations: {invalid_ops}. Valid: {sorted(valid_ops)}")
         if not request.operations:
             raise HTTPException(status_code=400, detail="At least one operation is required")
 
         is_file = os.path.isfile(request.input_path)
-
-        # For single files, clustering is not supported
         if is_file and "cluster" in request.operations:
-            raise HTTPException(
-                status_code=400,
-                detail="Clustering requires a folder path, not a single file"
-            )
+            raise HTTPException(status_code=400, detail="Clustering requires a folder path, not a single file")
 
         from modules import db
-
-        # Start the first operation in the pipeline
         first_op = request.operations[0]
-        remaining_ops = request.operations[1:]
+        phase_plan = list(request.operations)
+
+        if is_file:
+            if first_op == "score":
+                if _scoring_runner is None:
+                    raise HTTPException(status_code=503, detail="Scoring runner not available")
+                if _scoring_runner.is_running:
+                    return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True})
+                success, message = _scoring_runner.run_single_image(request.input_path)
+            elif first_op == "tag":
+                if _tagging_runner is None:
+                    raise HTTPException(status_code=503, detail="Tagging runner not available")
+                if _tagging_runner.is_running:
+                    return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True})
+                success, message = _tagging_runner.run_single_image(
+                    request.input_path,
+                    request.custom_keywords,
+                    request.generate_captions,
+                )
+            else:
+                raise HTTPException(status_code=400, detail="Single-file pipeline supports score/tag only")
+
+            phase_plan = [
+                {"phase_order": i, "phase_code": op, "state": "completed" if i == 0 else "pending"}
+                for i, op in enumerate(request.operations)
+            ]
+            return ApiResponse(
+                success=success,
+                message=message,
+                data={
+                    "file_path": request.input_path,
+                    "completed_operation": first_op,
+                    "phase_plan": phase_plan,
+                    "remaining_operations": request.operations[1:],
+                },
+            )
+
+        # API operations map to persisted phase codes used by DB phase/status sync.
+        op_to_phase_code = {
+            "score": "scoring",
+            "tag": "keywords",
+            "cluster": "culling",
+        }
+        op_to_label = {
+            "score": "scoring",
+            "tag": "tagging",
+            "cluster": "clustering",
+        }
+        phase_plan_codes = [op_to_phase_code.get(op, op) for op in request.operations]
 
         if first_op == "score":
             if _scoring_runner is None:
                 raise HTTPException(status_code=503, detail="Scoring runner not available")
-            if _scoring_runner.is_running:
-                return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True})
-
-            if is_file:
-                success, message = _scoring_runner.run_single_image(request.input_path)
-                return ApiResponse(
-                    success=success,
-                    message=message,
-                    data={
-                        "file_path": request.input_path,
-                        "completed_operation": "score",
-                        "remaining_operations": remaining_ops,
-                    }
-                )
-            else:
-                job_id = db.create_job(request.input_path)
-                result = _scoring_runner.start_batch(request.input_path, job_id, request.skip_existing)
-                if result == "Started":
-                    return ApiResponse(
-                        success=True,
-                        message="Pipeline started: scoring",
-                        data={
-                            "job_id": job_id,
-                            "input_path": request.input_path,
-                            "current_operation": "score",
-                            "remaining_operations": remaining_ops,
-                        }
-                    )
-                return ApiResponse(success=False, message=result, data={"error": result})
-
+            job_id, queue_position = db.enqueue_job(
+                request.input_path,
+                phase_code="scoring",
+                job_type="scoring",
+                queue_payload={"input_path": request.input_path, "skip_existing": request.skip_existing},
+            )
         elif first_op == "tag":
             if _tagging_runner is None:
                 raise HTTPException(status_code=503, detail="Tagging runner not available")
-            if _tagging_runner.is_running:
-                return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True})
-
-            if is_file:
-                success, message = _tagging_runner.run_single_image(
-                    request.input_path,
-                    request.custom_keywords,
-                    request.generate_captions
-                )
-                return ApiResponse(
-                    success=success,
-                    message=message,
-                    data={
-                        "file_path": request.input_path,
-                        "completed_operation": "tag",
-                        "remaining_operations": remaining_ops,
-                    }
-                )
-            else:
-                job_id = db.create_job(request.input_path)
-                result = _tagging_runner.start_batch(
-                    request.input_path,
-                    job_id=job_id,
-                    custom_keywords=request.custom_keywords,
-                    overwrite=not request.skip_existing,
-                    generate_captions=request.generate_captions
-                )
-                if result == "Started":
-                    return ApiResponse(
-                        success=True,
-                        message="Pipeline started: tagging",
-                        data={
-                            "job_id": job_id,
-                            "input_path": request.input_path,
-                            "current_operation": "tag",
-                            "remaining_operations": remaining_ops,
-                        }
-                    )
-                return ApiResponse(success=False, message=result, data={"error": result})
-
-        elif first_op == "cluster":
+            job_id, queue_position = db.enqueue_job(
+                request.input_path,
+                phase_code="keywords",
+                job_type="tagging",
+                queue_payload={
+                    "input_path": request.input_path,
+                    "custom_keywords": request.custom_keywords,
+                    "overwrite": not request.skip_existing,
+                    "generate_captions": request.generate_captions,
+                },
+            )
+        else:
             if _clustering_runner is None:
                 raise HTTPException(status_code=503, detail="Clustering runner not available")
-            if _clustering_runner.is_running:
-                return ApiResponse(success=False, message="Clustering runner is busy", data={"is_running": True})
-
-            job_id = db.create_job(request.input_path)
-            result = _clustering_runner.start_batch(
+            job_id, queue_position = db.enqueue_job(
                 request.input_path,
-                threshold=request.clustering_threshold,
-                job_id=job_id
+                phase_code="culling",
+                job_type="clustering",
+                queue_payload={
+                    "input_path": request.input_path,
+                    "threshold": request.clustering_threshold,
+                    "time_gap": request.clustering_time_gap,
+                    "force_rescan": request.clustering_force_rescan,
+                },
             )
-            if result == "Started":
-                return ApiResponse(
-                    success=True,
-                    message="Pipeline started: clustering",
-                    data={
-                        "job_id": job_id,
-                        "input_path": request.input_path,
-                        "current_operation": "cluster",
-                        "remaining_operations": remaining_ops,
-                    }
-                )
-            return ApiResponse(success=False, message=result, data={"error": result})
+
+        if job_id is None:
+            raise HTTPException(status_code=500, detail=f"Failed to enqueue pipeline job for operation: {first_op}")
+
+        phase_rows = db.create_job_phases(job_id, phase_plan_codes)
+
+        return ApiResponse(
+            success=True,
+            message=f"Pipeline queued: {op_to_label[first_op]}",
+            data={
+                "job_id": job_id,
+                "input_path": request.input_path,
+                "current_operation": first_op,
+                "queue_position": queue_position,
+                "phase_plan": phase_rows,
+                "remaining_operations": request.operations[1:],
+            },
+        )
+
+
+    @router.get(
+        "/phases/decision",
+        response_model=PhaseDecisionResponse,
+        summary="Explain phase run/skip decision",
+        description="Returns policy diagnostics describing why a phase would run or be skipped for an image."
+    )
+    async def get_phase_decision(
+        image_id: int = Query(..., description="Image ID"),
+        phase_code: str = Query(..., description="Phase code (scoring|culling|keywords|...)"),
+        current_executor_version: Optional[str] = Query(None, description="Optional explicit executor version override"),
+        force_run: bool = Query(False, description="If true, policy returns run decision as forced"),
+    ):
+        from modules import db
+        from modules.phases import PhaseCode
+
+        phase_code_normalized = (phase_code or "").strip().lower()
+        valid_phase_codes = {code.value for code in PhaseCode}
+        if phase_code_normalized not in valid_phase_codes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid phase_code: '{phase_code}'. Valid: {sorted(valid_phase_codes)}",
+            )
+
+        conn = db.get_db()
+        try:
+            c = conn.cursor()
+            c.execute("SELECT id FROM images WHERE id = ?", (image_id,))
+            if c.fetchone() is None:
+                raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
+        finally:
+            conn.close()
+
+        return explain_phase_run_decision(
+            image_id=image_id,
+            phase_code=phase_code_normalized,
+            current_executor_version=current_executor_version,
+            force_run=force_run,
+        )
 
     return router
+

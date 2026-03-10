@@ -1,8 +1,8 @@
-﻿# WSL Python Wrapper Verification for VILA Integration
+# WSL Python Wrapper Verification for MUSIQ + LIQE Processing
 
-## âœ… Status: All Scripts Verified
+## Status: All Scripts Verified
 
-All batch and PowerShell scripts are now using the correct WSL wrapper with TensorFlow virtual environment for MUSIQ + VILA processing.
+All batch and PowerShell scripts are now using the correct WSL wrapper with TensorFlow virtual environment for MUSIQ + LIQE processing.
 
 ## Script Verification
 
@@ -60,13 +60,13 @@ All batch and PowerShell scripts are now using the correct WSL wrapper with Tens
 - Single-line conversion with replace chaining
 - **More elegant** but functionally equivalent
 
-## Why This Matters for VILA
+## Why This Matters for MUSIQ + LIQE Processing
 
-### Requirements for VILA/MUSIQ Processing
+### Requirements for MUSIQ/LIQE Processing
 1. âœ… **TensorFlow 2.x**: Available in `~/.venvs/tf/`
-2. âœ… **Kaggle Hub**: Installed in WSL environment
+2. âœ… **PyTorch**: For LIQE model (installed in WSL environment)
 3. âœ… **GPU Support**: Available via WSL (if configured)
-4. âœ… **Model Loading**: MUSIQ (TF Hub) + VILA (Kaggle Hub)
+4. âœ… **Model Loading**: MUSIQ (TF Hub) + LIQE (PyTorch)
 
 ### Why Gallery Generation Doesn't Need WSL
 - `gallery_generator.py` only uses standard Python libraries
@@ -83,14 +83,14 @@ wsl bash -c "source ~/.venvs/tf/bin/activate && python --version"
 ```
 Expected: `Python 3.x.x`
 
-### Test VILA Integration
+### Test Model Integration
 ```powershell
 # Test imports and configuration
-wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python test_vila.py"
+wsl bash -c "source ~/.venvs/tf/bin/activate && cd /path/to/image-scoring && python -c \"from modules.scoring import get_runner; r=get_runner(); print('Models OK' if r else 'Check config')\""
 ```
 Expected:
 - âœ“ TensorFlow and kagglehub imported
-- âœ“ VILA model registered
+- âœ“ LIQE model registered
 - âœ“ Model type and weights configured
 
 ### Test Full Processing
@@ -101,7 +101,7 @@ create_gallery.bat "D:\Photos\TestFolder"
 Expected:
 - Step 1: Uses WSL environment
 - MUSIQ models load successfully
-- VILA model loads (if Kaggle auth configured)
+- LIQE model loads (PyTorch)
 - JSON files generated with all model scores
 - Step 2: Gallery generated and opened
 
@@ -118,7 +118,7 @@ if %errorlevel% == 0 (
 )
 ```
 
-**Note**: VILA may not work in fallback mode without proper TensorFlow + Kaggle Hub setup on Windows.
+**Note**: LIQE requires PyTorch; MUSIQ requires TensorFlow. Both work in the WSL environment.
 
 ## Verification Checklist
 
@@ -134,7 +134,7 @@ if %errorlevel% == 0 (
 
 ## Summary
 
-âœ… **All scripts are correctly configured** to use the WSL TensorFlow environment for VILA model processing.
+âœ… **All scripts are correctly configured** to use the WSL TensorFlow environment for MUSIQ + LIQE model processing.
 
 **Key Points:**
 1. Image processing (batch_process_images.py) â†’ **WSL + TensorFlow venv**
@@ -142,5 +142,5 @@ if %errorlevel% == 0 (
 3. Path conversion â†’ **Comprehensive** (supports all drive letters)
 4. Fallback â†’ **Windows Python** (if WSL unavailable)
 
-**Result:** VILA models will load and process correctly when using these scripts with proper Kaggle authentication.
+**Result:** MUSIQ and LIQE models will load and process correctly when using these scripts in the WSL environment.
 
