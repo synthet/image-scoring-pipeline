@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-03-10
+
+### Added
+- **Standalone Migration Runner** (`scripts/run_migration.py`): Run Phase 1 DB schema migration independently of the WebUI. Supports `--db-path` and `--skip-backup` for CI, scheduled runs, or when Electron holds DB locks.
+
+### Changed
+- **DB Schema Phase 1** (`modules/db.py`): Integrity + index hardening on startup. Orphan `STACKS.BEST_IMAGE_ID` repair, unique index on `IMAGES.FILE_PATH`, composite indexes for folder/stack score queries, FK cleanup on `CULLING_PICKS`, and `FK_STACKS_BEST_IMAGE` constraint. Ref: `docs/plans/database/DB_SCHEMA_REFACTOR_PLAN.md`.
+- **Favicon**: Updated `static/favicon.ico`.
+
 ## [4.3.1] - 2026-03-09
 
 ### Fixed
