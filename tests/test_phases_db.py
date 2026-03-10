@@ -195,6 +195,48 @@ class TestSetImagePhaseStatus:
         assert count == 1, f"Expected attempt_count=1 after rerun, got {count}"
 
 
+    def test_skip_metadata_and_retry_clear(self, test_db):
+        """skipped stores reason/actor and retry to running clears skip metadata."""
+        img_id = _add_test_image(filename="skip_test.jpg")
+        if img_id is None:
+            pytest.skip("Could not insert test image")
+
+        db.set_image_phase_status(
+            img_id, PhaseCode.CULLING, PhaseStatus.SKIPPED,
+            skip_reason="manual decision", skipped_by="tester"
+        )
+
+        conn = db.get_db()
+        c = conn.cursor()
+        phase_id = db.get_phase_id(PhaseCode.CULLING)
+        c.execute(
+            "SELECT status, skip_reason, skipped_by FROM image_phase_status WHERE image_id = ? AND phase_id = ?",
+            (img_id, phase_id)
+        )
+        row = c.fetchone()
+        conn.close()
+
+        assert row is not None
+        assert row[0].strip() == PhaseStatus.SKIPPED
+        assert row[1] == "manual decision"
+        assert row[2].strip() == "tester"
+
+        db.set_image_phase_status(img_id, PhaseCode.CULLING, PhaseStatus.RUNNING)
+
+        conn = db.get_db()
+        c = conn.cursor()
+        c.execute(
+            "SELECT status, skip_reason, skipped_by FROM image_phase_status WHERE image_id = ? AND phase_id = ?",
+            (img_id, phase_id)
+        )
+        row2 = c.fetchone()
+        conn.close()
+
+        assert row2[0].strip() == PhaseStatus.RUNNING
+        assert row2[1] is None
+        assert row2[2] is None
+
+
 class TestFolderPhaseSummary:
     def test_partial_when_mixed_status(self, test_db):
         """

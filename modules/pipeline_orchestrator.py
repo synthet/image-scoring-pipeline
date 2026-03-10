@@ -34,14 +34,42 @@ class PipelineOrchestrator:
                 return "Pipeline is already running."
 
             self.folder_path = folder_path
+
+            # get_folder_phase_summary returns a LIST of dicts:
+            #   [{code, name, sort_order, status, done_count, total_count, ...}, ...]
             summary_list = db.get_folder_phase_summary(folder_path)
             summary_by_code = {item["code"]: item for item in summary_list}
+            phases_by_code = {p["code"]: p for p in db.get_all_phases(enabled_only=True)}
 
+            # Build ordered list of pending phases:
+            # - done means complete
+            # - optional + skipped means intentionally bypassed
+            # - default_skip optional phases are auto-bypassed
             phase_plan: List[str] = []
             for phase in self.PHASE_ORDER:
-                phase_info = summary_by_code.get(phase.value)
-                if phase_info is None or phase_info.get("status") != "done":
-                    phase_plan.append(phase.value)
+                code = phase.value
+                phase_info = summary_by_code.get(code) or {}
+                phase_def = phases_by_code.get(code) or {}
+                phase_status = phase_info.get("status")
+                is_optional = bool(phase_def.get("optional"))
+                default_skip = bool(phase_def.get("default_skip"))
+
+                if phase_status == "done":
+                    continue
+                if is_optional and phase_status == "skipped":
+                    continue
+                if is_optional and default_skip and phase_status in (None, "not_started"):
+                    logger.info("Pipeline: default-skipping optional phase '%s'", code)
+                    db.set_folder_phase_status(
+                        folder_path=self.folder_path,
+                        phase_code=code,
+                        status="skipped",
+                        reason="default_skip",
+                        actor="system",
+                    )
+                    continue
+
+                phase_plan.append(code)
 
             if not phase_plan:
                 self.folder_path = None
