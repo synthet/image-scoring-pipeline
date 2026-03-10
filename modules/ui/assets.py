@@ -444,6 +444,16 @@ select, .svelte-dropdown {
     font-weight: 600 !important;
     color: var(--text-primary) !important;
     border-bottom: 1px solid var(--border-color) !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* Fix dropdown triangle alignment in all accordions (Gradio label-wrap + icon) */
+.accordion .label-wrap .icon,
+button.label-wrap .icon {
+    display: inline-flex !important;
+    align-items: center !important;
+    vertical-align: middle !important;
 }
 
 /* ========== PAGINATION ========== */
@@ -1202,6 +1212,14 @@ button.media-button.svelte-ao1xvt {
   padding: 8px 12px !important;
   margin: 0 !important;
   box-shadow: none !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.options-accordion .label-wrap .icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  vertical-align: middle !important;
 }
 .options-accordion .form > :last-child .label-wrap {
   border-bottom: none !important;

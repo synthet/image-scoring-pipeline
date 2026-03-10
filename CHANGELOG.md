@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.1] - 2026-03-09
+
+### Fixed
+- **UI Accordion Alignment**: Fixed dropdown triangle/icon alignment in accordions (Gradio label-wrap + icon) in `modules/ui/assets.py`. Icons now display inline-flex with proper vertical alignment.
+
+### Removed
+- **Cleanup**: Removed `recovered_data.json` from repository.
+
 ## [4.3.0] - 2026-03-08
 
 ### Changed
