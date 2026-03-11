@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: musiq-postgres
+    environment:
+      POSTGRES_USER: musiq
+      POSTGRES_PASSWORD: musiq
+      POSTGRES_DB: musiq
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U musiq -d musiq"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   webui:
     build:
       context: .
@@ -10,7 +28,11 @@ services:
     ports:
       - "7860:7860"
     environment:
-      - FIREBIRD_HOST=host.docker.internal
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=musiq
+      - POSTGRES_USER=musiq
+      - POSTGRES_PASSWORD=musiq
       - DOCKER_CONTAINER=1
     volumes:
       - .:/app
@@ -28,6 +50,10 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  postgres_data:
