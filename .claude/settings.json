@@ -5,7 +5,37 @@
       "mcp__firebird-admin__list_tables",
       "mcp__firebird-admin__get_table_schema",
       "mcp__firebird-admin__run_sql",
-      "Bash(grep -n \"get_folder_tree\\\\|folder.*tree\" d:/Projects/image-scoring/modules/*.py)"
+      "Bash(grep -n \"get_folder_tree\\\\|folder.*tree\" d:/Projects/image-scoring/modules/*.py)",
+      "Read(//d/Projects/electron-image-scoring/**)",
+      "Read(//d/Projects/electron-image-scoring/mcp-server/**)",
+      "Read(//d/Projects/**)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.anthropic.com)",
+      "Read(//c/Users/owner/.gemini/antigravity/**)",
+      "Bash(npm view @anthropic-ai/electron-mcp)",
+      "Bash(npm search electron-mcp)",
+      "Bash(npm view electron-mcp-server)",
+      "Bash(openssl rand -hex 32)",
+      "Bash(npm view electron-mcp-server dependencies)",
+      "Bash(npm view electron-mcp-server version)",
+      "Bash(npm view @modelcontextprotocol/sdk versions --json)",
+      "Bash(node --version)",
+      "Bash(pip show mcp)",
+      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; help\\(FastMCP\\)\")",
+      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; m = FastMCP\\(''test''\\); print\\(type\\(m._mcp_server\\)\\); print\\(dir\\(m\\)\\)\")",
+      "Bash(npm run build)",
+      "Bash(timeout 5 node dist/index.js)",
+      "Bash(printf '{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"id\"\":1,\"\"method\"\":\"\"initialize\"\",\"\"params\"\":{\"\"protocolVersion\"\":\"\"2024-11-05\"\",\"\"capabilities\"\":{},\"\"clientInfo\"\":{\"\"name\"\":\"\"test\"\",\"\"version\"\":\"\"1.0\"\"}}}\\\\n{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"id\"\":2,\"\"method\"\":\"\"tools/list\"\"}\\\\n{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"id\"\":3,\"\"method\"\":\"\"tools/call\"\",\"\"params\"\":{\"\"name\"\":\"\"get_system_stats\"\",\"\"arguments\"\":{}}}\\\\n{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"id\"\":4,\"\"method\"\":\"\"tools/call\"\",\"\"params\"\":{\"\"name\"\":\"\"api_health\"\",\"\"arguments\"\":{}}}\\\\n')",
+      "Bash(timeout 10 node dist/index.js)",
+      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; m = FastMCP\\(''test''\\); print\\([x for x in dir\\(m\\) if ''sse'' in x.lower\\(\\) or ''app'' in x.lower\\(\\)]\\)\")",
+      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; help\\(FastMCP.tool\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(python -c \"from mcp.types import ToolAnnotations; print\\(ToolAnnotations.__doc__\\); print\\(ToolAnnotations.model_fields.keys\\(\\)\\)\")",
+      "WebFetch(domain:127.0.0.1)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\owner\\.gemini\\antigravity",
+      "d:\\Projects\\electron-image-scoring"
     ]
   }
 }

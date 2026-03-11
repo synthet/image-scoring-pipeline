@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-03-10
+
+### Added
+- **Keyword Normalization (Phase 2)** (`modules/db.py`): Created `KEYWORDS_DIM` and `IMAGE_KEYWORDS` tables for structured keyword management. Implemented automatic migration of existing BLOB keywords.
+- **FastMCP Integration** (`modules/mcp_server.py`): Migrated the `image-scoring` MCP server to use `FastMCP` for automatic schema generation and streamlined tool definitions.
+- **Gradio MCP Server** (`launch.py`): Explicitly enabled Gradio's built-in MCP server via the `GRADIO_MCP_SERVER` environment variable to expose UI components to AI agents.
+
+### Changed
+- **Database Connectivity** (`modules/db.py`): Updated Windows Firebird connections to use TCP (`inet://127.0.0.1/`) by default instead of direct file access, preventing file locking conflicts (I/O errors) between the WebUI and Cursor MCP servers. Added `FIREBIRD_USE_LOCAL_PATH` fallback.
+- **Database Context Manager** (`modules/db.py`): Added `db.connection()` context manager to ensure safe resource cleanup.
+
 ## [4.4.0] - 2026-03-10
 
 ### Added
