@@ -4,7 +4,7 @@
 			"path": "."
 		},
 		{
-			"path": "../electron-image-scoring"
+			"path": "<ELECTRON_IMAGE_SCORING_PATH>"
 		}
 	],
 	"settings": {

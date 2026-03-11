@@ -4,7 +4,7 @@ description: Update CHANGELOG.md with recent changes, commit, and push
 
 // turbo-all
 
-Follow the `git-changelog` skill (`d:\Projects\image-scoring\.agent\skills\git-changelog\SKILL.md`).
+Follow the `git-changelog` skill (`.agent/skills/git-changelog/SKILL.md`) for:
 
 1. **Check status & recent history**:
    Use `git_status` and `git_log` (last 10) on `d:\Projects\image-scoring` to understand what changed.

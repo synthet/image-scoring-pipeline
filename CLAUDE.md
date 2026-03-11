@@ -6,8 +6,8 @@ AI-powered image scoring, tagging, and clustering engine using MUSIQ, LIQE, BLIP
 
 | Project | Path | Role |
 |---------|------|------|
-| **Python Backend** (this) | `D:\Projects\image-scoring` | AI scoring engine, FastAPI server, Firebird DB schema owner |
-| **Electron Frontend** | `D:\Projects\electron-image-scoring` | Desktop UI, IPC query layer, React/Vite |
+| **Python Backend** (this) | `https://github.com/synthet/image-scoring` | AI scoring engine, FastAPI server, Firebird DB schema owner |
+| **Electron Frontend** | `https://github.com/synthet/electron-image-scoring` | Desktop UI, IPC query layer, React/Vite |
 
 This project is the **schema authority** — all DDL migrations live in `modules/db.py`. The Electron app queries the same Firebird database but does not modify schema.
 
@@ -22,7 +22,7 @@ This project is the **schema authority** — all DDL migrations live in `modules
 
 ## Electron Frontend Integration Points
 
-- **Shared DB:** `SCORING_HISTORY.FDB` (Firebird), queried by `D:\Projects\electron-image-scoring\electron\db.ts`
+- **Shared DB:** `SCORING_HISTORY.FDB` (Firebird), queried by [db.ts](https://github.com/synthet/electron-image-scoring/blob/master/electron/db.ts)
 - **REST API:** Electron calls `http://localhost:8000` for scoring/tagging/clustering jobs
 - **IPC contract:** Electron expects specific column names and result shapes from DB queries — do not rename columns without updating `electron/db.ts`
 - **Dual-write:** When modifying keyword or metadata write paths, ensure both `modules/db.py` and `electron/db.ts` stay in sync

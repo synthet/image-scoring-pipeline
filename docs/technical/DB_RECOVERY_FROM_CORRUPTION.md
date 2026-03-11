@@ -29,10 +29,10 @@ If the corrupted file opens, you can compare and recover data.
 ### Option A: Compare Script (Recommended)
 
 ```powershell
-cd D:\Projects\image-scoring
+# Run from project root
 python scripts/maintenance/compare_corrupted_db.py ^
-  --restored D:\Projects\image-scoring\SCORING_HISTORY.FDB ^
-  --corrupted D:\Projects\image-scoring\SCORING_HISTORY.FDB.corrupted ^
+  --restored SCORING_HISTORY.FDB ^
+  --corrupted SCORING_HISTORY.FDB.corrupted ^
   --export recovered_data.json
 ```
 
@@ -50,15 +50,15 @@ With `--export`, missing data is written to JSON for manual merge or a follow-up
 If the corrupted file fails to open, try:
 
 ```cmd
-cd D:\Projects\image-scoring\Firebird
-gfix -mend -user sysdba -password masterkey "D:\Projects\image-scoring\SCORING_HISTORY.FDB.corrupted"
+# Adjust path to your Firebird directory if gfix is not in PATH
+gfix -mend -user sysdba -password masterkey "SCORING_HISTORY.FDB.corrupted"
 ```
 
 Then attempt backup/restore:
 
 ```cmd
-gbak -b -g -user sysdba -password masterkey "D:\Projects\image-scoring\SCORING_HISTORY.FDB.corrupted" backup.fbk
-gbak -c -user sysdba -password masterkey backup.fbk "D:\Projects\image-scoring\recovered.FDB"
+gbak -b -g -user sysdba -password masterkey "SCORING_HISTORY.FDB.corrupted" backup.fbk
+gbak -c -user sysdba -password masterkey backup.fbk "recovered.FDB"
 ```
 
 - `-g` disables garbage collection during backup (helps with corruption)

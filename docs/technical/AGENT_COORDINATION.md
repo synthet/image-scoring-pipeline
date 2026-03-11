@@ -1,6 +1,6 @@
 # Agent Coordination: Integration Guide
 
-This document defines the coordination protocols for AI agents working across the `image-scoring` (backend) and `electron-image-scoring` (gallery) projects.
+This document defines the coordination protocols for AI agents working across the [image-scoring](https://github.com/synthet/image-scoring) (backend) and [electron-image-scoring](https://github.com/synthet/electron-image-scoring) (gallery) projects.
 
 ## 🏗️ Architectural Overview
 

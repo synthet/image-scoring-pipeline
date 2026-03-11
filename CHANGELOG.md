@@ -9,10 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.6.1] - 2026-03-10
+
+### Added
+- **Dual-write Guidelines** (`CLAUDE.md`): Added requirements for staying in sync when modifying keyword or metadata write paths.
+- **GitHub Links in Docs** (`docs/technical/AGENT_COORDINATION.md`): Improved coordination protocols with direct repository references.
+
+### Changed
+- **Salvage Script Robustness** (`scripts/archive/migrate_salvage.py`): Improved path and connection handling for Firebird salvage operations.
+- **Project Progress**: Updated roadmaps for database refactoring and PostgreSQL migration.
+- **Environment Tweaks**: Workspace and environment configuration refinements for better development experience.
+
 ## [4.6.0] - 2026-03-10
 
 ### Added
-- **Agent Coordination Standards** ([docs/technical/AGENT_COORDINATION.md](file:///d:/Projects/image-scoring/docs/technical/AGENT_COORDINATION.md)): New integration protocols for backend/frontend AI agent collaboration.
+- **Agent Coordination Standards** ([docs/technical/AGENT_COORDINATION.md](docs/technical/AGENT_COORDINATION.md)): New integration protocols for backend/frontend AI agent collaboration.
 - **Optimized Data Queries** (`modules/db.py`): New `get_images_paginated_with_count` for faster image/count retrieval in a single DB trip.
 - **Project Roadmaps**: Added tracking for `docs/plans/database/` and `docs/plans/embedding/` refactors.
 
@@ -462,8 +473,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/run_docker` - Launch Image Scoring application using Docker Compose (GPU-accelerated)
   - `/run_tests` - Run the image scoring test suite (Pytest)
 - **Portability**:
-  - Created [config.example.json](file:///d:/Projects/image-scoring/config.example.json) as a template for new installations.
-  - Replaced 50+ hardcoded path instances (e.g., `d:\Projects\image-scoring`) with generic placeholders across all documentation and guides.
+  - Created `config.example.json` as a template for new installations.
+  - Replaced 50+ hardcoded path instances with generic placeholders across all documentation and guides.
 
 ### Changed
 - **Documentation structure**: Reorganized `docs/` into categorized sections with an updated index (`docs/README.md`).

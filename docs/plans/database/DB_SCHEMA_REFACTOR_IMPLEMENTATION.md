@@ -27,14 +27,14 @@ This guide implements the phased refactor described in `DB_SCHEMA_REFACTOR_PLAN.
 ## Architecture & Approach
 
 ### Schema Authority
-- **Python backend:** `D:\Projects\image-scoring\modules\db.py`
+- **Python backend:** [db.py](https://github.com/synthet/image-scoring/blob/master/modules/db.py)
   - `_init_db_impl()` (line 1009) owns all DDL via try/except migration blocks
   - New migration blocks inserted **before** `conn.close()` at line 1564
   - Uses `_table_exists()`, `_column_exists()`, `_index_exists()`, `_constraint_exists()` helpers (lines ~980-1007)
   - All DDL is idempotent; wrapped in try/except; commits after each step
 
 ### Query Layer
-- **Electron frontend:** `D:\Projects\electron-image-scoring\electron\db.ts`
+- **Electron frontend:** [db.ts](https://github.com/synthet/electron-image-scoring/blob/master/electron/db.ts)
   - Owns all Electron-side queries + connection pooling
   - Calls `query<T>()` which serializes operations via `queryChain` promise queue
   - `ensureStackCacheTable()` creates `STACK_CACHE` on first use (to be handed off to Python in Phase 1)
@@ -115,8 +115,8 @@ Before any migration:
 
 ```bash
 # Using Firebird gbak (preferred — doesn't require shutdown)
-gbak -b -user sysdba -password masterkey localhost:D:\Projects\image-scoring\SCORING_HISTORY.FDB \
-     D:\Projects\image-scoring\backups\SCORING_HISTORY_pre_refactor_phase1_$(date +%Y%m%d_%H%M%S).fbk
+gbak -b -user sysdba -password masterkey localhost:SCORING_HISTORY.FDB \
+     backups/SCORING_HISTORY_pre_refactor_phase1_$(date +%Y%m%d_%H%M%S).fbk
 
 # Or add this to db.py for application-level backup
 def _backup_db_gbak(suffix=""):
@@ -139,7 +139,7 @@ def _backup_db_gbak(suffix=""):
 
 **Goal:** Fix orphan data, add missing indexes, enforce FKs, remove duplicates. No IPC contract changes.
 
-**File:** `D:\Projects\image-scoring\modules\db.py`
+**File:** [db.py](https://github.com/synthet/image-scoring/blob/master/modules/db.py)
 **Insert location:** Before `conn.close()` at line 1564 (just before `# Seed phases` comment)
 
 ### Implementation Steps
@@ -525,7 +525,7 @@ except Exception as e:
 
 ### Phase 1: Electron Changes
 
-**File:** `D:\Projects\electron-image-scoring\electron\db.ts`
+**File:** [db.ts](https://github.com/synthet/electron-image-scoring/blob/master/electron/db.ts)
 
 Simplify `ensureStackCacheTable()` (~line 860) to a probe-only function:
 
@@ -571,8 +571,8 @@ SELECT rdb$index_name FROM rdb$indices WHERE rdb$relation_name = 'IMAGES' ORDER 
 **Goal:** Normalize keyword storage and backfill IMAGE_XMP metadata. Enable backward-compatible dual-write so legacy `IMAGES.KEYWORDS` BLOB stays synchronized during transition.
 
 **Files:**
-- `D:\Projects\image-scoring\modules\db.py` — table creation, backfill functions, dual-write logic
-- `D:\Projects\electron-image-scoring\electron\db.ts` — `updateImageDetails()` dual-write
+- `modules/db.py` — table creation, backfill functions, dual-write logic
+- [db.ts](https://github.com/synthet/electron-image-scoring/blob/master/electron/db.ts) — `updateImageDetails()` dual-write
 
 ### Step 2.1 — Create KEYWORDS_DIM and IMAGE_KEYWORDS Tables (Python)
 
@@ -907,7 +907,7 @@ Call from `_init_db_impl()` after `_backfill_keywords()` completes:
 
 ### Step 2.7 — Electron Dual-Write in updateImageDetails() (Electron)
 
-**File:** `D:\Projects\electron-image-scoring\electron\db.ts`
+**File:** [db.ts](https://github.com/synthet/electron-image-scoring/blob/master/electron/db.ts)
 
 Add new helper function:
 
@@ -1031,7 +1031,7 @@ ROWS 20;
 
 **Goal:** Replace slow BLOB queries with indexed alternatives. No IPC/API contract shape changes.
 
-**File:** `D:\Projects\electron-image-scoring\electron\db.ts`
+**File:** [db.ts](https://github.com/synthet/electron-image-scoring/blob/master/electron/db.ts)
 
 ### Step 3.1 — Refactor getKeywords() (line 456)
 

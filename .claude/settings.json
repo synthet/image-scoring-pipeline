@@ -5,9 +5,9 @@
       "mcp__firebird-admin__list_tables",
       "mcp__firebird-admin__get_table_schema",
       "mcp__firebird-admin__run_sql",
-      "Bash(grep -n \"get_folder_tree\\\\|folder.*tree\" d:/Projects/image-scoring/modules/*.py)",
-      "Read(//d/Projects/electron-image-scoring/**)",
-      "Read(//d/Projects/electron-image-scoring/mcp-server/**)",
+      "Read(//d/Projects/image-scoring/modules/*.py)",
+      "Read(<ELECTRON_IMAGE_SCORING_PATH>/**)",
+      "Read(<ELECTRON_IMAGE_SCORING_PATH>/mcp-server/**)",
       "Read(//d/Projects/**)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.anthropic.com)",
@@ -35,7 +35,7 @@
     ],
     "additionalDirectories": [
       "c:\\Users\\owner\\.gemini\\antigravity",
-      "d:\\Projects\\electron-image-scoring"
+      "<ELECTRON_IMAGE_SCORING_PATH>"
     ]
   }
 }

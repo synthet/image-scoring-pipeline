@@ -89,7 +89,7 @@ def test_consumers_import_and_call_get_thumb_wsl():
     row = {
         "id": 1,
         "thumbnail_path": "/mnt/d/Projects/image-scoring/thumbnails/ab/abcdef1234567890.jpg",
-        "thumbnail_path_win": r"D:\Projects\image-scoring\thumbnails\ab\abcdef1234567890.jpg",
+        "thumbnail_path_win": r"thumbnails\ab\abcdef1234567890.jpg",
     }
     wsl = thumbnails.get_thumb_wsl(row)
     win = thumbnails.get_thumb_win(row)

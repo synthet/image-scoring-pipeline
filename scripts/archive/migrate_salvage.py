@@ -18,8 +18,8 @@ from firebird.driver import connect, driver_config
 driver_config.fb_client_library.value = os.path.join(_fb_dir, "fbclient.dll")
 import sys
 
-SALVAGE_DB = "localhost:D:\\Projects\\image-scoring\\SCORING_HISTORY_SALVAGE.FDB"
-RESTORED_DB = "localhost:D:\\Projects\\image-scoring\\SCORING_HISTORY.FDB"
+SALVAGE_DB = f"localhost:{_project_root}/SCORING_HISTORY_SALVAGE.FDB"
+RESTORED_DB = f"localhost:{_project_root}/SCORING_HISTORY.FDB"
 USER = "SYSDBA"
 PASSWORD = "masterkey"
 
