@@ -209,6 +209,7 @@ All tools are available when:
 
 ## Documentation References
 
+- **[Agent Coordination](docs/technical/AGENT_COORDINATION.md)** - Integration and coordination guide for AI agents
 - **[MCP Tools Reference](.agent/mcp_tools_reference.md)** - Quick reference guide for AI agents
 - **[MCP Debugging Tools](docs/technical/MCP_DEBUGGING_TOOLS.md)** - Detailed documentation
 - **[DB Schema](docs/technical/DB_SCHEMA.md)** - Firebird database schema reference

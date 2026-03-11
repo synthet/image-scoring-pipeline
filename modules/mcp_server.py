@@ -992,18 +992,24 @@ def create_mcp_sse_app(mount_path: str = "/mcp"):
     # Cursor sometimes sends POST/DELETE to /mcp/sse directly instead of the endpoint URL.
     # Let's alias POST /sse to the /messages handler and handle DELETE gracefully.
     try:
-        from starlette.routing import Route
+        from starlette.routing import Route, Mount
         from starlette.responses import Response
         
-        messages_route = next((r for r in app.routes if getattr(r, 'path', '') == '/messages'), None)
-        if messages_route:
-            # Alias POST /sse to the messages endpoint handler
-            app.routes.append(Route('/sse', endpoint=messages_route.endpoint, methods=['POST']))
+        # Find the messages mount
+        messages_mount = next((r for r in app.routes if isinstance(r, Mount) and r.path == '/messages'), None)
+        
+        if messages_mount:
+            async def sse_post_alias(scope, receive, send):
+                # Rewrite path internally to match the mount's expectations
+                scope["path"] = "/messages"
+                await messages_mount.handle(scope, receive, send)
+                
+            app.routes.insert(0, Route('/sse', endpoint=sse_post_alias, methods=['POST']))
             
         async def dummy_delete_handler(request):
             return Response(status_code=200)
             
-        app.routes.append(Route('/sse', endpoint=dummy_delete_handler, methods=['DELETE']))
+        app.routes.insert(0, Route('/sse', endpoint=dummy_delete_handler, methods=['DELETE']))
     except Exception as e:
         logger.warning(f"Failed to alias POST/DELETE routes for SSE: {e}")
 

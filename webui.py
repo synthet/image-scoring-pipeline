@@ -225,7 +225,7 @@ def main():
             print(f"MCP Server: mount_registered={has_mcp_mount}")
         except Exception:
             pass
-
+    
     # WebSocket Endpoint for Real-time Events
     @app.websocket("/ws/updates")
     async def websocket_endpoint(websocket: WebSocket):
@@ -248,6 +248,7 @@ def main():
     # and our custom endpoints sit at /source-image etc.
     app = gr.mount_gradio_app(app, demo, path="/", allowed_paths=allowed_paths, favicon_path="static/favicon.ico")
     
+    # Apply logging filter to suppress repetitive Gradio queue polling messages
 
 
     # Apply logging filter to suppress repetitive Gradio queue polling messages

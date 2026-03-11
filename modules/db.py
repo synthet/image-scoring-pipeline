@@ -196,16 +196,16 @@ def get_db():
         # Configure connection
         # Configure connection
         # Assuming Embedded structure: db file in project root, dlls in Firebird/
-        
         if os.name == 'nt':
-             # Windows: Use TCP (inet://) so MCP servers and UI sharing DB don't lock each other out
+             # Windows: Use TCP with explicit port so MCP servers and UI sharing DB don't lock each other out.
+             # Using 127.0.0.1/3050: prevents the embedded fbclient.dll from using local IPC.
              # FIREBIRD_USE_LOCAL_PATH=1 allows fallback to embedded local DB file access if necessary
              win_path = DB_PATH
              use_local = os.environ.get("FIREBIRD_USE_LOCAL_PATH", "").strip() in ("1", "true", "yes")
              if use_local:
                  dsn = win_path
              else:
-                 dsn = f"inet://127.0.0.1/{win_path}"
+                 dsn = f"127.0.0.1/3050:{win_path}"
 
              if DEBUG_DB_CONNECTION:
                  logger.debug("get_db connecting to DSN: %s (local fallback: %s)", dsn, use_local)

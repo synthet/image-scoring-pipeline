@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-03-10
+
+### Added
+- **Agent Coordination Standards** ([docs/technical/AGENT_COORDINATION.md](file:///d:/Projects/image-scoring/docs/technical/AGENT_COORDINATION.md)): New integration protocols for backend/frontend AI agent collaboration.
+- **Optimized Data Queries** (`modules/db.py`): New `get_images_paginated_with_count` for faster image/count retrieval in a single DB trip.
+- **Project Roadmaps**: Added tracking for `docs/plans/database/` and `docs/plans/embedding/` refactors.
+
+### Changed
+- **MCP Reliability**: Handled `POST`/`DELETE` methods on `/mcp/sse` endpoint for better Cursor compatibility.
+- **Gradio Log Filtering** (`webui.py`): Suppressed repetitive queue polling messages in the terminal.
+- **Database Proxy Hardening** (`modules/db.py`): Ensured `commit()` and `rollback()` safety in the Firebird connection proxy.
+
 ## [4.5.0] - 2026-03-10
 
 ### Added
