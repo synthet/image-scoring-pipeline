@@ -1,10 +1,10 @@
 # Database Refactor Status Report
 
-**Date:** 2026-03-10
-**Current Target:** Phase 3 — Query Refactoring
+**Date:** 2026-03-11
+**Current Target:** Phase 4 — Validation & Cleanup
 
 ## Executive Summary
-Phase 1 (Integrity & Hardening) and Phase 2 (Normalization) are **substantially complete** at the database level. The normalized tables exist and are populated. However, **Phase 3 (Query Refactoring) has not yet been implemented in the application code**, meaning the performance benefits of normalization are not yet being realized.
+Phases 1–3 are **complete**. Normalized tables exist and are populated, dual-write is active on all write paths, and all keyword queries now use `EXISTS` on the normalized `IMAGE_KEYWORDS`/`KEYWORDS_DIM` tables instead of legacy `LIKE` scans on the `IMAGES.KEYWORDS` BLOB.
 
 ---
 
@@ -22,34 +22,47 @@ Phase 1 (Integrity & Hardening) and Phase 2 (Normalization) are **substantially 
 ---
 
 ## Phase 2: Hybrid 3NF Normalization
-**Status:** 🏃 IN PROGRESS (Schema done, Backfill partial)
+**Status:** ✅ COMPLETED
 
 - **Keywords:**
   - `KEYWORDS_DIM` & `IMAGE_KEYWORDS` created. ✅
-  - **Backfill:** ~60,200 links created. Population looks healthy for 45,617 images.
+  - **Backfill:** ~60,200 links created. Population healthy for 45,617 images. ✅
+  - **Dual-write:** `upsert_image()` and `update_image_field()` both call `_sync_image_keywords()`. ✅
 - **Metadata (XMP):**
   - `IMAGE_XMP` created. ✅
-  - **Backfill:** 35,343 records present (approx. 77% coverage). About 10,000 images still need `IMAGE_XMP` records if they have metadata in the main `IMAGES` table.
+  - **Backfill:** `_backfill_image_xmp()` implemented and runs at startup to populate remaining records. ✅
 - **Stack Cache:**
   - `STACK_CACHE` created and has 8,500 records. ✅
 
-> [!IMPORTANT]
-> No DB triggers were found for `IMAGE_KEYWORDS` or `IMAGE_XMP` synchronization. The system currently relies on the application layer (`modules/db.py`) to manage dual-writes.
+> [!NOTE]
+> The system uses application-layer dual-writes (`modules/db.py`) for `IMAGE_KEYWORDS` and `IMAGE_XMP` synchronization. No DB triggers are used.
 
 ---
 
 ## Phase 3: Query Refactor in App
-**Status:** ❌ NOT STARTED
+**Status:** ✅ COMPLETED
 
-The application code (`modules/db.py`) is still using legacy BLOB search for keywords:
-- `get_image_count()` still uses `keywords LIKE ?` (Line 527)
-- `get_images_paginated()` still uses `keywords LIKE ?` (Line 619)
-- `get_images_paginated_with_count()` still uses `keywords LIKE ?` (Line 746)
+All keyword queries now use the `_add_keyword_filter()` helper which generates:
+```sql
+EXISTS (SELECT 1 FROM image_keywords ik
+  JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
+  WHERE ik.image_id = images.id AND kd.keyword_norm LIKE ?)
+```
+
+| Function | File | Status |
+|----------|------|--------|
+| `get_image_count()` | `modules/db.py` | ✅ Refactored |
+| `get_images_paginated()` | `modules/db.py` | ✅ Refactored |
+| `get_images_paginated_with_count()` | `modules/db.py` | ✅ Refactored |
+| `get_filtered_paths()` | `modules/db.py` | ✅ Refactored |
+| `_build_export_where_clause()` | `modules/db.py` | ✅ Refactored |
+| `query_images()` | `modules/mcp_server.py` | ✅ Refactored |
 
 ---
 
 ## Next Recommended Steps
 
-1. **Complete Phase 2 Backfill:** Ensure all 45,617 images have corresponding `IMAGE_XMP` records if they possess metadata.
-2. **Implement Phase 3:** Refactor `get_image_count`, `get_images_paginated`, and `get_images_paginated_with_count` to use `EXISTS (SELECT 1 FROM IMAGE_KEYWORDS ...)` instead of `LIKE` scans.
-3. **Keyword Discovery Optimization:** Update the keyword cloud generation to query `KEYWORDS_DIM` instead of scanning the `IMAGES` table.
+1. **Validate data consistency:** Run spot-checks to confirm `IMAGE_KEYWORDS` data matches `IMAGES.KEYWORDS` for sampled images.
+2. **Performance benchmarking:** Measure keyword search latency with 50K+ images and compare to baseline.
+3. **Keyword discovery optimization:** Update keyword cloud generation to query `KEYWORDS_DIM` directly instead of scanning the `IMAGES` table.
+4. **Phase 4 (Cutover):** After validation, plan deprecation of `IMAGES.KEYWORDS` as a writable column.

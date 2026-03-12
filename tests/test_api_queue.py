@@ -209,3 +209,18 @@ def test_outliers_endpoint_propagates_domain_error(monkeypatch):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "folder_path is required"
+
+
+def test_outliers_endpoint_returns_500_on_unexpected_exception(monkeypatch):
+    from modules import similar_search
+
+    def _raise_unexpected(**kwargs):
+        raise RuntimeError("unexpected failure")
+
+    monkeypatch.setattr(similar_search, "find_outliers", _raise_unexpected)
+
+    with _build_client() as client:
+        response = client.get("/api/outliers", params={"folder_path": "/bad/path"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "unexpected failure"

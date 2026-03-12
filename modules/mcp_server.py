@@ -230,8 +230,7 @@ def query_images(
                 params.append(label)
 
         if keyword:
-            conditions.append("keywords LIKE ?")
-            params.append(f"%{keyword}%")
+            db._add_keyword_filter(conditions, params, keyword)
 
         if folder_path:
             folder_id = db.get_or_create_folder(folder_path)
@@ -999,10 +998,13 @@ def create_mcp_sse_app(mount_path: str = "/mcp"):
         messages_mount = next((r for r in app.routes if isinstance(r, Mount) and r.path == '/messages'), None)
         
         if messages_mount:
-            async def sse_post_alias(scope, receive, send):
+            async def sse_post_alias(request):
                 # Rewrite path internally to match the mount's expectations
+                scope = dict(request.scope)
                 scope["path"] = "/messages"
-                await messages_mount.handle(scope, receive, send)
+                # Starlette Request objects have private _send and receive attributes 
+                # that we can pass to the mount's ASGI handler.
+                await messages_mount.handle(scope, request.receive, request._send)
                 
             app.routes.insert(0, Route('/sse', endpoint=sse_post_alias, methods=['POST']))
             

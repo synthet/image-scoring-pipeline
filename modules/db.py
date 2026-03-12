@@ -91,6 +91,19 @@ def _validate_sort(sort_by: str, order: str) -> tuple:
         order = "desc"
     return sort_by, order.upper()
 
+
+def _add_keyword_filter(conditions, params, keyword_filter, table_ref="images"):
+    """Append a keyword EXISTS filter using normalized keyword tables."""
+    if keyword_filter and keyword_filter.strip():
+        conditions.append(
+            f"EXISTS (SELECT 1 FROM image_keywords ik "
+            f"JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id "
+            f"WHERE ik.image_id = {table_ref}.id "
+            f"AND kd.keyword_norm LIKE ?)"
+        )
+        params.append(f"%{keyword_filter.strip().lower()}%")
+
+
 DB_CONFIG = config.get_config_section('database')
 DB_FILE = DB_CONFIG.get('filename', "scoring_history.fdb")
 DB_USER = DB_CONFIG.get('user', "sysdba")
@@ -497,35 +510,33 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
     query = "SELECT COUNT(*) FROM images"
     params = []
     conditions = []
-    
+
     if rating_filter:
         placeholders = ','.join(['?'] * len(rating_filter))
-        # Handle "Unrated" (0) separate or included? 
+        # Handle "Unrated" (0) separate or included?
         # UI sends ["1", "2"] etc. "Unrated" might be sent as "0" or "Unrated"
         # Let's assume input is list of ints. "Unrated" maps to 0.
         conditions.append(f"rating IN ({placeholders})")
         params.extend(rating_filter)
-        
+
     if label_filter:
         # Handle "None" label
         clean_labels = [l for l in label_filter if l != "None"]
         has_none = "None" in label_filter
-        
+
         lbl_conds = []
         if clean_labels:
             placeholders = ','.join(['?'] * len(clean_labels))
             lbl_conds.append(f"label IN ({placeholders})")
             params.extend(clean_labels)
-            
+
         if has_none:
             lbl_conds.append("(label IS NULL OR label = '')")
-            
+
         if lbl_conds:
             conditions.append(f"({' OR '.join(lbl_conds)})")
-            
-    if keyword_filter and keyword_filter.strip():
-        conditions.append("keywords LIKE ?")
-        params.append(f"%{keyword_filter.strip()}%")
+
+    _add_keyword_filter(conditions, params, keyword_filter)
 
     # Score Filters
     if min_score_general > 0:
@@ -615,9 +626,7 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
         if lbl_conds:
             conditions.append(f"({' OR '.join(lbl_conds)})")
 
-    if keyword_filter and keyword_filter.strip():
-        conditions.append("keywords LIKE ?")
-        params.append(f"%{keyword_filter.strip()}%")
+    _add_keyword_filter(conditions, params, keyword_filter)
 
     # Score Filters
     if min_score_general > 0:
@@ -742,10 +751,8 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
             conditions.append(f"({' OR '.join(lbl_conds)})")
     
     # Keyword filter
-    if keyword_filter and keyword_filter.strip():
-        conditions.append(f"{tbl_prefix}keywords LIKE ?")
-        params.append(f"%{keyword_filter.strip()}%")
-    
+    _add_keyword_filter(conditions, params, keyword_filter)
+
     # Score Filters
     if min_score_general > 0:
         conditions.append(f"{tbl_prefix}score_general >= ?")
@@ -891,16 +898,14 @@ def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=Non
             
         if lbl_conds:
             conditions.append(f"({' OR '.join(lbl_conds)})")
-            
-    if keyword_filter and keyword_filter.strip():
-        conditions.append("keywords LIKE ?")
-        params.append(f"%{keyword_filter.strip()}%")
-        
+
+    _add_keyword_filter(conditions, params, keyword_filter)
+
     # Score Filters
     if min_score_general > 0:
         conditions.append("score_general >= ?")
         params.append(min_score_general)
-    
+
     if min_score_aesthetic > 0:
         conditions.append("score_aesthetic >= ?")
         params.append(min_score_aesthetic)
@@ -2311,7 +2316,14 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
         c.execute(f"UPDATE images SET {field_name} = ? WHERE id = ?", (value, image_id))
         conn.commit()
         conn.close()
-        
+
+        # Dual-write: sync normalized keyword tables
+        if field_name == 'keywords':
+            try:
+                _sync_image_keywords(image_id, value)
+            except Exception as e:
+                logging.warning(f"Keyword sync failed for image {image_id}: {e}")
+
         # Broadcast image update
         try:
             from modules.events import event_manager
@@ -2321,7 +2333,7 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
                 "value": value
             })
         except Exception: pass
-        
+
         return True
     except Exception as e:
         logging.error(f"Failed to update {field_name} for image {image_id}: {e}")
@@ -2706,6 +2718,52 @@ def register_image_for_import(file_path, file_name, file_type, folder_id, image_
         except Exception:
             pass
         return None
+    finally:
+        conn.close()
+
+
+def _get_folder_ancestor_ids(folder_id):
+    """Return folder_id plus all parents up to root."""
+    if not folder_id:
+        return []
+
+    conn = get_db()
+    c = conn.cursor()
+    seen = set()
+    ids = []
+    current = folder_id
+    try:
+        while current and current not in seen:
+            seen.add(current)
+            ids.append(current)
+            c.execute("SELECT parent_id FROM folders WHERE id = ?", (current,))
+            row = c.fetchone()
+            current = row[0] if row else None
+    finally:
+        conn.close()
+    return ids
+
+
+def invalidate_folder_phase_aggregates(folder_id=None, folder_path=None):
+    """
+    Mark phase aggregate cache dirty for the target folder and all its parents.
+    """
+    if not folder_id and folder_path:
+        folder_id = get_or_create_folder(folder_path)
+
+    ancestor_ids = _get_folder_ancestor_ids(folder_id)
+    if not ancestor_ids:
+        return
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        placeholders = ",".join(["?"] * len(ancestor_ids))
+        c.execute(
+            f"UPDATE folders SET phase_agg_dirty = 1 WHERE id IN ({placeholders})",
+            tuple(ancestor_ids)
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -4584,7 +4642,7 @@ def get_available_columns():
     return columns
 
 
-def _build_export_where_clause(rating_filter=None, label_filter=None, keyword_filter=None, 
+def _build_export_where_clause(rating_filter=None, label_filter=None, keyword_filter=None,
                                 min_score_general=0, min_score_aesthetic=0, min_score_technical=0,
                                 date_range=None, folder_path=None):
     """
@@ -4593,31 +4651,29 @@ def _build_export_where_clause(rating_filter=None, label_filter=None, keyword_fi
     """
     conditions = []
     params = []
-    
+
     if rating_filter:
         placeholders = ','.join(['?'] * len(rating_filter))
         conditions.append(f"rating IN ({placeholders})")
         params.extend(rating_filter)
-        
+
     if label_filter:
         clean_labels = [l for l in label_filter if l != "None"]
         has_none = "None" in label_filter
-        
+
         lbl_conds = []
         if clean_labels:
             placeholders = ','.join(['?'] * len(clean_labels))
             lbl_conds.append(f"label IN ({placeholders})")
             params.extend(clean_labels)
-            
+
         if has_none:
             lbl_conds.append("(label IS NULL OR label = '')")
-            
+
         if lbl_conds:
             conditions.append(f"({' OR '.join(lbl_conds)})")
-            
-    if keyword_filter and keyword_filter.strip():
-        conditions.append("keywords LIKE ?")
-        params.append(f"%{keyword_filter.strip()}%")
+
+    _add_keyword_filter(conditions, params, keyword_filter)
 
     # Score Filters
     if min_score_general > 0:
@@ -6997,6 +7053,45 @@ def _backfill_keywords():
         conn.close()
 
 def _backfill_image_xmp():
-    # Stub: Logic already inside upsert_image_xmp
-    pass
+    """Backfill IMAGE_XMP rows for images that have metadata but no XMP record."""
+    print("  [2.6] Backfilling IMAGE_XMP from images...")
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("""
+            SELECT i.id, i.rating, i.label, i.keywords, i.title, i.description
+            FROM images i
+            LEFT JOIN image_xmp x ON i.id = x.image_id
+            WHERE x.image_id IS NULL
+              AND (i.rating IS NOT NULL OR i.label IS NOT NULL
+                   OR i.keywords IS NOT NULL OR i.title IS NOT NULL
+                   OR i.description IS NOT NULL)
+        """)
+        rows = c.fetchall()
+
+        if not rows:
+            print("  [2.6] No images need IMAGE_XMP backfill.")
+            return
+
+        count = 0
+        for row in rows:
+            image_id, rating, label, keywords, title, description = row
+            c.execute("""
+                UPDATE OR INSERT INTO image_xmp
+                    (image_id, rating, label, keywords, title, description, extracted_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                MATCHING (image_id)
+            """, (image_id, rating, label, keywords, title, description))
+            count += 1
+
+        conn.commit()
+        print(f"  [2.6] Backfilled IMAGE_XMP for {count} images.")
+    except Exception as e:
+        logging.error(f"Error backfilling IMAGE_XMP: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        conn.close()
 

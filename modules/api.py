@@ -559,6 +559,21 @@ class OutlierResponse(BaseModel):
     stats: Dict[str, Any] = Field(..., description="Summary statistics (mean, std, etc.).")
     skipped: List[Dict[str, Any]] = Field(..., description="Images skipped due to missing embeddings.")
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "outliers": [
+                    {
+                        "image_id": 42,
+                        "z_score": -2.1,
+                        "score": 0.18,
+                    }
+                ],
+                "stats": {"total_images": 250, "outliers_found": 7},
+                "skipped": [],
+            }
+        }
+    )
 
 # Global references to runners (set by webui.py)
 _scoring_runner = None
@@ -1770,9 +1785,9 @@ def create_api_router() -> APIRouter:
             return result
         except HTTPException:
             raise
-        except Exception as e:
-            logger.error(f"Error in get_outliers for {folder_path}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+        except Exception as exc:
+            logger.error("Error in get_outliers for %s: %s", folder_path, exc)
+            raise HTTPException(status_code=500, detail=str(exc))
 
     # ========== Clustering Endpoints ==========
 
