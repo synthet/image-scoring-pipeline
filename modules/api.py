@@ -1710,6 +1710,43 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             return ApiResponse(success=False, message=str(e))
 
+    @router.get(
+        "/outliers",
+        summary="Find visual outliers in a folder",
+        description="""
+        Identify visually atypical images inside a folder using embedding-based similarity analysis.
+
+        **Query Parameters:**
+        - folder_path: Required. Restrict analysis to this folder.
+        - z_threshold: Optional z-score cutoff (default from config).
+        - k: Optional number of nearest neighbors used per image (default from config).
+        - limit: Maximum number of outliers to return (default: 100).
+
+        **Returns:**
+        - outliers: List of flagged images with outlier scores, z-scores, and nearest-neighbor explainability.
+        - stats: Folder-level summary statistics used during detection.
+        - skipped: Images skipped due to missing embeddings.
+        """
+    )
+    def get_outliers(
+        folder_path: str = Query(..., description="Folder path to analyze"),
+        z_threshold: Optional[float] = Query(None, ge=0.0, description="Outlier z-score threshold"),
+        k: Optional[int] = Query(None, ge=1, description="Top-K neighbors used for local density"),
+        limit: int = Query(100, ge=1, le=1000, description="Maximum outlier results to return"),
+    ):
+        """Find statistically atypical images based on embedding similarity."""
+        from modules import similar_search
+
+        result = similar_search.find_outliers(
+            folder_path=folder_path,
+            z_threshold=z_threshold,
+            k=k,
+            limit=limit,
+        )
+        if isinstance(result, dict) and "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+
     # ========== Clustering Endpoints ==========
 
     @router.post(
@@ -2334,4 +2371,3 @@ def create_api_router() -> APIRouter:
 
 
     return router
-
