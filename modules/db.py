@@ -5289,10 +5289,31 @@ def mark_folder_clustered(folder_path):
 def clear_cluster_progress():
     """
     Clears cluster progress and stacks.
+    Also resets culling phase status from running to done to allow force re-run.
     """
     conn = get_db()
     c = conn.cursor()
     try:
+        # Get all images with running culling phase, then reset them
+        c.execute(
+            """SELECT DISTINCT ips.image_id
+               FROM IMAGE_PHASE_STATUS ips
+               JOIN pipeline_phases pp ON ips.phase_id = pp.id
+               WHERE pp.code = ? AND ips.status = ?""",
+            ("culling", "running")
+        )
+        running_image_ids = [row[0] for row in c.fetchall()]
+        logging.info(f"[Force Rescan - All Folders] Found {len(running_image_ids)} images with running culling phase, resetting to done")
+        conn.close()
+
+        # Reset each image's culling phase to done
+        for image_id in running_image_ids:
+            logging.debug(f"[Force Rescan - All Folders] Resetting culling phase for image {image_id} from running to done")
+            set_image_phase_status(image_id, "culling", "done")
+
+        # Now clear stacks
+        conn = get_db()
+        c = conn.cursor()
         c.execute("DELETE FROM cluster_progress")
         c.execute("DELETE FROM stacks")
         c.execute("UPDATE images SET stack_id = NULL")
@@ -5379,8 +5400,39 @@ def clear_stacks_in_folder(folder_path):
         
         # 5. Remove folder from cluster_progress
         c.execute("DELETE FROM cluster_progress WHERE folder_path = ?", (folder_path,))
-        
+
+        # 6. Get image IDs in folder with running culling phase
+        if folder_row:
+            folder_id = folder_row[0]
+            c.execute(
+                """SELECT i.id
+                   FROM images i
+                   JOIN IMAGE_PHASE_STATUS ips ON i.id = ips.image_id
+                   JOIN pipeline_phases pp ON ips.phase_id = pp.id
+                   WHERE i.folder_id = ? AND pp.code = ? AND ips.status = ?""",
+                (folder_id, "culling", "running")
+            )
+            running_image_ids = [row[0] for row in c.fetchall()]
+        else:
+            c.execute(
+                """SELECT DISTINCT i.id
+                   FROM images i
+                   JOIN IMAGE_PHASE_STATUS ips ON i.id = ips.image_id
+                   JOIN pipeline_phases pp ON ips.phase_id = pp.id
+                   WHERE i.file_path LIKE ? AND pp.code = ? AND ips.status = ?""",
+                (folder_path + '%', "culling", "running")
+            )
+            running_image_ids = [row[0] for row in c.fetchall()]
+
+        if running_image_ids:
+            logging.info(f"[Force Rescan] Found {len(running_image_ids)} images with running culling phase, resetting to done")
+
         conn.commit()
+
+        # Reset each image's culling phase to done
+        for image_id in running_image_ids:
+            logging.debug(f"[Force Rescan] Resetting culling phase for image {image_id} from running to done")
+            set_image_phase_status(image_id, "culling", "done")
         
         # Broadcast updates
         event_manager.broadcast_threadsafe("folder_updated", {"folder_path": folder_path})
@@ -6882,11 +6934,19 @@ def get_folder_phase_summary(folder_path):
                 "advance_ready": advance_ready == total if total > 0 else False,
             })
 
-        c.execute(
-            "UPDATE folders SET phase_agg_dirty = 0, phase_agg_updated_at = ?, phase_agg_json = ?, is_fully_scored = ? WHERE id = ?",
-            (datetime.datetime.now(), json.dumps(result), 1 if scoring_done else 0, base_folder_id)
-        )
-        conn.commit()
+        # Cache the computed result — deadlock here must not discard the result
+        try:
+            c.execute(
+                "UPDATE folders SET phase_agg_dirty = 0, phase_agg_updated_at = ?, phase_agg_json = ?, is_fully_scored = ? WHERE id = ?",
+                (datetime.datetime.now(), json.dumps(result), 1 if scoring_done else 0, base_folder_id)
+            )
+            conn.commit()
+        except Exception as cache_err:
+            logger.debug("get_folder_phase_summary cache write failed for '%s' (non-fatal): %s", folder_path, cache_err)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return result
     except Exception as e:
         logger.error("get_folder_phase_summary failed for '%s': %s", folder_path, e)

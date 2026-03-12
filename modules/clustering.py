@@ -416,6 +416,20 @@ class ClusteringEngine:
                 continue
 
             for r in runnable_rows:
+                # If force_rescan and image is in RUNNING state, reset to DONE first to allow rerun
+                if force_rescan:
+                    statuses = db.get_image_phase_statuses(r['id']) or {}
+                    culling_status = statuses.get("culling")
+                    if culling_status and culling_status.get("status") == "running":
+                        logging.debug(f"Force rescan: resetting image {r['id']} culling phase from running to done")
+                        db.set_image_phase_status(
+                            r['id'],
+                            PhaseCode.CULLING,
+                            PhaseStatus.DONE,
+                            app_version=APP_VERSION,
+                            executor_version=CLUSTER_VERSION,
+                        )
+
                 db.set_image_phase_status(
                     r['id'],
                     PhaseCode.CULLING,
