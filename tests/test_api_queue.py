@@ -160,8 +160,23 @@ def test_pipeline_submit_requires_input_path(monkeypatch):
 
 def test_outliers_endpoint_returns_detector_payload(monkeypatch):
     expected = {
-        "outliers": [{"image_id": 5, "z_score": -2.4}],
-        "stats": {"outliers_found": 1},
+        "outliers": [{
+            "image_id": 5, 
+            "file_path": "/photos/2024/img5.jpg",
+            "outlier_score": 0.85,
+            "z_score": -2.4,
+            "nearest_neighbors": [
+                {"image_id": 6, "file_path": "/photos/2024/img6.jpg", "similarity": 0.95}
+            ]
+        }],
+        "stats": {
+            "total_with_embeddings": 100,
+            "folder_mean": 0.9,
+            "folder_std": 0.05,
+            "z_threshold": 1.8,
+            "k_neighbors": 7,
+            "outliers_found": 1
+        },
         "skipped": [],
     }
 

@@ -64,22 +64,22 @@ class SelectorRequest(BaseModel):
     image_ids: Optional[List[int]] = Field(
         None,
         description="Specific image IDs to process.",
-        example=[101, 102]
+        json_schema_extra={"example": [101, 102]}
     )
     image_paths: Optional[List[str]] = Field(
         None,
         description="Specific image file paths to process.",
-        example=["D:/Photos/2024/img001.jpg"]
+        json_schema_extra={"example": ["D:/Photos/2024/img001.jpg"]}
     )
     folder_ids: Optional[List[int]] = Field(
         None,
         description="Folder IDs to process.",
-        example=[12]
+        json_schema_extra={"example": [12]}
     )
     folder_paths: Optional[List[str]] = Field(
         None,
         description="Folder paths to process.",
-        example=["D:/Photos/2024"]
+        json_schema_extra={"example": ["D:/Photos/2024"]}
     )
     recursive: bool = Field(
         True,
@@ -111,17 +111,17 @@ class ScoringStartRequest(SelectorRequest):
     input_path: Optional[str] = Field(
         None,
         description="Directory path containing images to score. Supports Windows (D:\\...) and WSL (/mnt/...) paths.",
-        example="D:/Photos/2024"
+        json_schema_extra={"example": "D:/Photos/2024"}
     )
     skip_existing: bool = Field(
         True,
         description="If True, skip images that already have complete scores. Set to False to force re-scoring.",
-        example=True
+        json_schema_extra={"example": True}
     )
     force_rescore: bool = Field(
         False,
         description="If True, overwrite existing scores even if complete. Takes precedence over skip_existing.",
-        example=False
+        json_schema_extra={"example": False}
     )
 
     model_config = ConfigDict(json_schema_extra={
@@ -537,6 +537,27 @@ class ApiResponse(BaseModel):
             "data": {"job_id": 123}
         }
     })
+
+
+class NeighborInfo(BaseModel):
+    """Details for a nearest neighbor in outlier explanation."""
+    image_id: int = Field(..., description="Unique image identifier.")
+    file_path: str = Field(..., description="Full path to the neighbor image.")
+    similarity: float = Field(..., description="Cosine similarity score.")
+
+class OutlierInfo(BaseModel):
+    """Detailed information for a detected visual outlier."""
+    image_id: int = Field(..., description="Unique image identifier.")
+    file_path: str = Field(..., description="Full path to the flagged image.")
+    outlier_score: float = Field(..., description="Raw density/outlier score.")
+    z_score: float = Field(..., description="Normalized z-score for the outlier.")
+    nearest_neighbors: List[NeighborInfo] = Field(..., description="Explained neighbors.")
+
+class OutlierResponse(BaseModel):
+    """Response model for visual outlier detection."""
+    outliers: List[OutlierInfo] = Field(..., description="List of detected outliers.")
+    stats: Dict[str, Any] = Field(..., description="Summary statistics (mean, std, etc.).")
+    skipped: List[Dict[str, Any]] = Field(..., description="Images skipped due to missing embeddings.")
 
 
 # Global references to runners (set by webui.py)
@@ -1712,6 +1733,7 @@ def create_api_router() -> APIRouter:
 
     @router.get(
         "/outliers",
+        response_model=OutlierResponse,
         summary="Find visual outliers in a folder",
         description="""
         Identify visually atypical images inside a folder using embedding-based similarity analysis.
@@ -1736,16 +1758,21 @@ def create_api_router() -> APIRouter:
     ):
         """Find statistically atypical images based on embedding similarity."""
         from modules import similar_search
-
-        result = similar_search.find_outliers(
-            folder_path=folder_path,
-            z_threshold=z_threshold,
-            k=k,
-            limit=limit,
-        )
-        if isinstance(result, dict) and "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-        return result
+        try:
+            result = similar_search.find_outliers(
+                folder_path=folder_path,
+                z_threshold=z_threshold,
+                k=k,
+                limit=limit,
+            )
+            if isinstance(result, dict) and "error" in result:
+                raise HTTPException(status_code=400, detail=result["error"])
+            return result
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error in get_outliers for {folder_path}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
     # ========== Clustering Endpoints ==========
 
