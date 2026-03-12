@@ -31,7 +31,10 @@
       "Bash(python -c \"from mcp.server.fastmcp import FastMCP; help\\(FastMCP.tool\\)\")",
       "Bash(python -c \":*)",
       "Bash(python -c \"from mcp.types import ToolAnnotations; print\\(ToolAnnotations.__doc__\\); print\\(ToolAnnotations.model_fields.keys\\(\\)\\)\")",
-      "WebFetch(domain:127.0.0.1)"
+      "WebFetch(domain:127.0.0.1)",
+      "Bash(python -m pytest)",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''modules/db.py'', doraise=True\\); py_compile.compile\\(''modules/mcp_server.py'', doraise=True\\); print\\(''Both files compile OK''\\)\")",
+      "Bash(python -c \"from modules.db import _add_keyword_filter; print\\(''_add_keyword_filter imported successfully''\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\owner\\.gemini\\antigravity",

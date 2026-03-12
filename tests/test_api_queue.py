@@ -156,3 +156,56 @@ def test_pipeline_submit_requires_input_path(monkeypatch):
         response = client.post("/api/pipeline/submit", json={"operations": ["score"]})
 
     assert response.status_code == 422
+
+
+def test_outliers_endpoint_returns_detector_payload(monkeypatch):
+    expected = {
+        "outliers": [{"image_id": 5, "z_score": -2.4}],
+        "stats": {"outliers_found": 1},
+        "skipped": [],
+    }
+
+    def fake_find_outliers(folder_path, z_threshold=None, k=None, limit=None):
+        assert folder_path == "/photos/2024"
+        assert z_threshold == 1.8
+        assert k == 7
+        assert limit == 33
+        return expected
+
+    from modules import similar_search
+    monkeypatch.setattr(similar_search, "find_outliers", fake_find_outliers)
+
+    with _build_client() as client:
+        response = client.get(
+            "/api/outliers",
+            params={"folder_path": "/photos/2024", "z_threshold": 1.8, "k": 7, "limit": 33},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+def test_outliers_endpoint_propagates_domain_error(monkeypatch):
+    from modules import similar_search
+    monkeypatch.setattr(similar_search, "find_outliers", lambda **kwargs: {"error": "folder_path is required"})
+
+    with _build_client() as client:
+        response = client.get("/api/outliers", params={"folder_path": "/bad/path"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "folder_path is required"
+
+
+def test_outliers_endpoint_returns_500_on_unexpected_exception(monkeypatch):
+    from modules import similar_search
+
+    def _raise_unexpected(**kwargs):
+        raise RuntimeError("unexpected failure")
+
+    monkeypatch.setattr(similar_search, "find_outliers", _raise_unexpected)
+
+    with _build_client() as client:
+        response = client.get("/api/outliers", params={"folder_path": "/bad/path"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "unexpected failure"
