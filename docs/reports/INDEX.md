@@ -18,6 +18,7 @@ Historical reports, research, reviews, and debugging sessions.
 | Document | Description |
 |----------|-------------|
 | [project-reviews/INDEX.md](project-reviews/INDEX.md) | Project review summaries and detailed reviews |
+| [project-reviews/UX_UI_REVIEW_2026-03-12.md](project-reviews/UX_UI_REVIEW_2026-03-12.md) | UX/UI heuristic review of current WebUI |
 | [CODE_DESIGN_REVIEW.md](CODE_DESIGN_REVIEW.md) | Code and design review |
 | [2026_02_09_CODE_AND_DESIGN_REVIEW.md](2026_02_09_CODE_AND_DESIGN_REVIEW.md) | Code & design review |
 
