@@ -3,6 +3,8 @@ import json
 import logging
 from typing import List, Any, Dict
 
+from pydantic import BaseModel, Field
+
 try:
     from fastapi import WebSocket, WebSocketDisconnect
 except ImportError:
@@ -10,6 +12,14 @@ except ImportError:
     WebSocketDisconnect = Exception
 
 logger = logging.getLogger(__name__)
+
+
+class WebSocketEvent(BaseModel):
+    """Schema for WebSocket push events broadcast to clients."""
+
+    type: str
+    data: dict = Field(default_factory=dict)
+
 
 class EventManager:
     """

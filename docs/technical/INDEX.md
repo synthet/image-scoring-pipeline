@@ -7,6 +7,7 @@ Existing features and implementation docs only. Plans and proposals → [plans/I
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture (components, data flow, deployment) |
+| [PIPELINE_PHASE_RUNNERS.md](PIPELINE_PHASE_RUNNERS.md) | Phase-by-phase runner ownership and step-by-step execution flow |
 | [TECHNICAL_SUMMARY.md](TECHNICAL_SUMMARY.md) | Technical summary with mermaid diagrams |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Repository structure (merged, updated 2026-03-08) |
 

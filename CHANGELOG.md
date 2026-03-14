@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-03-14
+
+### Added
+- **OpenAPI export**: `scripts/export_openapi.py` and `openapi.json` for API schema export.
+- **Documentation**: `docs/gradio-serving-comparison.md`, `docs/technical/PIPELINE_PHASE_RUNNERS.md`.
+- **Tests**: `test_selector_resolver.py` for selector resolver behavior.
+
+### Changed
+- **API Contract**: Expanded `docs/technical/API_CONTRACT.md` with additional endpoint details.
+- **Events**: Enhanced `modules/events.py` with additional event handling.
+- **Docs index**: Updated `docs/technical/INDEX.md`.
+
 ## [4.8.1] - 2026-03-14
 
 ### Added

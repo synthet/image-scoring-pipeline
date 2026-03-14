@@ -16,6 +16,41 @@ REST API for the Image Scoring WebUI. Base path: `/api`.
 | **Jobs** | recent, {job_id} |
 | **Utilities** | raw-preview, similar, duplicates/find |
 
+---
+
+## WebSocket Events
+
+**Endpoint:** `ws://127.0.0.1:7860/ws/updates`
+
+**Direction:** Server → client only (push). HTTP handles request-response via `apiService.ts`; no bidirectional WebSocket commands.
+
+**Message format:**
+```json
+{
+  "type": "<event_type>",
+  "data": { ... }
+}
+```
+
+| Event Type | Description |
+|------------|-------------|
+| `job_started` | Batch job started (scoring, tagging, clustering, fix_db) |
+| `job_progress` | Job progress update (current, total) |
+| `job_completed` | Job finished (status: completed/failed) |
+| `image_updated` | Image record changed in DB |
+| `folder_updated` | Folder metadata changed |
+| `folder_deleted` | Folder removed |
+| `stack_created` | New stack created |
+| `stack_updated` | Stack metadata changed |
+| `stack_deleted` | Stack removed |
+| `stacks_cleared` | Stacks cleared (optionally scoped to folder) |
+| `image_discovered` | New image found during scan |
+| `folder_discovered` | New folder found during scan |
+| `folder_scanned` | Folder scan completed |
+| `image_scored` | Single image scored |
+
+---
+
 ### Utilities
 
 | Method | Path | Purpose |
