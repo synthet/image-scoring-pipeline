@@ -31,15 +31,23 @@ The project has a healthy backlog structure, but execution is blocked less by un
 
 Checkbox count from TODO files:
 
-- `TODO.md`: **46 open**, 2 done
-- `docs/project/TODO.md`: **27 open**, 5 done
-- `docs/plans/embedding/TODO.md`: **9 open**, 0 done
-- `docs/reference/api/TODO.md`: **6 open**, 0 done
+- `TODO.md`: **46 open**, 2 done (total 48)
+- `docs/project/TODO.md`: **27 open**, 5 done (total 32)
+- `docs/plans/embedding/TODO.md`: **9 open**, 0 done (total 9)
+- `docs/reference/api/TODO.md`: **6 open**, 0 done (total 6)
 
 Interpretation:
 
 - The root TODO is an umbrella list and correctly reflects broad, mostly-unfinished roadmap work.
 - The specialized API and Embedding TODOs show **no completed items**, suggesting those tracks are queued but not actively in-flight.
+
+## Reproducibility
+
+These checkbox totals are reproducible via:
+
+- `python scripts/analysis/todo_metrics.py`
+
+The report values above are copied directly from this script output.
 
 ## Unfinished Business by Risk Category
 
