@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-03-13
+
+### Added
+- **Embedding Outlier API** (`modules/api.py`): New endpoint for embedding-based outlier detection.
+
+### Changed
+- **Keyword Dual-Write Fix** (`modules/db.py`): Call `_sync_image_keywords` after `conn.commit()` to avoid dual-write inconsistency and Firebird deadlock.
+- **Keyword Normalization Migration**: Continued DB migration for keyword normalization paths.
+- **Pipeline Tab** (`modules/ui/tabs/pipeline.py`): Removed orphaned "Open in Gallery" button.
+
+### Fixed
+- **Culling Force Re-Run**: Fixed hanging on running→running guard when force re-running culling.
+
+### Documentation
+- **UX/UI Review**: Added webui UX/UI review documentation.
+
 ## [4.6.1] - 2026-03-10
 
 ### Added

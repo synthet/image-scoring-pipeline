@@ -69,7 +69,6 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                 components["folder_summary_html"] = gr.HTML(
                     _build_folder_summary(None, 0)
                 )
-                components["open_gallery_btn"] = gr.Button("Open in Gallery", elem_classes=["success-btn"])
 
                 gr.HTML("<div class='section-divider'></div>")
 
