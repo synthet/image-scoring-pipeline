@@ -23,7 +23,7 @@ This project is the **schema authority** — all DDL migrations live in `modules
 ## Electron Frontend Integration Points
 
 - **Shared DB:** `SCORING_HISTORY.FDB` (Firebird), queried by [db.ts](https://github.com/synthet/electron-image-scoring/blob/master/electron/db.ts)
-- **REST API:** Electron calls `http://localhost:8000` for scoring/tagging/clustering jobs
+- **REST API:** Electron calls `http://localhost:7860` for scoring/tagging/clustering jobs (WebUI port)
 - **IPC contract:** Electron expects specific column names and result shapes from DB queries — do not rename columns without updating `electron/db.ts`
 - **Dual-write:** When modifying keyword or metadata write paths, ensure both `modules/db.py` and `electron/db.ts` stay in sync
 
@@ -42,7 +42,7 @@ Helpers: `_table_exists()`, `_column_exists()`, `_index_exists()`, `_constraint_
 
 ## Commands
 
-- `python -m modules.api` — Start FastAPI backend (port 8000)
+- `run_webui.bat` or `python webui.py` — Start WebUI with FastAPI + Gradio (port 7860)
 - `python -m modules.mcp_server` — Start MCP server
 - `python -m pytest` — Run tests
 

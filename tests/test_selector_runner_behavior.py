@@ -1,8 +1,13 @@
 import pytest
 
-from modules.clustering import ClusteringEngine
-from modules.scoring import ScoringRunner
-from modules.tagging import TaggingRunner
+pytestmark = pytest.mark.wsl
+
+try:
+    from modules.clustering import ClusteringEngine
+    from modules.scoring import ScoringRunner
+    from modules.tagging import TaggingRunner
+except ImportError as e:
+    pytest.skip(f"ML/runner deps not available: {e}", allow_module_level=True)
 
 
 def test_scoring_start_batch_selector_empty_does_not_require_path(monkeypatch):

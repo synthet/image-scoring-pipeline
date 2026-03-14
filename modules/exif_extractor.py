@@ -186,7 +186,7 @@ def ensure_image_unique_id(image_path: str, provided_uuid: str = None) -> str | 
         from modules import db
         # We need some context for deterministic UUID if possible, but extract_exif 
         # already gave us most of it or we can just use random fallback via db utility
-        provided_uuid = db._generate_image_uuid(data)
+        provided_uuid = db.generate_image_uuid(data)
 
     if write_image_unique_id(image_path, provided_uuid):
         return provided_uuid

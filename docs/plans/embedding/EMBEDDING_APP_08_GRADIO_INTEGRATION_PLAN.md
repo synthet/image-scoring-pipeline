@@ -11,7 +11,7 @@
 
 - REST API at `/api/*` -- scoring, tagging endpoints; no clustering endpoints yet (`modules/api.py`)
 - WebSocket at `/ws/updates` -- broadcast-only via `EventManager` (`modules/events.py`)
-- Gradio UI mounted at `/` on port 7860
+- Gradio UI mounted at `/app` on port 7860 (root `/` redirects to `/app`)
 - Lock file `webui.lock` written on startup with `{pid, port}` for Electron discovery
 
 **Electron app** (`electron/main.ts`) already has:

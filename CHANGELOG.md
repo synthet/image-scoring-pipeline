@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.1] - 2026-03-14
+
+### Added
+- **Tag Propagation API** (`POST /api/tagging/propagate`): Propagate keywords from tagged images to visually similar untagged neighbors using embedding similarity.
+- **Phase Statuses in Image Details** (`GET /api/images/{id}`): Response now includes `phase_statuses` for gallery display.
+- **MCP `diagnose_phase_consistency`**: New tool to diagnose folder vs per-image phase status mismatches.
+
+### Changed
+- **Path Handling** (`import_register`): Convert Windows paths to WSL only when backend runs on Linux (`platform.system() == "Linux"`); keep native paths on Windows.
+- **Pipeline Orchestrator**: Skip phases with no runner (indexing, metadata) instead of failing; advance to next phase.
+- **Folder Phase Cache** (`get_folder_phase_summary`): Added `force_refresh` parameter to bypass cache on folder selection and Refresh.
+- **Refresh Button** (`pipeline` tab): Now invalidates folder phase cache and updates all dashboard components.
+- **Stepper Connector**: Fixed connector between Metadata and Scoring steps to reflect Metadata state.
+- **Public API** (`db.generate_image_uuid`): Promoted from `_generate_image_uuid` for cross-module use.
+- **SEED_PHASES**: Use `PhaseCode.INDEXING` and `PhaseCode.METADATA` enums for consistency.
+- **MCP `execute_code`**: Added security comment documenting dev/debug-only usage.
+
+### Fixed
+- **Phase 1.8a Migration**: Typo in log message (`Phase1` → `Phase 1`).
+
+### Tests
+- **test_culling**: Use `scoring_history_test.fdb`; fix `culling_picks` table reference; add XMP format verification (`xmpDM:pick`, `xmpDM:good`).
+- **test_events**: Minimal FastAPI app to avoid webui import; use `broadcast_threadsafe`.
+- **test_selector_runner_behavior**: Add `pytest.mark.wsl` and graceful import skip.
+
+### Other
+- **.gitignore**: Added patterns for debug artifacts (`debug_*.py`, `debug_*.txt`, `debug_*.html`, `test_tree_*.py`, `tmp/verify_*.py`).
+
 ## [4.8.0] - 2026-03-13
 
 ### Changed

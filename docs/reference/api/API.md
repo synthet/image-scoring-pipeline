@@ -303,6 +303,34 @@ GET /api/stats
 ```
 Returns: `total_images`, `by_rating`, `by_label`, `score_distribution`, `average_scores`, `total_folders`, `total_stacks`, `jobs_by_status`, `images_today`. Does not include `scored_images` or `tagged_images`. May include `error` on exception.
 
+### Import Register (Electron integration)
+
+Register images from a folder without scoring. Used by the Electron app when the backend is available.
+
+```http
+POST /api/import/register
+Content-Type: application/json
+
+{
+  "folder_path": "D:/Photos/2024"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Import complete: 42 added, 10 skipped",
+  "data": {
+    "added": 42,
+    "skipped": 10,
+    "errors": []
+  }
+}
+```
+
+Path conversion: when the backend runs on Linux (WSL), Windows paths are converted to WSL; when the backend runs natively on Windows, paths are kept as-is.
+
 ### Pipeline Submit
 
 Submit to the score→tag→cluster pipeline. Starts the first operation immediately; returns `remaining_operations` for chaining.
@@ -430,7 +458,7 @@ curl -X POST http://127.0.0.1:7860/api/scoring/stop
 ## Notes
 
 - All paths should use forward slashes (`/`) even on Windows
-- Paths are automatically converted between Windows and WSL formats when needed
+- **Path conversion:** When the backend runs on Linux (WSL), Windows paths are converted to WSL; when the backend runs natively on Windows, paths are kept as-is
 - Jobs run asynchronously - use status endpoints to monitor progress
 - The API uses the same runner instances as the web UI, so operations are synchronized
 

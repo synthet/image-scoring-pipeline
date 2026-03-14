@@ -131,7 +131,7 @@ class PhaseRegistry:
 
 SEED_PHASES = [
     {
-        "code": "indexing",
+        "code": PhaseCode.INDEXING,
         "name": "Indexing",
         "description": "Scan folder, create/update DB records, compute file hash and register image paths.",
         "sort_order": 1,
@@ -140,7 +140,7 @@ SEED_PHASES = [
         "default_skip": False,
     },
     {
-        "code": "metadata",
+        "code": PhaseCode.METADATA,
         "name": "Physical Metadata",
         "description": "Extract EXIF/XMP tags, generate thumbnails, and prepare files for scoring.",
         "sort_order": 2,

@@ -28,7 +28,7 @@ Summary of changes made in this session across the image-scoring and electron-im
 1. `apiService.isAvailable()` checks if Gradio is reachable.
 2. If available: `POST /api/import/register` with `folder_path`.
 3. If unavailable or error: existing direct Firebird import logic.
-4. API converts Windows paths to WSL for backend access.
+4. API converts Windows paths to WSL only when the backend runs on Linux (WSL); when the backend runs natively on Windows, paths are kept as-is.
 
 ---
 
@@ -93,7 +93,7 @@ Summary of changes made in this session across the image-scoring and electron-im
 | apiTypes.ts | OK | ImportRegisterRequest (folder_path), ImportRegisterResponse (success, message, data: added/skipped/errors) |
 | apiService.ts | OK | importRegister() calls POST /api/import/register with LONG_TIMEOUT |
 | main.ts | OK | import:run uses apiService.isAvailable() → API first → fallback to direct DB on error |
-| Python api.py | OK | ImportRegisterRequest, POST /api/import/register, path conversion via utils.convert_path_to_wsl |
+| Python api.py | OK | ImportRegisterRequest, POST /api/import/register, path conversion only when backend runs on Linux (utils.convert_path_to_wsl) |
 | Python db.py | OK | find_image_id_by_path(), find_image_id_by_uuid(), register_image_for_import() |
 
 Flow matches the design: API first, then direct Firebird import on failure or when the backend is unavailable.

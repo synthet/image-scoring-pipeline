@@ -34,7 +34,7 @@ JOB_ALLOWED_TRANSITIONS = {
 }
 
 
-def _generate_image_uuid(metadata: dict | None) -> str:
+def generate_image_uuid(metadata: dict | None) -> str:
     """
     Generate a UUID for an image.
 
@@ -2137,7 +2137,7 @@ def _init_db_impl():
                 conn.commit()
                 c = conn.cursor()
             except Exception as e:
-                logger.warning("Phase1 1.8a DROP CHK_IMAGES_CULL_DECISION: %s", e)
+                logger.warning("Phase 1.8a DROP CHK_IMAGES_CULL_DECISION: %s", e)
                 try: conn.rollback()
                 except Exception: pass
                 c = conn.cursor()
@@ -2313,7 +2313,7 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
         'burst_uuid', 'rating', 'label', 'score_general', 'score_aesthetic',
         'score_technical', 'keywords', 'title', 'description', 'stack_id',
         'thumbnail_path', 'thumbnail_path_win', 'metadata', 'image_hash',
-        'cull_decision', 'cull_policy_version'
+        'cull_decision', 'cull_policy_version', 'image_uuid'
     }
     
     if field_name not in valid_fields:
@@ -3891,7 +3891,7 @@ def sync_folder_to_db(folder_path, job_id=None):
 
             # Assign UUID only if not already set (preserve existing)
             meta_dict = data.get("metadata") if isinstance(data.get("metadata"), dict) else None
-            image_uuid = _generate_image_uuid(meta_dict)
+            image_uuid = generate_image_uuid(meta_dict)
             c.execute(
                 "UPDATE images SET image_uuid = ? WHERE file_path = ? AND (image_uuid IS NULL OR image_uuid = '')",
                 (image_uuid, str(image_path))
@@ -4070,7 +4070,7 @@ def upsert_image(job_id, result):
     meta_dict = result.get("metadata") if isinstance(result.get("metadata"), dict) else (
         json.loads(result.get("metadata")) if isinstance(result.get("metadata"), str) else None
     )
-    image_uuid_val = _generate_image_uuid(meta_dict)
+    image_uuid_val = generate_image_uuid(meta_dict)
     if image_uuid_val and image_uuid_val.strip():
         existing_id = find_image_id_by_uuid(image_uuid_val)
         if existing_id:
@@ -4161,7 +4161,7 @@ def upsert_image(job_id, result):
             meta_dict = result.get("metadata") if isinstance(result.get("metadata"), dict) else (
                 json.loads(result.get("metadata")) if isinstance(result.get("metadata"), str) else None
             )
-            new_uuid = _generate_image_uuid(meta_dict)
+            new_uuid = generate_image_uuid(meta_dict)
             c.execute(
                 "UPDATE images SET image_uuid = ? WHERE id = ? AND (image_uuid IS NULL OR image_uuid = '')",
                 (new_uuid, image_id)
@@ -4976,7 +4976,7 @@ def update_image_fields_batch(updates):
         'burst_uuid', 'rating', 'label', 'score_general', 'score_aesthetic',
         'score_technical', 'keywords', 'title', 'description', 'stack_id',
         'thumbnail_path', 'thumbnail_path_win', 'metadata', 'image_hash',
-        'cull_decision', 'cull_policy_version'
+        'cull_decision', 'cull_policy_version', 'image_uuid'
     }
     if not updates:
         return
@@ -6772,12 +6772,13 @@ def _derive_folder_phase_status(total, done, running, failed, skipped):
     return "not_started"
 
 
-def get_folder_phase_summary(folder_path):
+def get_folder_phase_summary(folder_path, force_refresh=False):
     """
     Return phase status summary for a folder and descendants.
 
     Uses folder-level cache (`folders.phase_agg_json`) and recomputes live data
-    when `phase_agg_dirty = 1`.
+    when `phase_agg_dirty = 1`. Pass force_refresh=True to bypass cache and
+    always recompute (e.g. when user selects a folder or clicks Refresh).
     """
     from modules import utils
 
@@ -6790,16 +6791,17 @@ def get_folder_phase_summary(folder_path):
     conn = get_db()
     c = conn.cursor()
     try:
-        c.execute(
-            "SELECT phase_agg_dirty, phase_agg_json FROM folders WHERE id = ?",
-            (base_folder_id,)
-        )
-        cache_row = c.fetchone()
-        if cache_row and (cache_row[0] or 0) == 0 and cache_row[1]:
-            try:
-                return json.loads(cache_row[1])
-            except Exception:
-                pass
+        if not force_refresh:
+            c.execute(
+                "SELECT phase_agg_dirty, phase_agg_json FROM folders WHERE id = ?",
+                (base_folder_id,)
+            )
+            cache_row = c.fetchone()
+            if cache_row and (cache_row[0] or 0) == 0 and cache_row[1]:
+                try:
+                    return json.loads(cache_row[1])
+                except Exception:
+                    pass
 
         path_like_unix = target_path + "/%"
         path_like_win = target_path + "\\%"

@@ -1,27 +1,53 @@
+"""Tests for WebSocket event manager. Uses a minimal FastAPI app to avoid importing full webui (Gradio, TF)."""
 import pytest
 import asyncio
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, WebSocket
 from fastapi.testclient import TestClient
-from fastapi.websockets import WebSocket
 from modules.events import event_manager
-from webui import app
 
-client = TestClient(app)
 
-@pytest.mark.asyncio
-async def test_websocket_connection():
-    with client.websocket_connect("/ws/updates") as websocket:
+def _make_ws_app():
+    """Minimal FastAPI app with /ws/updates only. Avoids webui import (Gradio, TensorFlow)."""
+
+    @asynccontextmanager
+    async def lifespan(app):
+        loop = asyncio.get_running_loop()
+        event_manager.set_loop(loop)
+        yield
+
+    app = FastAPI(lifespan=lifespan)
+
+    @app.websocket("/ws/updates")
+    async def websocket_endpoint(websocket: WebSocket):
+        await event_manager.connect(websocket)
+        try:
+            while True:
+                await websocket.receive_text()
+        except Exception:
+            event_manager.disconnect(websocket)
+
+    return app
+
+
+@pytest.fixture
+def ws_client():
+    return TestClient(_make_ws_app())
+
+
+def test_websocket_connection(ws_client):
+    """Connect via WebSocket and receive a broadcast."""
+    with ws_client.websocket_connect("/ws/updates") as websocket:
         assert len(event_manager.active_connections) == 1
-        
-        # Test receiving a broadcast
+
         test_data = {"test": "data"}
-        await event_manager.broadcast("test_event", test_data)
-        
+        event_manager.broadcast_threadsafe("test_event", test_data)
+
         data = websocket.receive_json()
         assert data["type"] == "test_event"
         assert data["data"] == test_data
 
-@pytest.mark.asyncio
-async def test_threadsafe_broadcast():
-    # Mock loop for checking logic, but hard to fully integration test without running loop
-    # This just ensures no crash
+
+def test_threadsafe_broadcast():
+    """Ensure broadcast_threadsafe does not crash when no loop is set."""
     event_manager.broadcast_threadsafe("test_thread", {})

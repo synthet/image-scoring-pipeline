@@ -80,6 +80,13 @@ logs/
 *.swo
 *~
 
+# Debug and verification scripts (dev artifacts)
+debug_*.py
+debug_*.txt
+debug_*.html
+test_tree_*.py
+tmp/verify_*.py
+
 # Test images and outputs
 test_images/
 output/

@@ -51,9 +51,13 @@ class PipelineOrchestrator:
             # - done means complete
             # - optional + skipped means intentionally bypassed
             # - default_skip optional phases are auto-bypassed
+            # - indexing/metadata have no dedicated runner; they run implicitly inside scoring
             phase_plan: List[str] = []
             for phase in self.PHASE_ORDER:
                 code = phase.value
+                if code not in self._runners:
+                    # Indexing and metadata: no runner; scoring does both internally
+                    continue
                 phase_info = summary_by_code.get(code) or {}
                 phase_def = phases_by_code.get(code) or {}
                 phase_status = phase_info.get("status")
@@ -115,14 +119,14 @@ class PipelineOrchestrator:
             self.folder_path = None
             return "Pipeline run finished."
 
-        self.current_phase = next_phase
+        # Auto-skip phases with no runner (indexing, metadata run inside scoring)
         runner = self._runners.get(next_phase)
         if not runner:
-            self._active = False
-            db.set_job_phase_state(self.root_job_id, next_phase, "failed", error_message=f"No runner for phase '{next_phase}'")
-            if self.root_job_id:
-                db.update_job_status(self.root_job_id, "failed", runner_state="failed")
-            return f"Error: No runner found for phase {next_phase}"
+            logger.info("Pipeline: skipping phase '%s' (no runner); advancing to next", next_phase)
+            db.set_job_phase_state(self.root_job_id, next_phase, "completed")
+            return self._start_next_phase()
+
+        self.current_phase = next_phase
 
         logger.info("Pipeline: Starting phase %s for folder %s", next_phase, self.folder_path)
         try:

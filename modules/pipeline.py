@@ -49,6 +49,27 @@ class ImageJob:
     image_id: Optional[int] = None  # DB id, set when image is found/created
     target_phases: List[PhaseCode] = field(default_factory=list) # List of phases to execute in this job
 
+
+def _is_phase_targeted(target_phases: List[Any], phase_code: PhaseCode) -> bool:
+    """
+    Return True when a phase should run for this job.
+
+    Accepts mixed target phase representations (PhaseCode enums or strings).
+    Empty/None target list means full pipeline behavior (all phases).
+    """
+    if not target_phases:
+        return True
+
+    normalized = set()
+    for p in target_phases:
+        if p is None:
+            continue
+        if isinstance(p, PhaseCode):
+            normalized.add(p.value)
+        else:
+            normalized.add(str(p).strip().lower())
+    return phase_code.value in normalized
+
     
 class PipelineWorker(threading.Thread):
     def __init__(self, name, input_queue, output_queue, stop_event):
@@ -116,7 +137,7 @@ class PrepWorker(PipelineWorker):
                     logger.error(f"Path lookup failed for {job.image_path}: {e}")
 
             # --- PHASE A: INDEXING ---
-            if PhaseCode.INDEXING in job.target_phases or not job.target_phases:
+            if _is_phase_targeted(job.target_phases, PhaseCode.INDEXING):
                 # computed hash and registered path handled above in optimization block
                 if not job.image_id and image_hash:
                      # If we didn't find it in the optimization block, do it now
@@ -137,14 +158,14 @@ class PrepWorker(PipelineWorker):
                                               app_version=APP_VERSION, job_id=job.job_id)
 
             # --- PHASE B: METADATA (Thumbs + EXIF/XMP) ---
-            if PhaseCode.METADATA in job.target_phases or not job.target_phases:
+            if _is_phase_targeted(job.target_phases, PhaseCode.METADATA):
                 # 1. Image Identity (UUID)
                 # Ensure we have a UUID for this image. If not in job, generate it.
                 if not job.external_scores.get("image_uuid"):
                     # Extract minimal EXIF to help with deterministic UUID generation
                     from modules import exif_extractor
                     temp_exif = exif_extractor.extract_exif(job.image_path)
-                    job.external_scores["image_uuid"] = db._generate_image_uuid(temp_exif)
+                    job.external_scores["image_uuid"] = db.generate_image_uuid(temp_exif)
                 
                 image_uuid = job.external_scores["image_uuid"]
 
@@ -183,7 +204,7 @@ class PrepWorker(PipelineWorker):
                                               app_version=APP_VERSION, job_id=job.job_id)
 
             # --- PHASE C: SCORING (Preparation) ---
-            if PhaseCode.SCORING in job.target_phases or not job.target_phases:
+            if _is_phase_targeted(job.target_phases, PhaseCode.SCORING):
                 # Identify Type
                 job.is_raw = self.scorer.is_raw_file(job.image_path) if self.scorer else False
                 
@@ -236,6 +257,12 @@ class ScoringWorker(PipelineWorker):
         
     def process(self, job: ImageJob):
         if job.status in ["skipped", "failed"]:
+            self.output_queue.put(job)
+            return
+
+        # Operation-scoped pipeline runs can intentionally omit scoring.
+        if not _is_phase_targeted(job.target_phases, PhaseCode.SCORING):
+            job.status = "skipped"
             self.output_queue.put(job)
             return
 

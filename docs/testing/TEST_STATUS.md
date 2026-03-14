@@ -1,6 +1,6 @@
 # Unit Test Status
 
-**Last updated**: 2026-03-08
+**Last updated**: 2026-03-14
 
 ## Overview
 
@@ -23,26 +23,18 @@ The test suite is split into:
 
 - **WSL test venv**: `~/.venvs/image-scoring-tests`
 - **Setup**: `bash ./scripts/wsl/setup_wsl_test_env.sh`
-- **Run result**: **4 collection errors** (as of 2026-03-08)
+- **Run**: `bash ./scripts/wsl/run_wsl_tests.sh`
 
-#### WSL collection errors
+#### Recent fixes (2026-03-14)
 
-The following test modules fail during collection:
-
-1. **`tests/test_api_queue.py`** — Collection error (details: run `pytest -m wsl --collect-only` to inspect)
-2. **`tests/test_api_security.py`** — Collection error
-3. **`tests/test_events.py`** — Collection error
-4. **`tests/test_selector_runner_behavior.py`** — Collection error
+1. **`tests/test_events.py`** — Refactored to use minimal FastAPI app (no `webui` import); avoids Gradio/TensorFlow.
+2. **`tests/test_selector_runner_behavior.py`** — Added `@pytest.mark.wsl` and import guard; skips when ML deps unavailable.
+3. **`tests/test_culling.py`** — Now uses `scoring_history_test.fdb` (per test DB rule); added XMP format verification (`xmpDM:pick`, `xmpDM:good`); added optional `test_full_workflow_real_data` (env: `IMAGE_SCORING_TEST_CULLING_FOLDER`).
+4. **`scripts/setup_test_db.py`** — Clears `culling_picks` and `culling_sessions` tables.
 
 #### WSL skips (expected)
 
 - **`tests/test_resolution.py`**: Skipped because `pyiqa` is not installed. Set `INSTALL_PYIQA_TORCH=1` when running `setup_wsl_test_env.sh` to enable.
-
-## Recommended Fixes
-
-1. **Fix WSL collection**: Investigate the 4 failing test modules (import errors, missing fixtures, or dependency issues).
-2. **Optional**: Install `pyiqa` + `torch` to enable `tests/test_resolution.py`.
-3. **Rerun**: `python -m pytest -m wsl -ra` and record pass/fail/skip counts once collection is clean.
 
 ## Related Documents
 

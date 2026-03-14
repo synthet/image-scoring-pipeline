@@ -664,6 +664,76 @@ def validate_file_paths(limit: int = 100) -> dict:
         return results
 
 
+@mcp.tool(annotations=_RO)
+@_require_db
+def diagnose_phase_consistency(image_id: int, folder_path: Optional[str] = None) -> dict:
+    """Diagnose folder vs per-image phase status mismatch (e.g. folder shows 69/69 KEYWORDS done but image shows Pending).
+    Returns image info, folder info, phase statuses, and whether the image is in the folder's phase aggregate set."""
+    result = {"image_id": image_id, "image": None, "folder": None, "phase_statuses": None, "in_folder_set": None}
+    try:
+        with db.connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT id, file_path, file_name, folder_id FROM images WHERE id = ?",
+                (image_id,)
+            )
+            row = c.fetchone()
+            if not row:
+                result["error"] = f"Image {image_id} not found"
+                return result
+
+            result["image"] = {
+                "id": row[0],
+                "file_path": row[1],
+                "file_name": row[2],
+                "folder_id": row[3],
+            }
+
+            folder_id = row[3]
+            if folder_id:
+                c.execute("SELECT id, path FROM folders WHERE id = ?", (folder_id,))
+                frow = c.fetchone()
+                if frow:
+                    result["folder"] = {"id": frow[0], "path": frow[1]}
+
+            result["phase_statuses"] = db.get_image_phase_statuses(image_id)
+
+            target_path = folder_path or (result.get("folder") or {}).get("path")
+            if target_path:
+                from modules import utils
+                wsl_path = utils.convert_path_to_wsl(target_path) if hasattr(utils, "convert_path_to_wsl") else target_path
+                path_like_unix = wsl_path + "/%"
+                path_like_win = wsl_path + "\\%"
+                c.execute(
+                    """
+                    SELECT COUNT(*) FROM images
+                    WHERE folder_id IN (
+                        SELECT id FROM folders
+                        WHERE path = ? OR path LIKE ? OR path LIKE ?
+                    )
+                    """,
+                    (wsl_path, path_like_unix, path_like_win),
+                )
+                folder_image_count = c.fetchone()[0]
+                c.execute(
+                    """
+                    SELECT 1 FROM images i
+                    JOIN folders f ON f.id = i.folder_id
+                    WHERE i.id = ? AND (f.path = ? OR f.path LIKE ? OR f.path LIKE ?)
+                    """,
+                    (image_id, wsl_path, path_like_unix, path_like_win),
+                )
+                in_set = c.fetchone() is not None
+                result["folder_aggregate"] = {
+                    "folder_path_used": target_path,
+                    "image_count_in_folder": folder_image_count,
+                    "image_in_folder_set": in_set,
+                }
+    except Exception as e:
+        result["error"] = str(e)
+    return result
+
+
 # ============================================================
 # Monitoring & Jobs Tools
 # ============================================================
@@ -988,6 +1058,9 @@ def find_outliers(
 # ============================================================
 # Execute Code (Gradio context - SSE only)
 # ============================================================
+# SECURITY: This tool uses exec() with user-provided code. It is intended for
+# dev/debug use only when connected via SSE to a trusted WebUI. Do not expose
+# to untrusted clients. See AGENTS.md for usage guidelines.
 
 @mcp.tool(annotations=_RW_DESTRUCTIVE if MCP_AVAILABLE else None)
 def execute_code(code: str) -> dict:

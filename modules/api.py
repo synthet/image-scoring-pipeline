@@ -46,6 +46,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 import os
+import platform
 import logging
 from pathlib import Path
 from modules.phases_policy import explain_phase_run_decision
@@ -247,6 +248,72 @@ class TaggingSingleRequest(BaseModel):
             "file_path": "D:/Photos/2024/image.jpg",
             "custom_keywords": ["landscape"],
             "generate_captions": True
+        }
+    })
+
+
+class TagPropagationRequest(BaseModel):
+    """Request model for tag propagation.
+    
+    Propagates keywords from tagged images to visually similar untagged images.
+    
+    Attributes:
+        folder_path: Optional directory path to restrict propagation to.
+        dry_run: If True, only returns candidates without writing to database. Default: True.
+        k: Number of nearest neighbors to consider.
+        min_similarity: Minimum cosine similarity to consider a neighbor.
+        min_keyword_confidence: Minimum confidence score to apply a keyword.
+        min_support_neighbors: Minimum number of neighbors that must have the keyword.
+        write_mode: 'replace_missing_only' (default) or 'append'.
+        max_keywords: Maximum keywords to propagate per image.
+    """
+    folder_path: Optional[str] = Field(
+        None,
+        description="Optional directory path to restrict propagation to.",
+        example="D:/Photos/2024"
+    )
+    dry_run: bool = Field(
+        True,
+        description="If True, only returns candidates without writing to database.",
+        example=True
+    )
+    k: Optional[int] = Field(
+        None,
+        description="Number of nearest neighbors to consider.",
+        example=5
+    )
+    min_similarity: Optional[float] = Field(
+        None,
+        description="Minimum cosine similarity to consider a neighbor.",
+        example=0.85
+    )
+    min_keyword_confidence: Optional[float] = Field(
+        None,
+        description="Minimum confidence score to apply a keyword.",
+        example=0.6
+    )
+    min_support_neighbors: Optional[int] = Field(
+        None,
+        description="Minimum number of neighbors that must have the keyword.",
+        example=2
+    )
+    write_mode: Optional[str] = Field(
+        "replace_missing_only",
+        description="'replace_missing_only' (default) or 'append'.",
+        example="replace_missing_only"
+    )
+    max_keywords: Optional[int] = Field(
+        None,
+        description="Maximum keywords to propagate per image.",
+        example=10
+    )
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "folder_path": "D:/Photos/2024",
+            "dry_run": True,
+            "k": 5,
+            "min_similarity": 0.85
         }
     })
 
@@ -1331,6 +1398,44 @@ def create_api_router() -> APIRouter:
             message=message,
             data={"file_path": request.file_path}
         )
+
+    @router.post(
+        "/tagging/propagate",
+        summary="Propagate tags",
+        description="""
+        Propagates keywords from tagged images to visually similar untagged images.
+        
+        This operation uses image embeddings to find nearest neighbors and applies
+        tags based on similarity-weighted voting.
+        
+        **Use Cases:**
+        - Automatically tagging large datasets from a small set of manually tagged examples
+        - Ensuring consistent tagging across similar bursts or shots
+        - Quickly organizing imported photo collections
+        """
+    )
+    async def tag_propagation(request: TagPropagationRequest):
+        """Propagate keywords from tagged images to untagged neighbors."""
+        from modules.tagging import propagate_tags
+        try:
+            result = propagate_tags(
+                folder_path=request.folder_path,
+                dry_run=request.dry_run,
+                k=request.k,
+                min_similarity=request.min_similarity,
+                min_keyword_confidence=request.min_keyword_confidence,
+                min_support_neighbors=request.min_support_neighbors,
+                write_mode=request.write_mode,
+                max_keywords=request.max_keywords
+            )
+            return {
+                "success": True,
+                "message": f"Tag propagation completed ({'dry run' if request.dry_run else 'live'})",
+                "data": result
+            }
+        except Exception as e:
+            logger.error(f"Tag propagation failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
     
     # ========== General Endpoints ==========
     
@@ -1981,6 +2086,8 @@ def create_api_router() -> APIRouter:
             data = dict(row)
             data['file_paths'] = db.get_all_paths(image_id)
             data['resolved_path'] = db.get_resolved_path(image_id, verified_only=False)
+            # Phase statuses for gallery display (scoring, metadata, culling, keywords)
+            data['phase_statuses'] = db.get_image_phase_statuses(image_id)
             return data
         except HTTPException:
             raise
@@ -2100,10 +2207,11 @@ def create_api_router() -> APIRouter:
 
         _check_rate_limit("import_register")
 
-        # Convert Windows path to WSL for backend access (Python runs in WSL)
+        # Convert Windows path to WSL only when backend runs in WSL (Linux).
+        # When running natively on Windows, keep path as-is.
         folder_path = request.folder_path
         try:
-            if (":" in folder_path or "\\" in folder_path) and hasattr(utils, "convert_path_to_wsl"):
+            if platform.system() == "Linux" and (":" in folder_path or "\\" in folder_path) and hasattr(utils, "convert_path_to_wsl"):
                 folder_path = utils.convert_path_to_wsl(folder_path)
         except Exception:
             pass

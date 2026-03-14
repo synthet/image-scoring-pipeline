@@ -6,7 +6,7 @@ from modules import ui_tree
 _last_status_cache = {"state": None}
 
 
-def _parse_phase_summary(folder_path):
+def _parse_phase_summary(folder_path, force_refresh=False):
     """
     Calls db.get_folder_phase_summary() and converts the list result
     into a dict keyed by phase code for easy lookup.
@@ -21,7 +21,7 @@ def _parse_phase_summary(folder_path):
     if not folder_path:
         return {}, 0
 
-    summary_list = db.get_folder_phase_summary(folder_path)
+    summary_list = db.get_folder_phase_summary(folder_path, force_refresh=force_refresh)
     # summary_list is [{code, name, sort_order, status, done_count, total_count}, ...]
     summary_by_code = {}
     total_count = 0
@@ -71,18 +71,6 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                 )
 
                 gr.HTML("<div class='section-divider'></div>")
-
-                gr.HTML(
-                    """
-                    <h3 class="legend-title">Legend</h3>
-                    <div class="legend">
-                        <span class="legend-item"><strong class="tree-icon done">D</strong> Done</span>
-                        <span class="legend-item"><strong class="tree-icon partial">P</strong> Partial</span>
-                        <span class="legend-item"><strong class="tree-icon failed">F</strong> Failed</span>
-                        <span class="legend-item"><strong class="tree-icon empty">N</strong> Not Started</span>
-                    </div>
-                    """
-                )
 
             # MAIN DASHBOARD
             with gr.Column(scale=3):
@@ -193,9 +181,9 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                             lines=12, label="", max_lines=12, interactive=False, elem_classes=["console-code"]
                         )
 
-    # Wire up folder selection to update HTML rendering
+    # Wire up folder selection to update HTML rendering (force_refresh to avoid stale cache)
     components["selected_path"].change(
-        fn=_update_folder_selection,
+        fn=lambda p: _update_folder_selection(p, force_refresh=True),
         inputs=[components["selected_path"]],
         outputs=[
             components["folder_summary_html"],
@@ -207,9 +195,26 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         ]
     )
 
+    def _on_refresh_click(selected_path):
+        """Refresh tree and invalidate folder phase cache so next fetch is live."""
+        if selected_path and selected_path.strip():
+            db.invalidate_folder_phase_aggregates(folder_path=selected_path)
+        tree_html = ui_tree.get_tree_html()
+        folder_outputs = _update_folder_selection(selected_path or "", force_refresh=True)
+        return (tree_html,) + folder_outputs
+
     components["refresh_btn"].click(
-        fn=ui_tree.get_tree_html,
-        outputs=[components["tree_view"]]
+        fn=_on_refresh_click,
+        inputs=[components["selected_path"]],
+        outputs=[
+            components["tree_view"],
+            components["folder_summary_html"],
+            components["stepper_html"],
+            components["scoring_card_html"],
+            components["culling_card_html"],
+            components["keywords_card_html"],
+            components["quick_start_html"],
+        ],
     )
 
     # --- Run button handlers ---
@@ -415,7 +420,7 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
     return components
 
 
-def _update_folder_selection(folder_path: str):
+def _update_folder_selection(folder_path: str, force_refresh=False, is_running=False):
     """Updates the static UI components when a new folder is selected."""
     if not folder_path:
         return (
@@ -424,10 +429,10 @@ def _update_folder_selection(folder_path: str):
             _build_phase_card_html("SCORING", "Not Started", 0, 0),
             _build_phase_card_html("CULLING", "Not Started", 0, 0),
             _build_phase_card_html("KEYWORDS", "Not Started", 0, 0),
-            _build_quick_start_html(None),
+            _build_quick_start_html(None, is_running=is_running),
         )
 
-    summary_by_code, total_count = _parse_phase_summary(folder_path)
+    summary_by_code, total_count = _parse_phase_summary(folder_path, force_refresh=force_refresh)
 
     sc = summary_by_code.get("scoring", {})
     cu = summary_by_code.get("culling", {})
@@ -439,7 +444,7 @@ def _update_folder_selection(folder_path: str):
         _build_phase_card_html("SCORING", sc.get("status", "not_started"), sc.get("done_count", 0), total_count),
         _build_phase_card_html("CULLING", cu.get("status", "not_started"), cu.get("done_count", 0), total_count),
         _build_phase_card_html("KEYWORDS", kw.get("status", "not_started"), kw.get("done_count", 0), total_count),
-        _build_quick_start_html(folder_path, summary_by_code),
+        _build_quick_start_html(folder_path, summary_by_code, is_running=is_running),
     )
 
 
@@ -466,7 +471,9 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
     not_running = not is_running
 
     # Rebuild stepper/cards from current folder state
-    res_summary, res_stepper, res_sc, res_cu, res_kw, res_qs = _update_folder_selection(selected_folder)
+    res_summary, res_stepper, res_sc, res_cu, res_kw, res_qs = _update_folder_selection(
+        selected_folder, is_running=is_running
+    )
 
     # Return order must match monitor_outputs in app.py:
     # stepper, scoring_card, culling_card, keywords_card,
@@ -645,8 +652,9 @@ def _build_phase_card_html(title, status, done, total):
     status_label = _STATUS_LABELS.get(status, status.replace("_", " ").title())
     badge_class = _STATUS_BADGE_CLASS.get(status, "")
     badge_cls = f"phase-status status-badge {badge_class}" if badge_class else "phase-status"
+    running_cls = " phase-card running" if status in ("running", "partial") else ""
     return f"""
-    <div role="region" aria-label="{title} phase: {status_label}">
+    <div class="phase-card{running_cls}" role="region" aria-label="{title} phase: {status_label}">
       <div class="phase-head">
         <div class="phase-title">
           <div class="phase-icon">{initial}</div>
@@ -661,8 +669,14 @@ def _build_phase_card_html(title, status, done, total):
 
 
 def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
-    if not folder_path or not summary_by_code:
+    if not folder_path:
         return "<p>Select a folder from the tree to view pipeline progress.</p>"
+
+    if not summary_by_code or total == 0:
+        return (
+            "<p class='section-microcopy'>No images in this folder. "
+            "Run Scoring first to index images from disk.</p>"
+        )
 
     def _phase(phase_code, default_done=0):
         return summary_by_code.get(phase_code, {"done_count": default_done, "status": "not_started", "advance_ready": False})
@@ -702,7 +716,7 @@ def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
         <div class="step-label">Meta</div>
         <div class="step-count">{met_done} / {total}</div>
       </div>
-      <div class="connector {get_state(sco, total)}" aria-hidden="true"></div>
+      <div class="connector {get_state(met, total)}" aria-hidden="true"></div>
 
       <div class="step {get_state(sco, total)}" role="listitem" aria-label="Scoring: {sco_done} of {total}">
         <div class="step-dot">3</div>
