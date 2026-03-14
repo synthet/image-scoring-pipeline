@@ -4529,13 +4529,16 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
                      WHERE file_path = ?''',
                   (keywords, title, description, rating, label, file_path))
 
+        conn.commit()
+
         # Phase 2 dual-write: keep normalized keyword tables synchronized.
+        # Must run after commit to avoid: (1) dual-write inconsistency if outer
+        # commit fails; (2) Firebird deadlock (inner conn blocks on FK to row
+        # held by outer conn in WAIT mode).
         c.execute("SELECT id FROM images WHERE file_path = ?", (file_path,))
         row = c.fetchone()
         if row:
             _sync_image_keywords(row[0], keywords)
-
-        conn.commit()
         
         # Broadcast image update
         try:
