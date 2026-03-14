@@ -35,6 +35,7 @@
       "Bash(python -m pytest)",
       "Bash(python -c \"import py_compile; py_compile.compile\\(''modules/db.py'', doraise=True\\); py_compile.compile\\(''modules/mcp_server.py'', doraise=True\\); print\\(''Both files compile OK''\\)\")",
       "Bash(python -c \"from modules.db import _add_keyword_filter; print\\(''_add_keyword_filter imported successfully''\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''modules/ui/tabs/pipeline.py'', doraise=True\\); py_compile.compile\\(''modules/ui/tabs/gallery.py'', doraise=True\\); py_compile.compile\\(''modules/ui/app.py'', doraise=True\\); py_compile.compile\\(''modules/ui/assets.py'', doraise=True\\); print\\(''All files compile OK''\\)\")",
       "Bash(wsl -e /home/owner/.venvs/tf/bin/pip list)",
       "Bash(wsl -e /home/owner/.venvs/tf/bin/pip install torch torchvision)",
       "Bash(wsl bash -c '~/.venvs/tf/bin/pip install torch torchvision')",

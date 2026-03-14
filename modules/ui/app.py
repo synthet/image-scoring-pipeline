@@ -111,7 +111,8 @@ def create_ui():
             pipeline_components["stop_all_btn"],
             pipeline_components["scoring_run_btn"],
             pipeline_components["culling_run_btn"],
-            pipeline_components["keywords_run_btn"]
+            pipeline_components["keywords_run_btn"],
+            pipeline_components["quick_start_html"],
         ]
 
         status_timer.tick(
