@@ -1,5 +1,16 @@
 # Unfinished Business & TODO Evaluation (2026-03-14)
 
+## Assumptions & Limits
+
+- This analysis is based on static TODO/backlog documentation, not direct execution traces.
+- No runtime or system-health execution evidence was used to produce this report.
+- Recommendations here are prioritization guidance and do not confirm implementation status.
+
+## Non-Goals
+
+- This document does not replace sprint planning artifacts.
+- This document does not replace cross-repo contract governance documentation.
+
 ## Scope Reviewed
 
 - Root consolidated backlog: `TODO.md`
