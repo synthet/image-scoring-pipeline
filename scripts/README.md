@@ -12,7 +12,7 @@ Utility scripts for the Image Scoring project. Most scripts that use the databas
 | `analysis/` | Score analysis, normalization checks, progress monitoring |
 | `debug/` | DB diagnostics (e.g. `debug_firebird.py`, `test_db_conn.py`) |
 | `utils/` | Test DB creation, PyIQA model listing, remove empty dirs |
-| `setup/` | GPU/WSL setup helpers |
+| `setup/` | GPU/WSL setup helpers (`setup_wsl.bat`, `setup_windows_native.bat`) |
 | `batch/` | Windows batch wrappers |
 | `powershell/` | PowerShell wrappers |
 | `wsl/` | WSL test runner and setup |

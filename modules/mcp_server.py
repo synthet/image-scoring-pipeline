@@ -10,6 +10,7 @@ Usage:
 """
 
 import asyncio
+import io
 import json
 import logging
 import os
@@ -44,12 +45,16 @@ _scoring_runner = None
 _tagging_runner = None
 _clustering_runner = None
 
+# Gradio context (set by webui when MCP runs in integrated/SSE mode)
+_gradio_context: dict | None = None
+
 # Set False if db.init_db() fails (e.g. Firebird not migrated); DB-using tools then return a clear error
 _db_available = True
 
 # Annotation presets
 _RO = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
 _RW = ToolAnnotations(readOnlyHint=False, destructiveHint=False)
+_RW_DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
 
 
 def _require_db(fn):
@@ -69,6 +74,35 @@ def set_runners(scoring_runner, tagging_runner, clustering_runner=None):
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
+
+
+def set_gradio_context(
+    demo=None,
+    pipeline_components=None,
+    gallery_components=None,
+    settings_components=None,
+    main_tabs=None,
+    runner=None,
+    tagging_runner=None,
+    orchestrator=None,
+):
+    """Set Gradio context for execute_code tool. Called from webui when MCP runs in integrated mode."""
+    global _gradio_context
+    components = {}
+    if pipeline_components:
+        components.update(pipeline_components)
+    if gallery_components:
+        components.update(gallery_components)
+    if settings_components:
+        components.update(settings_components)
+    _gradio_context = {
+        "demo": demo,
+        "components": components,
+        "main_tabs": main_tabs,
+        "runner": runner,
+        "tagging_runner": tagging_runner,
+        "orchestrator": orchestrator,
+    }
 
 
 # --- Create FastMCP server instance ---
@@ -952,6 +986,69 @@ def find_outliers(
 
 
 # ============================================================
+# Execute Code (Gradio context - SSE only)
+# ============================================================
+
+@mcp.tool(annotations=_RW_DESTRUCTIVE if MCP_AVAILABLE else None)
+def execute_code(code: str) -> dict:
+    """Execute Python code in the WebUI process with access to gr, demo, and all Gradio components. Only available when connected via SSE (image-scoring-webui). Globals: gr, demo, components, runner, tagging_runner, orchestrator, db, config."""
+    global _gradio_context
+    if _gradio_context is None:
+        return {
+            "error": "Gradio context not available. Start the WebUI (run_webui.bat or python webui.py) and connect Cursor to image-scoring-webui via http://localhost:7860/mcp/sse"
+        }
+    try:
+        import gradio as gr
+    except ImportError:
+        return {"error": "gradio not installed"}
+
+    stdout_capture = io.StringIO()
+    stderr_capture = io.StringIO()
+    result = None
+
+    exec_globals = {
+        "gr": gr,
+        "demo": _gradio_context.get("demo"),
+        "components": _gradio_context.get("components", {}),
+        "main_tabs": _gradio_context.get("main_tabs"),
+        "runner": _gradio_context.get("runner"),
+        "tagging_runner": _gradio_context.get("tagging_runner"),
+        "orchestrator": _gradio_context.get("orchestrator"),
+        "db": db,
+        "config": config,
+    }
+
+    try:
+        import builtins
+        old_stdout, old_stderr = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = stdout_capture, stderr_capture
+        try:
+            exec_globals["__builtins__"] = builtins
+            exec(code, exec_globals)
+            if "result" in exec_globals:
+                result = exec_globals["result"]
+        finally:
+            sys.stdout, sys.stderr = old_stdout, old_stderr
+    except Exception as e:
+        return {
+            "error": str(e),
+            "stdout": stdout_capture.getvalue(),
+            "stderr": stderr_capture.getvalue(),
+        }
+
+    out = {
+        "stdout": stdout_capture.getvalue(),
+        "stderr": stderr_capture.getvalue(),
+    }
+    if result is not None:
+        try:
+            out["result"] = json.dumps(result, default=str)
+        except (TypeError, ValueError):
+            out["result"] = repr(result)
+    return out
+
+
+# ============================================================
 # MCP Resources
 # ============================================================
 
@@ -987,33 +1084,8 @@ def create_mcp_sse_app(mount_path: str = "/mcp"):
 
     prepare_mcp_embedded()
     app = mcp.sse_app(mount_path=mount_path)
-    
-    # Cursor sometimes sends POST/DELETE to /mcp/sse directly instead of the endpoint URL.
-    # Let's alias POST /sse to the /messages handler and handle DELETE gracefully.
-    try:
-        from starlette.routing import Route, Mount
-        from starlette.responses import Response
-        
-        # Find the messages mount
-        messages_mount = next((r for r in app.routes if isinstance(r, Mount) and r.path == '/messages'), None)
-        
-        if messages_mount:
-            async def sse_post_alias(request):
-                # Rewrite path internally to match the mount's expectations
-                scope = dict(request.scope)
-                scope["path"] = "/messages"
-                # Starlette Request objects have private _send and receive attributes 
-                # that we can pass to the mount's ASGI handler.
-                await messages_mount.handle(scope, request.receive, request._send)
-                
-            app.routes.insert(0, Route('/sse', endpoint=sse_post_alias, methods=['POST']))
-            
-        async def dummy_delete_handler(request):
-            return Response(status_code=200)
-            
-        app.routes.insert(0, Route('/sse', endpoint=dummy_delete_handler, methods=['DELETE']))
-    except Exception as e:
-        logger.warning(f"Failed to alias POST/DELETE routes for SSE: {e}")
+    # Note: mcp.sse_app() creates an app with routes at {mount_path}/sse and {mount_path}/messages
+    # The app is designed to handle MCP protocol over SSE using Starlette routing
 
     return app
 

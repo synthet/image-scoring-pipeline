@@ -2130,11 +2130,22 @@ def _init_db_impl():
                 except Exception: pass
                 c = conn.cursor()
 
+        # CHK_IMAGES_CULL_DECISION: allow 'neutral','maybe' (used by selection/culling)
+        if _constraint_exists(c, 'CHK_IMAGES_CULL_DECISION'):
+            try:
+                c.execute("ALTER TABLE images DROP CONSTRAINT chk_images_cull_decision")
+                conn.commit()
+                c = conn.cursor()
+            except Exception as e:
+                logger.warning("Phase1 1.8a DROP CHK_IMAGES_CULL_DECISION: %s", e)
+                try: conn.rollback()
+                except Exception: pass
+                c = conn.cursor()
         if not _constraint_exists(c, 'CHK_IMAGES_CULL_DECISION'):
             try:
                 c.execute("""
                     ALTER TABLE images ADD CONSTRAINT chk_images_cull_decision
-                    CHECK (cull_decision IS NULL OR cull_decision IN ('pick','reject','skip',''))
+                    CHECK (cull_decision IS NULL OR cull_decision IN ('pick','reject','skip','neutral','maybe',''))
                 """)
                 conn.commit()
                 c = conn.cursor()
@@ -2371,6 +2382,12 @@ def update_image_path(image_hash, new_path):
         return False
     finally:
         conn.close()
+
+
+def update_image_uuid(image_id: int, image_uuid: str) -> bool:
+    """Update the IMAGE_UUID for a specific image."""
+    return update_image_field(image_id, "image_uuid", image_uuid)
+
 
 def update_image_folder_id(image_hash=None, image_id=None):
     """
@@ -3938,16 +3955,21 @@ def upsert_image(job_id, result):
         if name in models_scores:
             m_data = models_scores[name]
             if isinstance(m_data, dict):
-                 return m_data.get("normalized_score", m_data.get("score", 0))
-            return 0
+                 # Return None if status is not success
+                 if m_data.get("status") != "success":
+                     return None
+                 return m_data.get("normalized_score", m_data.get("score"))
+            return None
             
         # Try 'individual_scores' (legacy format)
         val = individual_scores.get(name)
         if isinstance(val, dict):
-            return val.get("normalized_score", val.get("score", 0))
+            if val.get("status") != "success" and "status" in val:
+                return None
+            return val.get("normalized_score", val.get("score"))
         if isinstance(val, (int, float)):
             return val
-        return 0
+        return None
 
     score_spaq = get_ind_score("spaq")
     score_ava = get_ind_score("ava")
@@ -3957,9 +3979,9 @@ def upsert_image(job_id, result):
         
     # Weighted Scores
     # Try to get from result (if passed from engine) or parse from summary
-    score_technical = 0
-    score_aesthetic = 0
-    score_general = 0
+    score_technical = None
+    score_aesthetic = None
+    score_general = None
     
     if "score_technical" in result:
         score_technical = result["score_technical"]
@@ -3967,18 +3989,18 @@ def upsert_image(job_id, result):
         score_general = result["score_general"]
     elif "summary" in result and "weighted_scores" in result["summary"]:
         ws = result["summary"]["weighted_scores"]
-        score_technical = ws.get("technical", 0)
-        score_aesthetic = ws.get("aesthetic", 0)
-        score_general = ws.get("general", 0)
+        score_technical = ws.get("technical")
+        score_aesthetic = ws.get("aesthetic")
+        score_general = ws.get("general")
     elif "full_results" in result: 
         # Engine passes full_results
         ws = result["full_results"].get("summary", {}).get("weighted_scores", {})
-        score_technical = ws.get("technical", 0)
-        score_aesthetic = ws.get("aesthetic", 0)
-        score_general = ws.get("general", 0)
+        score_technical = ws.get("technical")
+        score_aesthetic = ws.get("aesthetic")
+        score_general = ws.get("general")
         
     # Ensure main score matches general if not set
-    if score == 0 and score_general > 0:
+    if (score == 0 or score is None) and score_general is not None and score_general > 0:
         score = score_general
 
 
@@ -5434,6 +5456,8 @@ def clear_stacks_in_folder(folder_path):
             logging.debug(f"[Force Rescan] Resetting culling phase for image {image_id} from running to done")
             set_image_phase_status(image_id, "culling", "done")
         
+        # Invalidate cache so subsequent get_images_by_folder returns fresh stack_id
+        invalidate_folder_images_cache(folder_path)
         # Broadcast updates
         event_manager.broadcast_threadsafe("folder_updated", {"folder_path": folder_path})
         event_manager.broadcast_threadsafe("stacks_cleared", {"folder_path": folder_path})
@@ -5823,29 +5847,6 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
     Adds images to a culling session.
     group_assignments: dict of {image_id: group_id} if groups are pre-computed.
     """
-    # #region agent log
-    import json
-    _debug_log_path = os.path.join(_PROJECT_ROOT, '.cursor', 'debug.log')
-    try:
-        with open(_debug_log_path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "A,B,C,D,E",
-                "location": "db.py:2927",
-                "message": "add_images_to_culling_session entry",
-                "data": {
-                    "session_id": session_id,
-                    "image_count": len(image_ids) if image_ids else 0,
-                    "has_group_assignments": group_assignments is not None,
-                    "group_assignments_type": str(type(group_assignments)),
-                    "sample_group_ids": list(group_assignments.values())[:5] if group_assignments and len(group_assignments) > 0 else None
-                },
-                "timestamp": int(time.time() * 1000)
-            }) + '\n')
-    except Exception: pass
-    # #endregion agent log
-    
     if not image_ids:
         logging.warning(f"No image_ids provided for session {session_id}")
         return False
@@ -5858,28 +5859,6 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
         for idx, img_id in enumerate(image_ids):
             group_id = group_assignments.get(img_id) if group_assignments else None
             
-            # #region agent log
-            try:
-                with open(_debug_log_path, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "A,B,C",
-                        "location": "db.py:2942",
-                        "message": "Before execute - group_id value and type",
-                        "data": {
-                            "img_id": img_id,
-                            "group_id": group_id,
-                            "group_id_type": str(type(group_id)),
-                            "is_none": group_id is None,
-                            "is_zero": group_id == 0,
-                            "iteration": idx
-                        },
-                        "timestamp": int(time.time() * 1000)
-                    }) + '\n')
-            except Exception: pass
-            # #endregion agent log
-            
             # Use UPDATE OR INSERT for Firebird (equivalent to SQLite's INSERT OR IGNORE)
             # Explicitly set all columns to avoid Firebird conversion issues with defaults
             # Firebird may have issues with SMALLINT defaults in UPDATE OR INSERT, so set them explicitly
@@ -5890,62 +5869,11 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
                              MATCHING (session_id, image_id)""",
                           (session_id, img_id, group_id, None, 0, 0, now))
                 
-                # #region agent log
-                try:
-                    with open(_debug_log_path, 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A,B,C,D",
-                            "location": "db.py:2950",
-                            "message": "Execute succeeded",
-                            "data": {"img_id": img_id, "group_id": group_id},
-                            "timestamp": int(time.time() * 1000)
-                        }) + '\n')
-                except Exception: pass
-                # #endregion agent log
-                
                 added_count += 1
             except Exception as e:
-                # #region agent log
-                try:
-                    with open(_debug_log_path, 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A,B,C,D,E",
-                            "location": "db.py:2952",
-                            "message": "Execute failed - error details",
-                            "data": {
-                                "img_id": img_id,
-                                "group_id": group_id,
-                                "group_id_type": str(type(group_id)),
-                                "error": str(e),
-                                "error_type": str(type(e).__name__)
-                            },
-                            "timestamp": int(time.time() * 1000)
-                        }) + '\n')
-                except Exception: pass
-                # #endregion agent log
-                
                 logging.error(f"Failed to add image {img_id} to session {session_id}: {e}")
                 continue
         conn.commit()
-        
-        # #region agent log
-        try:
-            with open(_debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "A,B,C,D,E",
-                    "location": "db.py:2955",
-                    "message": "Function exit - final count",
-                    "data": {"added_count": added_count, "total": len(image_ids), "success": added_count > 0},
-                    "timestamp": int(time.time() * 1000)
-                }) + '\n')
-        except Exception: pass
-        # #endregion agent log
         
         logging.info(f"Added {added_count}/{len(image_ids)} images to culling session {session_id}")
         return added_count > 0

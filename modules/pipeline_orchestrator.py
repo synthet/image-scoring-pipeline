@@ -10,7 +10,13 @@ logger = logging.getLogger(__name__)
 class PipelineOrchestrator:
     """Manages sequential execution across pipeline phases using persisted job phase plans."""
 
-    PHASE_ORDER = [PhaseCode.SCORING, PhaseCode.CULLING, PhaseCode.KEYWORDS]
+    PHASE_ORDER = [
+        PhaseCode.INDEXING,
+        PhaseCode.METADATA,
+        PhaseCode.SCORING,
+        PhaseCode.CULLING,
+        PhaseCode.KEYWORDS
+    ]
 
     def __init__(self, scoring_runner, tagging_runner, selection_runner):
         self._runners = {

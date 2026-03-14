@@ -46,7 +46,7 @@ class ScoringRunner:
         """
         return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
 
-    def start_batch(self, input_path, job_id, skip_existing=False, resolved_image_ids=None):
+    def start_batch(self, input_path, job_id, skip_existing=False, resolved_image_ids=None, target_phases=None):
         """
         Starts batch processing in a background thread. Non-blocking.
         """
@@ -77,7 +77,7 @@ class ScoringRunner:
             return "Path not found"
 
         def target():
-            self._run_batch_internal(input_path, job_id, skip_existing, resolved_image_ids=resolved_image_ids)
+            self._run_batch_internal(input_path, job_id, skip_existing, resolved_image_ids=resolved_image_ids, target_phases=target_phases)
             self.is_running = False
             if "Error" in self.status_message:
                 self.status_message = "Failed"
@@ -88,7 +88,7 @@ class ScoringRunner:
         self._thread.start()
         return "Started"
 
-    def _run_batch_internal(self, input_path, job_id, skip_existing, resolved_image_ids=None):
+    def _run_batch_internal(self, input_path, job_id, skip_existing, resolved_image_ids=None, target_phases=None):
         """
         Internal synchronous runner.
         """
@@ -138,7 +138,8 @@ class ScoringRunner:
             output_dir=input_path,
             skip_existing=skip_existing,
             scorer=self.shared_scorer,
-            progress_callback=on_progress
+            progress_callback=on_progress,
+            target_phases=target_phases
         )
         self.current_processor = processor
         

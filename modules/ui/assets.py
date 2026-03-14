@@ -797,6 +797,18 @@ button.media-button.svelte-ao1xvt {
     border: 1px solid rgba(210, 153, 34, 0.3) !important;
 }
 
+.status-badge.error {
+    background: rgba(241, 79, 69, 0.15) !important;
+    color: var(--accent-danger) !important;
+    border: 1px solid rgba(241, 79, 69, 0.3) !important;
+}
+
+.status-badge.info {
+    background: rgba(0, 122, 204, 0.15) !important;
+    color: var(--accent-primary) !important;
+    border: 1px solid rgba(0, 122, 204, 0.3) !important;
+}
+
 /* ========== PROGRESS BAR ========== */
 .progress-container {
     background: var(--bg-tertiary) !important;
@@ -1070,6 +1082,12 @@ button.media-button.svelte-ao1xvt {
 
 .connector.running {
   background: linear-gradient(90deg, var(--accent-success), var(--accent-primary)) !important;
+}
+
+@keyframes running-pulse {
+    0%   { box-shadow: 0 0 0 0   rgba(0, 122, 204, 0.35); }
+    50%  { box-shadow: 0 0 0 6px rgba(0, 122, 204, 0.10); }
+    100% { box-shadow: 0 0 0 0   rgba(0, 122, 204, 0.00); }
 }
 
 /* PHASE CARDS */
@@ -1523,6 +1541,181 @@ button.media-button.svelte-ao1xvt {
 .compare-item-score span {
     color: var(--accent-primary, #58a6ff);
     font-weight: 600;
+}
+
+/* ========== QUICK START PANEL ========== */
+.quick-start-panel {
+    background: linear-gradient(135deg, rgba(0, 122, 204, 0.08) 0%, rgba(163, 113, 247, 0.06) 100%) !important;
+    border: 1px solid rgba(0, 122, 204, 0.25) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 14px 18px !important;
+    margin-bottom: 14px !important;
+}
+
+.quick-start-steps {
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    margin-top: 10px !important;
+    flex-wrap: wrap !important;
+}
+
+.qs-step {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 8px 12px !important;
+    border-radius: var(--radius-md) !important;
+    font-size: 0.85rem !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    background: var(--bg-tertiary) !important;
+    transition: all var(--transition-fast) !important;
+    flex: 1 !important;
+    min-width: 160px !important;
+}
+
+.qs-step.current {
+    border-color: var(--accent-primary) !important;
+    color: var(--text-primary) !important;
+    background: rgba(0, 122, 204, 0.12) !important;
+    font-weight: 600 !important;
+}
+
+.qs-step.done {
+    border-color: var(--accent-success) !important;
+    color: var(--accent-success) !important;
+    opacity: 0.7 !important;
+}
+
+.qs-step-num {
+    width: 22px !important;
+    height: 22px !important;
+    border-radius: 50% !important;
+    background: var(--bg-input) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 0.78rem !important;
+    font-weight: bold !important;
+    flex-shrink: 0 !important;
+}
+
+.qs-step.current .qs-step-num {
+    background: var(--accent-primary) !important;
+    color: white !important;
+}
+
+.qs-step.done .qs-step-num {
+    background: var(--accent-success) !important;
+    color: white !important;
+}
+
+.qs-arrow {
+    color: var(--text-muted) !important;
+    font-size: 0.9rem !important;
+    padding-top: 8px !important;
+    flex-shrink: 0 !important;
+}
+
+/* ========== CONFIRMATION ROW ========== */
+.confirm-row {
+    background: rgba(241, 79, 69, 0.08) !important;
+    border: 1px solid rgba(241, 79, 69, 0.3) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 10px 14px !important;
+    margin-top: 6px !important;
+}
+
+.confirm-row > div {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-wrap: wrap !important;
+}
+
+.confirm-text {
+    font-size: 0.85rem !important;
+    color: var(--text-secondary) !important;
+    flex: 1 !important;
+}
+
+/* ========== MICROCOPY / HELPER TEXT ========== */
+.action-help {
+    font-size: 0.78rem !important;
+    color: var(--text-muted) !important;
+    margin-top: 4px !important;
+    line-height: 1.4 !important;
+    font-style: italic !important;
+}
+
+.section-microcopy {
+    font-size: 0.82rem !important;
+    color: var(--text-muted) !important;
+    padding: 6px 0 2px 0 !important;
+    line-height: 1.5 !important;
+}
+
+/* ========== FILTER PRESETS ========== */
+.filter-preset-row {
+    display: flex !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+    margin-bottom: 10px !important;
+    padding-bottom: 10px !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+.filter-preset-row > div {
+    display: flex !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+}
+
+/* Active chips strip */
+.active-chips-strip {
+    display: flex !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    min-height: 28px !important;
+    padding: 4px 0 !important;
+}
+
+.active-chip {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 3px 10px !important;
+    background: rgba(0, 122, 204, 0.18) !important;
+    border: 1px solid rgba(0, 122, 204, 0.4) !important;
+    border-radius: 14px !important;
+    font-size: 0.78rem !important;
+    color: var(--accent-hover) !important;
+    font-weight: 500 !important;
+}
+
+/* ========== ACCESSIBILITY ========== */
+:focus-visible {
+    outline: 2px solid var(--accent-primary) !important;
+    outline-offset: 2px !important;
+}
+
+.sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+.phase-card[role="region"]:focus-within {
+    box-shadow: 0 0 0 2px var(--accent-primary) !important;
 }
 """
 

@@ -1131,17 +1131,15 @@ class MultiModelMUSIQ:
                      continue
 
                 results["models"][model_name] = model_data
-                results["summary"]["total_models"] += 1
                 
                 if model_data.get("status") == "success":
                     norm_score = model_data.get("normalized_score")
                     
                     # If normalized score not provided, try to calculate from score if we know the model
                     if norm_score is None and model_data.get("score") is not None:
-                        # For LIQE, range is typically 0-1, so score is normalized score
+                        # For LIQE, range is typically 1-5
                         if model_name.lower() == 'liqe':
                             raw_score = model_data.get("score", 0)
-                            # LIQE range is 1-5
                             min_val = 1.0
                             max_val = 5.0
                             norm_score = (raw_score - min_val) / (max_val - min_val)

@@ -91,28 +91,35 @@ class ClusteringEngine:
             self.model = MobileNetV2(weights='imagenet', include_top=False, pooling='avg', input_shape=(224, 224, 3))
             logging.info("Clustering Model (MobileNetV2) loaded.")
 
-    def extract_features(self, image_paths):
+    def extract_features(self, image_paths, original_paths=None):
         """
         Extract features for a list of image paths.
         Uses persisted cache when available.
         Returns numpy array of features.
+
+        Args:
+            image_paths: Paths to load images from (may be thumbnails).
+            original_paths: Original file paths for DB hash lookup. If None, image_paths are used.
         """
         self.load_model()
-        
+
+        if original_paths is None:
+            original_paths = image_paths
+
         features_list = []
         valid_indices = []  # Track which images were successfully processed
-        
+
         # Separate cached vs uncached images
         uncached_paths = []
         uncached_indices = []
         path_to_hash = {}
-        
-        for i, path in enumerate(image_paths):
+
+        for i, (path, orig_path) in enumerate(zip(image_paths, original_paths)):
             if not os.path.exists(path):
                 continue
-            
-            # Get hash for cache lookup
-            img_hash = self._get_image_hash(path)
+
+            # Get hash for cache lookup using original path (DB stores original paths)
+            img_hash = self._get_image_hash(orig_path)
             path_to_hash[path] = img_hash
             
             if img_hash and img_hash in self.feature_cache:
@@ -412,9 +419,11 @@ class ClusteringEngine:
                     logging.debug("Skipping culling image_id=%s: %s", r['id'], decision['reason'])
 
             if not runnable_rows:
+                logging.warning(f"[Clustering] Skipping folder {folder}: runnable_rows=0 (all images current)")
                 yield update_status(f"Skipping folder: {folder} (all images current)", processed_count, len(images_rows))
                 continue
 
+            logging.info(f"[Clustering] Processing folder {folder}: {len(runnable_rows)} runnable images")
             for r in runnable_rows:
                 # If force_rescan and image is in RUNNING state, reset to DONE first to allow rerun
                 if force_rescan:
@@ -491,6 +500,7 @@ class ClusteringEngine:
             
             # Create burst stacks
             if burst_stacks_data:
+                logging.info(f"[Clustering] Creating {len(burst_stacks_data)} burst stacks")
                 db.create_stacks_batch(burst_stacks_data)
                 # Update burst_uuid in database for these images
                 for stack_data in burst_stacks_data:
@@ -499,6 +509,7 @@ class ClusteringEngine:
                 yield update_status(f"Created {len(burst_stacks_data)} burst stacks from BurstUUID", processed_count, len(images_rows))
             
             # ===== CONTINUE WITH VISUAL CLUSTERING FOR REMAINING IMAGES =====
+            logging.info(f"[Clustering] non_burst_rows={len(non_burst_rows)}, time_batches will be built")
             if not non_burst_rows:
                 # All images were burst photos - skip to next folder
                 db.mark_folder_clustered(folder)
@@ -532,7 +543,7 @@ class ClusteringEngine:
             
             if current_batch:
                 time_batches.append(current_batch)
-                
+            logging.info(f"[Clustering] time_batches={len(time_batches)}, batches with len>=2: {sum(1 for b in time_batches if len(b)>=2)}")
             for b_idx, batch in enumerate(time_batches):
                 # Calculate overall progress for this folder
                 folder_progress = processed_count + (len(rows) * (b_idx / len(time_batches)))
@@ -543,20 +554,22 @@ class ClusteringEngine:
                     
                 # Extract features for this batch
                 batch_paths = []
+                batch_original_paths = []
                 batch_ids = []
                 for r, t in batch:
                     from modules.thumbnails import get_thumb_wsl
                     thumb = get_thumb_wsl(r)  # clustering runs in WSL
                     p = thumb if (thumb and os.path.exists(thumb)) else r['file_path']
-                    
+
                     if p and os.path.exists(p):
                         batch_paths.append(p)
+                        batch_original_paths.append(r['file_path'])
                         batch_ids.append(r['id'])
-                
+
                 if len(batch_paths) < 2:
                     continue
-                    
-                features, valid_indices = self.extract_features(batch_paths)
+
+                features, valid_indices = self.extract_features(batch_paths, original_paths=batch_original_paths)
 
                 # Persist embeddings to DB for similarity search
                 embedding_pairs = []
@@ -625,6 +638,7 @@ class ClusteringEngine:
                 
                 # Execute batch for this time-group
                 if batch_stacks_data:
+                    logging.info(f"[Clustering] Creating {len(batch_stacks_data)} visual stacks for batch {b_idx+1}")
                     db.create_stacks_batch(batch_stacks_data)
                     
                     # Generate and write BurstUUID for newly created stacks
@@ -667,6 +681,7 @@ class ClusteringEngine:
                 except Exception:
                     pass
 
+            logging.info(f"[Clustering] Finished {folder}: created {folder_stacks} stacks total")
             yield update_status(f"Finished {folder}. Created {folder_stacks} stacks.", processed_count, len(images_rows))
             
             # Broadcast final event for folder

@@ -66,21 +66,17 @@ That's it! The Docker container includes all dependencies, CUDA support, and con
    ```
 
 2. **Set up Python environment in WSL**:
+   ```cmd
+   setup.bat
+   ```
+   Or manually in WSL:
    ```bash
-   # In WSL terminal
-   # Create virtual environment
    mkdir -p ~/.venvs
    python3 -m venv ~/.venvs/tf
-   
-   # Activate environment
    source ~/.venvs/tf/bin/activate
-   
-   # Navigate to project (adjust drive letter as needed)
    cd /path/to/image-scoring
-   
-   # Install dependencies
    pip install --upgrade pip
-   pip install -r requirements.txt
+   pip install -r requirements/requirements_wsl_gpu.txt
    ```
 
 3. **Verify GPU access**:

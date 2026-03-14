@@ -13,7 +13,8 @@ class BatchImageProcessor:
     Refactored Batch Processor using Threaded Pipeline.
     """
     def __init__(self, output_dir=None, skip_existing=False, write_json=False, 
-                 json_stdout=False, skip_predicate=None, scorer=None, progress_callback=None):
+                 json_stdout=False, skip_predicate=None, scorer=None, progress_callback=None,
+                 target_phases=None):
         self.output_dir = output_dir
         self.skip_existing = skip_existing
         self.scorer = scorer
@@ -22,6 +23,7 @@ class BatchImageProcessor:
         self.progress_callback = progress_callback
         self.processed_count = 0
         self.total_count = 0
+        self.target_phases = target_phases or []
         
     def log(self, msg, level="INFO"):
         lvl = getattr(logging, level.upper(), logging.INFO)
@@ -158,7 +160,8 @@ class BatchImageProcessor:
             job = pipeline.ImageJob(
                 image_path=f,
                 job_id=current_job_id,
-                skip_existing=self.skip_existing
+                skip_existing=self.skip_existing,
+                target_phases=self.target_phases
             )
             
             try:

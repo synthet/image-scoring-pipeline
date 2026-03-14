@@ -1,0 +1,66 @@
+Using default Firebird password 'masterkey' ù set FIREBIRD_PASSWORD env var for production
+Phase 1 migration error: 'charmap' codec can't encode character '\u2713' in position 10: character maps to <undefined>
+Traceback (most recent call last):
+  File "d:\Projects\image-scoring\debug_tree_v2.py", line 41, in <module>
+    print(html[:500])
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f4c1' in position 276: character maps to <undefined>
+Platform: Windows
+OS Name: nt
+[Phase 1] Starting integrity + index hardening...
+  [1.1] Repairing orphan STACKS.BEST_IMAGE_ID...
+  [1.2] Adding UQ_IMAGES_FILE_PATH (with temp index optimization)...
+  [1.3] Adding composite indexes (folder_score, stack_score)...
+  [1.4a] Dropping redundant single-column indexes...
+  [1.4b] Dropping legacy CULLING_PICKS FK artifacts...
+  [1.5a] Adding FK_STACKS_BEST_IMAGE...
+  [1.5b] Adding FK_IMAGES_JOB...
+  [1.5c] Adding FK_IMAGES_STACK...
+  [1.5d] Adding FK_IPS_JOB...
+  [1.5e] Adding STACK_CACHE FK constraints...
+  [1.5f] Adding UQ_FOLDERS_PATH...
+  [1.7] Recomputing index statistics...
+  [1.8] Adding CHECK constraints...
+[Phase 2] Starting Keyword Normalization + IMAGE_XMP Backfill...
+  [2.1c] Backfilling keywords from images...
+  [2.1c] Keywords already backfilled.
+  [2.6] Backfilling IMAGE_XMP from images...
+  [2.6] No images need IMAGE_XMP backfill.
+
+--- DB FOLDERS ---
+Raw Folders Count: 454
+  - /
+  - /mnt
+  - /mnt/d
+  - /mnt/d/Photos
+  - /mnt/d/Photos/D300
+
+--- CONVERSION TEST ---
+  Raw: /
+  Local: /
+  Norm: \
+  Valid NT: False
+  Raw: /mnt
+  Local: /mnt
+  Norm: \mnt
+  Valid NT: False
+  Raw: /mnt/d
+  Local: D:/
+  Norm: D:\
+  Valid NT: True
+  Raw: /mnt/d/Photos
+  Local: D:/Photos
+  Norm: D:\Photos
+  Valid NT: True
+  Raw: /mnt/d/Photos/D300
+  Local: D:/Photos/D300
+  Norm: D:\Photos\D300
+  Valid NT: True
+
+--- TREE HTML GENERATION ---
+HTML Length: 80321
+HTML Preview (first 500 chars):
+
+CRITICAL ERROR: 'charmap' codec can't encode character '\U0001f4c1' in position 276: character maps to <undefined>

@@ -71,17 +71,24 @@ class SelectionRunner:
             with self._lock:
                 self._log_history.append(msg)
 
-        def progress_cb(pct: float, msg: str):
+        def progress_cb(pct: float, msg: str, cur: int | None = None, tot: int | None = None):
             with self._lock:
                 self._status_message = msg
-                self._total_count = 100
-                self._current_count = int(pct * 100)
+                if cur is not None and tot is not None and tot > 0:
+                    self._current_count = cur
+                    self._total_count = tot
+                else:
+                    self._total_count = 100
+                    self._current_count = int(pct * 100)
+                self._log_history.append(msg)
+                if len(self._log_history) > 200:
+                    self._log_history.pop(0)
                 
             if job_id:
                 event_manager.broadcast_threadsafe("job_progress", {
                     "job_id": job_id,
                     "current": self._current_count,
-                    "total": 100,
+                    "total": self._total_count,
                     "message": msg
                 })
 
@@ -103,23 +110,28 @@ class SelectionRunner:
         try:
             images = db.get_images_by_folder(input_path)
             if images:
-                for img in images:
-                    decision = explain_phase_run_decision(
-                        img['id'],
-                        PhaseCode.CULLING,
-                        current_executor_version="1.0.0",
-                        force_run=force_rescan,
-                    )
-                    if decision['should_run']:
-                        images_for_phase.append(img)
-                        db.set_image_phase_status(
+                if force_rescan:
+                    # Skip per-image phase updates: clustering will set RUNNING when it processes.
+                    # Avoids ~10k DB calls for large folders (3256 images × 3 calls each).
+                    images_for_phase = images
+                else:
+                    for img in images:
+                        decision = explain_phase_run_decision(
                             img['id'],
                             PhaseCode.CULLING,
-                            PhaseStatus.RUNNING,
-                            app_version=APP_VERSION,
-                            executor_version="1.0.0",
-                            job_id=job_id,
+                            current_executor_version="1.0.0",
+                            force_run=False,
                         )
+                        if decision['should_run']:
+                            images_for_phase.append(img)
+                            db.set_image_phase_status(
+                                img['id'],
+                                PhaseCode.CULLING,
+                                PhaseStatus.RUNNING,
+                                app_version=APP_VERSION,
+                                executor_version="1.0.0",
+                                job_id=job_id,
+                            )
         except Exception as pe:
             log(f"Phase status pre-run update error: {pe}")
 
@@ -128,6 +140,7 @@ class SelectionRunner:
             log(f"Policy gated {len(images_for_phase)} image(s); {skipped_by_policy} remain unchanged.")
 
         cfg = SelectionConfig(force_rescan=force_rescan)
+        log(f"Starting clustering for {len(images_for_phase)} images (force_rescan={force_rescan})...")
         try:
             # SelectionService operates at folder scope; phase status updates are limited
             # to policy-eligible images tracked in images_for_phase.

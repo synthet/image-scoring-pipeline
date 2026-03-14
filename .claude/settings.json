@@ -34,7 +34,14 @@
       "WebFetch(domain:127.0.0.1)",
       "Bash(python -m pytest)",
       "Bash(python -c \"import py_compile; py_compile.compile\\(''modules/db.py'', doraise=True\\); py_compile.compile\\(''modules/mcp_server.py'', doraise=True\\); print\\(''Both files compile OK''\\)\")",
-      "Bash(python -c \"from modules.db import _add_keyword_filter; print\\(''_add_keyword_filter imported successfully''\\)\")"
+      "Bash(python -c \"from modules.db import _add_keyword_filter; print\\(''_add_keyword_filter imported successfully''\\)\")",
+      "Bash(wsl -e /home/owner/.venvs/tf/bin/pip list)",
+      "Bash(wsl -e /home/owner/.venvs/tf/bin/pip install torch torchvision)",
+      "Bash(wsl bash -c '~/.venvs/tf/bin/pip install torch torchvision')",
+      "Bash(wsl bash -c '~/.venvs/tf/bin/pip install transformers')",
+      "Bash(wsl bash -c '~/.venvs/tf/bin/python -c \"\"from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration\"\"')",
+      "Bash(wsl bash -c 'source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python -c \"\"from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration; print\\(\\\\\"\"OK\\\\\"\"\\)\"\"')",
+      "Bash(wsl bash -c '~/.venvs/tf/bin/pip freeze')"
     ],
     "additionalDirectories": [
       "c:\\Users\\owner\\.gemini\\antigravity",

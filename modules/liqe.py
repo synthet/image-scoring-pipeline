@@ -1,10 +1,15 @@
-import torch
 import json
 import os
 import contextlib
 import io
 import sys
 from PIL import Image
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
 
 try:
     from torchvision.transforms import functional as TF
@@ -24,6 +29,10 @@ class LiqeScorer:
         self.metric = None
         self.max_dimension = int(max_dimension) if max_dimension is not None else self._load_max_dimension()
         
+        if not TORCH_AVAILABLE:
+            print("LIQE: PyTorch not installed. LIQE scoring will be unavailable.")
+            return
+
         # Check torch availability
         if not torch.cuda.is_available() and self.device == 'cuda':
             print("LIQE: CUDA not available, falling back to CPU")

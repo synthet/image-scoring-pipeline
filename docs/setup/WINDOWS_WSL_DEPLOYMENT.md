@@ -74,8 +74,14 @@ sudo apt install -y python3-pip python3-venv build-essential python3-dev
 ```
 
 ### 2. Create Virtual Environment
-Create a clean virtual environment (e.g., in `~/.venvs/tf`):
 
+**Option A — Automated (recommended):** Run from Windows:
+```cmd
+setup.bat
+```
+This creates `~/.venvs/tf`, installs dependencies, and verifies the install.
+
+**Option B — Manual:** In WSL:
 ```bash
 mkdir -p ~/.venvs
 python3 -m venv ~/.venvs/tf

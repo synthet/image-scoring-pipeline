@@ -178,20 +178,40 @@ def main():
     # Create UI and initialize engines (Gradio App)
     import modules.clustering as clustering
     clustering_runner = clustering.ClusteringRunner()
-    demo, runner, tagging_runner, selection_runner, orchestrator = app_module.create_ui()
+    (
+        demo,
+        runner,
+        tagging_runner,
+        selection_runner,
+        orchestrator,
+        pipeline_components,
+        gallery_components,
+        settings_components,
+        main_tabs,
+    ) = app_module.create_ui()
 
-    
     # Setup MCP server if enabled
     mcp_sse_app = None
     if mcp_available and mcp_enabled:
         mcp_server.set_runners(runner, tagging_runner, clustering_runner)
+        mcp_server.set_gradio_context(
+            demo=demo,
+            pipeline_components=pipeline_components,
+            gallery_components=gallery_components,
+            settings_components=settings_components,
+            main_tabs=main_tabs,
+            runner=runner,
+            tagging_runner=tagging_runner,
+            orchestrator=orchestrator,
+        )
         try:
 
             # Expose MCP over HTTP/SSE so Cursor can connect via:
             #   http://localhost:7860/mcp/sse
             # NOTE: we mount *after* Gradio is mounted; gr.mount_gradio_app()
             # may wrap/replace the FastAPI app instance.
-            mcp_sse_app = mcp_server.create_mcp_sse_app(mount_path="/mcp")
+            # Use mount_path="/" since FastAPI will mount this app at /mcp, making the full path /mcp/sse
+            mcp_sse_app = mcp_server.create_mcp_sse_app(mount_path="/")
         except Exception as e:
             mcp_mount_error = str(e)
             print(f"MCP Server: Failed to mount SSE endpoint: {e}")
@@ -244,9 +264,13 @@ def main():
             event_manager.disconnect(websocket)
 
     # Mount Gradio App onto FastAPI
-    # This creates a completely new routing structure where Gradio sits at /
-    # and our custom endpoints sit at /source-image etc.
-    app = gr.mount_gradio_app(app, demo, path="/", allowed_paths=allowed_paths, favicon_path="static/favicon.ico")
+    # Mount at /app so /api routes are not shadowed by Gradio's catch-all at /
+    app = gr.mount_gradio_app(app, demo, path="/app", allowed_paths=allowed_paths, favicon_path="static/favicon.ico")
+
+    @app.get("/")
+    async def root_redirect():
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/app", status_code=302)
     
     # Apply logging filter to suppress repetitive Gradio queue polling messages
 

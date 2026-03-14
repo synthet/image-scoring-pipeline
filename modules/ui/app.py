@@ -120,7 +120,17 @@ def create_ui():
             outputs=monitor_outputs
         )
 
-    return demo, runner, tagging_runner, selection_runner, orchestrator
+    return (
+        demo,
+        runner,
+        tagging_runner,
+        selection_runner,
+        orchestrator,
+        pipeline_components,
+        gallery_components,
+        settings_components,
+        main_tabs,
+    )
 
 import re
 import time
@@ -190,7 +200,7 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
         return JSONResponse({
             "name": "Image Scoring WebUI",
             "short_name": "Image Scoring",
-            "start_url": "/",
+            "start_url": "/app",
             "display": "standalone",
             "theme_color": "#000000",
             "background_color": "#ffffff"

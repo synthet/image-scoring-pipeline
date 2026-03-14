@@ -457,8 +457,8 @@ class PipelineSubmitRequest(BaseModel):
     )
     operations: List[str] = Field(
         ["score", "tag"],
-        description="Operations to run in order. Valid values: 'score', 'tag', 'cluster'.",
-        example=["score", "tag", "cluster"]
+        description="Operations to run in order. Valid values: 'indexing', 'metadata', 'score', 'tag', 'cluster'.",
+        example=["indexing", "metadata", "score"]
     )
     skip_existing: bool = Field(
         True,
@@ -2003,6 +2003,21 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    @router.post(
+        "/folders/rebuild",
+        summary="Rebuild folder cache",
+        description="Scans images in the database and rebuilds the folder tree. Use when the Pipeline tab shows no folders."
+    )
+    async def rebuild_folders():
+        """Rebuild folder cache from images table."""
+        from modules import db
+        try:
+            db.rebuild_folder_cache()
+            folders = db.get_all_folders()
+            return {"success": True, "folders": folders, "count": len(folders)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     @router.get(
         "/stacks",
         summary="Get stacks listing",
@@ -2080,6 +2095,8 @@ def create_api_router() -> APIRouter:
         from modules.ui.app import _check_rate_limit
         from modules import db, utils
         from modules.exif_extractor import extract_exif
+        from modules.phases import PhaseCode, PhaseStatus
+        from modules.version import APP_VERSION
 
         _check_rate_limit("import_register")
 
@@ -2136,6 +2153,13 @@ def create_api_router() -> APIRouter:
                 image_id = db.register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid)
                 if image_id:
                     added += 1
+                    # Explicitly set INDEXING phase as DONE for Electron-initiated imports
+                    db.set_image_phase_status(
+                        image_id, 
+                        PhaseCode.INDEXING, 
+                        PhaseStatus.DONE,
+                        app_version=APP_VERSION
+                    )
                 else:
                     errors.append(f"{file_name}: insert failed")
         except HTTPException:
@@ -2179,7 +2203,7 @@ def create_api_router() -> APIRouter:
         if not os.path.exists(request.input_path):
             raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
 
-        valid_ops = {"score", "tag", "cluster"}
+        valid_ops = {"indexing", "metadata", "score", "tag", "cluster"}
         invalid_ops = [op for op in request.operations if op not in valid_ops]
         if invalid_ops:
             raise HTTPException(status_code=400, detail=f"Invalid operations: {invalid_ops}. Valid: {sorted(valid_ops)}")
@@ -2231,25 +2255,37 @@ def create_api_router() -> APIRouter:
 
         # API operations map to persisted phase codes used by DB phase/status sync.
         op_to_phase_code = {
+            "indexing": "indexing",
+            "metadata": "metadata",
             "score": "scoring",
             "tag": "keywords",
             "cluster": "culling",
         }
         op_to_label = {
+            "indexing": "indexing",
+            "metadata": "metadata",
             "score": "scoring",
             "tag": "tagging",
             "cluster": "clustering",
         }
         phase_plan_codes = [op_to_phase_code.get(op, op) for op in request.operations]
 
-        if first_op == "score":
+        if first_op in ["indexing", "metadata", "score"]:
             if _scoring_runner is None:
                 raise HTTPException(status_code=503, detail="Scoring runner not available")
+            
+            # Map operations to internal phase codes for the orchestrator
+            target_phases = [op_to_phase_code.get(op) for op in request.operations if op in ["indexing", "metadata", "score"]]
+            
             job_id, queue_position = db.enqueue_job(
                 request.input_path,
-                phase_code="scoring",
-                job_type="scoring",
-                queue_payload={"input_path": request.input_path, "skip_existing": request.skip_existing},
+                phase_code=op_to_phase_code[first_op],
+                job_type="scoring", # Scoring runner handles indexing/metadata/scoring
+                queue_payload={
+                    "input_path": request.input_path, 
+                    "skip_existing": request.skip_existing,
+                    "target_phases": target_phases
+                },
             )
         elif first_op == "tag":
             if _tagging_runner is None:
