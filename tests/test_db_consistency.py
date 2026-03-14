@@ -35,23 +35,34 @@ def test_keyword_sync(test_db):
     # 2. Trigger sync
     db._sync_image_keywords(image_id, "Nature, Landscape, Sunset")
     
-    # 3. Verify KEYWORDS_DIM (re-open connection or use new cursor to see changes if needed, but commit is inside sync)
-    c.execute("SELECT keyword_norm FROM keywords_dim ORDER BY keyword_norm")
-    keywords = [row[0] for row in c.fetchall()]
-    assert "nature" in keywords
-    assert "landscape" in keywords
-    assert "sunset" in keywords
-    
-    # 4. Verify IMAGE_KEYWORDS
-    c.execute("SELECT COUNT(*) FROM image_keywords WHERE image_id = ?", (image_id,))
-    count = c.fetchone()[0]
-    assert count == 3
-    
-    # 5. Test update (remove Sunset, add Beach)
-    db._sync_image_keywords(image_id, "Nature, Landscape, Beach")
-    
-    c.execute("SELECT kd.keyword_norm FROM image_keywords ik JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id WHERE ik.image_id = ?", (image_id,))
-    updated_kws = [row[0] for row in c.fetchall()]
+    # 3–5: Use a fresh connection to verify. Firebird transaction isolation means the
+    # test_db connection may not see commits from _sync_image_keywords' separate connection.
+    verify_conn = db.get_db()
+    try:
+        vc = verify_conn.cursor()
+        vc.execute("SELECT keyword_norm FROM keywords_dim ORDER BY keyword_norm")
+        keywords = [row[0] for row in vc.fetchall()]
+        assert "nature" in keywords
+        assert "landscape" in keywords
+        assert "sunset" in keywords
+
+        vc.execute("SELECT COUNT(*) FROM image_keywords WHERE image_id = ?", (image_id,))
+        count = vc.fetchone()[0]
+        assert count == 3
+
+        # 5. Test update (remove Sunset, add Beach)
+        db._sync_image_keywords(image_id, "Nature, Landscape, Beach")
+    finally:
+        verify_conn.close()
+
+    # Fresh connection again to see the second sync's commit
+    verify_conn2 = db.get_db()
+    try:
+        vc2 = verify_conn2.cursor()
+        vc2.execute("SELECT kd.keyword_norm FROM image_keywords ik JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id WHERE ik.image_id = ?", (image_id,))
+        updated_kws = [row[0] for row in vc2.fetchall()]
+    finally:
+        verify_conn2.close()
     assert "nature" in updated_kws
     assert "beach" in updated_kws
     assert "sunset" not in updated_kws

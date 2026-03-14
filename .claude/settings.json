@@ -42,7 +42,9 @@
       "Bash(wsl bash -c '~/.venvs/tf/bin/pip install transformers')",
       "Bash(wsl bash -c '~/.venvs/tf/bin/python -c \"\"from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration\"\"')",
       "Bash(wsl bash -c 'source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring && python -c \"\"from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration; print\\(\\\\\"\"OK\\\\\"\"\\)\"\"')",
-      "Bash(wsl bash -c '~/.venvs/tf/bin/pip freeze')"
+      "Bash(wsl bash -c '~/.venvs/tf/bin/pip freeze')",
+      "mcp__filesystem__list_allowed_directories",
+      "Bash(grep -l \"setup_server_endpoints\" modules/*.py)"
     ],
     "additionalDirectories": [
       "c:\\Users\\owner\\.gemini\\antigravity",

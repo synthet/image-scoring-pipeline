@@ -17,10 +17,12 @@ if not os.path.exists(DB_DIR):
 DB_PATH = os.path.join(DB_DIR, f"test_ddl_{uuid.uuid4().hex}.fdb")
 TEMPLATE_PATH = os.path.abspath("template.fdb")
 
+
 def test_ddl_simple():
+    """Test basic DDL on a Firebird database. Requires template.fdb in project root.
+    Create it manually if needed: use Firebird tools or copy an empty .fdb file."""
     if not os.path.exists(TEMPLATE_PATH):
-        pytest.fail("Template DB missing")
-        
+        pytest.skip("template.fdb not found (create empty Firebird DB in project root to run this test)")
     shutil.copy2(TEMPLATE_PATH, DB_PATH)
     print(f"DB: {DB_PATH}")
     

@@ -4,10 +4,8 @@
 			"path": "."
 		},
 		{
-			"path": "<ELECTRON_IMAGE_SCORING_PATH>"
+			"path": "../electron-image-scoring"
 		}
 	],
-	"settings": {
-		"workbench.colorTheme": "Default Dark Modern"
-	}
+	"settings": {}
 }
