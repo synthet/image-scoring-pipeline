@@ -57,6 +57,13 @@ _RW = ToolAnnotations(readOnlyHint=False, destructiveHint=False)
 _RW_DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _require_db(fn):
     """Decorator that returns an error dict if the database is not available."""
     import functools
@@ -1066,6 +1073,10 @@ def find_outliers(
 def execute_code(code: str) -> dict:
     """Execute Python code in the WebUI process with access to gr, demo, and all Gradio components. Only available when connected via SSE (image-scoring-webui). Globals: gr, demo, components, runner, tagging_runner, orchestrator, db, config."""
     global _gradio_context
+    if not _env_flag("ENABLE_MCP_EXECUTE_CODE", default=False):
+        return {
+            "error": "execute_code is disabled. Set ENABLE_MCP_EXECUTE_CODE=1 and restart the WebUI to enable it for local debugging."
+        }
     if _gradio_context is None:
         return {
             "error": "Gradio context not available. Start the WebUI (run_webui.bat or python webui.py) and connect Cursor to image-scoring-webui via http://localhost:7860/mcp/sse"
@@ -1157,8 +1168,34 @@ def create_mcp_sse_app(mount_path: str = "/mcp"):
 
     prepare_mcp_embedded()
     app = mcp.sse_app(mount_path=mount_path)
-    # Note: mcp.sse_app() creates an app with routes at {mount_path}/sse and {mount_path}/messages
-    # The app is designed to handle MCP protocol over SSE using Starlette routing
+    try:
+        from starlette.responses import Response
+        from starlette.routing import Mount, Route
+
+        messages_mount = next(
+            (
+                route for route in getattr(app, "routes", [])
+                if isinstance(route, Mount) and getattr(route, "path", "") in {"/messages", "/messages/"}
+            ),
+            None,
+        )
+        if messages_mount is not None:
+            class _SsePostAlias:
+                async def __call__(self, scope, receive, send):
+                    # Some MCP clients POST back to /sse instead of /messages/.
+                    alias_scope = dict(scope)
+                    alias_scope["path"] = messages_mount.path
+                    alias_scope["raw_path"] = messages_mount.path.encode("utf-8")
+                    await messages_mount.handle(alias_scope, receive, send)
+
+            async def sse_delete_alias(request):
+                # Older clients also send DELETE /sse during cleanup.
+                return Response(status_code=200)
+
+            app.routes.insert(0, Route("/sse", endpoint=sse_delete_alias, methods=["DELETE"]))
+            app.routes.insert(0, Route("/sse", endpoint=_SsePostAlias(), methods=["POST"]))
+    except Exception as e:
+        logger.warning("Failed to install SSE compatibility aliases: %s", e)
 
     return app
 

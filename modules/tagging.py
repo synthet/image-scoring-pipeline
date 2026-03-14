@@ -100,12 +100,6 @@ def propagate_tags(
 
     candidates_list = []  # for dry-run reporting
 
-    conn = None
-    cur = None
-    if not dry_run:
-        conn = db.get_db()
-        cur = conn.cursor()
-
     try:
         for img_id, file_path, emb_bytes in untagged:
             query_vec = np.frombuffer(emb_bytes, dtype=np.float32)
@@ -167,29 +161,17 @@ def propagate_tags(
                 })
                 result["propagated"] += 1
             else:
-                # Write to DB
                 tags_str = ",".join(new_keywords)
-                cur.execute("UPDATE images SET keywords = ? WHERE id = ?", (tags_str, img_id))
-                result["propagated"] += 1
-                logger.info("Propagated %d keywords to image %d: %s", len(new_keywords), img_id, tags_str)
-
-        if not dry_run and conn:
-            conn.commit()
+                if db.update_image_field(img_id, "keywords", tags_str):
+                    result["propagated"] += 1
+                    logger.info("Propagated %d keywords to image %d: %s", len(new_keywords), img_id, tags_str)
+                else:
+                    result["skipped"] += 1
+                    logger.warning("Tag propagation update failed for image %d", img_id)
 
     except Exception as e:
         logger.error("Tag propagation error: %s", e)
-        if conn:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
         raise
-    finally:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
     if dry_run:
         result["candidates"] = candidates_list

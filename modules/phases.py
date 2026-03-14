@@ -36,6 +36,36 @@ class PhaseCode(str, Enum):
     KEYWORDS  = "keywords"
 
 
+PHASE_CODE_ALIASES = {
+    "score": PhaseCode.SCORING.value,
+    "tag": PhaseCode.KEYWORDS.value,
+    "cluster": PhaseCode.CULLING.value,
+}
+
+
+def normalize_phase_codes(phase_codes: Optional[List[Any]]) -> List[PhaseCode]:
+    """Normalize API/job payload phase codes into canonical PhaseCode values."""
+    normalized: List[PhaseCode] = []
+    for phase in phase_codes or []:
+        if isinstance(phase, PhaseCode):
+            candidate = phase
+        else:
+            raw = str(phase or "").strip()
+            if not raw:
+                continue
+            if raw.startswith("PhaseCode."):
+                raw = raw.split(".", 1)[1]
+            raw = PHASE_CODE_ALIASES.get(raw.lower(), raw.lower())
+            try:
+                candidate = PhaseCode(raw)
+            except ValueError:
+                logger.warning("Ignoring unknown phase code: %s", phase)
+                continue
+        if candidate not in normalized:
+            normalized.append(candidate)
+    return normalized
+
+
 # ---------------------------------------------------------------------------
 # Phase status enum
 # ---------------------------------------------------------------------------

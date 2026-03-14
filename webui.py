@@ -27,6 +27,12 @@ class SuppressGradioQueueFilter(logging.Filter):
         return True
 
 def main():
+    def _env_flag(name: str, default: bool = False) -> bool:
+        value = os.environ.get(name)
+        if value is None:
+            return default
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
     # Load config to check for debug mode
     try:
         from modules import config
@@ -53,20 +59,26 @@ def main():
 
     # Cache platform check
     is_windows = platform.system() == "Windows"
-    
+    server_host = (os.environ.get("WEBUI_HOST") or "127.0.0.1").strip() or "127.0.0.1"
+    server_port = int((os.environ.get("WEBUI_PORT") or "7860").strip() or "7860")
+    display_host = "127.0.0.1" if server_host == "0.0.0.0" else server_host
+
     # MCP Server Integration (optional - for Cursor debugging)
-    # Default ON for local development; set ENABLE_MCP_SERVER=0 to disable.
-    mcp_enabled = os.environ.get('ENABLE_MCP_SERVER', '1') == '1'
+    # Bind to localhost by default; set WEBUI_HOST=0.0.0.0 to expose remotely.
+    mcp_enabled = _env_flag('ENABLE_MCP_SERVER', default=True)
+    mcp_execute_enabled = _env_flag('ENABLE_MCP_EXECUTE_CODE', default=False)
     mcp_available = False
     try:
         from modules import mcp_server
         mcp_available = True
     except ImportError:
         pass
-    
-    print(f"MCP Server: enabled={mcp_enabled} available={mcp_available}")
+
+    print(f"MCP Server: enabled={mcp_enabled} available={mcp_available} execute_code={mcp_execute_enabled}")
     if mcp_enabled and not mcp_available:
         print("MCP Server: not available (missing dependency). Install with: pip install mcp")
+    if server_host not in {"127.0.0.1", "localhost"} and mcp_execute_enabled:
+        print("Warning: ENABLE_MCP_EXECUTE_CODE is enabled while WEBUI_HOST exposes the server beyond localhost.")
     
     mcp_mount_error: str | None = None
 
@@ -171,8 +183,11 @@ def main():
         return {
             "enabled": mcp_enabled,
             "available": mcp_available,
+            "execute_code_enabled": mcp_execute_enabled,
             "mount_error": mcp_mount_error,
-            "expected_sse_url": "http://127.0.0.1:7860/mcp/sse",
+            "expected_sse_url": f"http://{display_host}:{server_port}/mcp/sse",
+            "server_host": server_host,
+            "server_port": server_port,
         }
     
     # Create UI and initialize engines (Gradio App)
@@ -285,7 +300,7 @@ def main():
     lock_file = "webui.lock"
     try:
         with open(lock_file, "w") as f:
-            json.dump({"pid": os.getpid(), "port": 7860}, f)
+            json.dump({"pid": os.getpid(), "port": server_port}, f)
     except Exception as e:
         print(f"Warning: Could not create lock file: {e}")
         
@@ -300,10 +315,10 @@ def main():
 
     # Launch using Uvicorn
     # Note: inbrowser=False is default for uvicorn, handled by user opening browser
-    print("Launching Uvicorn server at http://127.0.0.1:7860")
-    
+    print(f"Launching Uvicorn server at http://{display_host}:{server_port}")
+
     try:
-        uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
+        uvicorn.run(app, host=server_host, port=server_port, log_level="info")
     finally:
         remove_lock()
 

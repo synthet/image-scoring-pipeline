@@ -100,3 +100,31 @@ def test_dispatcher_scoring_selector_payload_preserves_none_input_path(monkeypat
     assert args[1] == 77
     assert args[2] is True
     assert kwargs["resolved_image_ids"] == []
+
+
+def test_dispatcher_scoring_preserves_target_phases(monkeypatch):
+    scoring_runner = DummyRunner()
+    dispatcher = JobDispatcher(scoring_runner=scoring_runner)
+
+    queued_job = {
+        "id": 88,
+        "job_type": "scoring",
+        "input_path": "D:/pipeline/path",
+        "queue_payload": json.dumps({
+            "input_path": "D:/pipeline/path",
+            "skip_existing": False,
+            "target_phases": ["indexing", "metadata"],
+        }),
+    }
+
+    monkeypatch.setattr("modules.job_dispatcher.db.dequeue_next_job", lambda: queued_job)
+    monkeypatch.setattr("modules.job_dispatcher.db.update_job_status", lambda *args, **kwargs: None)
+
+    dispatcher._tick()
+
+    assert len(scoring_runner.calls) == 1
+    args, kwargs = scoring_runner.calls[0]
+    assert args[0] == "D:/pipeline/path"
+    assert args[1] == 88
+    assert args[2] is False
+    assert kwargs["target_phases"] == ["indexing", "metadata"]

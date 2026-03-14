@@ -8,6 +8,7 @@ from pathlib import Path
 from modules import pipeline
 from modules.events import event_manager
 from modules import score_normalization as snorm
+from modules.phases import normalize_phase_codes
 
 # Ensure paths are set up to import scripts
 project_root = Path(__file__).resolve().parent.parent
@@ -77,7 +78,10 @@ class ScoringRunner:
             return "Path not found"
 
         def target():
-            self._run_batch_internal(input_path, job_id, skip_existing, resolved_image_ids=resolved_image_ids, target_phases=target_phases)
+            run_kwargs = {"resolved_image_ids": resolved_image_ids}
+            if target_phases is not None:
+                run_kwargs["target_phases"] = target_phases
+            self._run_batch_internal(input_path, job_id, skip_existing, **run_kwargs)
             self.is_running = False
             if "Error" in self.status_message:
                 self.status_message = "Failed"
@@ -103,6 +107,7 @@ class ScoringRunner:
         log(f"Input: {input_path}")
         log("-" * 20)
         self.status_message = "Running..."
+        normalized_target_phases = normalize_phase_codes(target_phases)
         
         # Checking/Loading Models
         if self.shared_scorer is None:
@@ -139,7 +144,7 @@ class ScoringRunner:
             skip_existing=skip_existing,
             scorer=self.shared_scorer,
             progress_callback=on_progress,
-            target_phases=target_phases
+            target_phases=normalized_target_phases,
         )
         self.current_processor = processor
         
@@ -176,7 +181,12 @@ class ScoringRunner:
 
                 id_to_path = {int(r[0]): r[1] for r in rows if r[1] and os.path.exists(r[1])}
                 jobs = [
-                    pipeline.ImageJob(image_path=id_to_path[i], job_id=job_id, skip_existing=skip_existing)
+                    pipeline.ImageJob(
+                        image_path=id_to_path[i],
+                        job_id=job_id,
+                        skip_existing=skip_existing,
+                        target_phases=list(normalized_target_phases),
+                    )
                     for i in resolved_image_ids
                     if i in id_to_path
                 ]
