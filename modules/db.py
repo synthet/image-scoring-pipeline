@@ -4528,7 +4528,17 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
                      SET keywords = ?, title = ?, description = ?, rating = ?, label = ?
                      WHERE file_path = ?''',
                   (keywords, title, description, rating, label, file_path))
+
         conn.commit()
+
+        # Phase 2 dual-write: keep normalized keyword tables synchronized.
+        # Must run after commit to avoid: (1) dual-write inconsistency if outer
+        # commit fails; (2) Firebird deadlock (inner conn blocks on FK to row
+        # held by outer conn in WAIT mode).
+        c.execute("SELECT id FROM images WHERE file_path = ?", (file_path,))
+        row = c.fetchone()
+        if row:
+            _sync_image_keywords(row[0], keywords)
         
         # Broadcast image update
         try:
@@ -6495,20 +6505,29 @@ def get_images_for_tag_propagation(folder_path=None):
             folder_filter = " AND folder_id = ?"
             params.append(frow[0])
 
-        # Untagged images with embeddings
+        # Untagged images with embeddings.
+        # Phase 2/3 migration: prefer normalized IMAGE_KEYWORDS; keep legacy
+        # IMAGES.KEYWORDS fallback for rows not yet dual-written.
         q_untagged = (
-            "SELECT id, file_path, image_embedding FROM images "
-            "WHERE image_embedding IS NOT NULL "
-            "AND (keywords IS NULL OR keywords = '')" + folder_filter
+            "SELECT i.id, i.file_path, i.image_embedding FROM images i "
+            "WHERE i.image_embedding IS NOT NULL "
+            "AND NOT EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
+            "AND (i.keywords IS NULL OR i.keywords = '')" + folder_filter.replace("folder_id", "i.folder_id")
         )
         c.execute(q_untagged, tuple(params))
         untagged = [(row[0], row[1], bytes(row[2])) for row in c.fetchall()]
 
-        # Tagged images with embeddings
+        # Tagged images with embeddings. Build keyword CSV from normalized
+        # tables when possible, otherwise fall back to legacy IMAGES.KEYWORDS.
         q_tagged = (
-            "SELECT id, file_path, image_embedding, keywords FROM images "
-            "WHERE image_embedding IS NOT NULL "
-            "AND keywords IS NOT NULL AND keywords != ''" + folder_filter
+            "SELECT i.id, i.file_path, i.image_embedding, "
+            "COALESCE((SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') "
+            "FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
+            "WHERE ik.image_id = i.id), i.keywords) AS keywords_csv "
+            "FROM images i "
+            "WHERE i.image_embedding IS NOT NULL "
+            "AND (EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
+            "OR (i.keywords IS NOT NULL AND i.keywords != ''))" + folder_filter.replace("folder_id", "i.folder_id")
         )
         c.execute(q_tagged, tuple(params))
         tagged = [(row[0], row[1], bytes(row[2]), row[3]) for row in c.fetchall()]
@@ -7154,4 +7173,3 @@ def _backfill_image_xmp():
             pass
     finally:
         conn.close()
-
