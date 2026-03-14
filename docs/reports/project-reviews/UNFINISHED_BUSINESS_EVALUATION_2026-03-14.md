@@ -74,6 +74,44 @@ Repeated in multiple TODO files:
 
 **Why this matters:** migration risk compounds over time; without vertical slices, this remains perpetually deferred.
 
+## Evidence Mapping
+
+- **Validation debt**
+  - `TODO.md` → **High Priority** / **Testing & Verification**
+    - `In-browser RAW preview tests: Select NEF → Extract Preview → Verify canvas renders`
+    - `In-browser RAW preview tests: Select JPG → Verify warning message shows`
+    - `In-browser RAW preview tests: No image selected → Verify error message`
+    - `In-browser RAW preview tests: Verify no JS errors on page load`
+    - `In-browser RAW preview tests: Large files (>50MB) → Verify progress bar works`
+    - `AI culling: Import into Lightroom Cloud — verify ratings and labels apply correctly`
+    - `AI culling: Test pick/reject flags — verify Lightroom recognizes culling decisions`
+  - `docs/project/TODO.md` → **🔴 High Priority (Testing & Verification)**
+    - `Import into Lightroom Cloud - Verify ratings and labels apply correctly`
+    - `Test pick/reject flags - Verify Lightroom recognizes culling decisions`
+
+- **API/embedding gap**
+  - `TODO.md` → **High Priority** / **API & Embedding**
+    - `Similarity endpoints: GET /api/similarity/similar?image_id=123, /api/similarity/duplicates, /api/similarity/outliers`
+  - `TODO.md` → **Medium Priority** / **API & Contract**
+    - `Streaming/progress for POST /api/import/register (currently single-request; no incremental progress)`
+  - `docs/reference/api/TODO.md` → **Endpoints to Add**
+    - `Similarity endpoints: /api/similarity/similar, /api/similarity/duplicates, /api/similarity/outliers`
+    - `Streaming/progress for POST /api/import/register (currently single-request; no incremental progress)`
+  - `docs/plans/embedding/TODO.md` → **API REST Endpoints (Priority 1)**
+    - `GET /api/similarity/similar?image_id=123 — Visually similar images across folders`
+    - `GET /api/similarity/duplicates?folder_path=... — Near-duplicate pairs`
+    - `GET /api/similarity/outliers?folder_path=... — Low neighborhood similarity images`
+
+- **Migration debt**
+  - `TODO.md` → **Database & Migration [DB]** / **Firebird → PostgreSQL (FIREBIRD_POSTGRES_MIGRATION)**
+    - `Phase 0: Schema baseline, versioned SQL migrations, migration runbook`
+    - `Phase 1: Postgres + pgvector in Docker, full schema creation`
+    - `Phase 2: Dual-write (Firebird primary, Postgres secondary), resumable backfill`
+    - `Phase 3: Python cutover — backend-aware DB adapter, switch reads to Postgres`
+    - `Phase 4: DB provider abstraction in electron/db.ts, migrate from node-firebird to Postgres client`
+  - `TODO.md` → **Database & Migration [DB]** / **Schema Refactor (DB_SCHEMA_REFACTOR_IMPLEMENTATION)**
+    - `Phase 1: IMAGE_EXIF, IMAGE_XMP tables, dual-write paths in modules/db.py`
+
 ## Recommended Prioritization (Next 2 Sprints)
 
 ## Sprint A: Close Verification Debt
