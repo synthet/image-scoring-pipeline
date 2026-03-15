@@ -1852,6 +1852,57 @@ def create_api_router() -> APIRouter:
             return ApiResponse(success=False, message=str(e))
 
     @router.get(
+        "/similarity/similar",
+        summary="Find similar images (similarity namespace)",
+        description="Alias endpoint for GET /api/similar under the /api/similarity namespace.",
+    )
+    def get_similar_images_similarity_namespace(
+        image_id: int = Query(..., description="ID of the query image"),
+        limit: int = Query(20, ge=1, le=100, description="Maximum number of results"),
+        folder_path: Optional[str] = Query(None, description="Scope search to folder"),
+        min_similarity: Optional[float] = Query(0.80, ge=0.0, le=1.0, description="Minimum similarity threshold"),
+    ):
+        """Compatibility alias for similarity search under /api/similarity/similar."""
+        return get_similar_images(
+            image_id=image_id,
+            limit=limit,
+            folder_path=folder_path,
+            min_similarity=min_similarity,
+        )
+
+    @router.get(
+        "/similarity/duplicates",
+        summary="Find near-duplicate images (similarity namespace)",
+        description="Detect likely duplicate image pairs using embedding cosine similarity.",
+    )
+    def get_duplicates_similarity_namespace(
+        threshold: Optional[float] = Query(
+            None,
+            ge=0.0,
+            le=1.0,
+            description="Similarity threshold. Uses config default when omitted.",
+        ),
+        folder_path: Optional[str] = Query(None, description="Restrict duplicate detection to a folder"),
+        limit: int = Query(1000, ge=1, le=10000, description="Maximum duplicate pairs to return"),
+    ):
+        """GET alias for duplicate detection under /api/similarity namespace."""
+        from modules import similar_search
+
+        try:
+            duplicates = similar_search.find_near_duplicates(
+                threshold=threshold,
+                folder_path=folder_path,
+                limit=limit,
+            )
+            return {
+                "duplicates": duplicates,
+                "count": len(duplicates),
+            }
+        except Exception as exc:
+            logger.error("Error in get_duplicates_similarity_namespace: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @router.get(
         "/outliers",
         response_model=OutlierResponse,
         summary="Find visual outliers in a folder",
@@ -1893,6 +1944,26 @@ def create_api_router() -> APIRouter:
         except Exception as exc:
             logger.error("Error in get_outliers for %s: %s", folder_path, exc)
             raise HTTPException(status_code=500, detail=str(exc))
+
+    @router.get(
+        "/similarity/outliers",
+        response_model=OutlierResponse,
+        summary="Find visual outliers (similarity namespace)",
+        description="Alias endpoint for GET /api/outliers under the /api/similarity namespace.",
+    )
+    def get_outliers_similarity_namespace(
+        folder_path: str = Query(..., description="Folder path to analyze"),
+        z_threshold: Optional[float] = Query(None, ge=0.0, description="Outlier z-score threshold"),
+        k: Optional[int] = Query(None, ge=1, description="Top-K neighbors used for local density"),
+        limit: int = Query(100, ge=1, le=1000, description="Maximum outlier results to return"),
+    ):
+        """Compatibility alias for outlier search under /api/similarity/outliers."""
+        return get_outliers(
+            folder_path=folder_path,
+            z_threshold=z_threshold,
+            k=k,
+            limit=limit,
+        )
 
     # ========== Clustering Endpoints ==========
 
