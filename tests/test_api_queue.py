@@ -224,3 +224,124 @@ def test_outliers_endpoint_returns_500_on_unexpected_exception(monkeypatch):
 
     assert response.status_code == 500
     assert response.json()["detail"] == "unexpected failure"
+
+
+def test_similarity_similar_alias_matches_existing_contract(monkeypatch):
+    from modules import similar_search
+
+    monkeypatch.setattr(db, "get_db", lambda: _FakeConn(found=True))
+
+    expected_results = [
+        {"image_id": 2, "file_path": "/photos/2.jpg", "similarity": 0.93},
+        {"image_id": 3, "file_path": "/photos/3.jpg", "similarity": 0.90},
+    ]
+
+    def fake_search_similar_images(example_image_id, limit, folder_path, min_similarity):
+        assert example_image_id == 1
+        assert limit == 5
+        assert folder_path == "/photos"
+        assert min_similarity == 0.9
+        return expected_results
+
+    monkeypatch.setattr(similar_search, "search_similar_images", fake_search_similar_images)
+
+    with _build_client() as client:
+        response = client.get(
+            "/api/similarity/similar",
+            params={"image_id": 1, "limit": 5, "folder_path": "/photos", "min_similarity": 0.9},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "query_image_id": 1,
+        "results": expected_results,
+        "count": 2,
+    }
+
+
+def test_similarity_duplicates_alias_returns_count(monkeypatch):
+    from modules import similar_search
+
+    expected_duplicates = [
+        {"a_image_id": 1, "b_image_id": 2, "similarity": 0.99},
+        {"a_image_id": 3, "b_image_id": 4, "similarity": 0.98},
+    ]
+
+    def fake_find_near_duplicates(threshold=None, folder_path=None, limit=1000):
+        assert threshold == 0.97
+        assert folder_path == "/photos"
+        assert limit == 10
+        return expected_duplicates
+
+    monkeypatch.setattr(similar_search, "find_near_duplicates", fake_find_near_duplicates)
+
+    with _build_client() as client:
+        response = client.get(
+            "/api/similarity/duplicates",
+            params={"threshold": 0.97, "folder_path": "/photos", "limit": 10},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "duplicates": expected_duplicates,
+        "count": 2,
+    }
+
+
+def test_similarity_outliers_alias_returns_detector_payload(monkeypatch):
+    expected = {
+        "outliers": [{
+            "image_id": 12,
+            "file_path": "/photos/img12.jpg",
+            "outlier_score": 0.72,
+            "z_score": -2.0,
+            "nearest_neighbors": [
+                {"image_id": 11, "file_path": "/photos/img11.jpg", "similarity": 0.94}
+            ]
+        }],
+        "stats": {
+            "total_with_embeddings": 20,
+            "folder_mean": 0.91,
+            "folder_std": 0.04,
+            "z_threshold": 1.7,
+            "k_neighbors": 4,
+            "outliers_found": 1,
+        },
+        "skipped": [],
+    }
+
+    from modules import similar_search
+    monkeypatch.setattr(similar_search, "find_outliers", lambda **kwargs: expected)
+
+    with _build_client() as client:
+        response = client.get(
+            "/api/similarity/outliers",
+            params={"folder_path": "/photos", "z_threshold": 1.7, "k": 4, "limit": 8},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+class _FakeCursor:
+    def __init__(self, found=True):
+        self._found = found
+
+    def execute(self, *_args, **_kwargs):
+        return None
+
+    def fetchone(self):
+        if self._found:
+            return (1,)
+        return None
+
+
+class _FakeConn:
+    def __init__(self, found=True):
+        self._found = found
+
+    def cursor(self):
+        return _FakeCursor(found=self._found)
+
+    def close(self):
+        return None
