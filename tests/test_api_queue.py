@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from modules import api, db
-from modules.ui import app as ui_app
+from modules.ui import security as ui_security
 
 
 class _RunnerStub:
@@ -42,7 +42,7 @@ def test_jobs_queue_endpoint_refreshes_from_db_with_limit_zero(monkeypatch):
 
 
 def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
-    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
 
     captured = {}
@@ -97,7 +97,7 @@ def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
 
 
 def test_scoring_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
@@ -109,7 +109,7 @@ def test_scoring_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 
 
 def test_tagging_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_tagging_runner", _RunnerStub())
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
@@ -121,7 +121,7 @@ def test_tagging_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 
 
 def test_clustering_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
@@ -133,7 +133,7 @@ def test_clustering_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 
 
 def test_pipeline_submit_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
@@ -150,7 +150,7 @@ def test_pipeline_submit_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 
 
 def test_pipeline_submit_requires_input_path(monkeypatch):
-    monkeypatch.setattr(ui_app, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
 
     with _build_client() as client:
         response = client.post("/api/pipeline/submit", json={"operations": ["score"]})

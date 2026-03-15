@@ -140,10 +140,11 @@ For each image:
 
 1. Run `indexing` actions if targeted.
 2. Run `metadata` actions if targeted.
-3. Detect whether the source file is RAW.
-4. If RAW, convert it to a temporary JPEG for inference.
-5. Mark `scoring = running`.
-6. Pass the prepared job to `ScoringWorker`.
+3. Check the per-image rerun policy via `explain_phase_run_decision()`. If the image should not rerun, mark it as `skipped` and skip to the next image.
+4. Detect whether the source file is RAW.
+5. If RAW, convert it to a temporary JPEG for inference.
+6. Mark `scoring = running`.
+7. Pass the prepared job to `ScoringWorker`.
 
 ### Stage 3: inference
 
@@ -282,15 +283,12 @@ For a given image and phase:
 - If the phase is `done` and the executor version matches, skip it.
 - If `force_run=True`, run it regardless.
 
-### Where policy is currently applied
+### Where policy is applied
 
+- `PrepWorker` (scoring phase gate, in `modules/pipeline.py`)
 - `TaggingRunner`
 - `SelectionRunner`
 - `ClusteringEngine`
-
-### Important asymmetry
-
-The scoring pipeline writes per-image phase status and executor version, but it does not currently use the same per-image rerun gate before starting work. That makes scoring less symmetric than keywords and culling.
 
 ## Practical Reading of the Current System
 

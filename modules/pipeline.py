@@ -19,8 +19,9 @@ from modules import config as app_config
 from modules.phases import PhaseCode, PhaseStatus
 from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
-from scripts.python.run_all_musiq_models import MultiModelMUSIQ
-from modules.liqe import LiqeScorer
+# Lazy imports — these pull in TensorFlow/PyTorch and are deferred to avoid
+# slow top-level loads (and to let tests that don't need GPU models collect).
+# Actual imports happen in ScoringWorker.__init__ where they are used.
 
 # Setup logging
 logging.basicConfig(
@@ -133,6 +134,8 @@ class PrepWorker(PipelineWorker):
                     if path_record and path_record.get('image_hash'):
                          image_hash = path_record.get('image_hash')
                          job.external_scores["image_hash"] = image_hash
+                         if path_record.get('id'):
+                             job.image_id = path_record['id']
                 except Exception as e:
                     logger.error(f"Path lookup failed for {job.image_path}: {e}")
 
@@ -205,6 +208,19 @@ class PrepWorker(PipelineWorker):
 
             # --- PHASE C: SCORING (Preparation) ---
             if _is_phase_targeted(job.target_phases, PhaseCode.SCORING):
+                # Per-image rerun gate (symmetric with tagging/culling runners)
+                if job.image_id:
+                    decision = explain_phase_run_decision(
+                        job.image_id,
+                        PhaseCode.SCORING,
+                        current_executor_version=self.scorer.VERSION if self.scorer else None,
+                        force_run=False,
+                    )
+                    if not decision['should_run']:
+                        job.status = "skipped"
+                        self.output_queue.put(job)
+                        return
+
                 # Identify Type
                 job.is_raw = self.scorer.is_raw_file(job.image_path) if self.scorer else False
                 
@@ -215,6 +231,7 @@ class PrepWorker(PipelineWorker):
                     job.temp_files.append(t_dir)
                     
                     if self._raw_converter is None:
+                        from scripts.python.run_all_musiq_models import MultiModelMUSIQ
                         self._raw_converter = MultiModelMUSIQ(skip_gpu=True)
                     self._raw_converter.temp_dir = t_dir
                     
@@ -252,6 +269,7 @@ class ScoringWorker(PipelineWorker):
     def __init__(self, input_queue, output_queue, stop_event, scorer_instance):
         super().__init__("ScoringWorker", input_queue, output_queue, stop_event)
         self.scorer = scorer_instance # The actual loaded heavy model
+        from modules.liqe import LiqeScorer
         self.liqe_scorer = LiqeScorer() # Keep LIQE loaded
 
         

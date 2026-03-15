@@ -2739,52 +2739,6 @@ def register_image_for_import(file_path, file_name, file_type, folder_id, image_
         conn.close()
 
 
-def _get_folder_ancestor_ids(folder_id):
-    """Return folder_id plus all parents up to root."""
-    if not folder_id:
-        return []
-
-    conn = get_db()
-    c = conn.cursor()
-    seen = set()
-    ids = []
-    current = folder_id
-    try:
-        while current and current not in seen:
-            seen.add(current)
-            ids.append(current)
-            c.execute("SELECT parent_id FROM folders WHERE id = ?", (current,))
-            row = c.fetchone()
-            current = row[0] if row else None
-    finally:
-        conn.close()
-    return ids
-
-
-def invalidate_folder_phase_aggregates(folder_id=None, folder_path=None):
-    """
-    Mark phase aggregate cache dirty for the target folder and all its parents.
-    """
-    if not folder_id and folder_path:
-        folder_id = get_or_create_folder(folder_path)
-
-    ancestor_ids = _get_folder_ancestor_ids(folder_id)
-    if not ancestor_ids:
-        return
-
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        placeholders = ",".join(["?"] * len(ancestor_ids))
-        c.execute(
-            f"UPDATE folders SET phase_agg_dirty = 1 WHERE id IN ({placeholders})",
-            tuple(ancestor_ids)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def get_or_create_folder(folder_path, _depth=0):
     """
     Gets folder ID from cache/DB, creating it if it doesn't exist.
@@ -4617,15 +4571,39 @@ def get_incomplete_records():
     conn.close()
     return rows
 
-def export_db_to_json(output_path):
+def export_db_to_json(output_path, folder_path=None, keyword_filter=None, rating_filter=None,
+                      label_filter=None, min_score_general=0, min_score_aesthetic=0,
+                      min_score_technical=0, date_range=None):
     """
-    Exports the entire images table to a JSON file.
+    Exports the images table to a JSON file with optional filtering.
+    
+    Args:
+        output_path: Path for the output JSON file
+        folder_path: Optional folder path prefix to filter by
+        keyword_filter: Optional keyword string to search for
+        rating_filter: Optional list of ratings to filter by
+        label_filter: Optional list of labels to filter by
+        min_score_general, min_score_aesthetic, min_score_technical: Score thresholds
+        date_range: Optional tuple (start_date, end_date) as strings "YYYY-MM-DD"
+    
+    Returns (success, message)
     """
     import json
     
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM images")
+    
+    conditions, params = _build_export_where_clause(
+        rating_filter, label_filter, keyword_filter,
+        min_score_general, min_score_aesthetic, min_score_technical,
+        date_range, folder_path
+    )
+    
+    query = "SELECT * FROM images"
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY id"
+    c.execute(query, params)
     rows = c.fetchall()
     conn.close()
     
@@ -4720,14 +4698,14 @@ def _build_export_where_clause(rating_filter=None, label_filter=None, keyword_fi
         conditions.append("score_technical >= ?")
         params.append(min_score_technical)
         
-    # Date Filter
+    # Date Filter (Firebird-compatible: CAST instead of DATE())
     if date_range and len(date_range) == 2:
         start_date, end_date = date_range
         if start_date:
-            conditions.append("DATE(created_at) >= ?")
+            conditions.append("CAST(created_at AS DATE) >= CAST(? AS DATE)")
             params.append(start_date)
         if end_date:
-            conditions.append("DATE(created_at) <= ?")
+            conditions.append("CAST(created_at AS DATE) <= CAST(? AS DATE)")
             params.append(end_date)
     
     # Folder Filter
@@ -4775,9 +4753,8 @@ def export_db_to_csv(output_path, columns=None, rating_filter=None, label_filter
     c = conn.cursor()
     
     try:
-        # Build column list (filter to existing columns)
-        c.execute("PRAGMA table_info(images)")
-        existing_cols = {row[1] for row in c.fetchall()}
+        # Build column list (filter to existing columns) — Firebird-compatible
+        existing_cols = set(get_available_columns())
         valid_columns = [col for col in columns_to_export if col in existing_cols]
         
         if not valid_columns:
@@ -4858,9 +4835,8 @@ def export_db_to_excel(output_path, columns=None, rating_filter=None, label_filt
     c = conn.cursor()
     
     try:
-        # Build column list (filter to existing columns)
-        c.execute("PRAGMA table_info(images)")
-        existing_cols = {row[1] for row in c.fetchall()}
+        # Build column list (filter to existing columns) — Firebird-compatible
+        existing_cols = set(get_available_columns())
         valid_columns = [col for col in columns_to_export if col in existing_cols]
         
         if not valid_columns:

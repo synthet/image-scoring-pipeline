@@ -32,3 +32,7 @@ torchvision>=0.15.0
 
 # Firebird database driver (required for db.py)
 firebird-driver>=2.0
+
+# CLI (cli.py) — Typer + Rich
+typer>=0.24.0
+rich>=14.0.0

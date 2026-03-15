@@ -6,7 +6,6 @@ import threading
 import logging
 from datetime import datetime
 from modules import pipeline, db, config
-from scripts.python.run_all_musiq_models import MultiModelMUSIQ
 
 class BatchImageProcessor:
     """

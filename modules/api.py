@@ -1023,7 +1023,7 @@ def create_api_router() -> APIRouter:
         Returns:
             ApiResponse with success status and job_id if started
         """
-        from modules.ui.app import _check_rate_limit
+        from modules.ui.security import _check_rate_limit
         _check_rate_limit("scoring_start")
 
         if _scoring_runner is None:
@@ -1263,7 +1263,7 @@ def create_api_router() -> APIRouter:
     )
     async def start_tagging(request: TaggingStartRequest):
         """Start a batch tagging job."""
-        from modules.ui.app import _check_rate_limit
+        from modules.ui.security import _check_rate_limit
         _check_rate_limit("tagging_start")
 
         if _tagging_runner is None:
@@ -1911,7 +1911,7 @@ def create_api_router() -> APIRouter:
     )
     async def start_clustering(request: ClusteringStartRequest):
         """Start a batch clustering job."""
-        from modules.ui.app import _check_rate_limit
+        from modules.ui.security import _check_rate_limit
         _check_rate_limit("clustering_start")
 
         if _clustering_runner is None:
@@ -2199,7 +2199,7 @@ def create_api_router() -> APIRouter:
     )
     async def import_register(request: ImportRegisterRequest):
         """Register images from a folder via API (used by Electron when Gradio is available)."""
-        from modules.ui.app import _check_rate_limit
+        from modules.ui.security import _check_rate_limit
         from modules import db, utils
         from modules.exif_extractor import extract_exif
         from modules.phases import PhaseCode, PhaseStatus
@@ -2303,7 +2303,7 @@ def create_api_router() -> APIRouter:
     )
     async def submit_pipeline(request: PipelineSubmitRequest):
         """Submit image/folder to the processing pipeline."""
-        from modules.ui.app import _check_rate_limit
+        from modules.ui.security import _check_rate_limit
         _check_rate_limit("pipeline_submit")
 
         if not request.input_path or not request.input_path.strip():
@@ -2490,7 +2490,7 @@ def create_api_router() -> APIRouter:
         description="Marks all images in a folder phase as skipped, storing reason and actor."
     )
     async def skip_pipeline_phase(request: PipelinePhaseControlRequest):
-        from modules.ui.app import _check_rate_limit
+        from modules.ui.security import _check_rate_limit
         from modules import db
         _check_rate_limit("pipeline_phase_skip")
 
@@ -2517,7 +2517,7 @@ def create_api_router() -> APIRouter:
         description="Converts skipped statuses to running and starts the selected phase runner."
     )
     async def retry_pipeline_phase(request: PipelinePhaseControlRequest):
-        from modules.ui.app import _check_rate_limit
+        from modules.ui.security import _check_rate_limit
         from modules import db
         _check_rate_limit("pipeline_phase_retry")
 
