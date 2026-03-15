@@ -55,7 +55,7 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 
 - [ ] **[Python]** Streaming/progress for `POST /api/import/register` (currently single-request; no incremental progress)
 - [ ] **[Python]** Keep OpenAPI schema (`openapi.yaml`) in sync with `modules/api.py`
-- [ ] **[Python]** Add request/response examples for new endpoints to `API.md`
+- [x] **[Python]** Add request/response examples for new endpoints to `API.md`
 - [ ] **[Electron]** Update `electron/apiService.ts` and `electron/apiTypes.ts` when adding endpoints
 
 ### Model & Performance

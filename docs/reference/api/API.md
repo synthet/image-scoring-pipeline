@@ -204,6 +204,146 @@ Content-Type: application/json
 }
 ```
 
+#### Propagate Tags by Visual Similarity
+```http
+POST /api/tagging/propagate
+Content-Type: application/json
+
+{
+  "folder_path": "/path/to/images",
+  "dry_run": true,
+  "min_votes": 2,
+  "min_similarity": 0.85,
+  "max_keywords": 10,
+  "recursive": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Tag propagation completed",
+  "data": {
+    "dry_run": true,
+    "processed_images": 125,
+    "tagged_images": 0,
+    "suggestions": [
+      {
+        "image_id": 901,
+        "file_path": "/path/to/images/IMG_0901.jpg",
+        "keywords": ["mountain", "sunset"],
+        "source_neighbors": [120, 145]
+      }
+    ]
+  }
+}
+```
+
+### Similarity Operations
+
+#### Find Similar Images
+```http
+GET /api/similarity/similar?image_id=123&limit=20&min_similarity=0.80
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Found 3 similar images",
+  "data": {
+    "results": [
+      {
+        "image_id": 456,
+        "file_path": "/path/to/images/IMG_0456.jpg",
+        "similarity": 0.942311
+      }
+    ]
+  }
+}
+```
+
+#### Find Near-Duplicate Pairs
+```http
+GET /api/similarity/duplicates?threshold=0.98&limit=100
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Found 2 duplicate pairs",
+  "data": {
+    "results": [
+      {
+        "image_id_a": 1001,
+        "image_id_b": 1002,
+        "file_path_a": "/path/to/images/IMG_1001.jpg",
+        "file_path_b": "/path/to/images/IMG_1002.jpg",
+        "similarity": 0.996501
+      }
+    ]
+  }
+}
+```
+
+#### Find Visual Outliers
+```http
+GET /api/similarity/outliers?folder_path=/path/to/images&z_threshold=2.0&k=10
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Found 4 outliers",
+  "data": {
+    "results": [
+      {
+        "image_id": 777,
+        "file_path": "/path/to/images/IMG_0777.jpg",
+        "mean_knn_similarity": 0.321441,
+        "z_score": -2.41,
+        "nearest_neighbors": [
+          { "image_id": 701, "similarity": 0.441122 },
+          { "image_id": 702, "similarity": 0.438510 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Import Operations
+
+#### Register Images from Folder (Import Without Scoring)
+```http
+POST /api/import/register
+Content-Type: application/json
+
+{
+  "folder_path": "/path/to/images",
+  "recursive": true,
+  "extensions": ["jpg", "jpeg", "png", "nef"],
+  "skip_existing": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Import registration completed",
+  "data": {
+    "registered": 342,
+    "skipped_existing": 118,
+    "failed": 0,
+    "folder_id": 42
+  }
+}
+```
+
 ### General Operations
 
 #### Get All Status
@@ -470,4 +610,3 @@ curl -X POST http://127.0.0.1:7860/api/scoring/stop
 - [API schema for LLMs](API_SCHEMA_LLM.md)
 - [API schema implementation notes](API_SCHEMA_IMPLEMENTATION.md)
 - [MCP debugging tools](../../technical/MCP_DEBUGGING_TOOLS.md)
-
