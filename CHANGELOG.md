@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-03-14
+
+### Added
+- **CLI** (`cli.py`): Typer + Rich CLI for score, tag, cluster, propagate-tags, pipeline, query, export, config, status, jobs.
+- **Template DB script**: `scripts/create_template_db.py` for creating template databases.
+- **UI security**: `modules/ui/security.py` for security-related UI logic.
+- **Tests**: `test_cli.py`, `test_postgres_parity.py`, `test_raw_ui.py`, `bench_db_performance.py`.
+- **Docker**: `docker-compose.postgres.yml` for Postgres testing.
+
+### Changed
+- **Docs**: Expanded `docs/technical/CLI_TUI_SUMMARY.md` and `docs/technical/PIPELINE_PHASE_RUNNERS.md`.
+- **Pipeline**: Phase runner wiring and orchestrator updates.
+- **API, config, db, engine**: Various refinements and test updates.
+
 ## [4.9.0] - 2026-03-14
 
 ### Added
