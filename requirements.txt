@@ -25,13 +25,19 @@ scikit-learn>=1.3.0,<2.0
 # MCP Server (optional - for Cursor debugging integration)
 mcp>=1.0.0,<2.0
 
+# PostgreSQL database driver (required for db.py)
+psycopg2-binary>=2.9,<3.0
+
+# pgvector Python client (vector type support for psycopg2)
+pgvector>=0.2.0,<1.0
+
+# Database migration framework
+alembic>=1.13.0,<2.0
+
 # LIQE model dependencies (PyTorch)
 pyiqa>=0.1.14
 torch>=2.0.0
 torchvision>=0.15.0
-
-# Firebird database driver (required for db.py)
-firebird-driver>=2.0
 
 # CLI (cli.py) — Typer + Rich
 typer>=0.24.0

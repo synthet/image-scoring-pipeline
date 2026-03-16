@@ -2,7 +2,9 @@
 Similar Image Search
 
 Finds visually similar images using stored MobileNetV2 embeddings
-and cosine similarity ranking.
+and cosine similarity ranking. Uses pgvector SQL operators for
+search_similar_images() and find_near_duplicates() for efficiency.
+find_outliers() remains in Python for complex statistical logic.
 """
 
 import logging
@@ -10,6 +12,8 @@ import numpy as np
 from modules import db
 
 logger = logging.getLogger(__name__)
+
+EMBEDDING_DIM = 1280  # MobileNetV2 global average pooling output
 
 
 def _normalize(v):
@@ -24,7 +28,7 @@ def _normalize(v):
 
 def _get_or_compute_embedding(image_id, file_path=None):
     """
-    Return the embedding for an image, computing and persisting it
+    Return the embedding for an image as a numpy array, computing and persisting it
     on the fly if not already stored in the DB.
     """
     emb_bytes = db.get_image_embedding(image_id)
@@ -35,7 +39,7 @@ def _get_or_compute_embedding(image_id, file_path=None):
         conn = db.get_db()
         c = conn.cursor()
         try:
-            c.execute("SELECT file_path FROM images WHERE id = ?", (image_id,))
+            c.execute("SELECT file_path FROM images WHERE id = %s", (image_id,))
             row = c.fetchone()
             file_path = row[0] if row else None
         finally:
@@ -57,7 +61,7 @@ def _get_or_compute_embedding(image_id, file_path=None):
 def search_similar_images(example_path=None, example_image_id=None,
                           limit=20, folder_path=None, min_similarity=None):
     """
-    Find images most visually similar to a given example.
+    Find images most visually similar to a given example using pgvector cosine distance.
 
     Provide either example_path (file path string) or example_image_id (int).
     Returns a list of dicts sorted by descending similarity.
@@ -76,7 +80,7 @@ def search_similar_images(example_path=None, example_image_id=None,
         conn = db.get_db()
         c = conn.cursor()
         try:
-            c.execute("SELECT file_path FROM images WHERE id = ?", (example_image_id,))
+            c.execute("SELECT file_path FROM images WHERE id = %s", (example_image_id,))
             row = c.fetchone()
             file_path = row[0] if row else None
         finally:
@@ -86,41 +90,53 @@ def search_similar_images(example_path=None, example_image_id=None,
     if query_vec is None:
         return {"error": "Could not obtain embedding for the example image"}
 
-    candidates = db.get_embeddings_for_search(folder_path=folder_path)
-    if not candidates:
-        return {"error": "No embeddings found in database. Run clustering first to populate embeddings."}
+    # Use pgvector cosine distance operator <=> for efficient ANN search
+    conn = db.get_db()
+    c = conn.cursor()
+    try:
+        params = [query_vec, example_image_id]
+        folder_clause = ""
 
-    ids = []
-    paths = []
-    vecs = []
-    for cid, cpath, cbytes in candidates:
-        if cid == example_image_id:
-            continue
-        ids.append(cid)
-        paths.append(cpath)
-        vecs.append(np.frombuffer(cbytes, dtype=np.float32))
+        if folder_path:
+            import os
+            norm = os.path.normpath(folder_path)
+            c.execute("SELECT id FROM folders WHERE path = %s", (norm,))
+            frow = c.fetchone()
+            if not frow:
+                return []
+            folder_id = frow[0]
+            folder_clause = "AND folder_id = %s"
+            params.insert(1, folder_id)
 
-    if not vecs:
-        return []
+        # <=> is cosine distance (0=identical, 2=opposite)
+        # similarity = 1 - cosine_distance
+        sql = f"""
+            SELECT id AS image_id,
+                   file_path,
+                   1 - (image_embedding <=> %s::vector) AS similarity
+            FROM images
+            WHERE image_embedding IS NOT NULL
+              AND id != %s
+              {folder_clause}
+            ORDER BY image_embedding <=> %s::vector
+            LIMIT %s
+        """
+        params.extend([query_vec, limit])
+        c.execute(sql, tuple(params))
+        rows = c.fetchall()
+    finally:
+        conn.close()
 
-    candidate_matrix = np.stack(vecs)
-    query_norm = _normalize(query_vec)
-    candidate_norm = _normalize(candidate_matrix)
-    similarities = candidate_norm @ query_norm
-
-    order = np.argsort(-similarities)
     results = []
-    for idx in order:
-        sim = float(similarities[idx])
+    for row in rows:
+        sim = float(row['similarity'])
         if min_similarity is not None and sim < min_similarity:
             break
         results.append({
-            "image_id": int(ids[idx]),
-            "file_path": paths[idx],
+            "image_id": int(row['image_id']),
+            "file_path": row['file_path'],
             "similarity": round(sim, 6),
         })
-        if len(results) >= limit:
-            break
 
     return results
 
@@ -128,21 +144,120 @@ def search_similar_images(example_path=None, example_image_id=None,
 def find_near_duplicates(threshold=None, folder_path=None, limit=None):
     """
     Find near-duplicate image pairs in the database based on embedding cosine similarity.
-    
+
+    For small-to-medium libraries, uses SQL self-join with pgvector distance.
+    For large libraries (>5000 images), falls back to Python block-wise approach.
+
     Returns a list of dicts representing near-duplicate pairs, sorted by similarity descending:
         [{'image_id_a': int, 'image_id_b': int, 'file_path_a': str, 'file_path_b': str, 'similarity': float}, ...]
     """
     from modules import config
-    
+
     if threshold is None:
         threshold = config.get_config_value("similarity.duplicate_threshold", 0.98)
     max_pairs = config.get_config_value("similarity.duplicate_max_pairs", 5000)
-    
+
     if limit is None:
         limit = max_pairs
     else:
         limit = min(limit, max_pairs)
 
+    # Check how many embeddings exist to decide strategy
+    conn = db.get_db()
+    c = conn.cursor()
+    try:
+        import os
+        folder_clause = ""
+        count_params = []
+        if folder_path:
+            norm = os.path.normpath(folder_path)
+            c.execute("SELECT id FROM folders WHERE path = %s", (norm,))
+            frow = c.fetchone()
+            if not frow:
+                return []
+            folder_id = frow[0]
+            folder_clause = "AND folder_id = %s"
+            count_params = [folder_id]
+
+        c.execute(
+            f"SELECT COUNT(*) FROM images WHERE image_embedding IS NOT NULL {folder_clause}",
+            tuple(count_params)
+        )
+        count_row = c.fetchone()
+        n_embeddings = count_row[0] if count_row else 0
+    finally:
+        conn.close()
+
+    if n_embeddings < 2:
+        return []
+
+    # For large datasets use Python block-wise (SQL self-join is O(n²))
+    PYTHON_THRESHOLD = 5000
+    if n_embeddings > PYTHON_THRESHOLD:
+        return _find_near_duplicates_python(threshold, folder_path, limit)
+
+    # SQL approach using pgvector
+    conn = db.get_db()
+    c = conn.cursor()
+    try:
+        cosine_dist_threshold = 1.0 - threshold  # convert similarity → distance
+
+        sql = f"""
+            SELECT a.id AS image_id_a, b.id AS image_id_b,
+                   a.file_path AS file_path_a, b.file_path AS file_path_b,
+                   1 - (a.image_embedding <=> b.image_embedding) AS similarity
+            FROM images a
+            JOIN images b ON b.id > a.id
+            WHERE a.image_embedding IS NOT NULL
+              AND b.image_embedding IS NOT NULL
+              AND (a.image_embedding <=> b.image_embedding) <= %s
+              {folder_clause if folder_clause else ''}
+            ORDER BY similarity DESC
+            LIMIT %s
+        """
+        sql_params = [cosine_dist_threshold]
+        if folder_clause and count_params:
+            # need folder_id for both a and b
+            sql = f"""
+                SELECT a.id AS image_id_a, b.id AS image_id_b,
+                       a.file_path AS file_path_a, b.file_path AS file_path_b,
+                       1 - (a.image_embedding <=> b.image_embedding) AS similarity
+                FROM images a
+                JOIN images b ON b.id > a.id
+                WHERE a.image_embedding IS NOT NULL
+                  AND b.image_embedding IS NOT NULL
+                  AND (a.image_embedding <=> b.image_embedding) <= %s
+                  AND a.folder_id = %s
+                  AND b.folder_id = %s
+                ORDER BY similarity DESC
+                LIMIT %s
+            """
+            sql_params = [cosine_dist_threshold, count_params[0], count_params[0], limit]
+        else:
+            sql_params = [cosine_dist_threshold, limit]
+
+        c.execute(sql, tuple(sql_params))
+        rows = c.fetchall()
+    finally:
+        conn.close()
+
+    results = []
+    for row in rows:
+        results.append({
+            "image_id_a": int(row['image_id_a']),
+            "image_id_b": int(row['image_id_b']),
+            "file_path_a": row['file_path_a'],
+            "file_path_b": row['file_path_b'],
+            "similarity": round(float(row['similarity']), 6),
+        })
+    return results
+
+
+def _find_near_duplicates_python(threshold=0.98, folder_path=None, limit=5000):
+    """
+    Python block-wise near-duplicate detection (fallback for large libraries).
+    Loads all embeddings and computes cosine similarity in numpy batches.
+    """
     candidates = db.get_embeddings_for_search(folder_path=folder_path)
     if not candidates or len(candidates) < 2:
         return []
@@ -161,25 +276,23 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
     n = len(ids)
     results = []
     block_size = 2000
-    
+
     for i in range(0, n, block_size):
         end_i = min(i + block_size, n)
         block_a = matrix_norm[i:end_i]
-        
+
         for j in range(i, n, block_size):
             end_j = min(j + block_size, n)
             block_b = matrix_norm[j:end_j]
-            
+
             sims = block_a @ block_b.T
-            
-            # Find indices where similarity >= threshold
-            rows, cols = np.where(sims >= threshold)
-            
-            for r, c in zip(rows, cols):
+
+            rows_idx, cols_idx = np.where(sims >= threshold)
+
+            for r, c in zip(rows_idx, cols_idx):
                 global_i = i + r
                 global_j = j + c
-                
-                # Only keep upper-triangle (i < j) to avoid self-matches and symmetric duplicates
+
                 if global_i < global_j:
                     results.append({
                         "image_id_a": int(ids[global_i]),
@@ -188,10 +301,8 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
                         "file_path_b": paths[global_j],
                         "similarity": round(float(sims[r, c]), 6)
                     })
-                    
-    # Sort by highest similarity first, then deterministic IDs
+
     results.sort(key=lambda x: (-x['similarity'], x['image_id_a'], x['image_id_b']))
-    
     return results[:limit]
 
 
@@ -324,4 +435,3 @@ def find_outliers(folder_path, z_threshold=None, k=None, limit=None):
         },
         "skipped": skipped,
     }
-
