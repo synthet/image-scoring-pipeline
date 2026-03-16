@@ -1226,6 +1226,15 @@ button.media-button.svelte-ao1xvt {
   cursor: not-allowed !important;
 }
 
+
+.queue-actions {
+  min-width: 235px !important;
+}
+
+.queue-actions .queue-action-btn {
+  white-space: nowrap !important;
+}
+
 .progress {
   height: 6px !important;
   background-color: var(--bg-primary) !important;

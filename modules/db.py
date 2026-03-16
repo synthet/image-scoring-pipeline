@@ -3652,6 +3652,41 @@ def get_queued_jobs(limit=200, include_related=False):
     return rows
 
 
+
+
+def bump_job_priority(job_id, delta=10):
+    """Increase/decrease job priority for queued/paused jobs."""
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        d = int(delta)
+    except Exception:
+        d = 10
+    c.execute(
+        """
+        UPDATE jobs
+        SET priority = CASE
+            WHEN COALESCE(priority, 100) + ? < 1 THEN 1
+            WHEN COALESCE(priority, 100) + ? > 999 THEN 999
+            ELSE COALESCE(priority, 100) + ?
+        END
+        WHERE id = ? AND status IN ('queued', 'paused')
+        """,
+        (d, d, d, job_id),
+    )
+    updated = c.rowcount > 0
+    if updated:
+        conn.commit()
+        c.execute("SELECT priority FROM jobs WHERE id = ?", (job_id,))
+        row = c.fetchone()
+        new_priority = int(row[0]) if row and row[0] is not None else 100
+    else:
+        conn.rollback()
+        new_priority = None
+    conn.close()
+    return {"success": updated, "priority": new_priority}
+
+
 def set_job_priority(job_id, priority):
     """Update job priority for queued/paused jobs."""
     conn = get_db()

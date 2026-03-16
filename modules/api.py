@@ -2007,6 +2007,55 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+
+    @router.post(
+        "/jobs/{job_id}/pause",
+        response_model=ApiResponse,
+        summary="Pause a queued job",
+        description="Moves a queued job to paused state."
+    )
+    async def pause_job(job_id: int):
+        from modules import db
+        try:
+            result = db.pause_queue_job(job_id)
+            if not result.get("success"):
+                return ApiResponse(success=False, message="Job could not be paused", data={"job_id": job_id, **result})
+            return ApiResponse(success=True, message="Job paused", data={"job_id": job_id, **result})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post(
+        "/jobs/{job_id}/restart",
+        response_model=ApiResponse,
+        summary="Restart a failed job",
+        description="Re-queues a failed job and increments retry count."
+    )
+    async def restart_job(job_id: int):
+        from modules import db
+        try:
+            result = db.restart_failed_job(job_id)
+            if not result.get("success"):
+                return ApiResponse(success=False, message="Job could not be restarted", data={"job_id": job_id, **result})
+            return ApiResponse(success=True, message="Job restarted", data={"job_id": job_id, **result})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post(
+        "/jobs/{job_id}/priority",
+        response_model=ApiResponse,
+        summary="Adjust job priority",
+        description="Bumps queued/paused job priority by delta (default: 10)."
+    )
+    async def bump_priority(job_id: int, delta: int = 10):
+        from modules import db
+        try:
+            result = db.bump_job_priority(job_id, delta=delta)
+            if not result.get("success"):
+                return ApiResponse(success=False, message="Priority not updated", data={"job_id": job_id, **result})
+            return ApiResponse(success=True, message="Priority updated", data={"job_id": job_id, **result})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     # ========== Similar Images Endpoint ==========
 
     @router.get(
