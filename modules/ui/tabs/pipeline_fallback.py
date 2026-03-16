@@ -4,6 +4,59 @@ from modules import config, db
 from modules.ui.tabs import pipeline as pipeline_full
 
 
+def _folder_view(folder_path: str, force_refresh: bool = False):
+    """Build minimal fallback display values for selected folder."""
+    path = (folder_path or "").strip()
+    if not path:
+        return (
+            "### Selected Folder\n- (none)",
+            "### Pipeline Progress\n- Select a folder.",
+            "### Scoring\n- Status: Not Started\n- Progress: 0/0",
+            "### Culling\n- Status: Not Started\n- Progress: 0/0",
+            "### Keywords\n- Status: Not Started\n- Progress: 0/0",
+            "### Quick Start\n1. Select folder\n2. Run scoring/culling/keywords\n3. Review in Gallery",
+        )
+
+    summary = db.get_folder_phase_summary(path, force_refresh=force_refresh) or []
+    phases = {item.get("code"): item for item in summary}
+    total = max([item.get("total_count", 0) for item in summary] + [0])
+
+    def _phase(code, label):
+        item = phases.get(code, {})
+        status = item.get("status", "not_started").replace("_", " ").title()
+        done = item.get("done_count", 0)
+        return f"### {label}\n- Status: {status}\n- Progress: {done}/{total}"
+
+    stepper_lines = ["### Pipeline Progress"]
+    for code, label in [
+        ("indexing", "Indexing"),
+        ("metadata", "Metadata"),
+        ("scoring", "Scoring"),
+        ("culling", "Culling"),
+        ("keywords", "Keywords"),
+    ]:
+        item = phases.get(code, {})
+        status = item.get("status", "not_started").replace("_", " ").title()
+        done = item.get("done_count", 0)
+        stepper_lines.append(f"- {label}: {status} ({done}/{total})")
+
+    pending = any(phases.get(c, {}).get("status") not in ("done", "skipped") for c in ("scoring", "culling", "keywords"))
+    quick = "### Quick Start\n"
+    if pending:
+        quick += "1. Folder selected\n2. Run pending phases\n3. Review in Gallery"
+    else:
+        quick += "1. Folder selected\n2. All phases complete\n3. Review in Gallery"
+
+    return (
+        f"### Selected Folder\n- Path: `{path}`\n- Images: {total}",
+        "\n".join(stepper_lines),
+        _phase("scoring", "Scoring"),
+        _phase("culling", "Culling"),
+        _phase("keywords", "Keywords"),
+        quick,
+    )
+
+
 def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orchestrator) -> dict:
     """Minimal, native-Gradio fallback Pipeline tab."""
     components = {}
@@ -22,17 +75,8 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         choices = _folder_choices()
         if path and path not in choices:
             choices = [path] + choices
-        updates = pipeline_full.get_folder_selection_view(path, force_refresh=True)
-        return (
-            gr.update(choices=choices, value=path),
-            path,
-            updates[0],
-            updates[1],
-            updates[2],
-            updates[3],
-            updates[4],
-            updates[5],
-        )
+        updates = _folder_view(path, force_refresh=True)
+        return (gr.update(choices=choices, value=path), path, *updates)
 
     with gr.Tab("Pipeline", id="pipeline"):
         gr.Markdown("## Pipeline (Fallback UI)")
@@ -50,7 +94,7 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
 
         components["selected_path"] = gr.Textbox(value=last_folder, label="Selected folder")
 
-        initial_updates = pipeline_full.get_folder_selection_view(last_folder, force_refresh=False)
+        initial_updates = _folder_view(last_folder, force_refresh=False)
         components["folder_summary_html"] = gr.Markdown(initial_updates[0])
         components["quick_start_html"] = gr.Markdown(initial_updates[5])
         components["stepper_html"] = gr.Markdown(initial_updates[1])
@@ -81,53 +125,24 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         components["console_output"] = gr.Textbox(lines=12, label="Console Output", interactive=False)
 
     def _run_scoring(path, force):
-        if not path:
-            return
-        db.enqueue_job(
-            path,
-            phase_code="scoring",
-            job_type="scoring",
-            queue_payload={"input_path": path, "skip_existing": not force},
-        )
+        if path:
+            db.enqueue_job(path, phase_code="scoring", job_type="scoring", queue_payload={"input_path": path, "skip_existing": not force})
 
     def _run_metadata(path):
-        if not path:
-            return
-        db.enqueue_job(
-            path,
-            phase_code="scoring",
-            job_type="scoring",
-            queue_payload={
-                "input_path": path,
-                "skip_existing": False,
-                "target_phases": ["indexing", "metadata"],
-            },
-        )
+        if path:
+            db.enqueue_job(path, phase_code="scoring", job_type="scoring", queue_payload={"input_path": path, "skip_existing": False, "target_phases": ["indexing", "metadata"]})
 
     def _run_culling(path, force):
-        if not path:
-            return
-        db.enqueue_job(
-            path,
-            phase_code="culling",
-            job_type="selection",
-            queue_payload={"input_path": path, "force_rescan": force},
-        )
+        if path:
+            db.enqueue_job(path, phase_code="culling", job_type="selection", queue_payload={"input_path": path, "force_rescan": force})
 
     def _run_tagging(path, overwrite, captions):
-        if not path:
-            return
-        db.enqueue_job(
-            path,
-            phase_code="keywords",
-            job_type="tagging",
-            queue_payload={"input_path": path, "overwrite": overwrite, "generate_captions": captions},
-        )
+        if path:
+            db.enqueue_job(path, phase_code="keywords", job_type="tagging", queue_payload={"input_path": path, "overwrite": overwrite, "generate_captions": captions})
 
     def _run_all_pending(path):
-        if not path:
-            return
-        orchestrator.start(path)
+        if path:
+            orchestrator.start(path)
 
     def _stop_all():
         orchestrator.stop()
@@ -136,9 +151,8 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         tagging_runner.stop()
 
     def _repair_index_meta(path):
-        if not path:
-            return
-        db.backfill_index_meta_for_folder(path)
+        if path:
+            db.backfill_index_meta_for_folder(path)
 
     components["folder_dropdown"].change(
         fn=lambda p: _refresh_and_render(_save_selected_folder(p)),
@@ -178,11 +192,9 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
     components["repair_index_meta_btn"].click(fn=_repair_index_meta, inputs=[components["selected_path"]], outputs=[])
     components["stop_all_btn"].click(fn=_stop_all, inputs=[], outputs=[])
 
-
-
     return components
 
 
 def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestrator, selected_folder):
-    """Reuse standard status update logic for fallback tab."""
+    """Reuse canonical monitor/update behavior from full pipeline tab."""
     return pipeline_full.get_status_update(scoring_runner, tagging_runner, selection_runner, orchestrator, selected_folder)
