@@ -1282,6 +1282,29 @@ button.media-button.svelte-ao1xvt {
   box-shadow: none !important;
 }
 
+.telemetry-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  max-height: 320px !important;
+  overflow-y: auto !important;
+}
+
+.telemetry-item {
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 8px !important;
+  background: rgba(255,255,255,0.02) !important;
+}
+
+.telemetry-item.telemetry-warning {
+  border-color: var(--accent-warning) !important;
+}
+
+.telemetry-item.telemetry-error {
+  border-color: var(--accent-danger) !important;
+}
+
 .section-divider {
   border-top: 1px solid var(--border-color) !important;
   margin: 15px 0 !important;

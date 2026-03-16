@@ -195,6 +195,15 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                             lines=12, label="", max_lines=12, interactive=False, elem_classes=["console-code"]
                         )
 
+                # PANEL: Telemetry
+                with gr.Group(elem_classes=["panel", "telemetry-card"]):
+                    gr.HTML("<div class='panel-header'><h2 class='panel-title'>Telemetry</h2></div>")
+                    with gr.Row(elem_classes=["pipeline-actions"]):
+                        components["telemetry_collapse_noisy"] = gr.Checkbox(label="Collapse noisy per-image logs", value=True)
+                        components["telemetry_pin_critical"] = gr.Checkbox(label="Pin critical failures", value=True)
+                    components["telemetry_html"] = gr.HTML(_build_telemetry_html([], collapse_noisy=True, pin_critical=True))
+                    components["telemetry_state"] = gr.State({"last_seq": 0, "last_runner_log": "", "last_running": False, "events": []})
+
     # Wire up folder selection to update HTML rendering (force_refresh to avoid stale cache)
     components["selected_path"].change(
         fn=lambda p: _update_folder_selection(p, force_refresh=True)[:6],
@@ -509,7 +518,7 @@ def _update_folder_selection(folder_path: str, force_refresh=False, is_running=F
     )
 
 
-def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestrator, selected_folder):
+def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestrator, selected_folder, telemetry_state, collapse_noisy, pin_critical):
     """Called regularly by the main app timer to update components."""
     # Process Orchestrator tick
     orchestrator.on_tick()
@@ -519,6 +528,78 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
     )
 
     queued_jobs = db.get_queued_jobs(limit=5)
+
+    telemetry_state = telemetry_state or {}
+    telemetry_events = list(telemetry_state.get("events", []))
+
+    # Poll persisted telemetry from DB/runners broadcast points
+    last_seq = telemetry_state.get("last_seq", 0)
+    event_batch = db.get_pipeline_events(since_seq=last_seq, limit=300)
+    telemetry_events.extend(event_batch.get("events", []))
+    telemetry_state["last_seq"] = event_batch.get("latest_seq", last_seq)
+
+    # Ingest runner status stream into telemetry events (progress/log)
+    log_text = console_out or ""
+    prev_log = telemetry_state.get("last_runner_log", "")
+    if log_text != prev_log:
+        new_lines = [ln for ln in log_text[len(prev_log):].splitlines() if ln.strip()] if log_text.startswith(prev_log) else [ln for ln in log_text.splitlines() if ln.strip()]
+        for line in new_lines[-80:]:
+            sev = "error" if "error" in line.lower() else ("warning" if "warn" in line.lower() else "info")
+            telemetry_events.append({
+                "event_type": "log" if sev == "info" else ("error" if sev == "error" else "log"),
+                "message": line,
+                "severity": sev,
+                "workflow_run": None,
+                "stage_run": mon_name.lower() if mon_name else None,
+                "step_run": "runner:log",
+                "category": "runner-log",
+                "critical": sev == "error",
+                "noisy": True,
+                "source": "runner.get_status",
+                "timestamp": "",
+                "seq": 0,
+            })
+    telemetry_state["last_runner_log"] = log_text
+
+    # State transitions from runner polling
+    if telemetry_state.get("last_running") != is_running:
+        telemetry_events.append({
+            "event_type": "state-change",
+            "message": "Pipeline run started" if is_running else "Pipeline run became idle",
+            "severity": "info",
+            "workflow_run": None,
+            "stage_run": mon_name.lower() if mon_name else "pipeline",
+            "step_run": "runner:state",
+            "category": "phase-transition",
+            "critical": False,
+            "noisy": False,
+            "source": "runner.get_status",
+            "timestamp": "",
+            "seq": 0,
+        })
+    telemetry_state["last_running"] = is_running
+
+    # Throughput counter from monitor values
+    if is_running and mon_tot > 0:
+        telemetry_events.append({
+            "event_type": "progress",
+            "message": f"{mon_name}: {mon_cur}/{mon_tot}",
+            "severity": "info",
+            "workflow_run": None,
+            "stage_run": mon_name.lower() if mon_name else None,
+            "step_run": "runner:throughput",
+            "category": "throughput",
+            "critical": False,
+            "noisy": True,
+            "source": "get_status_update",
+            "timestamp": "",
+            "seq": 0,
+        })
+
+    if len(telemetry_events) > 600:
+        telemetry_events = telemetry_events[-600:]
+    telemetry_state["events"] = telemetry_events
+    telemetry_html = _build_telemetry_html(telemetry_events, collapse_noisy=bool(collapse_noisy), pin_critical=bool(pin_critical))
 
     # Rebuild stepper/cards from current folder state (force_refresh when running for real-time updates)
     res_summary, res_stepper, res_sc, res_cu, res_kw, res_qs, folder_total = _update_folder_selection(
@@ -557,12 +638,14 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
         gr.update(interactive=not_running),  # repair_index_meta
         gr.update(interactive=not_running),  # run_metadata
         res_qs,                              # quick_start
+        telemetry_html,
+        telemetry_state,
     )
 
     # Skip SSE push if nothing changed since last tick
-    cache_key = (res_stepper, res_sc, res_cu, res_kw, monitor_html, console_out, is_running)
+    cache_key = (res_stepper, res_sc, res_cu, res_kw, monitor_html, console_out, is_running, telemetry_html)
     if cache_key == _last_status_cache["state"]:
-        return tuple(gr.skip() for _ in range(14))
+        return tuple(gr.skip() for _ in range(16))
     _last_status_cache["state"] = cache_key
 
     return result
@@ -704,6 +787,51 @@ def _build_monitor_html(name, msg, current, total, queued_jobs=None, folder_tota
       {_render_queue_html(queued_jobs)}
     </div>
     """
+
+
+def _build_telemetry_html(events, collapse_noisy=True, pin_critical=True):
+    events = events or []
+    if not events:
+        return "<div class='panel-body'><p class='section-microcopy'>No telemetry events yet.</p></div>"
+
+    critical = [e for e in events if e.get("critical")]
+    normal = [e for e in events if not e.get("critical")]
+    noisy_count = 0
+    if collapse_noisy:
+        filtered = []
+        for ev in normal:
+            if ev.get("noisy") and ev.get("category") in ("runner-log", "phase", "throughput"):
+                noisy_count += 1
+                continue
+            filtered.append(ev)
+        normal = filtered
+
+    ordered = (critical + normal) if pin_critical else events
+    ordered = ordered[-120:]
+
+    lines = ["<div class='panel-body'><div class='telemetry-list'>"]
+    if noisy_count:
+        lines.append(f"<p class='section-microcopy'>Collapsed {noisy_count} noisy event(s).</p>")
+
+    for ev in ordered:
+        etype = (ev.get("event_type") or "log").strip()
+        severity = (ev.get("severity") or "info").strip()
+        cls = f"telemetry-item telemetry-{severity}"
+        run = " / ".join(x for x in [str(ev.get("workflow_run") or ""), str(ev.get("stage_run") or ""), str(ev.get("step_run") or "")] if x)
+        run_html = f"<div class='section-microcopy'>{run}</div>" if run else ""
+        stamp = ev.get("timestamp") or ""
+        badge = "<span class='status-badge error'>PIN</span>" if ev.get("critical") else ""
+        lines.append(
+            f"<div class='{cls}'>"
+            f"<div><strong>[{etype}]</strong> {ev.get('message','')}</div>"
+            f"{run_html}"
+            f"<div class='section-microcopy'>{stamp} · {ev.get('source','')}</div>"
+            f"{badge}"
+            f"</div>"
+        )
+
+    lines.append("</div></div>")
+    return "".join(lines)
 
 
 _STATUS_LABELS = {

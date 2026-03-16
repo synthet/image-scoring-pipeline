@@ -324,9 +324,18 @@ def create_ui():
             settings_components = settings_tab.create_tab(app_config)
             
         # Monitor Loop
-        def monitor_status_wrapper(selected_folder):
+        def monitor_status_wrapper(selected_folder, telemetry_state, collapse_noisy, pin_critical):
             # Pass the currently selected folder from the Pipeline tree to update cards
-            res = pipeline.get_status_update(runner, tagging_runner, selection_runner, orchestrator, selected_folder)
+            res = pipeline.get_status_update(
+                runner,
+                tagging_runner,
+                selection_runner,
+                orchestrator,
+                selected_folder,
+                telemetry_state,
+                collapse_noisy,
+                pin_critical,
+            )
             return list(res)
 
         monitor_outputs = [
@@ -344,11 +353,18 @@ def create_ui():
             pipeline_components["repair_index_meta_btn"],
             pipeline_components["run_metadata_btn"],
             pipeline_components["quick_start_html"],
+            pipeline_components["telemetry_html"],
+            pipeline_components["telemetry_state"],
         ]
 
         status_timer.tick(
             fn=monitor_status_wrapper,
-            inputs=[pipeline_components.get("selected_path")],
+            inputs=[
+                pipeline_components.get("selected_path"),
+                pipeline_components.get("telemetry_state"),
+                pipeline_components.get("telemetry_collapse_noisy"),
+                pipeline_components.get("telemetry_pin_critical"),
+            ],
             outputs=monitor_outputs
         )
 
