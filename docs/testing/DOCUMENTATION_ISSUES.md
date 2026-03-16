@@ -64,7 +64,7 @@ WSL_TESTS.md does not mention these.
 
 **Issue:** WSL_TESTS.md does not link to TEST_STATUS.md for known issues or current status.
 
-**Recommendation:** Add TEST_STATUS.md to the "Related Documents" section in WSL_TESTS.md.
+**Status:** RESOLVED. WSL_TESTS.md now links to TEST_STATUS.md.
 
 ---
 
@@ -72,9 +72,7 @@ WSL_TESTS.md does not mention these.
 
 ### 3.1 Single primary doc
 
-**Issue:** `docs/testing/` contains only `WSL_TESTS.md`. TEST_STATUS.md lives at `docs/TEST_STATUS.md`, not under `docs/testing/`.
-
-**Recommendation:** Consider moving TEST_STATUS.md to `docs/testing/TEST_STATUS.md` for cohesion, or add a `docs/testing/README.md` that indexes both and explains the testing docs layout.
+**Status:** RESOLVED. TEST_STATUS.md has been moved to `docs/testing/TEST_STATUS.md`.
 
 ---
 
@@ -82,7 +80,7 @@ WSL_TESTS.md does not mention these.
 
 ### 4.1 ENVIRONMENTS.md
 
-**Status:** Correctly links to both [WSL Tests](../testing/WSL_TESTS.md) and [Test Status](../TEST_STATUS.md).
+**Status:** Correctly links to both [WSL Tests](WSL_TESTS.md) and [Test Status](TEST_STATUS.md).
 
 ### 4.2 docs/INDEX.md
 
@@ -92,7 +90,7 @@ WSL_TESTS.md does not mention these.
 
 **Issue:** WSL_TESTS.md "Related Documents" links to `[Docs index](../README.md)` — from `docs/testing/`, `../README.md` resolves to `docs/README.md`, not the project root `README.md`.
 
-**Recommendation:** Clarify: use `[Docs index](../README.md)` if the intent is the docs index, or `[Project README](../../README.md)` for the main project README.
+**Status:** RESOLVED. WSL_TESTS.md now links to `[Docs index](../INDEX.md)`.
 
 ---
 
@@ -104,8 +102,8 @@ WSL_TESTS.md does not mention these.
 | Setup script | `setup_wsl_test_env.sh` | ✓ | Yes |
 | Run script | `run_wsl_tests.sh` | ✓ | Yes |
 | PowerShell | `Run-WSLTests.ps1` | ✓ | Yes |
-| Requirements | `requirements_wsl_gpu_organized.txt` | Not mentioned | No |
-| Optional deps | `INSTALL_PYIQA_TORCH`, `INSTALL_WEBUI_DEPS` | Not mentioned | No |
+| Requirements | `requirements_wsl_gpu_organized.txt` | Mentioned in WSL_TESTS.md | Yes |
+| Optional deps | `INSTALL_PYIQA_TORCH`, `INSTALL_WEBUI_DEPS` | Mentioned in WSL_TESTS.md | Yes |
 
 ---
 

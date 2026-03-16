@@ -36,6 +36,36 @@ class PhaseCode(str, Enum):
     KEYWORDS  = "keywords"
 
 
+PHASE_CODE_ALIASES = {
+    "score": PhaseCode.SCORING.value,
+    "tag": PhaseCode.KEYWORDS.value,
+    "cluster": PhaseCode.CULLING.value,
+}
+
+
+def normalize_phase_codes(phase_codes: Optional[List[Any]]) -> List[PhaseCode]:
+    """Normalize API/job payload phase codes into canonical PhaseCode values."""
+    normalized: List[PhaseCode] = []
+    for phase in phase_codes or []:
+        if isinstance(phase, PhaseCode):
+            candidate = phase
+        else:
+            raw = str(phase or "").strip()
+            if not raw:
+                continue
+            if raw.startswith("PhaseCode."):
+                raw = raw.split(".", 1)[1]
+            raw = PHASE_CODE_ALIASES.get(raw.lower(), raw.lower())
+            try:
+                candidate = PhaseCode(raw)
+            except ValueError:
+                logger.warning("Ignoring unknown phase code: %s", phase)
+                continue
+        if candidate not in normalized:
+            normalized.append(candidate)
+    return normalized
+
+
 # ---------------------------------------------------------------------------
 # Phase status enum
 # ---------------------------------------------------------------------------
@@ -133,31 +163,43 @@ SEED_PHASES = [
     {
         "code": PhaseCode.INDEXING,
         "name": "Indexing",
-        "description": "Scan folder, create/update DB records, compute file hash",
-        "sort_order": 10,
+        "description": "Scan folder, create/update DB records, compute file hash and register image paths.",
+        "sort_order": 1,
+        "enabled": 1,
+        "optional": 0,
+        "default_skip": False,
     },
     {
         "code": PhaseCode.METADATA,
-        "name": "Metadata Prep",
-        "description": "Generate thumbnails, write XMP sidecars",
-        "sort_order": 20,
+        "name": "Physical Metadata",
+        "description": "Extract EXIF/XMP tags, generate thumbnails, and prepare files for scoring.",
+        "sort_order": 2,
+        "enabled": 1,
+        "optional": 0,
+        "default_skip": False,
     },
     {
         "code": PhaseCode.SCORING,
         "name": "Scoring",
         "description": "AI quality scoring (MUSIQ, SPAQ, AVA, LIQE, etc.)",
         "sort_order": 30,
+        "optional": False,
+        "default_skip": False,
     },
     {
         "code": PhaseCode.CULLING,
         "name": "Culling & Stacks",
         "description": "Clustering into stacks, cull/pick decisions",
         "sort_order": 40,
+        "optional": True,
+        "default_skip": False,
     },
     {
         "code": PhaseCode.KEYWORDS,
         "name": "Keywords",
         "description": "CLIP keyword tagging + BLIP captioning",
         "sort_order": 50,
+        "optional": True,
+        "default_skip": False,
     },
 ]

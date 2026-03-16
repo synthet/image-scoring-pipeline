@@ -8,8 +8,18 @@ import sys
 sys.path.append(os.getcwd())
 
 from unittest.mock import MagicMock
-sys.modules["tensorflow"] = MagicMock()
+tf_mock = MagicMock()
+sys.modules["tensorflow"] = tf_mock
 sys.modules["scripts.python.run_all_musiq_models"] = MagicMock()
+sys.modules["modules.scoring"] = MagicMock()
+sys.modules["modules.thumbnails"] = MagicMock()
+sys.modules["modules.exif_extractor"] = MagicMock()
+sys.modules["modules.xmp"] = MagicMock()
+
+# Mock MultiModelMUSIQ before it's imported
+from unittest.mock import patch
+mock_musiq = MagicMock()
+sys.modules["modules.scoring"].MultiModelMUSIQ = mock_musiq
 
 from modules.pipeline import ImageJob, PrepWorker, ScoringWorker, ResultWorker
 import queue

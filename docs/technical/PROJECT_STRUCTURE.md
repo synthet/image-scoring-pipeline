@@ -1,6 +1,6 @@
 # Project Structure
 
-**Last updated**: 2026-01-31
+**Last updated**: 2026-03-08
 
 ## Overview
 
@@ -10,13 +10,15 @@ This repository is organized so **user-facing entry points stay in the repo root
 
 Common entry points you’ll actually use:
 
-- `Run-Scoring.ps1`: primary Windows/PowerShell scoring launcher
-- `run_scoring.bat`: batch wrapper for scoring (Windows)
+- `run_scoring.bat`: **Universal Launcher** — Drag & Drop or Double-Click for GUI
+- `Run-Scoring.ps1`: **Universal Logic** — Handles folders, files, and WSL routing
 - `webui.py`: Web UI entry point
 - `run_webui.bat`: batch wrapper for starting the Web UI
 - `run_webui_docker.bat`: Docker-based Web UI wrapper
 - `launch.py`: convenience launcher
 - `mcp_config.json`: MCP server configuration (for Cursor / AI tooling)
+- `README.md`: Main project overview and entry point
+- `LICENSE`: License information
 
 ### External Repositories
 - **[electron-image-scoring](https://github.com/synthet/electron-image-scoring)**: The high-performance standalone Electron gallery. Previously located in `electron-gallery/`.
@@ -30,6 +32,14 @@ Common entry points you’ll actually use:
 ## Scripts & automation
 
 - `scripts/`: utilities, batch files, PowerShell scripts, and maintenance helpers
+  - `scripts/python/`: Core batch processor (`batch_process_images.py`), single image scorer (`run_all_musiq_models.py`), gallery generator (`gallery_generator.py`), GUI wrapper (`scoring_gui.py`)
+  - `scripts/powershell/`, `scripts/batch/`: Windows launchers and wrappers
+  - `scripts/maintenance/`: DB maintenance, backfill, cleanup scripts
+
+When running scripts from the root directory, you may need to adjust paths or execute them from their respective subfolders. Example:
+```powershell
+.\scripts\powershell\process_nef_folder.ps1 -FolderPath "D:\Photos\..."
+```
 
 ## Tests
 
@@ -48,7 +58,7 @@ See:
 
 All docs live under `docs/`.
 
-- [Docs index](../README.md)
+- [Docs index](../INDEX.md)
 - [Changelog](../../CHANGELOG.md)
 
 Key subfolders:

@@ -6,7 +6,7 @@ from modules import ui_tree
 _last_status_cache = {"state": None}
 
 
-def _parse_phase_summary(folder_path):
+def _parse_phase_summary(folder_path, force_refresh=False):
     """
     Calls db.get_folder_phase_summary() and converts the list result
     into a dict keyed by phase code for easy lookup.
@@ -21,7 +21,7 @@ def _parse_phase_summary(folder_path):
     if not folder_path:
         return {}, 0
 
-    summary_list = db.get_folder_phase_summary(folder_path)
+    summary_list = db.get_folder_phase_summary(folder_path, force_refresh=force_refresh)
     # summary_list is [{code, name, sort_order, status, done_count, total_count}, ...]
     summary_by_code = {}
     total_count = 0
@@ -69,24 +69,17 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                 components["folder_summary_html"] = gr.HTML(
                     _build_folder_summary(None, 0)
                 )
-                components["open_gallery_btn"] = gr.Button("Open in Gallery", elem_classes=["success-btn"])
 
                 gr.HTML("<div class='section-divider'></div>")
 
-                gr.HTML(
-                    """
-                    <h3 class="legend-title">Legend</h3>
-                    <div class="legend">
-                        <span class="legend-item"><strong class="tree-icon done">D</strong> Done</span>
-                        <span class="legend-item"><strong class="tree-icon partial">P</strong> Partial</span>
-                        <span class="legend-item"><strong class="tree-icon failed">F</strong> Failed</span>
-                        <span class="legend-item"><strong class="tree-icon empty">N</strong> Not Started</span>
-                    </div>
-                    """
-                )
-
             # MAIN DASHBOARD
             with gr.Column(scale=3):
+                # QUICK START PANEL
+                components["quick_start_html"] = gr.HTML(
+                    _build_quick_start_html(None),
+                    elem_classes=["animate-in"],
+                )
+
                 # PANEL: Pipeline Progress
                 with gr.Group(elem_classes=["panel"]):
                     gr.HTML(
@@ -101,6 +94,28 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                         with gr.Row(elem_classes=["pipeline-actions"]):
                             components["run_all_btn"] = gr.Button("Run All Pending", variant="primary", elem_classes=["primary-btn"])
                             components["stop_all_btn"] = gr.Button("Stop All", variant="stop", elem_classes=["danger-btn"])
+                        gr.HTML(
+                            "<p class='section-microcopy'>"
+                            "<strong>Run All Pending</strong> \u2014 starts Scoring, Culling, and Keywords for images not yet processed. "
+                            "<strong>Stop All</strong> \u2014 halts the active job; progress is preserved."
+                            "</p>"
+                        )
+                        # Stop All confirmation (hidden until Stop All clicked)
+                        with gr.Row(visible=False, elem_classes=["confirm-row"]) as stop_confirm_row:
+                            gr.HTML(
+                                "<span class='confirm-text'>"
+                                "This will halt all active jobs immediately. The current batch will not complete."
+                                "</span>"
+                            )
+                            stop_confirm_yes = gr.Button("Yes, Stop All", elem_classes=["danger-btn"], size="sm")
+                            stop_confirm_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
+                        components["stop_confirm_row"] = stop_confirm_row
+                        components["stop_confirm_yes"] = stop_confirm_yes
+                        components["stop_confirm_cancel"] = stop_confirm_cancel
+
+                        with gr.Row():
+                            components["skip_reason"] = gr.Textbox(label="Skip reason", value="", placeholder="optional reason")
+                            components["skip_actor"] = gr.Textbox(label="Actor", value="ui_user", placeholder="who skipped")
 
                 # PANEL: Phases (Card Grid)
                 with gr.Group(elem_classes=["panel"]):
@@ -112,6 +127,16 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                             components["scoring_run_btn"] = gr.Button("Run Scoring", elem_classes=["secondary-btn"])
                             with gr.Accordion("Options", open=False, elem_classes=["options-accordion"]):
                                 components["scoring_force"] = gr.Checkbox(label="Force Re-score", value=False)
+                            components["scoring_skip_btn"] = gr.Button("Skip Scoring", elem_classes=["danger-btn"])
+                            with gr.Row(visible=False, elem_classes=["confirm-row"]) as scoring_skip_confirm:
+                                gr.HTML("<span class='confirm-text'>Marks Scoring as skipped for this folder.</span>")
+                                scoring_skip_yes = gr.Button("Yes, Skip", elem_classes=["danger-btn"], size="sm")
+                                scoring_skip_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
+                            components["scoring_skip_confirm"] = scoring_skip_confirm
+                            components["scoring_skip_yes"] = scoring_skip_yes
+                            components["scoring_skip_cancel"] = scoring_skip_cancel
+                            components["scoring_retry_btn"] = gr.Button("Retry Skipped", elem_classes=["secondary-btn"])
+                            gr.HTML("<p class='action-help'>Run \u2014 scores unprocessed images. Skip \u2014 marks done without running. Retry \u2014 re-queues skipped.</p>")
 
                         # Culling Card
                         with gr.Column(elem_classes=["phase-card"]):
@@ -119,6 +144,16 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                             components["culling_run_btn"] = gr.Button("Run Culling", elem_classes=["secondary-btn"])
                             with gr.Accordion("Options", open=False, elem_classes=["options-accordion"]):
                                 components["culling_force"] = gr.Checkbox(label="Force Re-run", value=False)
+                            components["culling_skip_btn"] = gr.Button("Skip Culling", elem_classes=["danger-btn"])
+                            with gr.Row(visible=False, elem_classes=["confirm-row"]) as culling_skip_confirm:
+                                gr.HTML("<span class='confirm-text'>Marks Culling as skipped for this folder.</span>")
+                                culling_skip_yes = gr.Button("Yes, Skip", elem_classes=["danger-btn"], size="sm")
+                                culling_skip_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
+                            components["culling_skip_confirm"] = culling_skip_confirm
+                            components["culling_skip_yes"] = culling_skip_yes
+                            components["culling_skip_cancel"] = culling_skip_cancel
+                            components["culling_retry_btn"] = gr.Button("Retry Skipped", elem_classes=["secondary-btn"])
+                            gr.HTML("<p class='action-help'>Run \u2014 selects picks by composition score. Skip \u2014 marks done. Retry \u2014 re-runs on skipped.</p>")
 
                         # Keywords Card
                         with gr.Column(elem_classes=["phase-card"]):
@@ -127,31 +162,59 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                             with gr.Accordion("Options", open=False, elem_classes=["options-accordion"]):
                                 components["keywords_overwrite"] = gr.Checkbox(label="Overwrite Existing", value=False)
                                 components["keywords_captions"] = gr.Checkbox(label="Generate Captions", value=False)
+                            components["keywords_skip_btn"] = gr.Button("Skip Keywords", elem_classes=["danger-btn"])
+                            with gr.Row(visible=False, elem_classes=["confirm-row"]) as keywords_skip_confirm:
+                                gr.HTML("<span class='confirm-text'>Marks Keywords as skipped for this folder.</span>")
+                                keywords_skip_yes = gr.Button("Yes, Skip", elem_classes=["danger-btn"], size="sm")
+                                keywords_skip_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
+                            components["keywords_skip_confirm"] = keywords_skip_confirm
+                            components["keywords_skip_yes"] = keywords_skip_yes
+                            components["keywords_skip_cancel"] = keywords_skip_cancel
+                            components["keywords_retry_btn"] = gr.Button("Retry Skipped", elem_classes=["secondary-btn"])
+                            gr.HTML("<p class='action-help'>Run \u2014 generates keyword tags. Skip \u2014 skips tagging. Retry \u2014 re-tags skipped.</p>")
 
                 # PANEL: Active Job Monitor
                 with gr.Group(elem_classes=["panel", "monitor-card"]):
-                    components["monitor_html"] = gr.HTML(_build_idle_html())
+                    components["monitor_html"] = gr.HTML(_build_idle_html(recovery_info=app_config.get("job_recovery"), queued_jobs=[]))
                     with gr.Accordion("Console Output", open=False):
                         components["console_output"] = gr.Textbox(
                             lines=12, label="", max_lines=12, interactive=False, elem_classes=["console-code"]
                         )
 
-    # Wire up folder selection to update HTML rendering
+    # Wire up folder selection to update HTML rendering (force_refresh to avoid stale cache)
     components["selected_path"].change(
-        fn=_update_folder_selection,
+        fn=lambda p: _update_folder_selection(p, force_refresh=True),
         inputs=[components["selected_path"]],
         outputs=[
             components["folder_summary_html"],
             components["stepper_html"],
             components["scoring_card_html"],
             components["culling_card_html"],
-            components["keywords_card_html"]
+            components["keywords_card_html"],
+            components["quick_start_html"],
         ]
     )
 
+    def _on_refresh_click(selected_path):
+        """Refresh tree and invalidate folder phase cache so next fetch is live."""
+        if selected_path and selected_path.strip():
+            db.invalidate_folder_phase_aggregates(folder_path=selected_path)
+        tree_html = ui_tree.get_tree_html()
+        folder_outputs = _update_folder_selection(selected_path or "", force_refresh=True)
+        return (tree_html,) + folder_outputs
+
     components["refresh_btn"].click(
-        fn=ui_tree.get_tree_html,
-        outputs=[components["tree_view"]]
+        fn=_on_refresh_click,
+        inputs=[components["selected_path"]],
+        outputs=[
+            components["tree_view"],
+            components["folder_summary_html"],
+            components["stepper_html"],
+            components["scoring_card_html"],
+            components["culling_card_html"],
+            components["keywords_card_html"],
+            components["quick_start_html"],
+        ],
     )
 
     # --- Run button handlers ---
@@ -160,20 +223,68 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
     def _run_scoring(path, force):
         if not path:
             return
-        job_id = db.create_job(path, phase_code="scoring")
-        scoring_runner.start_batch(path, job_id, skip_existing=not force)
+        db.enqueue_job(
+            path,
+            phase_code="scoring",
+            job_type="scoring",
+            queue_payload={"input_path": path, "skip_existing": not force},
+        )
 
     def _run_culling(path, force):
         if not path:
             return
-        job_id = db.create_job(path, phase_code="culling")
-        selection_runner.start_batch(path, job_id, force_rescan=force)
+        db.enqueue_job(
+            path,
+            phase_code="culling",
+            job_type="selection",
+            queue_payload={"input_path": path, "force_rescan": force},
+        )
 
     def _run_tagging(path, overwrite, captions):
         if not path:
             return
-        job_id = db.create_job(path, phase_code="keywords")
-        tagging_runner.start_batch(path, job_id, overwrite=overwrite, generate_captions=captions)
+        db.enqueue_job(
+            path,
+            phase_code="keywords",
+            job_type="tagging",
+            queue_payload={"input_path": path, "overwrite": overwrite, "generate_captions": captions},
+        )
+
+
+    def _stop_runner_for_phase(phase_code):
+        if phase_code == "scoring":
+            scoring_runner.stop()
+        elif phase_code == "culling":
+            selection_runner.stop()
+        elif phase_code == "keywords":
+            tagging_runner.stop()
+
+    def _skip_phase(path, phase_code, reason, actor):
+        if not path:
+            return
+        _stop_runner_for_phase(phase_code)
+        db.set_folder_phase_status(
+            folder_path=path,
+            phase_code=phase_code,
+            status="skipped",
+            reason=reason or "manual_skip",
+            actor=actor or "ui_user",
+        )
+
+    def _retry_phase(path, phase_code):
+        if not path:
+            return
+        db.set_folder_phase_status(
+            folder_path=path,
+            phase_code=phase_code,
+            status="running",
+        )
+        if phase_code == "scoring":
+            _run_scoring(path, force=False)
+        elif phase_code == "culling":
+            _run_culling(path, force=True)
+        elif phase_code == "keywords":
+            _run_tagging(path, overwrite=False, captions=False)
 
     def _run_all_pending(path):
         if not path:
@@ -207,16 +318,109 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         inputs=[components["selected_path"]],
         outputs=[]
     )
+    # Stop All: two-step confirmation
     components["stop_all_btn"].click(
+        fn=lambda: gr.update(visible=True),
+        inputs=[],
+        outputs=[components["stop_confirm_row"]],
+    )
+    components["stop_confirm_cancel"].click(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["stop_confirm_row"]],
+    )
+    components["stop_confirm_yes"].click(
         fn=_stop_all,
         inputs=[],
+        outputs=[],
+    ).then(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["stop_confirm_row"]],
+    )
+
+    # Scoring skip: two-step confirmation
+    components["scoring_skip_btn"].click(
+        fn=lambda: gr.update(visible=True),
+        inputs=[],
+        outputs=[components["scoring_skip_confirm"]],
+    )
+    components["scoring_skip_cancel"].click(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["scoring_skip_confirm"]],
+    )
+    components["scoring_skip_yes"].click(
+        fn=lambda p, r, a: _skip_phase(p, "scoring", r, a),
+        inputs=[components["selected_path"], components["skip_reason"], components["skip_actor"]],
+        outputs=[],
+    ).then(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["scoring_skip_confirm"]],
+    )
+
+    # Culling skip: two-step confirmation
+    components["culling_skip_btn"].click(
+        fn=lambda: gr.update(visible=True),
+        inputs=[],
+        outputs=[components["culling_skip_confirm"]],
+    )
+    components["culling_skip_cancel"].click(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["culling_skip_confirm"]],
+    )
+    components["culling_skip_yes"].click(
+        fn=lambda p, r, a: _skip_phase(p, "culling", r, a),
+        inputs=[components["selected_path"], components["skip_reason"], components["skip_actor"]],
+        outputs=[],
+    ).then(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["culling_skip_confirm"]],
+    )
+
+    # Keywords skip: two-step confirmation
+    components["keywords_skip_btn"].click(
+        fn=lambda: gr.update(visible=True),
+        inputs=[],
+        outputs=[components["keywords_skip_confirm"]],
+    )
+    components["keywords_skip_cancel"].click(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["keywords_skip_confirm"]],
+    )
+    components["keywords_skip_yes"].click(
+        fn=lambda p, r, a: _skip_phase(p, "keywords", r, a),
+        inputs=[components["selected_path"], components["skip_reason"], components["skip_actor"]],
+        outputs=[],
+    ).then(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["keywords_skip_confirm"]],
+    )
+    components["scoring_retry_btn"].click(
+        fn=lambda p: _retry_phase(p, "scoring"),
+        inputs=[components["selected_path"]],
+        outputs=[]
+    )
+    components["culling_retry_btn"].click(
+        fn=lambda p: _retry_phase(p, "culling"),
+        inputs=[components["selected_path"]],
+        outputs=[]
+    )
+    components["keywords_retry_btn"].click(
+        fn=lambda p: _retry_phase(p, "keywords"),
+        inputs=[components["selected_path"]],
         outputs=[]
     )
 
     return components
 
 
-def _update_folder_selection(folder_path: str):
+def _update_folder_selection(folder_path: str, force_refresh=False, is_running=False):
     """Updates the static UI components when a new folder is selected."""
     if not folder_path:
         return (
@@ -225,9 +429,10 @@ def _update_folder_selection(folder_path: str):
             _build_phase_card_html("SCORING", "Not Started", 0, 0),
             _build_phase_card_html("CULLING", "Not Started", 0, 0),
             _build_phase_card_html("KEYWORDS", "Not Started", 0, 0),
+            _build_quick_start_html(None, is_running=is_running),
         )
 
-    summary_by_code, total_count = _parse_phase_summary(folder_path)
+    summary_by_code, total_count = _parse_phase_summary(folder_path, force_refresh=force_refresh)
 
     sc = summary_by_code.get("scoring", {})
     cu = summary_by_code.get("culling", {})
@@ -239,6 +444,7 @@ def _update_folder_selection(folder_path: str):
         _build_phase_card_html("SCORING", sc.get("status", "not_started"), sc.get("done_count", 0), total_count),
         _build_phase_card_html("CULLING", cu.get("status", "not_started"), cu.get("done_count", 0), total_count),
         _build_phase_card_html("KEYWORDS", kw.get("status", "not_started"), kw.get("done_count", 0), total_count),
+        _build_quick_start_html(folder_path, summary_by_code, is_running=is_running),
     )
 
 
@@ -251,19 +457,27 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
         scoring_runner, tagging_runner, selection_runner
     )
 
+    queued_jobs = db.get_queued_jobs(limit=5)
+
     if is_running:
-        monitor_html = _build_monitor_html(mon_name, mon_msg, mon_cur, mon_tot)
+        monitor_html = _build_monitor_html(mon_name, mon_msg, mon_cur, mon_tot, queued_jobs)
     else:
-        monitor_html = _build_idle_html()
+        status = orchestrator.get_status()
+        monitor_html = _build_idle_html(
+            recovery_info=status.get("recovery"),
+            queued_jobs=queued_jobs,
+        )
 
     not_running = not is_running
 
     # Rebuild stepper/cards from current folder state
-    res_summary, res_stepper, res_sc, res_cu, res_kw = _update_folder_selection(selected_folder)
+    res_summary, res_stepper, res_sc, res_cu, res_kw, res_qs = _update_folder_selection(
+        selected_folder, is_running=is_running
+    )
 
     # Return order must match monitor_outputs in app.py:
     # stepper, scoring_card, culling_card, keywords_card,
-    # monitor, console, run_all, stop_all, sc_run, cu_run, kw_run
+    # monitor, console, run_all, stop_all, sc_run, cu_run, kw_run, quick_start
     result = (
         res_stepper,
         res_sc,
@@ -276,12 +490,13 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
         gr.update(interactive=not_running),  # scoring_run
         gr.update(interactive=not_running),  # culling_run
         gr.update(interactive=not_running),  # keywords_run
+        res_qs,                              # quick_start
     )
 
     # Skip SSE push if nothing changed since last tick
     cache_key = (res_stepper, res_sc, res_cu, res_kw, monitor_html, console_out, is_running)
     if cache_key == _last_status_cache["state"]:
-        return tuple(gr.skip() for _ in range(11))
+        return tuple(gr.skip() for _ in range(12))
     _last_status_cache["state"] = cache_key
 
     return result
@@ -304,6 +519,58 @@ def _unified_monitor_status(scoring_runner, tagging_runner, selection_runner):
     return False, "", "", 0, 0, ""
 
 
+def _build_quick_start_html(folder_path, summary_by_code=None, is_running=False):
+    """Context-aware Quick Start guide: 1. Select folder → 2. Run All → 3. Gallery."""
+    summary_by_code = summary_by_code or {}
+
+    if not folder_path:
+        steps = [
+            ("current", "Select a folder from the tree"),
+            ("", "Run all pending pipeline phases"),
+            ("", "Open Gallery and review results"),
+        ]
+    elif is_running:
+        steps = [
+            ("done", "Folder selected"),
+            ("current", "Pipeline is running\u2026"),
+            ("", "Open Gallery and review results"),
+        ]
+    else:
+        pending = any(
+            summary_by_code.get(c, {}).get("status") not in ("done", "skipped")
+            for c in ("scoring", "culling", "keywords")
+        )
+        if pending:
+            steps = [
+                ("done", "Folder selected"),
+                ("current", "Run All Pending to process images"),
+                ("", "Open Gallery and review results"),
+            ]
+        else:
+            steps = [
+                ("done", "Folder selected"),
+                ("done", "All phases complete"),
+                ("current", "Open Gallery and review results"),
+            ]
+
+    parts = [
+        "<div class='quick-start-panel'>",
+        "<strong style='font-size:0.9rem;color:var(--text-primary)'>Quick Start</strong>",
+        "<div class='quick-start-steps'>",
+    ]
+    for i, (state, label) in enumerate(steps):
+        parts.append(
+            f"<div class='qs-step {state}' role='listitem'>"
+            f"<span class='qs-step-num'>{i + 1}</span>"
+            f"<span>{label}</span>"
+            f"</div>"
+        )
+        if i < len(steps) - 1:
+            parts.append("<span class='qs-arrow' aria-hidden='true'>\u203a</span>")
+    parts.append("</div></div>")
+    return "".join(parts)
+
+
 def _build_folder_summary(path, count):
     path_display = path if path else "-"
     return f"""
@@ -314,11 +581,38 @@ def _build_folder_summary(path, count):
     """
 
 
-def _build_idle_html():
-    return "<div class='panel-body'><p>No active jobs in the pipeline.</p></div>"
+def _render_queue_html(queued_jobs):
+    if not queued_jobs:
+        return "<p class='phase-stats'>Queue: empty</p>"
+
+    lines = ["<div class='phase-stats'>Queue:</div>", "<ul class='phase-stats'>"]
+    for job in queued_jobs:
+        lines.append(
+            f"<li>#{job.get('id')} {job.get('job_type') or 'job'} "
+            f"(position {job.get('queue_position')})</li>"
+        )
+    lines.append("</ul>")
+    return "".join(lines)
 
 
-def _build_monitor_html(name, msg, current, total):
+def _build_idle_html(recovery_info=None, queued_jobs=None):
+    base = "<div class='panel-body'><p>No active jobs in the pipeline.</p>"
+    if recovery_info:
+        recovered = recovery_info.get("recovered_running_jobs") or []
+        interrupted = recovery_info.get("interrupted_pipeline_jobs") or []
+        auto_resumed = recovery_info.get("auto_resumed")
+        if recovered or interrupted or auto_resumed:
+            base += (
+                f"<p><strong>Recovery:</strong> marked {len(recovered)} running job(s) as interrupted; "
+                f"found {len(interrupted)} interrupted pipeline job(s); "
+                f"auto-resumed: {'yes' if auto_resumed else 'no'}.</p>"
+            )
+    queued_jobs = queued_jobs or []
+    return base + _render_queue_html(queued_jobs) + "</div>"
+
+
+def _build_monitor_html(name, msg, current, total, queued_jobs=None):
+    queued_jobs = queued_jobs or []
     pct = (current / total * 100) if total > 0 else 0
     return f"""
     <div class="panel-body">
@@ -327,6 +621,7 @@ def _build_monitor_html(name, msg, current, total):
       </div>
       <div class="phase-stats">{msg} ({current}/{total})</div>
       <div class="progress"><div class="progress-fill" style="width: {pct:.1f}%;"></div></div>
+      {_render_queue_html(queued_jobs)}
     </div>
     """
 
@@ -337,6 +632,17 @@ _STATUS_LABELS = {
     "not_started": "Not Started",
     "failed": "Failed",
     "running": "Running",
+    "skipped": "Skipped",
+}
+
+
+_STATUS_BADGE_CLASS = {
+    "done": "success",
+    "partial": "info",
+    "running": "info",
+    "failed": "error",
+    "skipped": "warning",
+    "not_started": "",
 }
 
 
@@ -344,72 +650,89 @@ def _build_phase_card_html(title, status, done, total):
     pct = (done / total * 100) if total > 0 else 0
     initial = title[0]
     status_label = _STATUS_LABELS.get(status, status.replace("_", " ").title())
+    badge_class = _STATUS_BADGE_CLASS.get(status, "")
+    badge_cls = f"phase-status status-badge {badge_class}" if badge_class else "phase-status"
+    running_cls = " phase-card running" if status in ("running", "partial") else ""
     return f"""
-    <div class="phase-head">
-      <div class="phase-title">
-        <div class="phase-icon">{initial}</div>
-        {title}
+    <div class="phase-card{running_cls}" role="region" aria-label="{title} phase: {status_label}">
+      <div class="phase-head">
+        <div class="phase-title">
+          <div class="phase-icon">{initial}</div>
+          {title}
+        </div>
+        <div class="{badge_cls}">{status_label}</div>
       </div>
-      <div class="phase-status">{status_label}</div>
+      <div class="phase-stats">{done}/{total} images processed</div>
+      <div class="progress"><div class="progress-fill" style="width: {pct:.1f}%;"></div></div>
     </div>
-    <div class="phase-stats">{done}/{total} images processed</div>
-    <div class="progress"><div class="progress-fill" style="width: {pct:.1f}%;"></div></div>
     """
 
 
 def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
-    if not folder_path or not summary_by_code:
+    if not folder_path:
         return "<p>Select a folder from the tree to view pipeline progress.</p>"
 
-    def _get(phase_code, default_done=0):
-        return summary_by_code.get(phase_code, {}).get("done_count", default_done)
+    if not summary_by_code or total == 0:
+        return (
+            "<p class='section-microcopy'>No images in this folder. "
+            "Run Scoring first to index images from disk.</p>"
+        )
 
-    idx_done = _get("indexing", total)
-    met_done = _get("metadata", total)
-    sco_done = _get("scoring")
-    cul_done = _get("culling")
-    key_done = _get("keywords")
+    def _phase(phase_code, default_done=0):
+        return summary_by_code.get(phase_code, {"done_count": default_done, "status": "not_started", "advance_ready": False})
 
-    def get_state(done, total_c):
+    idx = _phase("indexing", total)
+    met = _phase("metadata", total)
+    sco = _phase("scoring")
+    cul = _phase("culling")
+    key = _phase("keywords")
+
+    idx_done, met_done = idx.get("done_count", total), met.get("done_count", total)
+    sco_done, cul_done, key_done = sco.get("done_count", 0), cul.get("done_count", 0), key.get("done_count", 0)
+
+    def get_state(phase_info, total_c):
+        done = phase_info.get("done_count", 0)
+        status = phase_info.get("status", "not_started")
+        advance_ready = phase_info.get("advance_ready", False)
         if total_c == 0:
             return ""
-        if done == total_c:
+        if status == "done" or done == total_c or advance_ready:
             return "done"
-        if done > 0:
+        if status in ("partial", "running", "skipped") or done > 0:
             return "running"
         return ""
 
     return f"""
-    <div class="stepper">
-      <div class="step {get_state(idx_done, total)}">
+    <div class="stepper" role="list" aria-label="Pipeline progress">
+      <div class="step {get_state(idx, total)}" role="listitem" aria-label="Index: {idx_done} of {total}">
         <div class="step-dot">1</div>
         <div class="step-label">Index</div>
         <div class="step-count">{idx_done} / {total}</div>
       </div>
-      <div class="connector {get_state(idx_done, total)}"></div>
+      <div class="connector {get_state(idx, total)}" aria-hidden="true"></div>
 
-      <div class="step {get_state(met_done, total)}">
+      <div class="step {get_state(met, total)}" role="listitem" aria-label="Metadata: {met_done} of {total}">
         <div class="step-dot">2</div>
         <div class="step-label">Meta</div>
         <div class="step-count">{met_done} / {total}</div>
       </div>
-      <div class="connector {get_state(sco_done, total)}"></div>
+      <div class="connector {get_state(met, total)}" aria-hidden="true"></div>
 
-      <div class="step {get_state(sco_done, total)}">
+      <div class="step {get_state(sco, total)}" role="listitem" aria-label="Scoring: {sco_done} of {total}">
         <div class="step-dot">3</div>
         <div class="step-label">Scoring</div>
         <div class="step-count">{sco_done} / {total}</div>
       </div>
-      <div class="connector {get_state(cul_done, total)}"></div>
+      <div class="connector {get_state(cul, total)}" aria-hidden="true"></div>
 
-      <div class="step {get_state(cul_done, total)}">
+      <div class="step {get_state(cul, total)}" role="listitem" aria-label="Culling: {cul_done} of {total}">
         <div class="step-dot">4</div>
         <div class="step-label">Culling</div>
         <div class="step-count">{cul_done} / {total}</div>
       </div>
-      <div class="connector {get_state(key_done, total)}"></div>
+      <div class="connector {get_state(key, total)}" aria-hidden="true"></div>
 
-      <div class="step {get_state(key_done, total)}">
+      <div class="step {get_state(key, total)}" role="listitem" aria-label="Keywords: {key_done} of {total}">
         <div class="step-dot">5</div>
         <div class="step-label">Keywords</div>
         <div class="step-count">{key_done} / {total}</div>

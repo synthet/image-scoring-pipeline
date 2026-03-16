@@ -80,6 +80,13 @@ logs/
 *.swo
 *~
 
+# Debug and verification scripts (dev artifacts)
+debug_*.py
+debug_*.txt
+debug_*.html
+test_tree_*.py
+tmp/verify_*.py
+
 # Test images and outputs
 test_images/
 output/
@@ -131,6 +138,7 @@ SCORING_HISTORY.FDB
 TEST_*.fdb
 *.FDB
 *.fdb
+*.fbk
 # Added cleanup patterns
 debug_output*.txt
 test_output*.log
@@ -147,6 +155,8 @@ backups/
 config.json
 secrets.json
 test_export.json
+_cli_test_export.json
+test_export_verify.json
 image_scoring.db
 error_output.txt
 

@@ -34,7 +34,7 @@ def main():
         c = conn.cursor()
 
         # Clear tables in order of foreign key constraints (roughly)
-        tables = ["file_paths", "images", "stacks", "folders"]
+        tables = ["culling_picks", "culling_sessions", "file_paths", "images", "stacks", "folders"]
         for table in tables:
             try:
                 print(f"Clearing {table}...")

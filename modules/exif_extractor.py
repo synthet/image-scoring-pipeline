@@ -139,3 +139,56 @@ def extract_and_upsert_exif(image_path: str, image_id: int) -> bool:
     if not data:
         return False
     return db.upsert_image_exif(image_id, data)
+
+
+def write_image_unique_id(image_path: str, uuid_str: str) -> bool:
+    """
+    Write ImageUniqueID to EXIF using exiftool.
+    This modifies the original file.
+    """
+    exiftool = _get_exiftool_path()
+    if not exiftool:
+        return False
+
+    local_path = utils.convert_path_to_local(image_path)
+    if not os.path.exists(local_path):
+        return False
+
+    try:
+        # -overwrite_original avoids creating .original backup files
+        # ImageUniqueID is a standard EXIF tag
+        cmd = [exiftool, "-overwrite_original", f"-ImageUniqueID={uuid_str}", local_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        return result.returncode == 0
+    except Exception as e:
+        logger.error(f"Failed to write ImageUniqueID to {image_path}: {e}")
+        return False
+
+
+def ensure_image_unique_id(image_path: str, provided_uuid: str = None) -> str | None:
+    """
+    Check if image has an ImageUniqueID. If not, write the provided one or generate a new one.
+    
+    Args:
+        image_path: Local or remote path to image
+        provided_uuid: Optional UUID to write if missing
+        
+    Returns:
+        The existing or newly written UUID, or None on failure.
+    """
+    # 1. Check existing
+    data = extract_exif(image_path)
+    if data and data.get("image_unique_id"):
+        return data["image_unique_id"]
+
+    # 2. Need to write
+    if not provided_uuid:
+        from modules import db
+        # We need some context for deterministic UUID if possible, but extract_exif 
+        # already gave us most of it or we can just use random fallback via db utility
+        provided_uuid = db.generate_image_uuid(data)
+
+    if write_image_unique_id(image_path, provided_uuid):
+        return provided_uuid
+
+    return None

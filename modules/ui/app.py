@@ -46,6 +46,8 @@ def create_ui():
         tagging_runner=tagging_runner,
         selection_runner=selection_runner
     )
+    recovery_info = orchestrator.recover_interrupted_jobs()
+    app_config["job_recovery"] = recovery_info
 
     # Register phase executors (binds phase codes to runner logic)
     phase_executors.register_all(
@@ -109,7 +111,8 @@ def create_ui():
             pipeline_components["stop_all_btn"],
             pipeline_components["scoring_run_btn"],
             pipeline_components["culling_run_btn"],
-            pipeline_components["keywords_run_btn"]
+            pipeline_components["keywords_run_btn"],
+            pipeline_components["quick_start_html"],
         ]
 
         status_timer.tick(
@@ -118,65 +121,40 @@ def create_ui():
             outputs=monitor_outputs
         )
 
-    return demo, runner, tagging_runner, selection_runner, orchestrator
+    return (
+        demo,
+        runner,
+        tagging_runner,
+        selection_runner,
+        orchestrator,
+        pipeline_components,
+        gallery_components,
+        settings_components,
+        main_tabs,
+    )
 
-import re
-import time
-from collections import defaultdict
-
-# --- Rate limiting ---
-_rate_limits: dict = defaultdict(list)
-_RATE_LIMIT_WINDOW = 60  # seconds
-_RATE_LIMIT_MAX_REQUESTS = 10
-
-def _check_rate_limit(endpoint: str):
-    """Simple in-memory rate limiter per endpoint."""
-    from fastapi import HTTPException
-    now = time.time()
-    _rate_limits[endpoint] = [t for t in _rate_limits[endpoint] if now - t < _RATE_LIMIT_WINDOW]
-    if len(_rate_limits[endpoint]) >= _RATE_LIMIT_MAX_REQUESTS:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-    _rate_limits[endpoint].append(now)
-
-# --- Path validation ---
-_ALLOWED_IMAGE_ROOTS = None
-
-def _validate_file_path(file_path: str) -> str:
-    """Validate and resolve a file path, rejecting traversal attempts."""
-    from fastapi import HTTPException
-    if ".." in file_path:
-        raise HTTPException(status_code=400, detail="Invalid path")
-
-    resolved = os.path.realpath(file_path)
-
-    global _ALLOWED_IMAGE_ROOTS
-    if _ALLOWED_IMAGE_ROOTS is None:
-        _ALLOWED_IMAGE_ROOTS = config.get_config_value("allowed_paths", [])
-        _ALLOWED_IMAGE_ROOTS.extend(config.get_default_allowed_paths())
-
-    if _ALLOWED_IMAGE_ROOTS and not any(
-        resolved.startswith(os.path.realpath(root)) for root in _ALLOWED_IMAGE_ROOTS
-    ):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    return resolved
-
-# --- SQL query validation ---
-_SQL_FORBIDDEN_PATTERNS = re.compile(
-    r'\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|EXECUTE|INTO|GRANT|REVOKE)\b',
-    re.IGNORECASE
+# Security helpers — re-exported from lightweight module so existing imports
+# (e.g. ``from modules.ui.app import _check_rate_limit``) keep working.
+from modules.ui.security import (          # noqa: F401
+    _check_rate_limit,
+    _validate_file_path,
+    _SQL_FORBIDDEN_PATTERNS,
 )
 
 
-def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None):
+def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None):
     """Configures FastAPI endpoints for the Gradio app."""
 
     # Setup REST API endpoints
     from modules import api
-    api.set_runners(scoring_runner, tagging_runner, clustering_runner)
+    api.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner)
     api_router = api.create_api_router()
     fastapi_app.include_router(api_router)
-    
+
+    @fastapi_app.on_event("shutdown")
+    async def _shutdown_dispatcher():
+        api.stop_dispatcher()
+
     @fastapi_app.get("/manifest.json")
     async def manifest_endpoint():
         """Serve a minimal web app manifest to prevent 404 errors."""
@@ -184,7 +162,7 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
         return JSONResponse({
             "name": "Image Scoring WebUI",
             "short_name": "Image Scoring",
-            "start_url": "/",
+            "start_url": "/app",
             "display": "standalone",
             "theme_color": "#000000",
             "background_color": "#ffffff"

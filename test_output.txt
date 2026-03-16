@@ -1,0 +1,21 @@
+Using default Firebird password 'masterkey' ù set FIREBIRD_PASSWORD env var for production
+Wiping existing test DB data...
+Clearing file_paths...
+Clearing images...
+Clearing stacks...
+Clearing folders...
+Test DB setup complete.
+
+[conftest] Setting up test database (scoring_history_test.fdb only)...
+[conftest] Test database initialized successfully.
+
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0
+rootdir: D:\Projects\image-scoring
+configfile: pytest.ini
+plugins: anyio-4.12.0
+collected 10 items
+
+tests\test_phases_db.py ssssssssss                                       [100%]
+
+============================= 10 skipped in 0.31s =============================

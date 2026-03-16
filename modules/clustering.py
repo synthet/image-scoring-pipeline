@@ -11,6 +11,7 @@ from sklearn.cluster import AgglomerativeClustering
 from modules import db, utils, config
 from modules.events import event_manager
 from modules.phases import PhaseCode, PhaseStatus
+from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
 
 CLUSTER_VERSION = "1.0.0"  # bump when clustering algorithm or model changes
@@ -80,6 +81,91 @@ class ClusteringEngine:
             return details['image_hash']
         return None
 
+    def _select_best_image(self, img_ids, id_to_score, id_to_feature=None):
+        """
+        Select the best representative image from a stack.
+
+        Strategy is read from config key ``clustering.best_image_strategy``
+        (``score`` | ``centroid`` | ``balanced``).  Falls back to ``score``
+        when embeddings are unavailable.
+
+        Args:
+            img_ids: List of image IDs in the stack.
+            id_to_score: Dict mapping image_id -> score_general (float or None).
+            id_to_feature: Optional dict mapping image_id -> 1-D numpy embedding.
+
+        Returns:
+            The image_id selected as best representative.
+        """
+        if not img_ids:
+            return None
+        if len(img_ids) == 1:
+            return img_ids[0]
+
+        clustering_config = config.get_config_section('clustering')
+        strategy = clustering_config.get('best_image_strategy', 'score')
+        alpha = float(clustering_config.get('best_image_alpha', 0.65))
+
+        # Normalise scores to [0, 1] across the stack
+        scores = np.array([float(id_to_score.get(i) or 0.0) for i in img_ids], dtype=np.float64)
+        score_range = scores.max() - scores.min()
+        if score_range > 0:
+            norm_scores = (scores - scores.min()) / score_range
+        else:
+            norm_scores = np.zeros_like(scores)
+
+        # Build embedding matrix; may be incomplete/missing
+        features_available = id_to_feature is not None
+        feat_matrix = None
+        valid_mask = None
+        if features_available:
+            feats = [id_to_feature.get(i) for i in img_ids]
+            valid_mask = [f is not None for f in feats]
+            if any(valid_mask):
+                feat_matrix = np.array(
+                    [f if f is not None else np.zeros_like(next(x for x in feats if x is not None))
+                     for f in feats],
+                    dtype=np.float64
+                )
+
+        # Fall back to score strategy if no useful embeddings
+        if strategy != 'score' and feat_matrix is None:
+            strategy = 'score'
+
+        if strategy == 'score':
+            best_idx = int(np.argmax(norm_scores))
+            return img_ids[best_idx]
+
+        # Compute centroid from valid-embedding images only
+        valid_feats = feat_matrix[[i for i, v in enumerate(valid_mask) if v]]
+        centroid = valid_feats.mean(axis=0)
+
+        # Cosine distance to centroid per image
+        norms = np.linalg.norm(feat_matrix, axis=1, keepdims=True)
+        centroid_norm = np.linalg.norm(centroid)
+        # Avoid division by zero
+        safe_norms = np.where(norms > 0, norms, 1.0)
+        safe_centroid_norm = centroid_norm if centroid_norm > 0 else 1.0
+        cosine_sim = feat_matrix.dot(centroid) / (safe_norms.squeeze() * safe_centroid_norm)
+        # Images without valid embeddings should not be preferred
+        cosine_sim[[i for i, v in enumerate(valid_mask) if not v]] = -1.0
+
+        # Normalise cosine similarity to [0, 1]
+        sim_range = cosine_sim.max() - cosine_sim.min()
+        if sim_range > 0:
+            norm_represent = (cosine_sim - cosine_sim.min()) / sim_range
+        else:
+            norm_represent = np.zeros_like(cosine_sim)
+
+        if strategy == 'centroid':
+            best_idx = int(np.argmax(norm_represent))
+            return img_ids[best_idx]
+
+        # balanced: alpha * quality + (1 - alpha) * representativeness
+        combined = alpha * norm_scores + (1.0 - alpha) * norm_represent
+        best_idx = int(np.argmax(combined))
+        return img_ids[best_idx]
+
     def load_model(self):
         if self.model is None:
             # Deferred import
@@ -90,28 +176,35 @@ class ClusteringEngine:
             self.model = MobileNetV2(weights='imagenet', include_top=False, pooling='avg', input_shape=(224, 224, 3))
             logging.info("Clustering Model (MobileNetV2) loaded.")
 
-    def extract_features(self, image_paths):
+    def extract_features(self, image_paths, original_paths=None):
         """
         Extract features for a list of image paths.
         Uses persisted cache when available.
         Returns numpy array of features.
+
+        Args:
+            image_paths: Paths to load images from (may be thumbnails).
+            original_paths: Original file paths for DB hash lookup. If None, image_paths are used.
         """
         self.load_model()
-        
+
+        if original_paths is None:
+            original_paths = image_paths
+
         features_list = []
         valid_indices = []  # Track which images were successfully processed
-        
+
         # Separate cached vs uncached images
         uncached_paths = []
         uncached_indices = []
         path_to_hash = {}
-        
-        for i, path in enumerate(image_paths):
+
+        for i, (path, orig_path) in enumerate(zip(image_paths, original_paths)):
             if not os.path.exists(path):
                 continue
-            
-            # Get hash for cache lookup
-            img_hash = self._get_image_hash(path)
+
+            # Get hash for cache lookup using original path (DB stores original paths)
+            img_hash = self._get_image_hash(orig_path)
             path_to_hash[path] = img_hash
             
             if img_hash and img_hash in self.feature_cache:
@@ -244,7 +337,7 @@ class ClusteringEngine:
         burst_uuid = utils.read_burst_uuid(row['file_path'])
         return burst_uuid
 
-    def cluster_images(self, distance_threshold=None, time_gap_seconds=None, force_rescan=None, target_folder=None, job_id=None):
+    def cluster_images(self, distance_threshold=None, time_gap_seconds=None, force_rescan=None, target_folder=None, job_id=None, target_image_ids=None):
         """
         Main function to load images from DB, cluster them, and update DB.
         Enforces: 1. Folder Isolation 2. Time Gap Splitting 3. Persistence
@@ -261,13 +354,13 @@ class ClusteringEngine:
         self.total = 0
         
         try:
-            yield from self._cluster_images_impl(distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id)
+            yield from self._cluster_images_impl(distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id, target_image_ids=target_image_ids)
         finally:
             # Always mark as not running when done
             self.is_running = False
             self.status_message = "Idle"
             
-    def _cluster_images_impl(self, distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id=None):
+    def _cluster_images_impl(self, distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id=None, target_image_ids=None):
         """Internal implementation of cluster_images."""
         import datetime
         import json
@@ -297,7 +390,27 @@ class ClusteringEngine:
         # Get processed folders early (needed for both paths)
         processed_folders = db.get_clustered_folders()
         
-        if target_folder:
+        if target_image_ids is not None:
+            # --- Selector mode (target ID list) ---
+            rows = db.get_all_images(limit=-1)
+            selected_ids = {int(i) for i in target_image_ids}
+            images_rows = [row for row in rows if row.get('id') in selected_ids]
+            
+            if not images_rows:
+                yield update_status("No images matched target IDs.", 0, 0)
+                return
+                
+            by_folder = {}
+            for row in images_rows:
+                p = row['file_path']
+                if not p:
+                    continue
+                folder = os.path.normpath(os.path.dirname(p))
+                by_folder.setdefault(folder, []).append(row)
+            folders_to_process = list(by_folder.keys())
+            yield update_status(f"Selector mode: {len(images_rows)} images across {len(folders_to_process)} folders.", 0, len(images_rows))
+
+        elif target_folder:
             # --- Single folder mode ---
             images_rows = db.get_images_by_folder(target_folder)
             if not images_rows:
@@ -377,6 +490,50 @@ class ClusteringEngine:
 
         for folder in folders_to_process:
             rows = by_folder[folder]
+            runnable_rows = []
+            for r in rows:
+                decision = explain_phase_run_decision(
+                    r['id'],
+                    PhaseCode.CULLING,
+                    current_executor_version=CLUSTER_VERSION,
+                    force_run=force_rescan,
+                )
+                if decision['should_run']:
+                    runnable_rows.append(r)
+                else:
+                    logging.debug("Skipping culling image_id=%s: %s", r['id'], decision['reason'])
+
+            if not runnable_rows:
+                logging.warning(f"[Clustering] Skipping folder {folder}: runnable_rows=0 (all images current)")
+                yield update_status(f"Skipping folder: {folder} (all images current)", processed_count, len(images_rows))
+                continue
+
+            logging.info(f"[Clustering] Processing folder {folder}: {len(runnable_rows)} runnable images")
+            for r in runnable_rows:
+                # If force_rescan and image is in RUNNING state, reset to DONE first to allow rerun
+                if force_rescan:
+                    statuses = db.get_image_phase_statuses(r['id']) or {}
+                    culling_status = statuses.get("culling")
+                    if culling_status and culling_status.get("status") == "running":
+                        logging.debug(f"Force rescan: resetting image {r['id']} culling phase from running to done")
+                        db.set_image_phase_status(
+                            r['id'],
+                            PhaseCode.CULLING,
+                            PhaseStatus.DONE,
+                            app_version=APP_VERSION,
+                            executor_version=CLUSTER_VERSION,
+                        )
+
+                db.set_image_phase_status(
+                    r['id'],
+                    PhaseCode.CULLING,
+                    PhaseStatus.RUNNING,
+                    app_version=APP_VERSION,
+                    executor_version=CLUSTER_VERSION,
+                    job_id=job_id,
+                )
+
+            rows = runnable_rows
             yield update_status(f"Processing folder: {folder} ({len(rows)} images)...", processed_count, len(images_rows))
             
             folder_stacks = 0
@@ -406,15 +563,10 @@ class ClusteringEngine:
                     non_burst_rows.extend(group_rows)
                     continue
                 
-                # Find best image by score
+                # Find best image (no embeddings available for burst path; falls back to score)
                 img_ids = [r['id'] for r in group_rows]
-                best_id = img_ids[0]
-                max_score = -1.0
-                for r in group_rows:
-                    s = r['score_general'] if r.get('score_general') else 0
-                    if s > max_score:
-                        max_score = s
-                        best_id = r['id']
+                id_to_score_burst = {r['id']: r['score_general'] if r.get('score_general') else 0 for r in group_rows}
+                best_id = self._select_best_image(img_ids, id_to_score_burst)
                 
                 s_name = f"Burst {os.path.basename(folder)} ({len(group_rows)} shots)"
                 burst_stacks_data.append({
@@ -428,6 +580,7 @@ class ClusteringEngine:
             
             # Create burst stacks
             if burst_stacks_data:
+                logging.info(f"[Clustering] Creating {len(burst_stacks_data)} burst stacks")
                 db.create_stacks_batch(burst_stacks_data)
                 # Update burst_uuid in database for these images
                 for stack_data in burst_stacks_data:
@@ -436,6 +589,7 @@ class ClusteringEngine:
                 yield update_status(f"Created {len(burst_stacks_data)} burst stacks from BurstUUID", processed_count, len(images_rows))
             
             # ===== CONTINUE WITH VISUAL CLUSTERING FOR REMAINING IMAGES =====
+            logging.info(f"[Clustering] non_burst_rows={len(non_burst_rows)}, time_batches will be built")
             if not non_burst_rows:
                 # All images were burst photos - skip to next folder
                 db.mark_folder_clustered(folder)
@@ -469,7 +623,7 @@ class ClusteringEngine:
             
             if current_batch:
                 time_batches.append(current_batch)
-                
+            logging.info(f"[Clustering] time_batches={len(time_batches)}, batches with len>=2: {sum(1 for b in time_batches if len(b)>=2)}")
             for b_idx, batch in enumerate(time_batches):
                 # Calculate overall progress for this folder
                 folder_progress = processed_count + (len(rows) * (b_idx / len(time_batches)))
@@ -480,20 +634,22 @@ class ClusteringEngine:
                     
                 # Extract features for this batch
                 batch_paths = []
+                batch_original_paths = []
                 batch_ids = []
                 for r, t in batch:
                     from modules.thumbnails import get_thumb_wsl
                     thumb = get_thumb_wsl(r)  # clustering runs in WSL
                     p = thumb if (thumb and os.path.exists(thumb)) else r['file_path']
-                    
+
                     if p and os.path.exists(p):
                         batch_paths.append(p)
+                        batch_original_paths.append(r['file_path'])
                         batch_ids.append(r['id'])
-                
+
                 if len(batch_paths) < 2:
                     continue
-                    
-                features, valid_indices = self.extract_features(batch_paths)
+
+                features, valid_indices = self.extract_features(batch_paths, original_paths=batch_original_paths)
 
                 # Persist embeddings to DB for similarity search
                 embedding_pairs = []
@@ -516,35 +672,35 @@ class ClusteringEngine:
                 )
                 labels = clustering.fit_predict(features)
                 
+                # Build id -> feature map for centroid/balanced strategies
+                id_to_feature = {}
+                for i, feat in enumerate(features):
+                    orig_idx = valid_indices[i]
+                    img_id = batch_ids[orig_idx]
+                    id_to_feature[img_id] = feat
+
                 local_clusters = {}
                 for i, lbl in enumerate(labels):
-                    orig_idx = valid_indices[i] 
+                    orig_idx = valid_indices[i]
                     img_id = batch_ids[orig_idx]
-                    
+
                     if lbl not in local_clusters:
                         local_clusters[lbl] = []
                     local_clusters[lbl].append(img_id)
-                    
+
                 # Collect stacks for this batch
                 batch_stacks_data = [] # List of dicts
-                
+
+                # Build score lookup once per batch
+                id_to_score_batch = {}
+                for r, t in batch:
+                    id_to_score_batch[r['id']] = r['score_general'] if r['score_general'] else 0
+
                 for lbl, img_ids in local_clusters.items():
                     if len(img_ids) < 2:
                         continue
-                        
-                    # Find best image
-                    # Use provided scores OR fetch? Rows have score_general
-                    id_to_score = {}
-                    for r, t in batch:
-                         id_to_score[r['id']] = r['score_general'] if r['score_general'] else 0
-                    
-                    best_id = img_ids[0]
-                    max_score = -1.0
-                    for mid in img_ids:
-                        s = id_to_score.get(mid, 0)
-                        if s > max_score:
-                            max_score = s
-                            best_id = mid
+
+                    best_id = self._select_best_image(img_ids, id_to_score_batch, id_to_feature)
                             
                     # Name based on Time? or Folder?
                     # Stack (Time)
@@ -562,6 +718,7 @@ class ClusteringEngine:
                 
                 # Execute batch for this time-group
                 if batch_stacks_data:
+                    logging.info(f"[Clustering] Creating {len(batch_stacks_data)} visual stacks for batch {b_idx+1}")
                     db.create_stacks_batch(batch_stacks_data)
                     
                     # Generate and write BurstUUID for newly created stacks
@@ -604,6 +761,7 @@ class ClusteringEngine:
                 except Exception:
                     pass
 
+            logging.info(f"[Clustering] Finished {folder}: created {folder_stacks} stacks total")
             yield update_status(f"Finished {folder}. Created {folder_stacks} stacks.", processed_count, len(images_rows))
             
             # Broadcast final event for folder
@@ -639,7 +797,7 @@ class ClusteringRunner:
         """Returns (is_running, log_text, status_message, current, total)"""
         return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
         
-    def start_batch(self, input_path, threshold=None, time_gap=None, force_rescan=False, job_id=None):
+    def start_batch(self, input_path, threshold=None, time_gap=None, force_rescan=False, job_id=None, resolved_image_ids=None):
         """Starts clustering in background."""
         if self.is_running:
             return "Error: Already running."
@@ -652,15 +810,18 @@ class ClusteringRunner:
         self.stop_event.clear()
         
         def target():
-            self._run_internal(input_path, threshold, time_gap, force_rescan, job_id)
+            self._run_internal(input_path, threshold, time_gap, force_rescan, job_id, resolved_image_ids=resolved_image_ids)
             self.is_running = False
-            self.status_message = "Done" if "Error" not in self.status_message else "Failed"
+            if "Error" in self.status_message:
+                self.status_message = "Failed"
+            elif not self.status_message.startswith("Done"):
+                self.status_message = "Done"
             
         self._thread = threading.Thread(target=target)
         self._thread.start()
         return "Started"
         
-    def _run_internal(self, input_path, threshold, time_gap, force_rescan, job_id=None):
+    def _run_internal(self, input_path, threshold, time_gap, force_rescan, job_id=None, resolved_image_ids=None):
         def log(msg):
             self.log_history.append(msg)
             
@@ -682,7 +843,8 @@ class ClusteringRunner:
                 time_gap_seconds=time_gap,
                 force_rescan=force_rescan,
                 target_folder=input_path,
-                job_id=job_id
+                job_id=job_id,
+                target_image_ids=resolved_image_ids
             ):
                 if self.stop_event.is_set():
                     log("Stopped by user.")

@@ -9,6 +9,7 @@ from modules.selection import SelectionService, SelectionConfig
 from modules import db
 from modules.events import event_manager
 from modules.phases import PhaseCode, PhaseStatus
+from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
 
 
@@ -70,17 +71,24 @@ class SelectionRunner:
             with self._lock:
                 self._log_history.append(msg)
 
-        def progress_cb(pct: float, msg: str):
+        def progress_cb(pct: float, msg: str, cur: int | None = None, tot: int | None = None):
             with self._lock:
                 self._status_message = msg
-                self._total_count = 100
-                self._current_count = int(pct * 100)
+                if cur is not None and tot is not None and tot > 0:
+                    self._current_count = cur
+                    self._total_count = tot
+                else:
+                    self._total_count = 100
+                    self._current_count = int(pct * 100)
+                self._log_history.append(msg)
+                if len(self._log_history) > 200:
+                    self._log_history.pop(0)
                 
             if job_id:
                 event_manager.broadcast_threadsafe("job_progress", {
                     "job_id": job_id,
                     "current": self._current_count,
-                    "total": 100,
+                    "total": self._total_count,
                     "message": msg
                 })
 
@@ -97,18 +105,72 @@ class SelectionRunner:
                 "input_path": input_path
             })
 
-        cfg = SelectionConfig(force_rescan=force_rescan)
-        summary = self._service.run(input_path, cfg=cfg, progress_cb=progress_cb)
-
-        # Phase D (Culling) — mark images in the processed folder as done
+        images = []
+        images_for_phase = []
         try:
             images = db.get_images_by_folder(input_path)
             if images:
-                for img in images:
-                    db.set_image_phase_status(img['id'], PhaseCode.CULLING, PhaseStatus.DONE,
-                                              app_version=APP_VERSION, job_id=job_id)
+                if force_rescan:
+                    # Skip per-image phase updates: clustering will set RUNNING when it processes.
+                    # Avoids ~10k DB calls for large folders (3256 images × 3 calls each).
+                    images_for_phase = images
+                else:
+                    for img in images:
+                        decision = explain_phase_run_decision(
+                            img['id'],
+                            PhaseCode.CULLING,
+                            current_executor_version="1.0.0",
+                            force_run=False,
+                        )
+                        if decision['should_run']:
+                            images_for_phase.append(img)
+                            db.set_image_phase_status(
+                                img['id'],
+                                PhaseCode.CULLING,
+                                PhaseStatus.RUNNING,
+                                app_version=APP_VERSION,
+                                executor_version="1.0.0",
+                                job_id=job_id,
+                            )
         except Exception as pe:
-            log(f"Phase status update error: {pe}")
+            log(f"Phase status pre-run update error: {pe}")
+
+        skipped_by_policy = max(0, len(images) - len(images_for_phase))
+        if skipped_by_policy:
+            log(f"Policy gated {len(images_for_phase)} image(s); {skipped_by_policy} remain unchanged.")
+
+        cfg = SelectionConfig(force_rescan=force_rescan)
+        log(f"Starting clustering for {len(images_for_phase)} images (force_rescan={force_rescan})...")
+        try:
+            # SelectionService operates at folder scope; phase status updates are limited
+            # to policy-eligible images tracked in images_for_phase.
+            summary = self._service.run(input_path, cfg=cfg, progress_cb=progress_cb)
+
+            # Phase D (Culling) — mark attempted images in the processed folder as done
+            try:
+                for img in images_for_phase:
+                    db.set_image_phase_status(
+                        img['id'],
+                        PhaseCode.CULLING,
+                        PhaseStatus.DONE,
+                        app_version=APP_VERSION,
+                        executor_version="1.0.0",
+                        job_id=job_id,
+                    )
+            except Exception as pe:
+                log(f"Phase status update error: {pe}")
+        except Exception as e:
+            for img in images_for_phase:
+                db.set_image_phase_status(
+                    img['id'],
+                    PhaseCode.CULLING,
+                    PhaseStatus.FAILED,
+                    app_version=APP_VERSION,
+                    executor_version="1.0.0",
+                    job_id=job_id,
+                    error=str(e),
+                )
+            raise
 
         with self._lock:
             self._status_message = summary.status

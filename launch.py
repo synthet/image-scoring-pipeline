@@ -87,6 +87,9 @@ def main():
 
     # We run webui.py in a subprocess so this launcher stays clean
     # or we can import it. Subprocess is safer for restarts/updates if we ever add them.
+    os.environ["GRADIO_MCP_SERVER"] = "True"
+    print("Enabled Gradio MCP Server (GRADIO_MCP_SERVER=True)")
+    
     cmd = [sys.executable, "webui.py"] + sys.argv[1:]
     try:
         subprocess.run(cmd)

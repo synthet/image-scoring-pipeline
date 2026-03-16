@@ -11,6 +11,34 @@ from modules import debug
 IS_WINDOWS = (platform.system() == 'Windows')
 
 
+def _build_active_chips_html(rating_filter, label_filter, keyword_filter,
+                             min_gen, min_aes, min_tech, start_date, end_date):
+    """Builds HTML showing currently active filters as read-only chips."""
+    chips = []
+    if rating_filter:
+        chips.append(f"Rating: {', '.join(str(r) for r in rating_filter)}")
+    if label_filter:
+        chips.append(f"Label: {', '.join(label_filter)}")
+    if keyword_filter and keyword_filter.strip():
+        chips.append(f'Keyword: "{keyword_filter.strip()}"')
+    if min_gen and float(min_gen) > 0.0:
+        chips.append(f"Min General: {float(min_gen):.2f}")
+    if min_aes and float(min_aes) > 0.0:
+        chips.append(f"Min Aesthetic: {float(min_aes):.2f}")
+    if min_tech and float(min_tech) > 0.0:
+        chips.append(f"Min Technical: {float(min_tech):.2f}")
+    if start_date and str(start_date).strip():
+        chips.append(f"From: {str(start_date).strip()}")
+    if end_date and str(end_date).strip():
+        chips.append(f"To: {str(end_date).strip()}")
+    if not chips:
+        return ""
+    parts = ["<div class='active-chips-strip' role='list' aria-label='Active filters'>"]
+    for chip in chips:
+        parts.append(f"<span class='active-chip' role='listitem'>{chip}</span>")
+    parts.append("</div>")
+    return "".join(parts)
+
 
 # --- Helper Functions ---
 
@@ -578,6 +606,17 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
                         value=app_config.get('scoring', {}).get('default_sort_order', 'desc'), 
                         label="Order", container=False)
 
+        # Filter Presets
+        with gr.Row(elem_classes=["filter-preset-row"]):
+            gr.HTML("<span style='font-size:0.82rem;color:var(--text-muted);align-self:center;'>Presets:</span>")
+            preset_top_rated = gr.Button("Top Rated", size="sm", elem_classes=["filter-chip"])
+            preset_needs_review = gr.Button("Needs Review", size="sm", elem_classes=["filter-chip"])
+            preset_has_keywords = gr.Button("Has Keywords", size="sm", elem_classes=["filter-chip"])
+            preset_reset_all = gr.Button("Reset All", size="sm", elem_classes=["secondary-btn"])
+
+        # Active Filter Chips
+        active_chips_html = gr.HTML(value="", elem_classes=["active-chips-strip"])
+
         # Filters Section
         with gr.Accordion("🔍 Filters & Search", open=False):
             with gr.Row():
@@ -731,7 +770,62 @@ def create_tab(shared_state, current_folder_state, current_stack_state, runner, 
         for inp in filter_inputs_base[:-2]: # exclude folder_state and stack_state
             # When filter changes, go to first page
              inp.change(fn=first_page, inputs=filter_inputs_base, outputs=[current_page, gallery, page_label, current_paths] + detail_outputs, trigger_mode="always_last")
-             
+
+        # Active chips: update whenever any filter changes
+        chip_inputs = [filter_rating, filter_label, filter_keyword, f_min_gen, f_min_aes, f_min_tech, f_date_start, f_date_end]
+        for inp in chip_inputs:
+            inp.change(
+                fn=_build_active_chips_html,
+                inputs=chip_inputs,
+                outputs=[active_chips_html],
+                trigger_mode="always_last",
+            )
+
+        # --- Filter Presets ---
+        gallery_outputs = [current_page, gallery, page_label, current_paths] + detail_outputs
+
+        def _apply_preset_top_rated(folder, stack_id):
+            """Top Rated: rating 4-5, sort by general score."""
+            rating = ["4", "5"]
+            gal = update_gallery(1, "score_general", "desc", rating, [], "", 0.0, 0.0, 0.0, "", "", folder, stack_id)
+            chips = _build_active_chips_html(rating, [], "", 0.0, 0.0, 0.0, "", "")
+            return [rating, [], "", 0.0, 0.0, 0.0, "", "", "score_general", "desc", chips, 1] + list(gal)
+
+        def _apply_preset_needs_review(folder, stack_id):
+            """Needs Review: no rating filter, sort by general score (unrated images surface)."""
+            gal = update_gallery(1, "score_general", "desc", [], [], "", 0.0, 0.0, 0.0, "", "", folder, stack_id)
+            chips = _build_active_chips_html([], [], "", 0.0, 0.0, 0.0, "", "")
+            return [[], [], "", 0.0, 0.0, 0.0, "", "", "score_general", "desc", chips, 1] + list(gal)
+
+        def _apply_preset_has_keywords(folder, stack_id):
+            """Has Keywords: keyword search with wildcard to surface tagged images."""
+            gal = update_gallery(1, "score_general", "desc", [], [], "%", 0.0, 0.0, 0.0, "", "", folder, stack_id)
+            chips = _build_active_chips_html([], [], "%", 0.0, 0.0, 0.0, "", "")
+            return [[], [], "%", 0.0, 0.0, 0.0, "", "", "score_general", "desc", chips, 1] + list(gal)
+
+        def _apply_preset_reset(folder, stack_id):
+            """Reset all filters to defaults."""
+            default_sort = app_config.get('scoring', {}).get('default_sort_by', 'score_general')
+            default_order = app_config.get('scoring', {}).get('default_sort_order', 'desc')
+            gal = update_gallery(1, default_sort, default_order, [], [], "", 0.0, 0.0, 0.0, "", "", folder, stack_id)
+            return [[], [], "", 0.0, 0.0, 0.0, "", "", default_sort, default_order, "", 1] + list(gal)
+
+        preset_outputs = [
+            filter_rating, filter_label, filter_keyword,
+            f_min_gen, f_min_aes, f_min_tech,
+            f_date_start, f_date_end,
+            sort_dropdown, order_dropdown,
+            active_chips_html,
+            current_page,
+        ] + [gallery, page_label, current_paths] + detail_outputs
+
+        preset_inputs = [current_folder_state, current_stack_state]
+
+        preset_top_rated.click(fn=_apply_preset_top_rated, inputs=preset_inputs, outputs=preset_outputs)
+        preset_needs_review.click(fn=_apply_preset_needs_review, inputs=preset_inputs, outputs=preset_outputs)
+        preset_has_keywords.click(fn=_apply_preset_has_keywords, inputs=preset_inputs, outputs=preset_outputs)
+        preset_reset_all.click(fn=_apply_preset_reset, inputs=preset_inputs, outputs=preset_outputs)
+
         # Reset Folder
         reset_folder_btn.click(
             fn=reset_folder_filter, 

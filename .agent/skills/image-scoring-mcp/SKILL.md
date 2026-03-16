@@ -1,19 +1,24 @@
 ---
 name: image-scoring-mcp
-description: Image Scoring MCP server tools — diagnostics, queries, monitoring, and debugging workflows.
+description: Image Scoring MCP server tools — diagnostics, queries, monitoring, debugging workflows, and execute_code with Gradio access.
 ---
 
 # Image Scoring MCP Server
 
-The project includes a Model Context Protocol (MCP) server that exposes 21 diagnostic and query tools. These tools let AI agents interact with the scoring database and system without directly reading code.
+The project includes a Model Context Protocol (MCP) server that exposes 22+ diagnostic and query tools. These tools let AI agents interact with the scoring database and system without directly reading code.
+
+## Configuration
+
+- **`image-scoring`** (stdio): Use when WebUI is not running. `python -m modules.mcp_server`
+- **`image-scoring-webui`** (SSE): Use when WebUI is running. Connect to `http://localhost:7860/mcp/sse`. Provides `execute_code` with full Gradio access.
 
 ## Starting the Server
 
 ```bash
-# Standalone
+# Standalone (stdio)
 python -m modules.mcp_server
 
-# With WebUI (set env var)
+# With WebUI (SSE at /mcp/sse)
 ENABLE_MCP_SERVER=1 python webui.py
 ```
 
@@ -72,6 +77,12 @@ The server implementation is in `modules/mcp_server.py`.
 | `get_folder_tree` | Folder structure with image counts |
 | `search_images_by_hash` | Find images by SHA-256 content hash |
 
+### 🐍 Execute Code (image-scoring-webui only)
+
+| Tool | Description |
+|------|-------------|
+| `execute_code` | Run Python in WebUI process. Globals: `gr`, `demo`, `components`, `runner`, `tagging_runner`, `orchestrator`, `db`, `config`. Assign to `result` to return a value. |
+
 ## Common Debugging Workflows
 
 ### Scoring Failures
@@ -107,4 +118,5 @@ get_database_stats → check_database_health → get_incomplete_images → valid
 - Most tools require database access; `get_model_status`, `validate_config`, `get_pipeline_stats` do not.
 - `execute_sql` only allows SELECT — dangerous operations are blocked.
 - `validate_file_paths` can be slow on large datasets — use the `limit` parameter.
+- `execute_code` requires `image-scoring-webui` (WebUI running, SSE). Dev/debug use only.
 - Full reference: `.agent/mcp_tools_reference.md`

@@ -1,11 +1,12 @@
 """
 Unit and Integration tests for AI Culling workflow.
 
+Uses scoring_history_test.fdb (per tests-use-test-db-only rule).
 Tests:
 1. test_create_session - Session creation and persistence
 2. test_import_images - Image import and grouping
 3. test_auto_pick - Auto-pick best in groups
-4. test_export_xmp - XMP sidecar export
+4. test_export_xmp - XMP sidecar export (with format verification)
 5. test_full_workflow - End-to-end culling workflow
 """
 
@@ -13,7 +14,7 @@ import os
 import sys
 import shutil
 import logging
-import uuid
+import xml.etree.ElementTree as ET
 import pytest
 
 # Add project root to path
@@ -21,94 +22,58 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules import db
 from modules.culling import CullingEngine
+from modules.xmp import NAMESPACES
 
 # Configure logging
 logging.basicConfig(level=logging.WARNING)
 
+pytestmark = pytest.mark.wsl
+
+
+def _assert_xmp_pick_format(xmp_path: str, expected_pick: int) -> None:
+    """Verify XMP sidecar has correct xmpDM:pick and xmpDM:good values."""
+    tree = ET.parse(xmp_path)
+    root = tree.getroot()
+    desc = root.find('.//{http://www.w3.org/1999/02/22-rdf-syntax-ns#}Description')
+    assert desc is not None, f"No rdf:Description in {xmp_path}"
+    pick_key = f'{{{NAMESPACES["xmpDM"]}}}pick'
+    good_key = f'{{{NAMESPACES["xmpDM"]}}}good'
+    pick_val = desc.get(pick_key)
+    good_val = desc.get(good_key)
+    assert pick_val is not None, f"Missing xmpDM:pick in {xmp_path}"
+    assert int(pick_val) == expected_pick, f"Expected pick={expected_pick}, got {pick_val}"
+    if expected_pick == 1:
+        assert good_val == 'true', f"Picked image should have good=true, got {good_val}"
+    elif expected_pick == -1:
+        assert good_val == 'false', f"Rejected image should have good=false, got {good_val}"
+
 
 class TestCullingWorkflow:
     """Test suite for culling workflow operations."""
-    
+
     @pytest.fixture(scope="class", autouse=True)
     def setup_database_fixture(self):
-        """Fixture for setting up and tearing down the test database."""
-        # Use a temporary database
-        original_db_path = db.DB_PATH
-        # Use local temp dir to avoid Firebird permission issues in AppData
-        temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp_test_cull')
+        """Fixture: use scoring_history_test.fdb, create temp dir for test image files."""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        temp_dir = os.path.join(project_root, 'temp_test_cull')
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
         os.makedirs(temp_dir, exist_ok=True)
-        
-        # Configure Firebird Driver
-        from firebird.driver import driver_config
-        if hasattr(driver_config, 'fb_client_library'):
-             fb_dll = os.path.abspath(os.path.join(os.path.dirname(db.__file__), "..", "Firebird", "fbclient.dll"))
-             if os.path.exists(fb_dll):
-                 driver_config.fb_client_library.value = fb_dll
-                 print(f"Configured test FB driver: {fb_dll}")
 
-        test_db_path = os.path.abspath(f"TEST_culling_{uuid.uuid4().hex}.fdb")
-        self.__class__.test_db_path = test_db_path
         self.__class__.test_images_dir = os.path.join(temp_dir, 'test_images')
         os.makedirs(self.test_images_dir, exist_ok=True)
-        
-        # Copy template DB
-        # Run scripts/debug/debug_firebird.py to create template if missing
-        template_db = "template.fdb"
-        if not os.path.exists(template_db):
-             raise Exception("Template DB missing - run scripts/debug/debug_firebird.py first")
-        
-        try:
-             if os.path.exists(test_db_path):
-                 os.remove(test_db_path)
-             shutil.copy2(template_db, test_db_path)
-        except Exception as e:
-             print(f"Error copying template DB: {e}")
-             raise
-        
-        
-        # CRITICAL: Override DB_PATH to use test database
-        db.DB_PATH = test_db_path
-        
-        # Skip DDL - Template is seeded
-        os.environ['SKIP_DB_INIT'] = '1'
 
-        # Initialize DB with test path
+        # Use scoring_history_test.fdb (set by conftest / db.py under pytest)
         db.init_db()
-        
-        # Create test image fixtures
         self._create_test_images()
 
         yield
 
-        # Teardown logic
-        db.DB_PATH = original_db_path
         shutil.rmtree(temp_dir, ignore_errors=True)
         try:
-             # Close connection explicitely
-             try: db.get_db().close()
-             except: pass
-             
-             # Force garbage collection to release file handles
-             import gc
-             gc.collect()
-             
-             if os.path.exists(test_db_path):
-                 print(f"Cleaning up {test_db_path}")
-                 import time
-                 MAX_RETRIES = 5
-                 for i in range(MAX_RETRIES):
-                     try:
-                         os.remove(test_db_path)
-                         break
-                     except PermissionError:
-                         if i < MAX_RETRIES - 1:
-                             time.sleep(0.5)
-                         else:
-                             print(f"Warning: Failed to cleanup DB after retries") 
-        except Exception as e:
-             print(f"Warning: Failed to cleanup DB: {e}")
+            db.get_db().close()
+        except Exception:
+            pass
     
 
     def _create_test_images(self):
@@ -154,7 +119,7 @@ class TestCullingWorkflow:
         try:
             conn = db.get_db()
             c = conn.cursor()
-            c.execute("DELETE FROM culling_images WHERE session_id = ?", (session_id,))
+            c.execute("DELETE FROM culling_picks WHERE session_id = ?", (session_id,))
             c.execute("DELETE FROM culling_sessions WHERE id = ?", (session_id,))
             conn.commit()
         except Exception:
@@ -165,12 +130,7 @@ class TestCullingWorkflow:
 
     def test_create_session(self):
         """Test that culling sessions are created and persisted correctly."""
-        print("\nDEBUG: TestCullingWorkflow.test_create_session STARTED")
-        
         engine = CullingEngine()
-        
-        # Create session
-        print("DEBUG: Calling engine.create_session")
         session_id = engine.create_session(self.test_images_dir, mode='automated')
         
         assert session_id is not None, "Session should be created"
@@ -234,38 +194,50 @@ class TestCullingWorkflow:
 
 
     def test_export_xmp(self):
-        """Test XMP sidecar export for culling decisions."""
-        
+        """Test XMP sidecar export for culling decisions and verify format (xmpDM:pick, xmpDM:good)."""
         engine = CullingEngine()
-        
+
         # Run full cull workflow without auto-export
         result = engine.run_full_cull(
             self.test_images_dir,
             distance_threshold=0.3,
             auto_export=False
         )
-        
+
         session_id = result.get('session_id')
         assert session_id, "Should have session ID"
-        
+
         # Now export to XMP (using new Pick/Reject flag system)
         export_stats = engine.export_to_xmp(session_id)
-        
+
         assert 'exported' in export_stats, "Should have export count"
         assert 'errors' in export_stats, "Should have error count"
-        
-        # Check that XMP files were created for test images
+
+        # Check that XMP files were created and verify format (xmpDM:pick, xmpDM:good)
+        picks = engine.get_picks(session_id)
+        rejects = engine.get_rejects(session_id)
+        expected_by_path = {os.path.normpath(p['file_path']): 1 for p in picks}
+        expected_by_path.update({os.path.normpath(r['file_path']): -1 for r in rejects})
+
         xmp_files = [f for f in os.listdir(self.test_images_dir) if f.endswith('.xmp')]
         assert len(xmp_files) > 0, f"Should create XMP files, found: {xmp_files}"
-        
+
+        for xmp_file in xmp_files:
+            base = xmp_file.replace('.xmp', '')
+            img_path = os.path.normpath(os.path.join(self.test_images_dir, base + '.jpg'))
+            xmp_path = os.path.join(self.test_images_dir, xmp_file)
+            expected_pick = expected_by_path.get(img_path)
+            if expected_pick is not None:
+                _assert_xmp_pick_format(xmp_path, expected_pick)
+
         # Cleanup
         self._cleanup_session(session_id)
-        
-        # Clean up XMP files
+
         for xmp_file in xmp_files:
             try:
                 os.remove(os.path.join(self.test_images_dir, xmp_file))
-            except: pass
+            except Exception:
+                pass
 
 
     def test_full_workflow(self):
@@ -297,6 +269,31 @@ class TestCullingWorkflow:
         for xmp_file in xmp_files:
             try:
                 os.remove(os.path.join(self.test_images_dir, xmp_file))
-            except: pass
+            except Exception:
+                pass
+
+    @pytest.mark.sample_data
+    def test_full_workflow_real_data(self):
+        """Optional: run full cull on a folder with real scored images. Set IMAGE_SCORING_TEST_CULLING_FOLDER."""
+        folder = os.environ.get("IMAGE_SCORING_TEST_CULLING_FOLDER")
+        if not folder or not os.path.isdir(folder):
+            pytest.skip("Set IMAGE_SCORING_TEST_CULLING_FOLDER to run real-data culling test")
+
+        engine = CullingEngine()
+        result = engine.run_full_cull(
+            folder,
+            distance_threshold=0.3,
+            time_gap_seconds=300,
+            score_field='score_general',
+            auto_export=False,
+        )
+
+        assert 'error' not in result, f"Workflow should succeed: {result.get('error')}"
+        assert result.get('session_id'), "Should have session ID"
+        assert result.get('total', 0) > 0, "Should import images from real folder"
+        assert result.get('picked', 0) > 0, "Should pick at least one image"
+
+        # Cleanup
+        self._cleanup_session(result['session_id'])
 
 

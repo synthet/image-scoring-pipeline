@@ -8,7 +8,7 @@ The Image Scoring project provides an MCP server that enables AI agents (like Cu
 
 ## MCP Server: `image-scoring`
 
-The MCP server exposes 21 debugging and diagnostic tools that allow AI agents to:
+The MCP server exposes 22+ debugging and diagnostic tools that allow AI agents to:
 
 - **Query and analyze** the Firebird database
 - **Monitor** scoring and tagging jobs
@@ -19,23 +19,27 @@ The MCP server exposes 21 debugging and diagnostic tools that allow AI agents to
 
 ### Configuration
 
-The MCP server is configured in `mcp_config.json`:
+Two MCP server configurations are available:
+
+- **`image-scoring`** (stdio): Use when WebUI is not running. Diagnostics, DB queries, job monitoring.
+- **`image-scoring-webui`** (SSE): Use when WebUI is running. Same tools plus `execute_code` with full Gradio access.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/schema/mcp-config.schema.json",
   "mcpServers": {
     "image-scoring": {
       "command": "python",
       "args": ["-m", "modules.mcp_server"],
-      "cwd": "/path/to/image-scoring",  // Replace with your project path
-      "env": {
-        "PYTHONPATH": "/path/to/image-scoring"  // Replace with your project path
-      }
+      "env": { "PYTHONPATH": "/path/to/image-scoring" }
+    },
+    "image-scoring-webui": {
+      "url": "http://localhost:7860/mcp/sse"
     }
   }
 }
 ```
+
+For `image-scoring-webui`, start the WebUI first (`run_webui.bat` or `python webui.py`), then Cursor connects via SSE.
 
 ### Setup for Cursor IDE
 
@@ -133,6 +137,12 @@ The MCP server provides 21 tools organized into categories:
 | `get_folder_tree` | Folder structure with counts | Understanding folder organization |
 | `search_images_by_hash` | Find by content hash (SHA256) | Finding duplicates, moved files |
 
+### 🐍 Execute Code (image-scoring-webui only)
+
+| Tool | Description | Use When |
+|------|-------------|----------|
+| `execute_code` | Run Python in WebUI process with `gr`, `demo`, `components`, runners, `db`, `config` | Debugging Gradio UI, inspecting component state, prototyping |
+
 ## Common Workflows
 
 ### Workflow 1: Investigate Scoring Failures
@@ -199,6 +209,7 @@ The MCP server provides 21 tools organized into categories:
 - **Safety**: `execute_sql` only allows SELECT queries. Dangerous operations are blocked.
 - **Performance**: Some tools (like `validate_file_paths`) can be slow on large datasets. Use `limit` parameter.
 - **Real-time**: `get_runner_status` and `get_pipeline_stats` show current state, others query historical data.
+- **execute_code**: Only available when connected via `image-scoring-webui` (SSE). Assign to `result` in your code to return a value. Dev/debug use only.
 
 ## Tool Availability
 
@@ -209,6 +220,7 @@ All tools are available when:
 
 ## Documentation References
 
+- **[Agent Coordination](docs/technical/AGENT_COORDINATION.md)** - Integration and coordination guide for AI agents
 - **[MCP Tools Reference](.agent/mcp_tools_reference.md)** - Quick reference guide for AI agents
 - **[MCP Debugging Tools](docs/technical/MCP_DEBUGGING_TOOLS.md)** - Detailed documentation
 - **[DB Schema](docs/technical/DB_SCHEMA.md)** - Firebird database schema reference

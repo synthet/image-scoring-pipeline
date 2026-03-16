@@ -4,7 +4,7 @@ import os
 import re
 
 # Import the security helpers from app module
-from modules.ui.app import _SQL_FORBIDDEN_PATTERNS
+from modules.ui.security import _SQL_FORBIDDEN_PATTERNS
 
 
 class TestSQLForbiddenPatterns:
@@ -54,7 +54,7 @@ class TestPathValidation:
     def test_dotdot_rejected(self):
         """Paths with .. should be rejected."""
         from fastapi import HTTPException
-        from modules.ui.app import _validate_file_path
+        from modules.ui.security import _validate_file_path
 
         with pytest.raises(HTTPException) as exc_info:
             _validate_file_path("../../etc/passwd")
@@ -63,7 +63,7 @@ class TestPathValidation:
     def test_dotdot_in_middle_rejected(self):
         """Paths with embedded .. should be rejected."""
         from fastapi import HTTPException
-        from modules.ui.app import _validate_file_path
+        from modules.ui.security import _validate_file_path
 
         with pytest.raises(HTTPException) as exc_info:
             _validate_file_path("D:/Photos/../../../etc/passwd")
@@ -75,7 +75,7 @@ class TestRateLimit:
 
     def test_rate_limit_allows_initial_requests(self):
         """First few requests should pass."""
-        from modules.ui.app import _check_rate_limit, _rate_limits
+        from modules.ui.security import _check_rate_limit, _rate_limits
         # Clear state
         _rate_limits.clear()
         # Should not raise
@@ -84,7 +84,7 @@ class TestRateLimit:
     def test_rate_limit_blocks_excess_requests(self):
         """Excess requests within window should be blocked."""
         from fastapi import HTTPException
-        from modules.ui.app import _check_rate_limit, _rate_limits, _RATE_LIMIT_MAX_REQUESTS
+        from modules.ui.security import _check_rate_limit, _rate_limits, _RATE_LIMIT_MAX_REQUESTS
         # Clear state
         _rate_limits.clear()
 

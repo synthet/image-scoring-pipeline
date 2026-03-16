@@ -52,6 +52,42 @@ def xmp_exists(image_path: str) -> bool:
     return os.path.exists(get_xmp_path(image_path))
 
 
+def write_image_unique_id(image_path: str, image_uuid: str) -> bool:
+    """
+    Write ImageUniqueID to XMP sidecar.
+    
+    Args:
+        image_path: Path to the image file
+        image_uuid: UUID string to identify the image
+        
+    Returns:
+        True if successful
+    """
+    if not image_uuid:
+        return False
+    
+    try:
+        root, xmp_path = _get_or_create_xmp(image_path)
+        desc = _get_description(root)
+        
+        # Write xmp:ImageUniqueID
+        desc.set(f'{{{NAMESPACES["xmp"]}}}ImageUniqueID', image_uuid)
+        
+        # Add modification timestamp
+        desc.set(f'{{{NAMESPACES["xmp"]}}}ModifyDate', datetime.now().isoformat())
+        
+        # Write file
+        tree = ET.ElementTree(root)
+        tree.write(xmp_path, encoding='utf-8', xml_declaration=True)
+        
+        logger.debug(f"Wrote ImageUniqueID {image_uuid} to {xmp_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to write ImageUniqueID to XMP for {image_path}: {e}")
+        return False
+
+
 def write_burst_uuid(image_path: str, burst_uuid: str) -> bool:
     """
     Write BurstUUID/StackId to XMP sidecar.

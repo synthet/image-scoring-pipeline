@@ -18,7 +18,7 @@ from modules.selection_metadata import write_selection_metadata
 
 logger = logging.getLogger(__name__)
 
-ProgressCb = Callable[[float, str], None]
+ProgressCb = Callable[[float, str, Optional[int], Optional[int]], None]
 
 # Fixed time gap for Selection workflow - do NOT use config default (per plan)
 SELECTION_TIME_GAP_SECONDS = 120
@@ -61,10 +61,17 @@ class SelectionService:
         self._stop_requested = threading.Event()
         self._cluster_engine = clustering.ClusteringEngine()
 
-    def _progress(self, progress_cb: Optional[ProgressCb], pct: float, msg: str):
+    def _progress(
+        self,
+        progress_cb: Optional[ProgressCb],
+        pct: float,
+        msg: str,
+        cur: Optional[int] = None,
+        tot: Optional[int] = None,
+    ):
         if progress_cb:
             try:
-                progress_cb(pct, msg)
+                progress_cb(pct, msg, cur, tot)
             except Exception:
                 pass
 
@@ -155,8 +162,7 @@ class SelectionService:
                 
                 # 2. Cluster
                 # Use fixed time_gap - do NOT read default_time_gap from config
-                # We yield from generator but ignore messages mostly, just check stop
-                for _ in self._cluster_engine.cluster_images(
+                for status_msg in self._cluster_engine.cluster_images(
                     distance_threshold=0.15,
                     time_gap_seconds=SELECTION_TIME_GAP_SECONDS,
                     force_rescan=cfg.force_rescan,
@@ -164,6 +170,14 @@ class SelectionService:
                 ):
                     if self._check_stop():
                         break
+                    # Forward clustering progress to UI (msg, cur, tot) or plain str
+                    if isinstance(status_msg, tuple) and len(status_msg) >= 1:
+                        msg = status_msg[0]
+                        cur = status_msg[1] if len(status_msg) > 1 else 0
+                        tot = status_msg[2] if len(status_msg) > 2 else n_images_folder
+                        pct = cur / tot if tot else 0
+                        folder_pct = pct_base + (0.85 / n_folders) * pct
+                        self._progress(progress_cb, folder_pct, msg, cur=cur, tot=tot)
                 
                 if self._check_stop():
                     break

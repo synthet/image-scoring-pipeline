@@ -1,6 +1,8 @@
-﻿# Model Source Testing Guide
+# Model Source Testing Guide
 
 **Purpose**: Verify all TensorFlow Hub and Kaggle Hub model URLs are accessible and valid.
+
+> **Note:** VILA model tests are included for users who re-enable it manually. VILA is **disabled** in the main pipeline (v2.5.1+); the active pipeline uses MUSIQ + LIQE.
 
 ---
 
@@ -244,7 +246,7 @@ cp /mnt/c/Users/YourName/Downloads/kaggle.json ~/.kaggle/
 chmod 600 ~/.kaggle/kaggle.json
 ```
 
-See [README_VILA.md](../vila/README_VILA.md) for detailed setup.
+See [README_VILA.md](../archive/vila/README_VILA.md) for detailed setup (VILA is deprecated).
 
 ### "Network Error"
 
@@ -339,7 +341,7 @@ fi
 
 - [Docs index](../README.md)
 - [MODEL_FALLBACK_MECHANISM.md](MODEL_FALLBACK_MECHANISM.md) - Fallback system details
-- [README_VILA.md](../vila/README_VILA.md) - Kaggle authentication setup
+- [README_VILA.md](../archive/vila/README_VILA.md) - Kaggle authentication setup (VILA deprecated)
 - [WSL_WRAPPER_VERIFICATION.md](../setup/WSL_WRAPPER_VERIFICATION.md) - Environment verification
 - [CHANGELOG.md](../../CHANGELOG.md) - Version history
 

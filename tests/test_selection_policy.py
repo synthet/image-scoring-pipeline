@@ -1,7 +1,7 @@
 """
 Unit tests for selection_policy module.
 
-Policy constants and behavior: docs/technical/STACKING_CULLING_COMMON_FEATURE_REFACTOR_PLAN.md
+Policy constants and behavior: docs/plans/refactoring/STACK_CULLING_REFACTOR_PLAN.md
 """
 
 import pytest

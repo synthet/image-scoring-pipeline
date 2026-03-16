@@ -156,3 +156,8 @@ All endpoints should be fully documented with descriptions, examples, and type i
 - [API reference](API.md)
 - [API schema for LLMs](API_SCHEMA_LLM.md)
 
+
+
+## Shared batch selector schema
+
+`ScoringStartRequest`, `TaggingStartRequest`, and `ClusteringStartRequest` now support common selectors: `image_ids`, `image_paths`, `folder_ids`, `folder_paths`, and `recursive`. Selector overlaps are deduplicated before dispatching to runners.

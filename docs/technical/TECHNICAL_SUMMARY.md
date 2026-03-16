@@ -1,4 +1,4 @@
-﻿# Technical Summary: MUSIQ Image Scoring Project
+# Technical Summary: MUSIQ Image Scoring Project
 
 ## 1. Project Overview
 **MUSIQ (Multi-scale Image Quality Transformer)** is a comprehensive image analysis tool that combines technical quality assessment (sharpness, noise, artifacts) with aesthetic scoring. It provides both a Command Line Interface (CLI) for batch processing and a Gradio-based WebUI for digital asset management.
@@ -104,8 +104,7 @@ The project utilizes a dual-framework approach forced by platform support:
 - [Docs index](../README.md)
 - [Project structure](PROJECT_STRUCTURE.md)
 - [WSL tests](../testing/WSL_TESTS.md)
-- [Docker setup](DOCKER_SETUP.md)
-- [Model fallback mechanism](MODEL_FALLBACK_MECHANISM.md)
-- [Triple fallback system](TRIPLE_FALLBACK_SYSTEM.md)
-- [Current model weights](../reference/models/current_model_weights.md)
+- [Docker setup](../setup/DOCKER_SETUP.md)
+- [Weighted scoring strategy](WEIGHTED_SCORING_STRATEGY.md)
+- [Model weights](../reference/models/MODEL_WEIGHTS.md)
 

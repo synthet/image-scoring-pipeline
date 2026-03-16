@@ -11,9 +11,45 @@ REST API for the Image Scoring WebUI. Base path: `/api`.
 | **Clustering** | start, stop, status |
 | **Data Queries** | images, images/{id}, folders, stacks, stacks/{id}/images, stats |
 | **Pipeline** | submit |
+| **Import** | register |
 | **General** | status, health, schema |
 | **Jobs** | recent, {job_id} |
 | **Utilities** | raw-preview, similar, duplicates/find |
+
+---
+
+## WebSocket Events
+
+**Endpoint:** `ws://127.0.0.1:7860/ws/updates`
+
+**Direction:** Server → client only (push). HTTP handles request-response via `apiService.ts`; no bidirectional WebSocket commands.
+
+**Message format:**
+```json
+{
+  "type": "<event_type>",
+  "data": { ... }
+}
+```
+
+| Event Type | Description |
+|------------|-------------|
+| `job_started` | Batch job started (scoring, tagging, clustering, fix_db) |
+| `job_progress` | Job progress update (current, total) |
+| `job_completed` | Job finished (status: completed/failed) |
+| `image_updated` | Image record changed in DB |
+| `folder_updated` | Folder metadata changed |
+| `folder_deleted` | Folder removed |
+| `stack_created` | New stack created |
+| `stack_updated` | Stack metadata changed |
+| `stack_deleted` | Stack removed |
+| `stacks_cleared` | Stacks cleared (optionally scoped to folder) |
+| `image_discovered` | New image found during scan |
+| `folder_discovered` | New folder found during scan |
+| `folder_scanned` | Folder scan completed |
+| `image_scored` | Single image scored |
+
+---
 
 ### Utilities
 
@@ -173,6 +209,20 @@ GET /api/raw-preview?path=<url-encoded-file-path>
 
 ---
 
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/import/register` | Register images from folder (no scoring) |
+
+### ImportRegisterRequest
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| folder_path | string | Yes | Folder path (Windows or WSL) |
+
+Used by Electron when the backend is available. Path conversion applies per backend platform (see Design Notes).
+
+---
+
 ## Pipeline Endpoint (New)
 
 | Method | Path | Purpose |
@@ -242,4 +292,4 @@ Now includes `clustering` runner state:
 - **Data query endpoints** delegate to existing `db.py` functions; no new DB code.
 - **Stats endpoint** reuses `get_database_stats()` from the MCP server module.
 - All endpoints follow existing patterns: Pydantic models, `ApiResponse` wrapper, rate limiting, path validation.
-- Paths support Windows (`D:\...`) and WSL (`/mnt/...`) formats.
+- **Path conversion:** When the backend runs on Linux (WSL), Windows paths are converted to WSL via `utils.convert_path_to_wsl`. When the backend runs natively on Windows, paths are kept as-is.

@@ -26,10 +26,20 @@ def load_config():
 def save_config_value(key, value):
     """
     Updates a single key in the config and saves it.
+    Supports nested keys using dot notation (e.g., 'scoring.force_rescore_default').
     """
     data = load_config()
-    data[key] = value
-    
+    if '.' in key:
+        parts = key.split('.')
+        target = data
+        for part in parts[:-1]:
+            if part not in target or not isinstance(target[part], dict):
+                target[part] = {}
+            target = target[part]
+        target[parts[-1]] = value
+    else:
+        data[key] = value
+
     try:
         with open(CONFIG_FILE, 'w') as f:
             json.dump(data, f, indent=4)

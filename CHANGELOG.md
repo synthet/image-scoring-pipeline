@@ -9,10 +9,162 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.10.1] - 2026-03-14
+
+### Changed
+- Patch release: CLI, docs, pipeline, API, config, db, engine, UI, and test refinements.
+
+## [4.10.0] - 2026-03-14
+
+### Added
+- **CLI** (`cli.py`): Typer + Rich CLI for score, tag, cluster, propagate-tags, pipeline, query, export, config, status, jobs.
+- **Template DB script**: `scripts/create_template_db.py` for creating template databases.
+- **UI security**: `modules/ui/security.py` for security-related UI logic.
+- **Tests**: `test_cli.py`, `test_postgres_parity.py`, `test_raw_ui.py`, `bench_db_performance.py`.
+- **Docker**: `docker-compose.postgres.yml` for Postgres testing.
+
+### Changed
+- **Docs**: Expanded `docs/technical/CLI_TUI_SUMMARY.md` and `docs/technical/PIPELINE_PHASE_RUNNERS.md`.
+- **Pipeline**: Phase runner wiring and orchestrator updates.
+- **API, config, db, engine**: Various refinements and test updates.
+
+## [4.9.0] - 2026-03-14
+
+### Added
+- **OpenAPI export**: `scripts/export_openapi.py` and `openapi.json` for API schema export.
+- **Documentation**: `docs/gradio-serving-comparison.md`, `docs/technical/PIPELINE_PHASE_RUNNERS.md`.
+- **Tests**: `test_selector_resolver.py` for selector resolver behavior.
+
+### Changed
+- **API Contract**: Expanded `docs/technical/API_CONTRACT.md` with additional endpoint details.
+- **Events**: Enhanced `modules/events.py` with additional event handling.
+- **Docs index**: Updated `docs/technical/INDEX.md`.
+
+## [4.8.1] - 2026-03-14
+
+### Added
+- **Tag Propagation API** (`POST /api/tagging/propagate`): Propagate keywords from tagged images to visually similar untagged neighbors using embedding similarity.
+- **Phase Statuses in Image Details** (`GET /api/images/{id}`): Response now includes `phase_statuses` for gallery display.
+- **MCP `diagnose_phase_consistency`**: New tool to diagnose folder vs per-image phase status mismatches.
+
+### Changed
+- **Path Handling** (`import_register`): Convert Windows paths to WSL only when backend runs on Linux (`platform.system() == "Linux"`); keep native paths on Windows.
+- **Pipeline Orchestrator**: Skip phases with no runner (indexing, metadata) instead of failing; advance to next phase.
+- **Folder Phase Cache** (`get_folder_phase_summary`): Added `force_refresh` parameter to bypass cache on folder selection and Refresh.
+- **Refresh Button** (`pipeline` tab): Now invalidates folder phase cache and updates all dashboard components.
+- **Stepper Connector**: Fixed connector between Metadata and Scoring steps to reflect Metadata state.
+- **Public API** (`db.generate_image_uuid`): Promoted from `_generate_image_uuid` for cross-module use.
+- **SEED_PHASES**: Use `PhaseCode.INDEXING` and `PhaseCode.METADATA` enums for consistency.
+- **MCP `execute_code`**: Added security comment documenting dev/debug-only usage.
+
+### Fixed
+- **Phase 1.8a Migration**: Typo in log message (`Phase1` → `Phase 1`).
+
+### Tests
+- **test_culling**: Use `scoring_history_test.fdb`; fix `culling_picks` table reference; add XMP format verification (`xmpDM:pick`, `xmpDM:good`).
+- **test_events**: Minimal FastAPI app to avoid webui import; use `broadcast_threadsafe`.
+- **test_selector_runner_behavior**: Add `pytest.mark.wsl` and graceful import skip.
+
+### Other
+- **.gitignore**: Added patterns for debug artifacts (`debug_*.py`, `debug_*.txt`, `debug_*.html`, `test_tree_*.py`, `tmp/verify_*.py`).
+
+## [4.8.0] - 2026-03-13
+
+### Changed
+- Version bump to 4.8.0.
+
+## [4.7.0] - 2026-03-13
+
+### Added
+- **Embedding Outlier API** (`modules/api.py`): New endpoint for embedding-based outlier detection.
+
+### Changed
+- **Keyword Dual-Write Fix** (`modules/db.py`): Call `_sync_image_keywords` after `conn.commit()` to avoid dual-write inconsistency and Firebird deadlock.
+- **Keyword Normalization Migration**: Continued DB migration for keyword normalization paths.
+- **Pipeline Tab** (`modules/ui/tabs/pipeline.py`): Removed orphaned "Open in Gallery" button.
+
+### Fixed
+- **Culling Force Re-Run**: Fixed hanging on running→running guard when force re-running culling.
+
+### Documentation
+- **UX/UI Review**: Added webui UX/UI review documentation.
+
+## [4.6.1] - 2026-03-10
+
+### Added
+- **Dual-write Guidelines** (`CLAUDE.md`): Added requirements for staying in sync when modifying keyword or metadata write paths.
+- **GitHub Links in Docs** (`docs/technical/AGENT_COORDINATION.md`): Improved coordination protocols with direct repository references.
+
+### Changed
+- **Salvage Script Robustness** (`scripts/archive/migrate_salvage.py`): Improved path and connection handling for Firebird salvage operations.
+- **Project Progress**: Updated roadmaps for database refactoring and PostgreSQL migration.
+- **Environment Tweaks**: Workspace and environment configuration refinements for better development experience.
+
+## [4.6.0] - 2026-03-10
+
+### Added
+- **Agent Coordination Standards** ([docs/technical/AGENT_COORDINATION.md](docs/technical/AGENT_COORDINATION.md)): New integration protocols for backend/frontend AI agent collaboration.
+- **Optimized Data Queries** (`modules/db.py`): New `get_images_paginated_with_count` for faster image/count retrieval in a single DB trip.
+- **Project Roadmaps**: Added tracking for `docs/plans/database/` and `docs/plans/embedding/` refactors.
+
+### Changed
+- **MCP Reliability**: Handled `POST`/`DELETE` methods on `/mcp/sse` endpoint for better Cursor compatibility.
+- **Gradio Log Filtering** (`webui.py`): Suppressed repetitive queue polling messages in the terminal.
+- **Database Proxy Hardening** (`modules/db.py`): Ensured `commit()` and `rollback()` safety in the Firebird connection proxy.
+
+## [4.5.0] - 2026-03-10
+
+### Added
+- **Keyword Normalization (Phase 2)** (`modules/db.py`): Created `KEYWORDS_DIM` and `IMAGE_KEYWORDS` tables for structured keyword management. Implemented automatic migration of existing BLOB keywords.
+- **FastMCP Integration** (`modules/mcp_server.py`): Migrated the `image-scoring` MCP server to use `FastMCP` for automatic schema generation and streamlined tool definitions.
+- **Gradio MCP Server** (`launch.py`): Explicitly enabled Gradio's built-in MCP server via the `GRADIO_MCP_SERVER` environment variable to expose UI components to AI agents.
+
+### Changed
+- **Database Connectivity** (`modules/db.py`): Updated Windows Firebird connections to use TCP (`inet://127.0.0.1/`) by default instead of direct file access, preventing file locking conflicts (I/O errors) between the WebUI and Cursor MCP servers. Added `FIREBIRD_USE_LOCAL_PATH` fallback.
+- **Database Context Manager** (`modules/db.py`): Added `db.connection()` context manager to ensure safe resource cleanup.
+
+## [4.4.0] - 2026-03-10
+
+### Added
+- **Standalone Migration Runner** (`scripts/run_migration.py`): Run Phase 1 DB schema migration independently of the WebUI. Supports `--db-path` and `--skip-backup` for CI, scheduled runs, or when Electron holds DB locks.
+
+### Changed
+- **DB Schema Phase 1** (`modules/db.py`): Integrity + index hardening on startup. Orphan `STACKS.BEST_IMAGE_ID` repair, unique index on `IMAGES.FILE_PATH`, composite indexes for folder/stack score queries, FK cleanup on `CULLING_PICKS`, and `FK_STACKS_BEST_IMAGE` constraint. Ref: `docs/plans/database/DB_SCHEMA_REFACTOR_PLAN.md`.
+- **Favicon**: Updated `static/favicon.ico`.
+
+## [4.3.1] - 2026-03-09
+
+### Fixed
+- **UI Accordion Alignment**: Fixed dropdown triangle/icon alignment in accordions (Gradio label-wrap + icon) in `modules/ui/assets.py`. Icons now display inline-flex with proper vertical alignment.
+
+### Removed
+- **Cleanup**: Removed `recovered_data.json` from repository.
+
+## [4.3.0] - 2026-03-08
+
+### Changed
+- Version bump to 4.3.0.
+
+## [4.2.1] - 2026-03-08
+
+### Fixed
+- **Run Keywords**: Fixed "Run Keywords" button doing nothing when clicked. TaggingRunner now uses `db.get_images_by_folder()` (folder_id-based lookup) instead of pathlib filtering, matching SelectionRunner and avoiding path format mismatch (Windows vs WSL). Added missing `update_image_fields_batch` in `db.py` for batch keyword/title/description updates. Added missing `explain_phase_run_decision` import in `tagging.py`.
+
+## [4.2.0] - 2026-03-08
+
+### Added
+- **Phase Rerun Policy** (`modules/phases_policy.py`): Centralized logic for deciding if a processing phase (scoring, tagging, clustering) should execute or skip based on current vs. stored executor versions. Prevents redundant processing of already-completed phases.
+- **Diagnostics Endpoint**: Added GET `/api/diagnostics/phase-policy/{image_id}/{phase_code}` for deep inspection of rerun/skip decisions, returning stored vs. active versions and status details.
+- **PGVector Migration Plan**: Added `docs/technical/PGVECTOR_MIGRATION_PLAN_REFINED.md`, a detailed roadmap for migrating the Firebird database to PostgreSQL with pgvector for high-performance visual similarity search.
+
+### Changed
+- **Pipeline Integration**: Integrated `should_run_phase` policy checks across all runners: `modules/clustering.py`, `modules/pipeline.py`, `modules/selection_runner.py`, and `modules/tagging.py`.
+- **API Enhancements**: Main health and status endpoints now include more granular phase execution metadata.
+
 ## [4.1.0] - 2026-03-07
 
 ### Added
-- **Windows Native WebUI**: New `run_webui_windows.bat` and `scripts/setup/setup_windows_native.bat` for running the Gradio WebUI natively on Windows (no WSL). CPU-only, no VILA. Documented in README Option 3b and `docs/setup/WINDOWS_NATIVE_WEBUI_PLAN.md`.
+- **Windows Native WebUI**: New `run_webui_windows.bat` and `scripts/setup/setup_windows_native.bat` for running the Gradio WebUI natively on Windows (no WSL). CPU-only, no VILA. Documented in README Option 3b and `docs/plans/setup/WINDOWS_NATIVE_WEBUI_PLAN.md`.
 - **API Expansion** (`modules/api.py`): New clustering endpoints (start, stop, status), data query endpoints (images, folders, stacks, stats), pipeline submit, raw-preview utility. Clustering status added to `/api/status` and `/api/health`.
 - **API Documentation**: Added `docs/reference/api/openapi.yaml` (standalone OpenAPI 3.0 schema) and `docs/technical/API_CONTRACT.md` (concise endpoint and model reference).
 
@@ -41,7 +193,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pipeline Tab**: New unified Pipeline tab replacing Folder Tree, Scoring, Keywords, Selection, Stacks, and Culling tabs. Single workflow view with folder tree, phase stepper, action bar, and job monitor (`modules/ui/tabs/pipeline.py`).
 - **Pipeline Orchestrator**: New `modules/pipeline_orchestrator.py` to coordinate pipeline phases and runner integration.
 - **Embedding Population Scripts**: Added `scripts/maintenance/populate_missing_embeddings.py` and `run_populate_missing_embeddings.bat` for backfilling embeddings.
-- **Design Documentation**: Added `docs/design/UI_PIPELINE_REDESIGN.md` and mockups for the pipeline-centric UI.
+- **Design Documentation**: Added `docs/plans/UI_PIPELINE_REDESIGN.md` and mockups for the pipeline-centric UI.
 - **Tag Propagation Tests**: Added `tests/test_tag_propagation.py`.
 
 ### Changed
@@ -401,8 +553,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/run_docker` - Launch Image Scoring application using Docker Compose (GPU-accelerated)
   - `/run_tests` - Run the image scoring test suite (Pytest)
 - **Portability**:
-  - Created [config.example.json](file:///d:/Projects/image-scoring/config.example.json) as a template for new installations.
-  - Replaced 50+ hardcoded path instances (e.g., `d:\Projects\image-scoring`) with generic placeholders across all documentation and guides.
+  - Created `config.example.json` as a template for new installations.
+  - Replaced 50+ hardcoded path instances with generic placeholders across all documentation and guides.
 
 ### Changed
 - **Documentation structure**: Reorganized `docs/` into categorized sections with an updated index (`docs/README.md`).
