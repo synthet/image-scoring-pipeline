@@ -33,7 +33,7 @@ export function WorkflowGraph({ runId, stages, activeStage, onSelectStage }: Wor
               onClick={() => onSelectStage(stage.phase_code)}
             />
             {i < stages.length - 1 && (
-              <ChevronRight size={16} className="text-[#30363d] shrink-0 mx-0.5" />
+              <ChevronRight size={16} className="text-[#474747] shrink-0 mx-0.5" />
             )}
           </div>
         )
@@ -62,15 +62,15 @@ function StageNode({ stage, liveProgress, isSelected, onClick }: StageNodeProps)
       onClick={onClick}
       className={clsx(
         'flex flex-col items-center gap-1.5 rounded-md p-3 min-w-[110px] max-w-[140px] text-left transition-all border',
-        'hover:border-[#388bfd]',
+        'hover:border-[#4fc1ff]',
         isSelected
-          ? 'border-[#388bfd] bg-[#051d3a]'
-          : 'border-[#30363d] bg-[#161b22]',
+          ? 'border-[#4fc1ff] bg-[#003f6e]'
+          : 'border-[#474747] bg-[#252526]',
       )}
     >
       <div className="flex items-center gap-1.5 w-full">
         <StateIcon state={stage.state} />
-        <span className="text-xs font-medium text-[#e6edf3] truncate">
+        <span className="text-xs font-medium text-[#cccccc] truncate">
           {display?.name ?? stage.phase_code}
         </span>
       </div>
@@ -79,7 +79,7 @@ function StageNode({ stage, liveProgress, isSelected, onClick }: StageNodeProps)
         <div className="flex items-center justify-between mb-1">
           <StageBadgeText state={stage.state} />
           {pct != null && stage.state === 'running' && (
-            <span className="text-[10px] text-[#8b949e]">{pct}%</span>
+            <span className="text-[10px] text-[#9d9d9d]">{pct}%</span>
           )}
         </div>
 
@@ -89,12 +89,12 @@ function StageNode({ stage, liveProgress, isSelected, onClick }: StageNodeProps)
 
         {stage.state === 'completed' && <DurationText stage={stage} />}
         {stage.state === 'failed' && (
-          <span className="text-[10px] text-[#f85149] truncate block">Failed</span>
+          <span className="text-[10px] text-[#f44747] truncate block">Failed</span>
         )}
       </div>
 
       {liveProgress && liveProgress.throughput > 0 && (
-        <div className="text-[10px] text-[#6e7681]">
+        <div className="text-[10px] text-[#6d6d6d]">
           {liveProgress.throughput.toFixed(1)} img/s · ETA {formatEta(liveProgress.eta_seconds)}
         </div>
       )}
@@ -105,25 +105,25 @@ function StageNode({ stage, liveProgress, isSelected, onClick }: StageNodeProps)
 function StateIcon({ state }: { state: StageState }) {
   switch (state) {
     case 'completed':
-      return <CheckCircle2 size={14} className="text-[#3fb950] shrink-0" />
+      return <CheckCircle2 size={14} className="text-[#89d185] shrink-0" />
     case 'running':
-      return <Loader2 size={14} className="text-[#388bfd] shrink-0 animate-spin" />
+      return <Loader2 size={14} className="text-[#4fc1ff] shrink-0 animate-spin" />
     case 'failed':
-      return <XCircle size={14} className="text-[#f85149] shrink-0" />
+      return <XCircle size={14} className="text-[#f44747] shrink-0" />
     case 'skipped':
-      return <MinusCircle size={14} className="text-[#6e7681] shrink-0" />
+      return <MinusCircle size={14} className="text-[#6d6d6d] shrink-0" />
     default:
-      return <Circle size={14} className="text-[#30363d] shrink-0" />
+      return <Circle size={14} className="text-[#474747] shrink-0" />
   }
 }
 
 function StageBadgeText({ state }: { state: StageState }) {
   const colors: Record<StageState, string> = {
-    pending: 'text-[#6e7681]',
-    running: 'text-[#388bfd]',
-    completed: 'text-[#3fb950]',
-    failed: 'text-[#f85149]',
-    skipped: 'text-[#6e7681]',
+    pending: 'text-[#6d6d6d]',
+    running: 'text-[#4fc1ff]',
+    completed: 'text-[#89d185]',
+    failed: 'text-[#f44747]',
+    skipped: 'text-[#6d6d6d]',
   }
   const labels: Record<StageState, string> = {
     pending: 'Pending',
@@ -138,7 +138,7 @@ function StageBadgeText({ state }: { state: StageState }) {
 function DurationText({ stage }: { stage: Stage }) {
   if (!stage.started_at || !stage.completed_at) return null
   const ms = new Date(stage.completed_at).getTime() - new Date(stage.started_at).getTime()
-  return <span className="text-[10px] text-[#6e7681]">{formatMs(ms)}</span>
+  return <span className="text-[10px] text-[#6d6d6d]">{formatMs(ms)}</span>
 }
 
 function formatMs(ms: number): string {

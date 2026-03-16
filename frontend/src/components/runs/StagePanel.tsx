@@ -55,18 +55,18 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
   const eta = activeLive?.eta_seconds
 
   return (
-    <div className="rounded-md border border-[#30363d] bg-[#161b22]">
+    <div className="rounded-md border border-[#474747] bg-[#252526]">
       {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-[#21262d]">
+      <div className="flex items-center gap-3 p-4 border-b border-[#3c3c3c]">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-sm font-semibold text-[#e6edf3]">
+            <span className="text-sm font-semibold text-[#cccccc]">
               {display?.name ?? stage.phase_code}
             </span>
             <StageBadge state={stage.state} />
           </div>
           {display?.description && (
-            <p className="text-xs text-[#6e7681]">{display.description}</p>
+            <p className="text-xs text-[#6d6d6d]">{display.description}</p>
           )}
         </div>
 
@@ -98,8 +98,8 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
 
       {/* Progress (running stage) */}
       {stage.state === 'running' && (
-        <div className="px-4 py-3 border-b border-[#21262d]">
-          <div className="flex items-center justify-between mb-2 text-xs text-[#8b949e]">
+        <div className="px-4 py-3 border-b border-[#3c3c3c]">
+          <div className="flex items-center justify-between mb-2 text-xs text-[#9d9d9d]">
             <span>
               {done.toLocaleString()} / {total.toLocaleString()} work items
             </span>
@@ -118,8 +118,8 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
 
       {/* Steps grid */}
       {steps && steps.length > 0 && (
-        <div className="px-4 py-3 border-b border-[#21262d]">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] mb-2">Steps</div>
+        <div className="px-4 py-3 border-b border-[#3c3c3c]">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">Steps</div>
           <div className="flex flex-wrap gap-2">
             {steps.map((step) => (
               <StepChip key={step.step_code} step={step} />
@@ -130,8 +130,8 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
 
       {/* Error */}
       {stage.state === 'failed' && stage.error_message && (
-        <div className="px-4 py-3 border-b border-[#21262d]">
-          <div className="flex items-start gap-2 text-xs text-[#f85149]">
+        <div className="px-4 py-3 border-b border-[#3c3c3c]">
+          <div className="flex items-start gap-2 text-xs text-[#f44747]">
             <AlertCircle size={13} className="shrink-0 mt-0.5" />
             <pre className="whitespace-pre-wrap font-mono text-[11px] overflow-auto max-h-24">
               {stage.error_message}
@@ -142,7 +142,7 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
 
       {/* Work items toggle */}
       <button
-        className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#1c2128] transition-colors"
+        className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-[#9d9d9d] hover:text-[#cccccc] hover:bg-[#2d2d30] transition-colors"
         onClick={() => setShowItems((v) => !v)}
       >
         <span>Work Items {total > 0 && `(${total.toLocaleString()})`}</span>
@@ -150,7 +150,7 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
       </button>
 
       {showItems && workItems && (
-        <div className="border-t border-[#21262d]">
+        <div className="border-t border-[#3c3c3c]">
           <WorkItemsTable items={workItems.items} total={workItems.total} />
         </div>
       )}
@@ -166,11 +166,11 @@ function StepChip({ step }: { step: Step }) {
     <div
       className={clsx(
         'flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs border min-w-[120px]',
-        step.status === 'completed' && 'bg-[#0f2a1a] border-[#196127] text-[#3fb950]',
-        step.status === 'running' && 'bg-[#051d3a] border-[#1f6feb] text-[#388bfd]',
-        step.status === 'failed' && 'bg-[#2a0d0d] border-[#6e0e0a] text-[#f85149]',
-        step.status === 'skipped' && 'bg-[#161b22] border-[#21262d] text-[#6e7681]',
-        step.status === 'pending' && 'bg-[#161b22] border-[#21262d] text-[#6e7681]',
+        step.status === 'completed' && 'bg-[#1a3320] border-[#2d6a2d] text-[#89d185]',
+        step.status === 'running' && 'bg-[#003f6e] border-[#007acc] text-[#4fc1ff]',
+        step.status === 'failed' && 'bg-[#3a1515] border-[#7a2a2a] text-[#f44747]',
+        step.status === 'skipped' && 'bg-[#252526] border-[#3c3c3c] text-[#6d6d6d]',
+        step.status === 'pending' && 'bg-[#252526] border-[#3c3c3c] text-[#6d6d6d]',
       )}
     >
       <StepIcon status={step.status} />
@@ -206,8 +206,8 @@ function WorkItemsTable({ items, total }: { items: WorkItem[]; total: number }) 
   return (
     <div className="overflow-auto max-h-64">
       <table className="w-full text-xs">
-        <thead className="sticky top-0 bg-[#161b22]">
-          <tr className="text-[#6e7681] border-b border-[#21262d]">
+        <thead className="sticky top-0 bg-[#252526]">
+          <tr className="text-[#6d6d6d] border-b border-[#3c3c3c]">
             <th className="text-left px-4 py-2 font-medium">File</th>
             <th className="text-left px-4 py-2 font-medium">Status</th>
             <th className="text-right px-4 py-2 font-medium">Duration</th>
@@ -217,22 +217,22 @@ function WorkItemsTable({ items, total }: { items: WorkItem[]; total: number }) 
           {items.map((item) => (
             <tr
               key={item.image_id}
-              className="border-b border-[#21262d] hover:bg-[#1c2128] transition-colors"
+              className="border-b border-[#3c3c3c] hover:bg-[#2d2d30] transition-colors"
             >
-              <td className="px-4 py-1.5 text-[#e6edf3] truncate max-w-[300px]">
+              <td className="px-4 py-1.5 text-[#cccccc] truncate max-w-[300px]">
                 {item.filename}
               </td>
               <td className="px-4 py-1.5">
                 <WorkItemStatus status={item.status} />
               </td>
-              <td className="px-4 py-1.5 text-[#8b949e] text-right">
+              <td className="px-4 py-1.5 text-[#9d9d9d] text-right">
                 {item.duration_ms != null ? `${(item.duration_ms / 1000).toFixed(2)}s` : '—'}
               </td>
             </tr>
           ))}
           {total > items.length && (
             <tr>
-              <td colSpan={3} className="px-4 py-2 text-center text-[#6e7681]">
+              <td colSpan={3} className="px-4 py-2 text-center text-[#6d6d6d]">
                 Showing {items.length} of {total.toLocaleString()}
               </td>
             </tr>
@@ -245,11 +245,11 @@ function WorkItemsTable({ items, total }: { items: WorkItem[]; total: number }) 
 
 function WorkItemStatus({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    done: 'text-[#3fb950]',
-    running: 'text-[#388bfd]',
-    failed: 'text-[#f85149]',
-    skipped: 'text-[#6e7681]',
-    pending: 'text-[#6e7681]',
+    done: 'text-[#89d185]',
+    running: 'text-[#4fc1ff]',
+    failed: 'text-[#f44747]',
+    skipped: 'text-[#6d6d6d]',
+    pending: 'text-[#6d6d6d]',
   }
   const labels: Record<string, string> = {
     done: '✓ Done',
@@ -258,7 +258,7 @@ function WorkItemStatus({ status }: { status: string }) {
     skipped: '— Skipped',
     pending: '○ Waiting',
   }
-  return <span className={clsx('font-medium', styles[status] ?? 'text-[#6e7681]')}>{labels[status] ?? status}</span>
+  return <span className={clsx('font-medium', styles[status] ?? 'text-[#6d6d6d]')}>{labels[status] ?? status}</span>
 }
 
 function formatEta(sec: number): string {

@@ -43,21 +43,21 @@ export function RunCard({ run, compact = false }: RunCardProps) {
   return (
     <div
       className={clsx(
-        'rounded-md border border-[#30363d] bg-[#161b22] transition-colors',
-        'hover:border-[#388bfd] cursor-pointer',
+        'rounded-md border border-[#474747] bg-[#252526] transition-colors',
+        'hover:border-[#4fc1ff] cursor-pointer',
         compact ? 'p-3' : 'p-4',
       )}
       onClick={() => navigate(`/runs/${run.id}`)}
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[#6e7681] text-xs font-mono shrink-0">#{run.id}</span>
-          <FolderOpen size={13} className="text-[#8b949e] shrink-0" />
-          <span className="text-sm font-medium text-[#e6edf3] truncate" title={scopeLabel}>
+          <span className="text-[#6d6d6d] text-xs font-mono shrink-0">#{run.id}</span>
+          <FolderOpen size={13} className="text-[#9d9d9d] shrink-0" />
+          <span className="text-sm font-medium text-[#cccccc] truncate" title={scopeLabel}>
             {scopeLabel}
           </span>
           {extraPaths > 0 && (
-            <span className="text-xs text-[#6e7681] shrink-0">+{extraPaths} more</span>
+            <span className="text-xs text-[#6d6d6d] shrink-0">+{extraPaths} more</span>
           )}
         </div>
         <RunBadge status={run.status} />
@@ -66,10 +66,10 @@ export function RunCard({ run, compact = false }: RunCardProps) {
       {run.status === 'running' && (
         <div className="mb-2 space-y-1">
           {currentStageDisplay && (
-            <div className="text-xs text-[#8b949e]">
-              Stage: <span className="text-[#388bfd]">{currentStageDisplay}</span>
+            <div className="text-xs text-[#9d9d9d]">
+              Stage: <span className="text-[#4fc1ff]">{currentStageDisplay}</span>
               {progress && progress.items_total > 0 && (
-                <span className="ml-2 text-[#6e7681]">
+                <span className="ml-2 text-[#6d6d6d]">
                   {progress.items_done.toLocaleString()} / {progress.items_total.toLocaleString()}
                   {progress.throughput > 0 && ` · ${progress.throughput.toFixed(1)} img/s`}
                   {progress.eta_seconds > 0 && ` · ETA ${formatEta(progress.eta_seconds)}`}
@@ -82,7 +82,7 @@ export function RunCard({ run, compact = false }: RunCardProps) {
       )}
 
       <div className="flex items-center justify-between">
-        <span className="text-xs text-[#6e7681]">
+        <span className="text-xs text-[#6d6d6d]">
           {formatRelative(run.created_at)}
           {run.started_at && run.finished_at && (
             <> · {formatDuration(run.started_at, run.finished_at)}</>
@@ -132,7 +132,7 @@ export function RunCard({ run, compact = false }: RunCardProps) {
               variant="ghost"
               onClick={() => cancelMut.mutate()}
               loading={cancelMut.isPending}
-              className="text-[#f85149] hover:text-[#f85149]"
+              className="text-[#f44747] hover:text-[#f44747]"
             >
               <XCircle size={11} />
             </Button>

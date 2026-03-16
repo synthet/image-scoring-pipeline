@@ -14,7 +14,7 @@ export function Progress({ value, color = 'blue', size = 'md', className, showLa
     <div className={clsx('flex items-center gap-2', className)}>
       <div
         className={clsx(
-          'flex-1 rounded-full overflow-hidden bg-[#21262d]',
+          'flex-1 rounded-full overflow-hidden bg-[#3c3c3c]',
           size === 'sm' ? 'h-1' : 'h-2',
         )}
       >
@@ -22,15 +22,15 @@ export function Progress({ value, color = 'blue', size = 'md', className, showLa
           style={{ width: `${pct}%` }}
           className={clsx(
             'h-full rounded-full transition-[width] duration-300',
-            color === 'blue' && 'bg-[#388bfd]',
-            color === 'green' && 'bg-[#3fb950]',
-            color === 'yellow' && 'bg-[#d29922]',
-            color === 'red' && 'bg-[#f85149]',
+            color === 'blue' && 'bg-[#4fc1ff]',
+            color === 'green' && 'bg-[#89d185]',
+            color === 'yellow' && 'bg-[#cca700]',
+            color === 'red' && 'bg-[#f44747]',
           )}
         />
       </div>
       {showLabel && (
-        <span className="text-xs text-[#8b949e] w-10 text-right">{Math.round(pct)}%</span>
+        <span className="text-xs text-[#9d9d9d] w-10 text-right">{Math.round(pct)}%</span>
       )}
     </div>
   )

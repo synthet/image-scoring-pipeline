@@ -37,7 +37,7 @@ export function RunsPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-lg font-semibold text-[#e6edf3]">Runs</h1>
+        <h1 className="text-lg font-semibold text-[#cccccc]">Runs</h1>
         <Button variant="primary" size="sm" onClick={() => openNewRun()}>
           <Plus size={13} />
           New Run
@@ -45,14 +45,14 @@ export function RunsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 mb-5 border-b border-[#21262d]">
+      <div className="flex items-center gap-1 mb-5 border-b border-[#3c3c3c]">
         <TabButton label="Active" count={active.length} active={tab === 'active'} onClick={() => setTab('active')} />
         <TabButton label="Queued" count={queued.length} active={tab === 'queue'} onClick={() => setTab('queue')} />
         <TabButton label="History" count={history.length} active={tab === 'history'} onClick={() => setTab('history')} />
       </div>
 
       {isLoading && (
-        <div className="text-sm text-[#6e7681]">Loading…</div>
+        <div className="text-sm text-[#6d6d6d]">Loading…</div>
       )}
 
       {!isLoading && displayed.length === 0 && (
@@ -82,14 +82,14 @@ function TabButton({
       className={`
         flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px
         ${active
-          ? 'border-[#388bfd] text-[#e6edf3]'
-          : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]'
+          ? 'border-[#4fc1ff] text-[#cccccc]'
+          : 'border-transparent text-[#9d9d9d] hover:text-[#cccccc]'
         }
       `}
     >
       {label}
       {count > 0 && (
-        <span className="bg-[#30363d] text-[#8b949e] text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+        <span className="bg-[#474747] text-[#9d9d9d] text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
           {count}
         </span>
       )}
@@ -105,8 +105,8 @@ function EmptyState({ tab, onNewRun }: { tab: TabFilter; onNewRun: () => void })
   }
   return (
     <div className="flex flex-col items-center gap-3 py-16 text-center">
-      <Inbox size={32} className="text-[#30363d]" />
-      <p className="text-sm text-[#6e7681]">{messages[tab]}</p>
+      <Inbox size={32} className="text-[#474747]" />
+      <p className="text-sm text-[#6d6d6d]">{messages[tab]}</p>
       {tab === 'active' && (
         <Button variant="primary" size="sm" onClick={onNewRun}>
           <Plus size={13} />

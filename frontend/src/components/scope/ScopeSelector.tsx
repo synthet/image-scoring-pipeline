@@ -77,13 +77,13 @@ export function ScopeSelector() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl w-[600px] max-h-[90vh] overflow-y-auto">
+      <div className="bg-[#252526] border border-[#474747] rounded-lg shadow-2xl w-[600px] max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-[#21262d]">
-          <h2 className="text-base font-semibold text-[#e6edf3]">New Run</h2>
+        <div className="flex items-center justify-between p-5 border-b border-[#3c3c3c]">
+          <h2 className="text-base font-semibold text-[#cccccc]">New Run</h2>
           <button
             onClick={() => setNewRunModalOpen(false)}
-            className="text-[#6e7681] hover:text-[#e6edf3] transition-colors"
+            className="text-[#6d6d6d] hover:text-[#cccccc] transition-colors"
           >
             <X size={16} />
           </button>
@@ -92,7 +92,7 @@ export function ScopeSelector() {
         <div className="p-5 space-y-5">
           {/* Scope type */}
           <div>
-            <label className="block text-xs font-semibold text-[#8b949e] mb-2 uppercase tracking-wider">
+            <label className="block text-xs font-semibold text-[#9d9d9d] mb-2 uppercase tracking-wider">
               Scope Type
             </label>
             <div className="flex gap-2">
@@ -109,8 +109,8 @@ export function ScopeSelector() {
                   className={clsx(
                     'px-3 py-1.5 rounded text-xs font-medium border transition-colors',
                     scopeType === opt.value
-                      ? 'bg-[#051d3a] border-[#1f6feb] text-[#388bfd]'
-                      : 'bg-[#21262d] border-[#30363d] text-[#8b949e] hover:border-[#58a6ff]',
+                      ? 'bg-[#003f6e] border-[#007acc] text-[#4fc1ff]'
+                      : 'bg-[#3c3c3c] border-[#474747] text-[#9d9d9d] hover:border-[#4fc1ff]',
                   )}
                 >
                   {opt.label}
@@ -121,14 +121,14 @@ export function ScopeSelector() {
 
           {/* Paths */}
           <div>
-            <label className="block text-xs font-semibold text-[#8b949e] mb-2 uppercase tracking-wider">
+            <label className="block text-xs font-semibold text-[#9d9d9d] mb-2 uppercase tracking-wider">
               Path{scopeType === 'folder_recursive' ? 's' : ''}
             </label>
             <div className="space-y-2">
               {paths.map((path, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <div className="flex-1 flex items-center gap-2 bg-[#0d1117] border border-[#30363d] rounded px-3 py-2 focus-within:border-[#388bfd]">
-                    <FolderOpen size={13} className="text-[#6e7681] shrink-0" />
+                  <div className="flex-1 flex items-center gap-2 bg-[#1e1e1e] border border-[#474747] rounded px-3 py-2 focus-within:border-[#4fc1ff]">
+                    <FolderOpen size={13} className="text-[#6d6d6d] shrink-0" />
                     <input
                       value={path}
                       onChange={(e) => {
@@ -138,13 +138,13 @@ export function ScopeSelector() {
                         setPreview(null)
                       }}
                       placeholder="/path/to/folder"
-                      className="flex-1 bg-transparent text-sm text-[#e6edf3] outline-none placeholder:text-[#6e7681]"
+                      className="flex-1 bg-transparent text-sm text-[#cccccc] outline-none placeholder:text-[#6d6d6d]"
                     />
                   </div>
                   {paths.length > 1 && (
                     <button
                       onClick={() => setPaths(paths.filter((_, j) => j !== i))}
-                      className="text-[#6e7681] hover:text-[#f85149] transition-colors"
+                      className="text-[#6d6d6d] hover:text-[#f44747] transition-colors"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -165,7 +165,7 @@ export function ScopeSelector() {
           {/* Preview */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider">
+              <label className="text-xs font-semibold text-[#9d9d9d] uppercase tracking-wider">
                 Preview
               </label>
               <Button size="xs" variant="secondary" onClick={loadPreview} loading={previewLoading}>
@@ -175,7 +175,7 @@ export function ScopeSelector() {
             {preview ? (
               <PreviewPanel preview={preview} />
             ) : (
-              <div className="bg-[#0d1117] border border-[#21262d] rounded p-3 text-xs text-[#6e7681]">
+              <div className="bg-[#1e1e1e] border border-[#3c3c3c] rounded p-3 text-xs text-[#6d6d6d]">
                 {validPaths.length > 0
                   ? 'Click Refresh to preview scope'
                   : 'Enter a path above to preview'}
@@ -185,7 +185,7 @@ export function ScopeSelector() {
 
           {/* Workflow (stages) */}
           <div>
-            <label className="block text-xs font-semibold text-[#8b949e] mb-2 uppercase tracking-wider">
+            <label className="block text-xs font-semibold text-[#9d9d9d] mb-2 uppercase tracking-wider">
               Workflow Stages
             </label>
             <div className="space-y-2">
@@ -198,8 +198,8 @@ export function ScopeSelector() {
                     className={clsx(
                       'flex items-start gap-3 rounded p-3 border cursor-pointer transition-colors',
                       checked
-                        ? 'bg-[#0d1117] border-[#1f6feb]'
-                        : 'bg-[#0d1117] border-[#21262d] opacity-60',
+                        ? 'bg-[#1e1e1e] border-[#007acc]'
+                        : 'bg-[#1e1e1e] border-[#3c3c3c] opacity-60',
                     )}
                   >
                     <input
@@ -209,8 +209,8 @@ export function ScopeSelector() {
                       className="mt-0.5"
                     />
                     <div>
-                      <div className="text-sm font-medium text-[#e6edf3]">{display.name}</div>
-                      <div className="text-xs text-[#6e7681]">{display.description}</div>
+                      <div className="text-sm font-medium text-[#cccccc]">{display.name}</div>
+                      <div className="text-xs text-[#6d6d6d]">{display.description}</div>
                     </div>
                   </label>
                 )
@@ -220,11 +220,11 @@ export function ScopeSelector() {
 
           {/* Options */}
           <div>
-            <label className="block text-xs font-semibold text-[#8b949e] mb-2 uppercase tracking-wider">
+            <label className="block text-xs font-semibold text-[#9d9d9d] mb-2 uppercase tracking-wider">
               Options
             </label>
             <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm text-[#8b949e] cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-[#9d9d9d] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={skipDone}
@@ -232,7 +232,7 @@ export function ScopeSelector() {
                 />
                 Skip already completed stages
               </label>
-              <label className="flex items-center gap-2 text-sm text-[#8b949e] cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-[#9d9d9d] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={forceRerun}
@@ -245,7 +245,7 @@ export function ScopeSelector() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-4 border-t border-[#21262d]">
+        <div className="flex items-center justify-between px-5 py-4 border-t border-[#3c3c3c]">
           <Button variant="ghost" onClick={() => setNewRunModalOpen(false)}>
             Cancel
           </Button>
@@ -265,12 +265,12 @@ export function ScopeSelector() {
 
 function PreviewPanel({ preview }: { preview: ScopePreviewResult }) {
   return (
-    <div className="bg-[#0d1117] border border-[#21262d] rounded p-3 space-y-2">
+    <div className="bg-[#1e1e1e] border border-[#3c3c3c] rounded p-3 space-y-2">
       <div className="flex items-center gap-3 text-sm">
-        <span className="text-[#e6edf3] font-semibold">{preview.image_count.toLocaleString()}</span>
-        <span className="text-[#8b949e]">images in</span>
-        <span className="text-[#e6edf3] font-semibold">{preview.folder_count}</span>
-        <span className="text-[#8b949e]">folder{preview.folder_count !== 1 ? 's' : ''}</span>
+        <span className="text-[#cccccc] font-semibold">{preview.image_count.toLocaleString()}</span>
+        <span className="text-[#9d9d9d]">images in</span>
+        <span className="text-[#cccccc] font-semibold">{preview.folder_count}</span>
+        <span className="text-[#9d9d9d]">folder{preview.folder_count !== 1 ? 's' : ''}</span>
       </div>
       <div className="grid grid-cols-1 gap-1">
         {Object.entries(preview.stage_statuses).map(([code, status]) => {
@@ -279,8 +279,8 @@ function PreviewPanel({ preview }: { preview: ScopePreviewResult }) {
           return (
             <div key={code} className="flex items-center gap-2 text-xs">
               <StageStatusIcon status={status} />
-              <span className="text-[#8b949e] w-32">{display?.name ?? code}</span>
-              <span className="text-[#6e7681]">
+              <span className="text-[#9d9d9d] w-32">{display?.name ?? code}</span>
+              <span className="text-[#6d6d6d]">
                 {status === 'not_started' && '— not started'}
                 {status === 'done' && '✓ all done'}
                 {status === 'partial' && counts && `${counts.done} / ${counts.total} done`}
@@ -297,12 +297,12 @@ function PreviewPanel({ preview }: { preview: ScopePreviewResult }) {
 function StageStatusIcon({ status }: { status: string }) {
   switch (status) {
     case 'done':
-      return <CheckCircle2 size={12} className="text-[#3fb950]" />
+      return <CheckCircle2 size={12} className="text-[#89d185]" />
     case 'failed':
-      return <AlertCircle size={12} className="text-[#f85149]" />
+      return <AlertCircle size={12} className="text-[#f44747]" />
     case 'partial':
-      return <Loader2 size={12} className="text-[#d29922]" />
+      return <Loader2 size={12} className="text-[#cca700]" />
     default:
-      return <div className="w-3 h-3 rounded-full border border-[#30363d]" />
+      return <div className="w-3 h-3 rounded-full border border-[#474747]" />
   }
 }

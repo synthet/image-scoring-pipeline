@@ -39,11 +39,11 @@ export function SettingsPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-lg font-semibold text-[#e6edf3] mb-5">Settings</h1>
+      <h1 className="text-lg font-semibold text-[#cccccc] mb-5">Settings</h1>
 
       {/* Health */}
-      <div className="rounded-md border border-[#30363d] bg-[#161b22] p-4 mb-5">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[#6e7681] mb-3">System Health</div>
+      <div className="rounded-md border border-[#474747] bg-[#252526] p-4 mb-5">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[#6d6d6d] mb-3">System Health</div>
         <div className="grid grid-cols-4 gap-3">
           <HealthItem label="API" ok={health?.status === 'ok'} />
           <HealthItem label="Quality Analysis" ok={health?.scoring_available} />
@@ -62,8 +62,8 @@ export function SettingsPage() {
               className={clsx(
                 'w-full text-left text-sm px-3 py-2 rounded transition-colors',
                 section === s.id
-                  ? 'bg-[#21262d] text-[#e6edf3] font-medium'
-                  : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#1c2128]',
+                  ? 'bg-[#3c3c3c] text-[#cccccc] font-medium'
+                  : 'text-[#9d9d9d] hover:text-[#cccccc] hover:bg-[#2d2d30]',
               )}
             >
               {s.label}
@@ -72,10 +72,10 @@ export function SettingsPage() {
         </nav>
 
         {/* Content */}
-        <div className="flex-1 rounded-md border border-[#30363d] bg-[#161b22] p-5">
+        <div className="flex-1 rounded-md border border-[#474747] bg-[#252526] p-5">
           <ConfigSection section={section} config={config} />
 
-          <div className="mt-5 pt-4 border-t border-[#21262d] flex items-center gap-3">
+          <div className="mt-5 pt-4 border-t border-[#3c3c3c] flex items-center gap-3">
             <Button
               variant="primary"
               size="sm"
@@ -85,12 +85,12 @@ export function SettingsPage() {
               Save Changes
             </Button>
             {saveState === 'saved' && (
-              <span className="text-xs text-[#3fb950] flex items-center gap-1">
+              <span className="text-xs text-[#89d185] flex items-center gap-1">
                 <CheckCircle2 size={12} /> Saved
               </span>
             )}
             {saveState === 'error' && (
-              <span className="text-xs text-[#f85149] flex items-center gap-1">
+              <span className="text-xs text-[#f44747] flex items-center gap-1">
                 <AlertCircle size={12} /> Save failed
               </span>
             )}
@@ -107,12 +107,12 @@ function HealthItem({ label, ok }: { label: string; ok?: boolean }) {
       <div
         className={clsx(
           'w-2 h-2 rounded-full',
-          ok === true && 'bg-[#3fb950]',
-          ok === false && 'bg-[#f85149]',
-          ok == null && 'bg-[#6e7681]',
+          ok === true && 'bg-[#89d185]',
+          ok === false && 'bg-[#f44747]',
+          ok == null && 'bg-[#6d6d6d]',
         )}
       />
-      <span className="text-xs text-[#8b949e]">{label}</span>
+      <span className="text-xs text-[#9d9d9d]">{label}</span>
     </div>
   )
 }
@@ -122,14 +122,14 @@ function ConfigSection({ section, config }: { section: SettingsSection; config: 
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-semibold text-[#e6edf3]">
+      <h2 className="text-sm font-semibold text-[#cccccc]">
         {section === 'scoring' ? 'Quality Analysis' :
          section === 'clustering' ? 'Similarity Clustering' :
          section.charAt(0).toUpperCase() + section.slice(1)} Settings
       </h2>
 
       {Object.entries(sectionConfig).length === 0 ? (
-        <p className="text-xs text-[#6e7681]">No configurable settings for this section yet.</p>
+        <p className="text-xs text-[#6d6d6d]">No configurable settings for this section yet.</p>
       ) : (
         Object.entries(sectionConfig).map(([key, value]) => (
           <ConfigField key={key} name={key} value={value} />
@@ -145,7 +145,7 @@ function ConfigField({ name, value }: { name: string; value: unknown }) {
   if (typeof value === 'boolean') {
     return (
       <label className="flex items-center justify-between py-1">
-        <span className="text-sm text-[#8b949e]">{label}</span>
+        <span className="text-sm text-[#9d9d9d]">{label}</span>
         <input type="checkbox" defaultChecked={value} className="w-4 h-4" />
       </label>
     )
@@ -154,11 +154,11 @@ function ConfigField({ name, value }: { name: string; value: unknown }) {
   if (typeof value === 'number') {
     return (
       <div className="flex items-center justify-between py-1 gap-4">
-        <span className="text-sm text-[#8b949e]">{label}</span>
+        <span className="text-sm text-[#9d9d9d]">{label}</span>
         <input
           type="number"
           defaultValue={value}
-          className="w-32 bg-[#0d1117] border border-[#30363d] rounded px-2 py-1 text-sm text-[#e6edf3] outline-none focus:border-[#388bfd]"
+          className="w-32 bg-[#1e1e1e] border border-[#474747] rounded px-2 py-1 text-sm text-[#cccccc] outline-none focus:border-[#4fc1ff]"
         />
       </div>
     )
@@ -166,11 +166,11 @@ function ConfigField({ name, value }: { name: string; value: unknown }) {
 
   return (
     <div className="py-1">
-      <label className="block text-sm text-[#8b949e] mb-1">{label}</label>
+      <label className="block text-sm text-[#9d9d9d] mb-1">{label}</label>
       <input
         type="text"
         defaultValue={String(value)}
-        className="w-full bg-[#0d1117] border border-[#30363d] rounded px-3 py-1.5 text-sm text-[#e6edf3] outline-none focus:border-[#388bfd]"
+        className="w-full bg-[#1e1e1e] border border-[#474747] rounded px-3 py-1.5 text-sm text-[#cccccc] outline-none focus:border-[#4fc1ff]"
       />
     </div>
   )

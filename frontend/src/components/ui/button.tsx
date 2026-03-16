@@ -28,11 +28,11 @@ export function Button({
         size === 'sm' && 'px-3 py-1 text-xs',
         size === 'md' && 'px-3.5 py-1.5 text-sm',
         size === 'lg' && 'px-4 py-2 text-sm',
-        variant === 'primary' && 'bg-[#238636] text-white hover:bg-[#2ea043] border border-[#2ea043]',
-        variant === 'secondary' && 'bg-[#21262d] text-[#c9d1d9] hover:bg-[#2d333b] border border-[#30363d]',
-        variant === 'ghost' && 'text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#21262d]',
-        variant === 'danger' && 'bg-[#da3633] text-white hover:bg-[#f85149] border border-[#f85149]',
-        variant === 'outline' && 'text-[#388bfd] border border-[#1f6feb] hover:bg-[#051d3a]',
+        variant === 'primary' && 'bg-[#007acc] text-white hover:bg-[#1e8ad6] border border-[#1e8ad6]',
+        variant === 'secondary' && 'bg-[#3c3c3c] text-[#cccccc] hover:bg-[#3c3c3c] border border-[#474747]',
+        variant === 'ghost' && 'text-[#9d9d9d] hover:text-[#cccccc] hover:bg-[#3c3c3c]',
+        variant === 'danger' && 'bg-[#da3633] text-white hover:bg-[#f44747] border border-[#f44747]',
+        variant === 'outline' && 'text-[#4fc1ff] border border-[#007acc] hover:bg-[#003f6e]',
         className,
       )}
     >

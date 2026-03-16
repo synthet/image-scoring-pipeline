@@ -10,10 +10,10 @@ interface LogPanelProps {
 type LogLevel = 'ALL' | 'INFO' | 'WARNING' | 'ERROR'
 
 const LEVEL_COLORS: Record<string, string> = {
-  DEBUG: 'text-[#6e7681]',
-  INFO: 'text-[#8b949e]',
-  WARNING: 'text-[#d29922]',
-  ERROR: 'text-[#f85149]',
+  DEBUG: 'text-[#6d6d6d]',
+  INFO: 'text-[#9d9d9d]',
+  WARNING: 'text-[#cca700]',
+  ERROR: 'text-[#f44747]',
 }
 
 export function LogPanel({ runId }: LogPanelProps) {
@@ -36,9 +36,9 @@ export function LogPanel({ runId }: LogPanelProps) {
   }, [filtered.length, autoScroll])
 
   return (
-    <div className="rounded-md border border-[#30363d] bg-[#161b22] flex flex-col">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[#21262d] shrink-0">
-        <span className="text-xs font-semibold text-[#e6edf3]">Log</span>
+    <div className="rounded-md border border-[#474747] bg-[#252526] flex flex-col">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-[#3c3c3c] shrink-0">
+        <span className="text-xs font-semibold text-[#cccccc]">Log</span>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
             {(['ALL', 'INFO', 'WARNING', 'ERROR'] as LogLevel[]).map((l) => (
@@ -48,15 +48,15 @@ export function LogPanel({ runId }: LogPanelProps) {
                 className={clsx(
                   'px-2 py-0.5 rounded text-[10px] font-medium transition-colors',
                   filter === l
-                    ? 'bg-[#21262d] text-[#e6edf3]'
-                    : 'text-[#6e7681] hover:text-[#8b949e]',
+                    ? 'bg-[#3c3c3c] text-[#cccccc]'
+                    : 'text-[#6d6d6d] hover:text-[#9d9d9d]',
                 )}
               >
                 {l}
               </button>
             ))}
           </div>
-          <label className="flex items-center gap-1 text-[10px] text-[#6e7681] cursor-pointer">
+          <label className="flex items-center gap-1 text-[10px] text-[#6d6d6d] cursor-pointer">
             <input
               type="checkbox"
               checked={autoScroll}
@@ -77,7 +77,7 @@ export function LogPanel({ runId }: LogPanelProps) {
         }}
       >
         {filtered.length === 0 ? (
-          <span className="text-[#6e7681] italic">No log output yet…</span>
+          <span className="text-[#6d6d6d] italic">No log output yet…</span>
         ) : (
           filtered.map((line, i) => (
             <LogLine key={i} line={line} />
@@ -92,17 +92,17 @@ export function LogPanel({ runId }: LogPanelProps) {
 function LogLine({ line }: { line: WsLogLine }) {
   const ts = new Date(line.ts).toLocaleTimeString()
   return (
-    <div className="flex gap-2 leading-5 hover:bg-[#1c2128] px-1 rounded">
-      <span className="text-[#6e7681] shrink-0">{ts}</span>
+    <div className="flex gap-2 leading-5 hover:bg-[#2d2d30] px-1 rounded">
+      <span className="text-[#6d6d6d] shrink-0">{ts}</span>
       <span
         className={clsx(
           'shrink-0 w-14 font-semibold',
-          LEVEL_COLORS[line.level] ?? 'text-[#8b949e]',
+          LEVEL_COLORS[line.level] ?? 'text-[#9d9d9d]',
         )}
       >
         {line.level}
       </span>
-      <span className="text-[#c9d1d9] whitespace-pre-wrap break-all">{line.message}</span>
+      <span className="text-[#cccccc] whitespace-pre-wrap break-all">{line.message}</span>
     </div>
   )
 }

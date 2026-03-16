@@ -8,10 +8,10 @@ import { Button } from '@/components/ui/button'
 import type { FolderNode } from '@/types/api'
 
 const STATUS_DOT: Record<string, string> = {
-  done: 'bg-[#3fb950]',
-  partial: 'bg-[#d29922]',
-  failed: 'bg-[#f85149]',
-  running: 'bg-[#388bfd] animate-pulse',
+  done: 'bg-[#89d185]',
+  partial: 'bg-[#cca700]',
+  failed: 'bg-[#f44747]',
+  running: 'bg-[#4fc1ff] animate-pulse',
 }
 
 export function Sidebar() {
@@ -25,8 +25,8 @@ export function Sidebar() {
   })
 
   return (
-    <aside className="w-56 shrink-0 border-r border-[#21262d] bg-[#161b22] flex flex-col overflow-hidden">
-      <div className="p-3 border-b border-[#21262d] shrink-0">
+    <aside className="w-56 shrink-0 border-r border-[#3c3c3c] bg-[#252526] flex flex-col overflow-hidden">
+      <div className="p-3 border-b border-[#3c3c3c] shrink-0">
         <Button
           variant="primary"
           size="sm"
@@ -39,11 +39,11 @@ export function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] px-1 mb-2">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] px-1 mb-2">
           Scope Navigator
         </div>
         {isLoading && (
-          <div className="text-xs text-[#6e7681] px-2">Loading folders…</div>
+          <div className="text-xs text-[#6d6d6d] px-2">Loading folders…</div>
         )}
         {tree?.map((node) => (
           <FolderTreeNode
@@ -56,7 +56,7 @@ export function Sidebar() {
           />
         ))}
         {!isLoading && (!tree || tree.length === 0) && (
-          <div className="text-xs text-[#6e7681] px-2">No indexed folders yet</div>
+          <div className="text-xs text-[#6d6d6d] px-2">No indexed folders yet</div>
         )}
       </div>
     </aside>
@@ -83,9 +83,9 @@ function FolderTreeNode({ node, depth, selected, onSelect, onNewRun }: FolderTre
       <div
         className={clsx(
           'group flex items-center gap-1 rounded px-1 py-0.5 cursor-pointer text-xs',
-          'hover:bg-[#21262d] transition-colors',
-          isSelected && 'bg-[#1c2128] text-[#388bfd]',
-          !isSelected && 'text-[#8b949e]',
+          'hover:bg-[#3c3c3c] transition-colors',
+          isSelected && 'bg-[#2d2d30] text-[#4fc1ff]',
+          !isSelected && 'text-[#9d9d9d]',
         )}
         style={{ paddingLeft: `${4 + depth * 12}px` }}
         onClick={() => {
@@ -96,14 +96,14 @@ function FolderTreeNode({ node, depth, selected, onSelect, onNewRun }: FolderTre
         title={`${node.path}\nDouble-click to start new run`}
       >
         {hasChildren ? (
-          <span className="text-[#6e7681]">
+          <span className="text-[#6d6d6d]">
             {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
           </span>
         ) : (
           <span className="w-[10px]" />
         )}
 
-        <span className="text-[#6e7681]">
+        <span className="text-[#6d6d6d]">
           {expanded ? <FolderOpen size={11} /> : <Folder size={11} />}
         </span>
 

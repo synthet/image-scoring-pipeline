@@ -13,8 +13,8 @@ export function Card({ children, className, onClick, hoverable = false }: CardPr
     <div
       onClick={onClick}
       className={clsx(
-        'rounded-md border border-[#30363d] bg-[#161b22] p-4',
-        hoverable && 'cursor-pointer hover:border-[#388bfd] transition-colors',
+        'rounded-md border border-[#474747] bg-[#252526] p-4',
+        hoverable && 'cursor-pointer hover:border-[#4fc1ff] transition-colors',
         onClick && 'cursor-pointer',
         className,
       )}
@@ -29,5 +29,5 @@ export function CardHeader({ children, className }: { children: ReactNode; class
 }
 
 export function CardTitle({ children, className }: { children: ReactNode; className?: string }) {
-  return <h3 className={clsx('text-sm font-semibold text-[#e6edf3]', className)}>{children}</h3>
+  return <h3 className={clsx('text-sm font-semibold text-[#cccccc]', className)}>{children}</h3>
 }

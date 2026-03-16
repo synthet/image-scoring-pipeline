@@ -16,13 +16,13 @@ export function Badge({ children, variant = 'default', size = 'md', dot = false,
       className={clsx(
         'inline-flex items-center gap-1.5 rounded-full font-medium',
         size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs',
-        variant === 'default' && 'bg-[#21262d] text-[#8b949e] border border-[#30363d]',
-        variant === 'success' && 'bg-[#0f2a1a] text-[#3fb950] border border-[#196127]',
-        variant === 'warning' && 'bg-[#271d04] text-[#d29922] border border-[#5a3e0a]',
-        variant === 'danger' && 'bg-[#2a0d0d] text-[#f85149] border border-[#6e0e0a]',
-        variant === 'info' && 'bg-[#051d3a] text-[#79c0ff] border border-[#0d419d]',
-        variant === 'running' && 'bg-[#051d3a] text-[#388bfd] border border-[#1f6feb]',
-        variant === 'muted' && 'bg-[#161b22] text-[#6e7681] border border-[#21262d]',
+        variant === 'default' && 'bg-[#3c3c3c] text-[#9d9d9d] border border-[#474747]',
+        variant === 'success' && 'bg-[#1a3320] text-[#89d185] border border-[#2d6a2d]',
+        variant === 'warning' && 'bg-[#332900] text-[#cca700] border border-[#665200]',
+        variant === 'danger' && 'bg-[#3a1515] text-[#f44747] border border-[#7a2a2a]',
+        variant === 'info' && 'bg-[#003f6e] text-[#9cdcfe] border border-[#0d419d]',
+        variant === 'running' && 'bg-[#003f6e] text-[#4fc1ff] border border-[#007acc]',
+        variant === 'muted' && 'bg-[#252526] text-[#6d6d6d] border border-[#3c3c3c]',
         className,
       )}
     >
@@ -30,12 +30,12 @@ export function Badge({ children, variant = 'default', size = 'md', dot = false,
         <span
           className={clsx(
             'w-1.5 h-1.5 rounded-full',
-            variant === 'running' && 'bg-[#388bfd] animate-pulse',
-            variant === 'success' && 'bg-[#3fb950]',
-            variant === 'warning' && 'bg-[#d29922]',
-            variant === 'danger' && 'bg-[#f85149]',
-            variant === 'muted' && 'bg-[#6e7681]',
-            variant === 'info' && 'bg-[#79c0ff]',
+            variant === 'running' && 'bg-[#4fc1ff] animate-pulse',
+            variant === 'success' && 'bg-[#89d185]',
+            variant === 'warning' && 'bg-[#cca700]',
+            variant === 'danger' && 'bg-[#f44747]',
+            variant === 'muted' && 'bg-[#6d6d6d]',
+            variant === 'info' && 'bg-[#9cdcfe]',
           )}
         />
       )}

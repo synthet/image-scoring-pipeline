@@ -1,40 +1,66 @@
-import { useState } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { Star, Filter, X } from 'lucide-react'
+import { VirtuosoGrid } from 'react-virtuoso'
 import { galleryApi, type ImageFilters } from '@/api/gallery'
 import { Button } from '@/components/ui/button'
 import type { Image } from '@/types/api'
 
 const LABELS = ['Pick', 'Reject', 'Normal']
-const PER_PAGE = 60
+const PER_PAGE = 100
 
 export function GalleryPage() {
-  const [filters, setFilters] = useState<ImageFilters>({ limit: PER_PAGE, offset: 0 })
+  const [baseFilters, setBaseFilters] = useState<Omit<ImageFilters, 'offset' | 'limit'>>({})
   const [selected, setSelected] = useState<Image | null>(null)
   const [filterOpen, setFilterOpen] = useState(false)
+  const [loadedImages, setLoadedImages] = useState<Image[]>([])
+  const [offset, setOffset] = useState(0)
+  const [total, setTotal] = useState(0)
+  const loadingRef = useRef(false)
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['gallery', filters],
-    queryFn: () => galleryApi.list(filters),
-    placeholderData: (prev) => prev,
+  const filters: ImageFilters = { ...baseFilters, limit: PER_PAGE, offset: 0 }
+
+  // Initial/filter-change load
+  const { isLoading } = useQuery({
+    queryKey: ['gallery', baseFilters],
+    queryFn: async () => {
+      const res = await galleryApi.list({ ...baseFilters, limit: PER_PAGE, offset: 0 })
+      setLoadedImages(res.images)
+      setTotal(res.total)
+      setOffset(res.images.length)
+      return res
+    },
   })
 
-  const images = data?.images ?? []
-  const total = data?.total ?? 0
+  const loadMore = useCallback(async () => {
+    if (loadingRef.current || loadedImages.length >= total) return
+    loadingRef.current = true
+    try {
+      const res = await galleryApi.list({ ...baseFilters, limit: PER_PAGE, offset })
+      setLoadedImages((prev) => [...prev, ...res.images])
+      setOffset((prev) => prev + res.images.length)
+      setTotal(res.total)
+    } finally {
+      loadingRef.current = false
+    }
+  }, [baseFilters, offset, loadedImages.length, total])
 
-  function updateFilter(patch: Partial<ImageFilters>) {
-    setFilters((prev) => ({ ...prev, ...patch, offset: 0 }))
+  function updateFilter(patch: Partial<Omit<ImageFilters, 'offset' | 'limit'>>) {
+    setBaseFilters((prev) => ({ ...prev, ...patch }))
   }
+
+  // suppress unused warning — filters used only for query key derivation
+  void filters
 
   return (
     <div className="flex h-full min-h-0">
       {/* Filters sidebar */}
       {filterOpen && (
-        <aside className="w-56 shrink-0 border-r border-[#21262d] bg-[#161b22] p-4 overflow-y-auto">
+        <aside className="w-56 shrink-0 border-r border-[#3c3c3c] bg-[#252526] p-4 overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider">Filters</span>
-            <button onClick={() => setFilterOpen(false)} className="text-[#6e7681] hover:text-[#e6edf3]">
+            <span className="text-xs font-semibold text-[#9d9d9d] uppercase tracking-wider">Filters</span>
+            <button onClick={() => setFilterOpen(false)} className="text-[#6d6d6d] hover:text-[#cccccc]">
               <X size={13} />
             </button>
           </div>
@@ -48,8 +74,8 @@ export function GalleryPage() {
                   className={clsx(
                     'w-7 h-7 flex items-center justify-center rounded text-xs border transition-colors',
                     filters.min_rating === r
-                      ? 'bg-[#051d3a] border-[#1f6feb] text-[#388bfd]'
-                      : 'border-[#30363d] text-[#8b949e] hover:border-[#388bfd]',
+                      ? 'bg-[#003f6e] border-[#007acc] text-[#4fc1ff]'
+                      : 'border-[#474747] text-[#9d9d9d] hover:border-[#4fc1ff]',
                   )}
                 >
                   {r === 0 ? 'Any' : <Star size={10} fill={r <= (filters.min_rating ?? 0) ? 'currentColor' : 'none'} />}
@@ -67,8 +93,8 @@ export function GalleryPage() {
                   className={clsx(
                     'w-full text-left text-xs px-2 py-1 rounded border transition-colors',
                     filters.label === l
-                      ? 'bg-[#051d3a] border-[#1f6feb] text-[#388bfd]'
-                      : 'border-transparent text-[#8b949e] hover:bg-[#21262d]',
+                      ? 'bg-[#003f6e] border-[#007acc] text-[#4fc1ff]'
+                      : 'border-transparent text-[#9d9d9d] hover:bg-[#3c3c3c]',
                   )}
                 >
                   {l}
@@ -86,7 +112,7 @@ export function GalleryPage() {
               onChange={(e) => updateFilter({ min_score: parseInt(e.target.value) || undefined })}
               className="w-full"
             />
-            <div className="text-xs text-[#6e7681] text-right">{filters.min_score ?? 0}</div>
+            <div className="text-xs text-[#6d6d6d] text-right">{filters.min_score ?? 0}</div>
           </FilterSection>
 
           <FilterSection label="Keyword">
@@ -94,14 +120,14 @@ export function GalleryPage() {
               value={filters.keyword ?? ''}
               onChange={(e) => updateFilter({ keyword: e.target.value || undefined })}
               placeholder="landscape, portrait…"
-              className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1 text-xs text-[#e6edf3] outline-none focus:border-[#388bfd] placeholder:text-[#6e7681]"
+              className="w-full bg-[#1e1e1e] border border-[#474747] rounded px-2 py-1 text-xs text-[#cccccc] outline-none focus:border-[#4fc1ff] placeholder:text-[#6d6d6d]"
             />
           </FilterSection>
 
           <Button
             size="xs"
             variant="ghost"
-            onClick={() => setFilters({ limit: PER_PAGE, offset: 0 })}
+            onClick={() => setBaseFilters({})}
             className="mt-3"
           >
             Clear all filters
@@ -112,7 +138,7 @@ export function GalleryPage() {
       {/* Main gallery */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Toolbar */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#21262d] shrink-0">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#3c3c3c] shrink-0">
           <Button
             variant={filterOpen ? 'outline' : 'secondary'}
             size="sm"
@@ -121,51 +147,40 @@ export function GalleryPage() {
             <Filter size={12} />
             Filters
           </Button>
-          <span className="text-xs text-[#6e7681]">
+          <span className="text-xs text-[#6d6d6d]">
             {total.toLocaleString()} image{total !== 1 ? 's' : ''}
           </span>
         </div>
 
-        {/* Grid */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {isLoading && images.length === 0 && (
-            <div className="text-sm text-[#6e7681]">Loading gallery…</div>
+        {/* Virtualized Grid */}
+        <div className="flex-1 min-h-0 relative">
+          {isLoading && loadedImages.length === 0 && (
+            <div className="p-4 text-sm text-[#6d6d6d]">Loading gallery…</div>
           )}
-
-          <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-            {images.map((img) => (
-              <ImageTile
-                key={img.id}
-                image={img}
-                selected={selected?.id === img.id}
-                onClick={() => setSelected(img)}
-              />
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {total > PER_PAGE && (
-            <div className="flex items-center justify-center gap-3 mt-6">
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={(filters.offset ?? 0) <= 0}
-                onClick={() => setFilters((f) => ({ ...f, offset: Math.max(0, (f.offset ?? 0) - PER_PAGE) }))}
-              >
-                Previous
-              </Button>
-              <span className="text-xs text-[#6e7681]">
-                {Math.floor((filters.offset ?? 0) / PER_PAGE) + 1} / {Math.ceil(total / PER_PAGE)}
-              </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={(filters.offset ?? 0) + PER_PAGE >= total}
-                onClick={() => setFilters((f) => ({ ...f, offset: (f.offset ?? 0) + PER_PAGE }))}
-              >
-                Next
-              </Button>
-            </div>
+          {!isLoading && loadedImages.length === 0 && (
+            <div className="p-4 text-sm text-[#6d6d6d]">No images found.</div>
+          )}
+          {loadedImages.length > 0 && (
+            <VirtuosoGrid
+              style={{ height: '100%' }}
+              totalCount={loadedImages.length}
+              overscan={200}
+              endReached={loadMore}
+              listClassName="grid gap-1 p-4"
+              itemClassName=""
+              computeItemKey={(index) => loadedImages[index]?.id ?? index}
+              itemContent={(index) => {
+                const img = loadedImages[index]
+                if (!img) return null
+                return (
+                  <ImageTile
+                    image={img}
+                    selected={selected?.id === img.id}
+                    onClick={() => setSelected(img)}
+                  />
+                )
+              }}
+            />
           )}
         </div>
       </div>
@@ -181,7 +196,7 @@ export function GalleryPage() {
 function FilterSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="mb-4">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] mb-2">{label}</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">{label}</div>
       {children}
     </div>
   )
@@ -203,7 +218,7 @@ function ImageTile({
       onClick={onClick}
       className={clsx(
         'relative aspect-square rounded overflow-hidden cursor-pointer border-2 transition-all',
-        selected ? 'border-[#388bfd]' : 'border-transparent hover:border-[#30363d]',
+        selected ? 'border-[#4fc1ff]' : 'border-transparent hover:border-[#474747]',
       )}
     >
       {src ? (
@@ -214,14 +229,14 @@ function ImageTile({
           loading="lazy"
         />
       ) : (
-        <div className="w-full h-full bg-[#21262d] flex items-center justify-center text-[#6e7681] text-xs">
+        <div className="w-full h-full bg-[#3c3c3c] flex items-center justify-center text-[#6d6d6d] text-xs">
           No preview
         </div>
       )}
       {image.rating != null && image.rating > 0 && (
         <div className="absolute bottom-1 left-1 flex">
           {Array.from({ length: image.rating }).map((_, i) => (
-            <Star key={i} size={8} className="text-[#d29922]" fill="currentColor" />
+            <Star key={i} size={8} className="text-[#cca700]" fill="currentColor" />
           ))}
         </div>
       )}
@@ -236,10 +251,10 @@ function ImageTile({
 
 function ImageDetailPanel({ image, onClose }: { image: Image; onClose: () => void }) {
   return (
-    <aside className="w-72 shrink-0 border-l border-[#21262d] bg-[#161b22] overflow-y-auto">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#21262d]">
-        <span className="text-sm font-semibold text-[#e6edf3] truncate">{image.filename}</span>
-        <button onClick={onClose} className="text-[#6e7681] hover:text-[#e6edf3] shrink-0">
+    <aside className="w-72 shrink-0 border-l border-[#3c3c3c] bg-[#252526] overflow-y-auto">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#3c3c3c]">
+        <span className="text-sm font-semibold text-[#cccccc] truncate">{image.filename}</span>
+        <button onClick={onClose} className="text-[#6d6d6d] hover:text-[#cccccc] shrink-0">
           <X size={14} />
         </button>
       </div>
@@ -247,7 +262,7 @@ function ImageDetailPanel({ image, onClose }: { image: Image; onClose: () => voi
       <div className="p-4 space-y-4">
         {/* Scores */}
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] mb-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">
             Quality Scores
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -262,8 +277,8 @@ function ImageDetailPanel({ image, onClose }: { image: Image; onClose: () => voi
           </div>
           {image.composite_score != null && (
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-xs text-[#8b949e]">Composite</span>
-              <span className="text-sm font-bold text-[#388bfd]">
+              <span className="text-xs text-[#9d9d9d]">Composite</span>
+              <span className="text-sm font-bold text-[#4fc1ff]">
                 {image.composite_score.toFixed(1)}
               </span>
             </div>
@@ -272,7 +287,7 @@ function ImageDetailPanel({ image, onClose }: { image: Image; onClose: () => voi
 
         {/* Metadata */}
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] mb-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">
             Metadata
           </div>
           <dl className="space-y-1 text-xs">
@@ -290,7 +305,7 @@ function ImageDetailPanel({ image, onClose }: { image: Image; onClose: () => voi
 
         {/* Rating */}
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] mb-2">Rating</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">Rating</div>
           <div className="flex gap-1">
             {[1, 2, 3, 4, 5].map((r) => (
               <Star
@@ -299,8 +314,8 @@ function ImageDetailPanel({ image, onClose }: { image: Image; onClose: () => voi
                 className={clsx(
                   'cursor-pointer transition-colors',
                   r <= (image.rating ?? 0)
-                    ? 'text-[#d29922] fill-[#d29922]'
-                    : 'text-[#30363d]',
+                    ? 'text-[#cca700] fill-[#cca700]'
+                    : 'text-[#474747]',
                 )}
               />
             ))}
@@ -310,12 +325,12 @@ function ImageDetailPanel({ image, onClose }: { image: Image; onClose: () => voi
         {/* Keywords */}
         {image.keywords && image.keywords.length > 0 && (
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] mb-2">Keywords</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">Keywords</div>
             <div className="flex flex-wrap gap-1">
               {image.keywords.map((kw) => (
                 <span
                   key={kw}
-                  className="bg-[#21262d] text-[#8b949e] text-xs px-2 py-0.5 rounded border border-[#30363d]"
+                  className="bg-[#3c3c3c] text-[#9d9d9d] text-xs px-2 py-0.5 rounded border border-[#474747]"
                 >
                   {kw}
                 </span>
@@ -328,11 +343,11 @@ function ImageDetailPanel({ image, onClose }: { image: Image; onClose: () => voi
   )
 }
 
-function ScoreCell({ label, value }: { label: string; value: number | null }) {
+function ScoreCell({ label, value }: { label: string; value: number | null | undefined }) {
   return (
-    <div className="bg-[#0d1117] rounded p-2 border border-[#21262d]">
-      <div className="text-[10px] text-[#6e7681]">{label}</div>
-      <div className="text-sm font-semibold text-[#e6edf3]">
+    <div className="bg-[#1e1e1e] rounded p-2 border border-[#3c3c3c]">
+      <div className="text-[10px] text-[#6d6d6d]">{label}</div>
+      <div className="text-sm font-semibold text-[#cccccc]">
         {value != null ? value.toFixed(1) : '—'}
       </div>
     </div>
@@ -342,8 +357,8 @@ function ScoreCell({ label, value }: { label: string; value: number | null }) {
 function MetaRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-2">
-      <dt className="text-[#6e7681]">{label}</dt>
-      <dd className="text-[#8b949e] text-right truncate">{value}</dd>
+      <dt className="text-[#6d6d6d]">{label}</dt>
+      <dd className="text-[#9d9d9d] text-right truncate">{value}</dd>
     </div>
   )
 }

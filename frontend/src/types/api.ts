@@ -135,29 +135,56 @@ export interface QueueEntry {
   enqueued_at: string
 }
 
-// ─── Image (gallery) ─────────────────────────────────────────────────────
+// ─── Image (gallery) — field names match electron-image-scoring ImageRow ────
+//
+// electron/types.ts ImageRow fields are authoritative (Electron reads from DB directly).
+// The Python REST API returns the same column names from the IMAGES table.
 
 export interface Image {
+  // Identity
   id: number
-  file_path: string
-  filename: string
+  file_path: string      // absolute file path (DB: file_path)
+  filename: string       // base filename (DB: file_name)
   folder_path: string
+  uuid?: string
+
+  // Thumbnails
   thumbnail_path: string | null
-  rating: number | null
-  label: string | null
-  musiq_score: number | null
-  liqe_score: number | null
-  topiq_score: number | null
-  qalign_score: number | null
-  composite_score: number | null
+  thumbnail_path_win?: string | null  // Windows path variant
+
+  // User metadata
+  rating: number | null              // 0–5 stars
+  label: string | null               // 'Pick' | 'Reject' | 'Normal'
+  title?: string | null
+  description?: string | null
   keywords: string[]
   caption: string | null
+
+  // Quality scores — align with Electron's ImageRow naming
+  // Legacy aggregate scores (used by Electron)
+  score?: number | null              // general composite (DB: score)
+  general_score?: number | null
+  technical_score?: number | null
+  aesthetic_score?: number | null
+  // Individual model scores
+  musiq_score?: number | null        // MUSIQ
+  liqe_score?: number | null         // LIQE  (also used by Electron)
+  topiq_score?: number | null        // TOPIQ
+  qalign_score?: number | null       // Q-Align
+  spaq_score?: number | null         // SPAQ (legacy)
+  ava_score?: number | null          // AVA (legacy)
+  koniq_score?: number | null        // KonIQ (legacy)
+  paq2piq_score?: number | null      // PAQ2PIQ (legacy)
+  composite_score?: number | null    // computed composite
+
+  // File metadata
   created_at: string | null
   file_size: number | null
   width: number | null
   height: number | null
   camera_make: string | null
   camera_model: string | null
+  file_type?: string | null
 }
 
 // ─── WebSocket events ────────────────────────────────────────────────────
@@ -203,3 +230,31 @@ export interface WsWorkItemDone {
 }
 
 export type WsEvent = WsRunProgress | WsStageTransition | WsLogLine | WsQueueUpdate | WsWorkItemDone
+
+// ─── Electron-compatible type aliases ────────────────────────────────────
+// Mirror electron-image-scoring's electron/types.ts for shared contracts
+
+/** @alias Image — matches electron/types.ts ImageRow */
+export type ImageRow = Image
+
+/** Image updates shape — matches electron/types.ts ImageUpdates */
+export interface ImageUpdates {
+  rating?: number | null
+  label?: string | null
+  title?: string
+  description?: string
+  keywords?: string[]
+  write_sidecar?: boolean
+}
+
+/** Folder row — matches electron/types.ts FolderRow */
+export interface ElectronFolderRow {
+  id: number
+  path: string
+  parent_id: number | null
+  indexing_status: string | null
+  scoring_status: string | null
+  tagging_status: string | null
+  image_count?: number
+}
+

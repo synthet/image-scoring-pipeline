@@ -25,19 +25,19 @@ export function Shell() {
   const queuedCount = runs?.filter((r) => r.status === 'queued' || r.status === 'pending').length ?? 0
 
   return (
-    <div className="flex h-full flex-col bg-[#0d1117]">
+    <div className="flex h-full flex-col bg-[#1e1e1e]">
       {/* Top nav */}
-      <header className="flex h-12 items-center gap-3 border-b border-[#21262d] bg-[#161b22] px-4 shrink-0">
+      <header className="flex h-12 items-center gap-3 border-b border-[#3c3c3c] bg-[#252526] px-4 shrink-0">
         <button
           onClick={toggleSidebar}
-          className="p-1 rounded text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d] transition-colors"
+          className="p-1 rounded text-[#9d9d9d] hover:text-[#cccccc] hover:bg-[#3c3c3c] transition-colors"
         >
           <PanelLeft size={16} />
         </button>
 
         <div className="flex items-center gap-2 mr-4">
-          <Zap size={16} className="text-[#388bfd]" />
-          <span className="text-sm font-semibold text-[#e6edf3]">Image Scoring</span>
+          <Zap size={16} className="text-[#4fc1ff]" />
+          <span className="text-sm font-semibold text-[#cccccc]">Image Scoring</span>
         </div>
 
         <nav className="flex items-center gap-1">
@@ -48,9 +48,9 @@ export function Shell() {
 
         <div className="ml-auto flex items-center gap-3">
           {(activeCount > 0 || queuedCount > 0) && (
-            <NavLink to="/runs" className="text-xs text-[#8b949e] hover:text-[#388bfd] transition-colors">
+            <NavLink to="/runs" className="text-xs text-[#9d9d9d] hover:text-[#4fc1ff] transition-colors">
               {activeCount > 0 && (
-                <span className="text-[#388bfd] font-medium">{activeCount} active</span>
+                <span className="text-[#4fc1ff] font-medium">{activeCount} active</span>
               )}
               {activeCount > 0 && queuedCount > 0 && <span className="mx-1">·</span>}
               {queuedCount > 0 && <span>{queuedCount} queued</span>}
@@ -61,11 +61,11 @@ export function Shell() {
             <div
               className={clsx(
                 'w-2 h-2 rounded-full',
-                connected ? 'bg-[#3fb950]' : 'bg-[#6e7681]',
+                connected ? 'bg-[#89d185]' : 'bg-[#6d6d6d]',
               )}
               title={connected ? 'Live updates active' : 'Disconnected'}
             />
-            <span className="text-xs text-[#6e7681]">{connected ? 'Live' : 'Offline'}</span>
+            <span className="text-xs text-[#6d6d6d]">{connected ? 'Live' : 'Offline'}</span>
           </div>
         </div>
       </header>
@@ -89,8 +89,8 @@ function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label
         clsx(
           'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors',
           isActive
-            ? 'text-[#e6edf3] bg-[#21262d]'
-            : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]',
+            ? 'text-[#cccccc] bg-[#3c3c3c]'
+            : 'text-[#9d9d9d] hover:text-[#cccccc] hover:bg-[#3c3c3c]',
         )
       }
     >

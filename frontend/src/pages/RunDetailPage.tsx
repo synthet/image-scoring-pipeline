@@ -60,7 +60,7 @@ export function RunDetailPage() {
   if (runLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 size={20} className="text-[#388bfd] animate-spin" />
+        <Loader2 size={20} className="text-[#4fc1ff] animate-spin" />
       </div>
     )
   }
@@ -68,7 +68,7 @@ export function RunDetailPage() {
   if (!run) {
     return (
       <div className="p-6">
-        <p className="text-sm text-[#f85149]">Run #{id} not found</p>
+        <p className="text-sm text-[#f44747]">Run #{id} not found</p>
       </div>
     )
   }
@@ -82,16 +82,16 @@ export function RunDetailPage() {
         </Button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-base font-semibold text-[#e6edf3]">
-              Run <span className="text-[#6e7681]">#{run.id}</span>
+            <h1 className="text-base font-semibold text-[#cccccc]">
+              Run <span className="text-[#6d6d6d]">#{run.id}</span>
             </h1>
             <RunBadge status={run.status} />
           </div>
-          <div className="flex items-center gap-2 text-sm text-[#8b949e]">
+          <div className="flex items-center gap-2 text-sm text-[#9d9d9d]">
             <FolderOpen size={13} />
             <span className="truncate">{scopePaths.join(', ')}</span>
           </div>
-          <div className="flex gap-3 text-xs text-[#6e7681] mt-1">
+          <div className="flex gap-3 text-xs text-[#6d6d6d] mt-1">
             {run.created_at && <span>Created {new Date(run.created_at).toLocaleString()}</span>}
             {run.started_at && <span>Started {new Date(run.started_at).toLocaleString()}</span>}
             {run.started_at && run.finished_at && (
@@ -135,12 +135,12 @@ export function RunDetailPage() {
       </div>
 
       {/* Workflow graph */}
-      <div className="rounded-md border border-[#30363d] bg-[#0d1117] p-4">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] mb-3">
+      <div className="rounded-md border border-[#474747] bg-[#1e1e1e] p-4">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-3">
           Workflow
         </div>
         {stagesLoading ? (
-          <div className="flex items-center gap-2 text-sm text-[#6e7681]">
+          <div className="flex items-center gap-2 text-sm text-[#6d6d6d]">
             <Loader2 size={14} className="animate-spin" />
             Loading stages…
           </div>
@@ -152,14 +152,14 @@ export function RunDetailPage() {
             onSelectStage={(code) => setSelectedStage(code)}
           />
         ) : (
-          <p className="text-xs text-[#6e7681]">No stages recorded for this run</p>
+          <p className="text-xs text-[#6d6d6d]">No stages recorded for this run</p>
         )}
       </div>
 
       {/* Selected stage detail */}
       {selectedStageData && (
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] mb-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">
             {STAGE_DISPLAY[selectedStageData.phase_code as StageCode]?.name ?? selectedStageData.phase_code}
           </div>
           <StagePanel runId={id} stage={selectedStageData} />
@@ -168,7 +168,7 @@ export function RunDetailPage() {
 
       {/* Log panel */}
       <div>
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6e7681] mb-2">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">
           Run Log
         </div>
         <LogPanel runId={id} />
