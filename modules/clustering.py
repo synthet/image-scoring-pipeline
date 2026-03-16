@@ -85,8 +85,9 @@ class ClusteringEngine:
         """
         Select the best representative image from a stack.
 
-        Strategy is read from config key ``clustering.best_image_strategy``
-        (``score`` | ``centroid`` | ``balanced``).  Falls back to ``score``
+        Strategy is read from config key ``clustering.stack_representative_strategy``
+        (or legacy ``clustering.best_image_strategy``)
+        as ``score`` | ``centroid`` | ``balanced``. Falls back to ``score``
         when embeddings are unavailable.
 
         Args:
@@ -103,7 +104,10 @@ class ClusteringEngine:
             return img_ids[0]
 
         clustering_config = config.get_config_section('clustering')
-        strategy = clustering_config.get('best_image_strategy', 'score')
+        strategy = clustering_config.get(
+            'stack_representative_strategy',
+            clustering_config.get('best_image_strategy', 'score')
+        )
         alpha = float(clustering_config.get('best_image_alpha', 0.65))
 
         # Normalise scores to [0, 1] across the stack
