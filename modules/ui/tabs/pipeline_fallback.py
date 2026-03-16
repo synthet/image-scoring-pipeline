@@ -1,0 +1,188 @@
+import gradio as gr
+
+from modules import config, db
+from modules.ui.tabs import pipeline as pipeline_full
+
+
+def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orchestrator) -> dict:
+    """Minimal, native-Gradio fallback Pipeline tab."""
+    components = {}
+
+    def _folder_choices():
+        folders = db.get_all_folders() or []
+        return sorted({f for f in folders if f})
+
+    def _save_selected_folder(path: str):
+        path = (path or "").strip()
+        config.save_config_value("ui.last_selected_folder", path)
+        return path
+
+    def _refresh_and_render(path: str):
+        path = (path or "").strip()
+        choices = _folder_choices()
+        if path and path not in choices:
+            choices = [path] + choices
+        updates = pipeline_full.get_folder_selection_view(path, force_refresh=True)
+        return (
+            gr.update(choices=choices, value=path),
+            path,
+            updates[0],
+            updates[1],
+            updates[2],
+            updates[3],
+            updates[4],
+            updates[5],
+        )
+
+    with gr.Tab("Pipeline", id="pipeline"):
+        gr.Markdown("## Pipeline (Fallback UI)")
+
+        last_folder = app_config.get("ui", {}).get("last_selected_folder", "") or ""
+
+        with gr.Row():
+            components["folder_dropdown"] = gr.Dropdown(
+                choices=_folder_choices(),
+                value=last_folder,
+                label="Folder",
+                allow_custom_value=True,
+            )
+            components["refresh_btn"] = gr.Button("Refresh")
+
+        components["selected_path"] = gr.Textbox(value=last_folder, label="Selected folder")
+
+        initial_updates = pipeline_full.get_folder_selection_view(last_folder, force_refresh=False)
+        components["folder_summary_html"] = gr.Markdown(initial_updates[0])
+        components["quick_start_html"] = gr.Markdown(initial_updates[5])
+        components["stepper_html"] = gr.Markdown(initial_updates[1])
+
+        with gr.Row():
+            components["run_all_btn"] = gr.Button("Run All Pending", variant="primary")
+            components["stop_all_btn"] = gr.Button("Stop All", variant="stop")
+            components["repair_index_meta_btn"] = gr.Button("Repair Index/Meta")
+            components["run_metadata_btn"] = gr.Button("Run Metadata")
+
+        with gr.Accordion("Scoring", open=True):
+            components["scoring_card_html"] = gr.Markdown(initial_updates[2])
+            components["scoring_force"] = gr.Checkbox(label="Force Re-score", value=False)
+            components["scoring_run_btn"] = gr.Button("Start Scoring")
+
+        with gr.Accordion("Culling", open=False):
+            components["culling_card_html"] = gr.Markdown(initial_updates[3])
+            components["culling_force"] = gr.Checkbox(label="Force Re-run", value=False)
+            components["culling_run_btn"] = gr.Button("Start Culling")
+
+        with gr.Accordion("Keywords", open=False):
+            components["keywords_card_html"] = gr.Markdown(initial_updates[4])
+            components["keywords_overwrite"] = gr.Checkbox(label="Overwrite Existing", value=False)
+            components["keywords_captions"] = gr.Checkbox(label="Generate Captions", value=False)
+            components["keywords_run_btn"] = gr.Button("Start Keywords")
+
+        components["monitor_html"] = gr.Markdown("No active jobs in the pipeline.")
+        components["console_output"] = gr.Textbox(lines=12, label="Console Output", interactive=False)
+
+    def _run_scoring(path, force):
+        if not path:
+            return
+        db.enqueue_job(
+            path,
+            phase_code="scoring",
+            job_type="scoring",
+            queue_payload={"input_path": path, "skip_existing": not force},
+        )
+
+    def _run_metadata(path):
+        if not path:
+            return
+        db.enqueue_job(
+            path,
+            phase_code="scoring",
+            job_type="scoring",
+            queue_payload={
+                "input_path": path,
+                "skip_existing": False,
+                "target_phases": ["indexing", "metadata"],
+            },
+        )
+
+    def _run_culling(path, force):
+        if not path:
+            return
+        db.enqueue_job(
+            path,
+            phase_code="culling",
+            job_type="selection",
+            queue_payload={"input_path": path, "force_rescan": force},
+        )
+
+    def _run_tagging(path, overwrite, captions):
+        if not path:
+            return
+        db.enqueue_job(
+            path,
+            phase_code="keywords",
+            job_type="tagging",
+            queue_payload={"input_path": path, "overwrite": overwrite, "generate_captions": captions},
+        )
+
+    def _run_all_pending(path):
+        if not path:
+            return
+        orchestrator.start(path)
+
+    def _stop_all():
+        orchestrator.stop()
+        scoring_runner.stop()
+        selection_runner.stop()
+        tagging_runner.stop()
+
+    def _repair_index_meta(path):
+        if not path:
+            return
+        db.backfill_index_meta_for_folder(path)
+
+    components["folder_dropdown"].change(
+        fn=lambda p: _refresh_and_render(_save_selected_folder(p)),
+        inputs=[components["folder_dropdown"]],
+        outputs=[
+            components["folder_dropdown"],
+            components["selected_path"],
+            components["folder_summary_html"],
+            components["stepper_html"],
+            components["scoring_card_html"],
+            components["culling_card_html"],
+            components["keywords_card_html"],
+            components["quick_start_html"],
+        ],
+    )
+
+    components["refresh_btn"].click(
+        fn=_refresh_and_render,
+        inputs=[components["selected_path"]],
+        outputs=[
+            components["folder_dropdown"],
+            components["selected_path"],
+            components["folder_summary_html"],
+            components["stepper_html"],
+            components["scoring_card_html"],
+            components["culling_card_html"],
+            components["keywords_card_html"],
+            components["quick_start_html"],
+        ],
+    )
+
+    components["scoring_run_btn"].click(fn=_run_scoring, inputs=[components["selected_path"], components["scoring_force"]], outputs=[])
+    components["culling_run_btn"].click(fn=_run_culling, inputs=[components["selected_path"], components["culling_force"]], outputs=[])
+    components["keywords_run_btn"].click(fn=_run_tagging, inputs=[components["selected_path"], components["keywords_overwrite"], components["keywords_captions"]], outputs=[])
+    components["run_all_btn"].click(fn=_run_all_pending, inputs=[components["selected_path"]], outputs=[])
+    components["run_metadata_btn"].click(fn=_run_metadata, inputs=[components["selected_path"]], outputs=[])
+    components["repair_index_meta_btn"].click(fn=_repair_index_meta, inputs=[components["selected_path"]], outputs=[])
+    components["stop_all_btn"].click(fn=_stop_all, inputs=[], outputs=[])
+
+
+
+    return components
+
+
+def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestrator, selected_folder):
+    """Reuse standard status update logic for fallback tab."""
+    return pipeline_full.get_status_update(scoring_runner, tagging_runner, selection_runner, orchestrator, selected_folder)

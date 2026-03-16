@@ -509,6 +509,11 @@ def _update_folder_selection(folder_path: str, force_refresh=False, is_running=F
     )
 
 
+def get_folder_selection_view(folder_path: str, force_refresh=False, is_running=False):
+    """Public wrapper for folder-scoped pipeline summary rendering."""
+    return _update_folder_selection(folder_path, force_refresh=force_refresh, is_running=is_running)
+
+
 def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestrator, selected_folder):
     """Called regularly by the main app timer to update components."""
     # Process Orchestrator tick

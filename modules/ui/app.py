@@ -19,6 +19,7 @@ from modules import scoring, db, tagging, config, clustering, thumbnails, utils,
 from modules.ui import assets, navigation, common
 from modules.ui.tabs import (
     pipeline,
+    pipeline_fallback,
     gallery,
     settings as settings_tab
 )
@@ -48,6 +49,9 @@ def create_ui():
     )
     recovery_info = orchestrator.recover_interrupted_jobs()
     app_config["job_recovery"] = recovery_info
+    ui_config = app_config.get("ui", {})
+    use_fallback_pipeline_ui = bool(ui_config.get("use_gradio_fallback", False) or os.getenv("GRADIO_FALLBACK_UI") == "1")
+    pipeline_tab = pipeline_fallback if use_fallback_pipeline_ui else pipeline
 
     # Register phase executors (binds phase codes to runner logic)
     phase_executors.register_all(
@@ -56,14 +60,18 @@ def create_ui():
         selection_runner=selection_runner,
     )
     
-    # UI Elements from Assets
-    tree_js = assets.get_tree_js()
-    custom_css = assets.get_css()
-    
     favicon_links = """
 <link rel="icon" href="/favicon.ico" sizes="any">
 """
-    with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js + favicon_links) as demo:
+    if use_fallback_pipeline_ui:
+        demo = gr.Blocks(title="Image Scoring WebUI", head=favicon_links)
+    else:
+        # Only load custom assets for full UI mode.
+        tree_js = assets.get_tree_js()
+        custom_css = assets.get_css()
+        demo = gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js + favicon_links)
+
+    with demo:
         gr.Markdown("# Image Scoring WebUI")
         
         # Shared States
@@ -80,7 +88,7 @@ def create_ui():
         
         with gr.Tabs() as main_tabs:
             # 1. Pipeline Tab
-            pipeline_components = pipeline.create_tab(
+            pipeline_components = pipeline_tab.create_tab(
                 app_config,
                 scoring_runner=runner,
                 tagging_runner=tagging_runner,
@@ -97,7 +105,7 @@ def create_ui():
         # Monitor Loop
         def monitor_status_wrapper(selected_folder):
             # Pass the currently selected folder from the Pipeline tree to update cards
-            res = pipeline.get_status_update(runner, tagging_runner, selection_runner, orchestrator, selected_folder)
+            res = pipeline_tab.get_status_update(runner, tagging_runner, selection_runner, orchestrator, selected_folder)
             return list(res)
 
         monitor_outputs = [
