@@ -37,14 +37,14 @@ def _parse_phase_summary(folder_path, force_refresh=False):
 
 
 def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orchestrator) -> dict:
-    """Consolidated Pipeline tab containing Folder Tree, Progress Stepper, Phase Controls, and active job monitor."""
+    """Consolidated WorkflowRun tab containing WorkspaceTarget tree, StageRun stepper, controls, and active monitor."""
     components = {}
 
     with gr.Tab("Pipeline", id="pipeline"):
         with gr.Row(equal_height=False):
             # SIDEBAR
             with gr.Column(scale=1, min_width=300, elem_classes=["sidebar"]):
-                gr.Markdown("### Folders")
+                gr.Markdown("### Workspace Targets")
                 with gr.Row():
                     components["refresh_btn"] = gr.Button("Refresh", elem_classes=["secondary-btn"])
 
@@ -85,15 +85,15 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                     gr.HTML(
                         """
                         <div class="panel-header">
-                            <h2 class="panel-title">Pipeline Progress</h2>
+                            <h2 class="panel-title">WorkflowRun Progress</h2>
                         </div>
-                        <div class="pipeline-overview" role="region" aria-label="Pipeline explanation">
+                        <div class="pipeline-overview" role="region" aria-label="WorkflowRun explanation">
                             <p class="section-microcopy">
-                                <strong>5 phases</strong> run in order: <strong>1. Index</strong> (discover & register images) →
+                                <strong>5 StageRuns</strong> execute in order: <strong>1. Index</strong> (discover & register images) →
                                 <strong>2. Meta</strong> (extract EXIF/XMP) →
                                 <strong>3. Scoring</strong> (AI quality scores) →
                                 <strong>4. Culling</strong> (pick best per stack) →
-                                <strong>5. Keywords</strong> (tagging). Each phase shows <em>done / total</em> images for that phase.
+                                <strong>5. Keywords</strong> (tagging). Each StageRun shows <em>done / total</em> images for that stage.
                                 Index and Meta run inside Scoring; their counts can differ until Scoring completes.
                             </p>
                         </div>
@@ -108,10 +108,10 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                             components["run_metadata_btn"] = gr.Button("Run Metadata", variant="secondary", elem_classes=["secondary-btn"])
                         gr.HTML(
                             "<p class='section-microcopy'>"
-                            "<strong>Run All Pending</strong> \u2014 starts Scoring, Culling, and Keywords for images not yet processed. "
-                            "<strong>Stop All</strong> \u2014 halts the active job; progress is preserved. "
-                            "<strong>Repair Index/Meta</strong> \u2014 backfills Index and Meta status for images with Scoring done but missing phase status. "
-                            "<strong>Run Metadata</strong> \u2014 extracts EXIF/XMP and creates thumbnails for images missing metadata (no scoring)."
+                            "<strong>Run All Pending</strong> \u2014 starts pending StageRuns in this WorkflowRun for the selected WorkspaceTarget. "
+                            "<strong>Stop All</strong> \u2014 halts the active WorkflowRun; StageRun progress is preserved. "
+                            "<strong>Repair Index/Meta</strong> \u2014 backfills Index and Metadata StageRun status for images with Scoring done but missing StageRun state. "
+                            "<strong>Run Metadata</strong> \u2014 runs the Metadata StageRun (EXIF/XMP + thumbnails) for WorkspaceTarget items missing metadata."
                             "</p>"
                         )
                         # Stop All confirmation (hidden until Stop All clicked)
@@ -593,14 +593,14 @@ def _build_quick_start_html(folder_path, summary_by_code=None, is_running=False)
 
     if not folder_path:
         steps = [
-            ("current", "Select a folder from the tree"),
-            ("", "Run all pending pipeline phases"),
+            ("current", "Select a WorkspaceTarget from the tree"),
+            ("", "Run all pending StageRuns"),
             ("", "Open Gallery and review results"),
         ]
     elif is_running:
         steps = [
-            ("done", "Folder selected"),
-            ("current", "Pipeline is running\u2026"),
+            ("done", "WorkspaceTarget selected"),
+            ("current", "WorkflowRun is running\u2026"),
             ("", "Open Gallery and review results"),
         ]
     else:
@@ -610,14 +610,14 @@ def _build_quick_start_html(folder_path, summary_by_code=None, is_running=False)
         )
         if pending:
             steps = [
-                ("done", "Folder selected"),
+                ("done", "WorkspaceTarget selected"),
                 ("current", "Run All Pending to process images"),
                 ("", "Open Gallery and review results"),
             ]
         else:
             steps = [
-                ("done", "Folder selected"),
-                ("done", "All phases complete"),
+                ("done", "WorkspaceTarget selected"),
+                ("done", "All StageRuns complete"),
                 ("current", "Open Gallery and review results"),
             ]
 
@@ -643,7 +643,7 @@ def _build_folder_summary(path, count):
     path_display = path if path else "-"
     return f"""
     <div class="folder-summary">
-      <h3>Selected Folder</h3>
+      <h3>Selected WorkspaceTarget</h3>
       <p><strong>{path_display}</strong><br>{count} images</p>
     </div>
     """
@@ -651,9 +651,9 @@ def _build_folder_summary(path, count):
 
 def _render_queue_html(queued_jobs):
     if not queued_jobs:
-        return "<p class='phase-stats'>Job queue: empty</p>"
+        return "<p class='phase-stats'>WorkflowRun queue: empty</p>"
 
-    lines = ["<div class='phase-stats'>Job queue:</div>", "<ul class='phase-stats'>"]
+    lines = ["<div class='phase-stats'>WorkflowRun queue:</div>", "<ul class='phase-stats'>"]
     for job in queued_jobs:
         lines.append(
             f"<li>#{job.get('id')} {job.get('job_type') or 'job'} "
@@ -664,7 +664,7 @@ def _render_queue_html(queued_jobs):
 
 
 def _build_idle_html(recovery_info=None, queued_jobs=None):
-    base = "<div class='panel-body'><p>No active jobs in the pipeline.</p>"
+    base = "<div class='panel-body'><p>No active WorkflowRuns.</p>"
     if recovery_info:
         recovered = recovery_info.get("recovered_running_jobs") or []
         interrupted = recovery_info.get("interrupted_pipeline_jobs") or []
@@ -672,7 +672,7 @@ def _build_idle_html(recovery_info=None, queued_jobs=None):
         if recovered or interrupted or auto_resumed:
             base += (
                 f"<p><strong>Recovery:</strong> marked {len(recovered)} running job(s) as interrupted; "
-                f"found {len(interrupted)} interrupted pipeline job(s); "
+                f"found {len(interrupted)} interrupted WorkflowRun(s); "
                 f"auto-resumed: {'yes' if auto_resumed else 'no'}.</p>"
             )
     queued_jobs = queued_jobs or []
@@ -691,7 +691,7 @@ def _build_monitor_html(name, msg, current, total, queued_jobs=None, folder_tota
         folder_line = "<p class='section-microcopy'>Processing images in current batch. See Console Output for per-image progress.</p>"
     pipeline_line = ""
     if pipeline_depth > 0:
-        pipeline_line = f"<p class='section-microcopy'>Pipeline: {pipeline_depth} image(s) in queue</p>"
+        pipeline_line = f"<p class='section-microcopy'>WorkflowRun queue: {pipeline_depth} image(s) pending</p>"
     return f"""
     <div class="panel-body">
       <div class="phase-head">
@@ -734,7 +734,7 @@ def _build_phase_card_html(title, status, done, total):
     badge_cls = f"phase-status status-badge {badge_class}" if badge_class else "phase-status"
     running_cls = " phase-card running" if status in ("running", "partial") else ""
     return f"""
-    <div class="phase-card{running_cls}" role="region" aria-label="{title} phase: {status_label}">
+    <div class="phase-card{running_cls}" role="region" aria-label="{title} StageRun: {status_label}">
       <div class="phase-head">
         <div class="phase-title">
           <div class="phase-icon">{initial}</div>
@@ -750,7 +750,7 @@ def _build_phase_card_html(title, status, done, total):
 
 def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
     if not folder_path:
-        return "<p>Select a folder from the tree to view pipeline progress.</p>"
+        return "<p>Select a WorkspaceTarget from the tree to view WorkflowRun progress.</p>"
 
     if not summary_by_code or total == 0:
         return (
@@ -783,7 +783,7 @@ def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
         return ""
 
     return f"""
-    <div class="stepper" role="list" aria-label="Pipeline progress">
+    <div class="stepper" role="list" aria-label="WorkflowRun stage progress">
       <div class="step {get_state(idx, total)}" role="listitem" aria-label="Index: {idx_done} of {total}">
         <div class="step-dot">1</div>
         <div class="step-label">Index</div>

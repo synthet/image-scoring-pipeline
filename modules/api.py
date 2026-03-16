@@ -49,7 +49,7 @@ from fastapi import APIRouter, HTTPException, Body, Query
 from fastapi.responses import FileResponse, StreamingResponse
 import json
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
 import os
 import platform
@@ -519,19 +519,28 @@ class PipelineSubmitRequest(BaseModel):
     Chains requested operations sequentially (score -> tag -> cluster).
 
     Attributes:
-        input_path: File or directory path to process.
-        operations: List of operations to run in order. Valid: "score", "tag", "cluster".
-        options: Optional per-operation options.
+        workspace_target: File or directory path to process.
+        stage_codes: Ordered stage run codes to execute (indexing|metadata|score|tag|cluster).
+        workflow_template: Logical template name for the run (e.g., full_ingest, metadata_only, re_tag).
     """
-    input_path: str = Field(
+    workspace_target: str = Field(
         ...,
-        description="File or directory path to process.",
-        example="D:/Photos/2024"
+        description="WorkspaceTarget path to process (single file or folder).",
+        example="D:/Photos/2024",
+        validation_alias=AliasChoices("workspace_target", "input_path"),
+        serialization_alias="workspace_target",
     )
-    operations: List[str] = Field(
+    stage_codes: List[str] = Field(
         ["score", "tag"],
-        description="Operations to run in order. Valid values: 'indexing', 'metadata', 'score', 'tag', 'cluster'.",
-        example=["indexing", "metadata", "score"]
+        description="Ordered StageRun codes. Valid values: 'indexing', 'metadata', 'score', 'tag', 'cluster'.",
+        example=["indexing", "metadata", "score"],
+        validation_alias=AliasChoices("stage_codes", "operations"),
+        serialization_alias="stage_codes",
+    )
+    workflow_template: str = Field(
+        "custom",
+        description="WorkflowTemplate identifier that produced this stage sequence.",
+        example="full_ingest",
     )
     skip_existing: bool = Field(
         True,
@@ -929,13 +938,14 @@ def create_api_router() -> APIRouter:
                     "submit": {
                         "method": "POST",
                         "path": "/api/pipeline/submit",
-                        "description": "Submit image/folder to processing pipeline (score -> tag -> cluster)",
+                        "description": "Create a WorkflowRun for a WorkspaceTarget (indexing/metadata/score/tag/cluster StageRuns)",
                         "request_body": {
                             "type": "object",
-                            "required": ["input_path"],
+                            "required": ["workspace_target"],
                             "properties": {
-                                "input_path": {"type": "string"},
-                                "operations": {"type": "array", "items": {"type": "string"}, "default": ["score", "tag"]},
+                                "workspace_target": {"type": "string"},
+                                "stage_codes": {"type": "array", "items": {"type": "string"}, "default": ["score", "tag"]},
+                                "workflow_template": {"type": "string", "default": "custom"},
                                 "skip_existing": {"type": "boolean", "default": True},
                                 "custom_keywords": {"type": "array", "items": {"type": "string"}},
                                 "generate_captions": {"type": "boolean", "default": False},
@@ -2654,16 +2664,16 @@ def create_api_router() -> APIRouter:
         response_model=ApiResponse,
         summary="Submit to processing pipeline",
         description="""
-        Submits an image file or folder for sequential processing through the pipeline.
+        Creates a WorkflowRun for sequential StageRuns on a WorkspaceTarget.
 
-        Operations are executed in order: score -> tag -> cluster.
+        StageRuns are executed in order based on stage_codes.
         For folder submissions, only the first applicable operation is queued immediately;
         subsequent operations should be triggered by the Electron app after the previous
         one completes (via status polling or WebSocket events).
 
-        For single-file submissions, the first operation runs immediately.
+        For single-file submissions, the first StageRun runs immediately.
 
-        For single files, only 'score' and 'tag' operations are supported.
+        For single files, only 'score' and 'tag' StageRuns are supported.
         'cluster' requires a folder path.
         """
     )
@@ -2672,25 +2682,25 @@ def create_api_router() -> APIRouter:
         from modules.ui.security import _check_rate_limit
         _check_rate_limit("pipeline_submit")
 
-        if not request.input_path or not request.input_path.strip():
-            raise HTTPException(status_code=400, detail="input_path is required")
-        if not os.path.exists(request.input_path):
-            raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
+        if not request.workspace_target or not request.workspace_target.strip():
+            raise HTTPException(status_code=400, detail="workspace_target is required")
+        if not os.path.exists(request.workspace_target):
+            raise HTTPException(status_code=400, detail=f"Path not found: {request.workspace_target}")
 
         valid_ops = {"indexing", "metadata", "score", "tag", "cluster"}
-        invalid_ops = [op for op in request.operations if op not in valid_ops]
+        invalid_ops = [op for op in request.stage_codes if op not in valid_ops]
         if invalid_ops:
-            raise HTTPException(status_code=400, detail=f"Invalid operations: {invalid_ops}. Valid: {sorted(valid_ops)}")
-        if not request.operations:
-            raise HTTPException(status_code=400, detail="At least one operation is required")
+            raise HTTPException(status_code=400, detail=f"Invalid stage_codes: {invalid_ops}. Valid: {sorted(valid_ops)}")
+        if not request.stage_codes:
+            raise HTTPException(status_code=400, detail="At least one stage_code is required")
 
-        is_file = os.path.isfile(request.input_path)
-        if is_file and "cluster" in request.operations:
+        is_file = os.path.isfile(request.workspace_target)
+        if is_file and "cluster" in request.stage_codes:
             raise HTTPException(status_code=400, detail="Clustering requires a folder path, not a single file")
 
         from modules import db
-        first_op = request.operations[0]
-        phase_plan = list(request.operations)
+        first_op = request.stage_codes[0]
+        phase_plan = list(request.stage_codes)
 
         if is_file:
             if first_op == "score":
@@ -2698,14 +2708,14 @@ def create_api_router() -> APIRouter:
                     raise HTTPException(status_code=503, detail="Scoring runner not available")
                 if _scoring_runner.is_running:
                     return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True})
-                success, message = _scoring_runner.run_single_image(request.input_path)
+                success, message = _scoring_runner.run_single_image(request.workspace_target)
             elif first_op == "tag":
                 if _tagging_runner is None:
                     raise HTTPException(status_code=503, detail="Tagging runner not available")
                 if _tagging_runner.is_running:
                     return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True})
                 success, message = _tagging_runner.run_single_image(
-                    request.input_path,
+                    request.workspace_target,
                     request.custom_keywords,
                     request.generate_captions,
                 )
@@ -2714,16 +2724,17 @@ def create_api_router() -> APIRouter:
 
             phase_plan = [
                 {"phase_order": i, "phase_code": op, "state": "completed" if i == 0 else "pending"}
-                for i, op in enumerate(request.operations)
+                for i, op in enumerate(request.stage_codes)
             ]
             return ApiResponse(
                 success=success,
                 message=message,
                 data={
-                    "file_path": request.input_path,
-                    "completed_operation": first_op,
-                    "phase_plan": phase_plan,
-                    "remaining_operations": request.operations[1:],
+                    "workspace_target": request.workspace_target,
+                    "workflow_template": request.workflow_template,
+                    "completed_stage_run": first_op,
+                    "stage_run_plan": phase_plan,
+                    "remaining_stage_runs": request.stage_codes[1:],
                 },
             )
 
@@ -2742,21 +2753,22 @@ def create_api_router() -> APIRouter:
             "tag": "tagging",
             "cluster": "clustering",
         }
-        phase_plan_codes = [op_to_phase_code.get(op, op) for op in request.operations]
+        phase_plan_codes = [op_to_phase_code.get(op, op) for op in request.stage_codes]
 
         if first_op in ["indexing", "metadata", "score"]:
             if _scoring_runner is None:
                 raise HTTPException(status_code=503, detail="Scoring runner not available")
             
             # Map operations to internal phase codes for the orchestrator
-            target_phases = [op_to_phase_code.get(op) for op in request.operations if op in ["indexing", "metadata", "score"]]
+            target_phases = [op_to_phase_code.get(op) for op in request.stage_codes if op in ["indexing", "metadata", "score"]]
             
             job_id, queue_position = db.enqueue_job(
-                request.input_path,
+                request.workspace_target,
                 phase_code=op_to_phase_code[first_op],
                 job_type="scoring", # Scoring runner handles indexing/metadata/scoring
                 queue_payload={
-                    "input_path": request.input_path, 
+                    "input_path": request.workspace_target,
+                    "workspace_target": request.workspace_target,
                     "skip_existing": request.skip_existing,
                     "target_phases": target_phases
                 },
@@ -2765,11 +2777,12 @@ def create_api_router() -> APIRouter:
             if _tagging_runner is None:
                 raise HTTPException(status_code=503, detail="Tagging runner not available")
             job_id, queue_position = db.enqueue_job(
-                request.input_path,
+                request.workspace_target,
                 phase_code="keywords",
                 job_type="tagging",
                 queue_payload={
-                    "input_path": request.input_path,
+                    "input_path": request.workspace_target,
+                    "workspace_target": request.workspace_target,
                     "custom_keywords": request.custom_keywords,
                     "overwrite": not request.skip_existing,
                     "generate_captions": request.generate_captions,
@@ -2779,11 +2792,12 @@ def create_api_router() -> APIRouter:
             if _clustering_runner is None:
                 raise HTTPException(status_code=503, detail="Clustering runner not available")
             job_id, queue_position = db.enqueue_job(
-                request.input_path,
+                request.workspace_target,
                 phase_code="culling",
                 job_type="clustering",
                 queue_payload={
-                    "input_path": request.input_path,
+                    "input_path": request.workspace_target,
+                    "workspace_target": request.workspace_target,
                     "threshold": request.clustering_threshold,
                     "time_gap": request.clustering_time_gap,
                     "force_rescan": request.clustering_force_rescan,
@@ -2791,20 +2805,21 @@ def create_api_router() -> APIRouter:
             )
 
         if job_id is None:
-            raise HTTPException(status_code=500, detail=f"Failed to enqueue pipeline job for operation: {first_op}")
+            raise HTTPException(status_code=500, detail=f"Failed to enqueue WorkflowRun for StageRun: {first_op}")
 
         phase_rows = db.create_job_phases(job_id, phase_plan_codes)
 
         return ApiResponse(
             success=True,
-            message=f"Pipeline queued: {op_to_label[first_op]}",
+            message=f"WorkflowRun queued: {op_to_label[first_op]}",
             data={
-                "job_id": job_id,
-                "input_path": request.input_path,
-                "current_operation": first_op,
+                "workflow_run_id": job_id,
+                "workspace_target": request.workspace_target,
+                "workflow_template": request.workflow_template,
+                "active_stage_run": first_op,
                 "queue_position": queue_position,
-                "phase_plan": phase_rows,
-                "remaining_operations": request.operations[1:],
+                "stage_run_plan": phase_rows,
+                "remaining_stage_runs": request.stage_codes[1:],
             },
         )
 
