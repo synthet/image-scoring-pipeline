@@ -12,6 +12,7 @@ tags:
   - name: Scoring
   - name: Tagging
   - name: Clustering
+  - name: Similarity
   - name: Data
   - name: Pipeline
   - name: General
@@ -452,6 +453,152 @@ paths:
         '500':
           description: Search failed
 
+  /similarity/search:
+    get:
+      tags: [Similarity]
+      summary: Find similar images
+      parameters:
+        - name: image_id
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: folder_path
+          in: query
+          schema: { type: string, nullable: true }
+        - name: min_similarity
+          in: query
+          schema: { type: number, minimum: 0, maximum: 1, default: 0.8 }
+      responses:
+        '200':
+          description: Similar images found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimilaritySearchResponse'
+        '400':
+          description: Invalid similarity request
+        '404':
+          description: Query image not found
+
+  /similarity/similar:
+    get:
+      tags: [Similarity]
+      summary: Find similar images (alias)
+      description: Compatibility alias for `/similarity/search`.
+      parameters:
+        - name: image_id
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: folder_path
+          in: query
+          schema: { type: string, nullable: true }
+        - name: min_similarity
+          in: query
+          schema: { type: number, minimum: 0, maximum: 1, default: 0.8 }
+      responses:
+        '200':
+          description: Similar images found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimilaritySearchResponse'
+        '400':
+          description: Invalid similarity request
+        '404':
+          description: Query image not found
+
+  /similarity/duplicates:
+    get:
+      tags: [Similarity]
+      summary: Find near-duplicate images
+      parameters:
+        - name: threshold
+          in: query
+          schema: { type: number, minimum: 0, maximum: 1, nullable: true }
+        - name: folder_path
+          in: query
+          schema: { type: string, nullable: true }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 10000, default: 1000 }
+      responses:
+        '200':
+          description: Near-duplicate image pairs found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DuplicateListResponse'
+        '500':
+          description: Duplicate detection failed
+
+  /outliers:
+    get:
+      tags: [Similarity]
+      summary: Find visual outliers in a folder
+      parameters:
+        - name: folder_path
+          in: query
+          required: true
+          schema: { type: string }
+        - name: z_threshold
+          in: query
+          schema: { type: number, minimum: 0, nullable: true }
+        - name: k
+          in: query
+          schema: { type: integer, minimum: 1, nullable: true }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+      responses:
+        '200':
+          description: Outlier analysis completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutlierResponse'
+        '400':
+          description: Invalid outlier request
+        '500':
+          description: Outlier detection failed
+
+  /similarity/outliers:
+    get:
+      tags: [Similarity]
+      summary: Find visual outliers (alias)
+      description: Compatibility alias for `/outliers`.
+      parameters:
+        - name: folder_path
+          in: query
+          required: true
+          schema: { type: string }
+        - name: z_threshold
+          in: query
+          schema: { type: number, minimum: 0, nullable: true }
+        - name: k
+          in: query
+          schema: { type: integer, minimum: 1, nullable: true }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+      responses:
+        '200':
+          description: Outlier analysis completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutlierResponse'
+        '400':
+          description: Invalid outlier request
+        '500':
+          description: Outlier detection failed
+
   # --- Pipeline ---
   /pipeline/submit:
     post:
@@ -474,6 +621,68 @@ paths:
           description: Invalid path, operations, or clustering on single file
         '503':
           description: Runner not available
+
+  /pipeline/phase/skip:
+    post:
+      tags: [Pipeline]
+      summary: Skip a pipeline phase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelinePhaseControlRequest'
+      responses:
+        '200':
+          description: Phase marked as skipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: Invalid folder path
+
+  /pipeline/phase/retry:
+    post:
+      tags: [Pipeline]
+      summary: Retry a skipped pipeline phase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelinePhaseControlRequest'
+      responses:
+        '200':
+          description: Phase retry started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: Invalid path or unsupported phase
+        '503':
+          description: Runner not available
+
+  /pipeline/phase/backfill-index-meta:
+    post:
+      tags: [Pipeline]
+      summary: Backfill Index and Metadata phase status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineBackfillRequest'
+      responses:
+        '200':
+          description: Phase status backfill complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: Invalid folder path
 
   # --- General ---
   /status:
@@ -663,6 +872,77 @@ components:
         folder_path: { type: string, nullable: true, description: Restrict search to folder }
         limit: { type: integer, nullable: true, description: Max pairs to return }
 
+    SimilarityResultItem:
+      type: object
+      properties:
+        image_id: { type: integer }
+        file_path: { type: string }
+        similarity: { type: number }
+
+    SimilaritySearchResponse:
+      type: object
+      required: [query_image_id, results, count]
+      properties:
+        query_image_id: { type: integer }
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SimilarityResultItem'
+        count: { type: integer }
+
+    DuplicatePair:
+      type: object
+      properties:
+        a_image_id: { type: integer }
+        b_image_id: { type: integer }
+        similarity: { type: number }
+
+    DuplicateListResponse:
+      type: object
+      required: [duplicates, count]
+      properties:
+        duplicates:
+          type: array
+          items:
+            $ref: '#/components/schemas/DuplicatePair'
+        count: { type: integer }
+
+    OutlierNeighbor:
+      type: object
+      properties:
+        image_id: { type: integer }
+        file_path: { type: string }
+        similarity: { type: number }
+
+    OutlierItem:
+      type: object
+      properties:
+        image_id: { type: integer }
+        file_path: { type: string }
+        outlier_score: { type: number }
+        z_score: { type: number }
+        nearest_neighbors:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutlierNeighbor'
+
+    OutlierResponse:
+      type: object
+      required: [outliers, stats, skipped]
+      properties:
+        outliers:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutlierItem'
+        stats:
+          type: object
+          additionalProperties: true
+        skipped:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
     PipelineSubmitRequest:
       type: object
       required: [input_path]
@@ -670,12 +950,29 @@ components:
         input_path: { type: string }
         operations:
           type: array
-          items: { type: string, enum: [score, tag, cluster] }
+          items: { type: string, enum: [indexing, metadata, score, tag, cluster] }
           default: [score, tag]
         skip_existing: { type: boolean, default: true }
         custom_keywords: { type: array, items: { type: string } }
         generate_captions: { type: boolean, default: false }
         clustering_threshold: { type: number }
+        clustering_time_gap: { type: integer, nullable: true }
+        clustering_force_rescan: { type: boolean, default: false }
+
+    PipelinePhaseControlRequest:
+      type: object
+      required: [input_path, phase_code]
+      properties:
+        input_path: { type: string }
+        phase_code: { type: string, example: scoring }
+        reason: { type: string, nullable: true }
+        actor: { type: string, nullable: true }
+
+    PipelineBackfillRequest:
+      type: object
+      required: [input_path]
+      properties:
+        input_path: { type: string }
 
     DatabaseStats:
       type: object

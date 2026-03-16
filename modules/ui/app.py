@@ -112,6 +112,8 @@ def create_ui():
             pipeline_components["scoring_run_btn"],
             pipeline_components["culling_run_btn"],
             pipeline_components["keywords_run_btn"],
+            pipeline_components["repair_index_meta_btn"],
+            pipeline_components["run_metadata_btn"],
             pipeline_components["quick_start_html"],
         ]
 

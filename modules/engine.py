@@ -27,12 +27,32 @@ class BatchImageProcessor:
     def log(self, msg, level="INFO"):
         lvl = getattr(logging, level.upper(), logging.INFO)
         self.logger.log(lvl, msg)
+        if getattr(self, "log_func", None):
+            try:
+                self.log_func(msg)
+            except Exception:
+                pass
 
     def _on_item_finished(self):
         self.processed_count += 1
         if self.progress_callback:
             self.progress_callback(self.processed_count, self.total_count)
-            
+
+    def get_pipeline_depth(self):
+        """Returns the number of images currently held in internal pipeline queues."""
+        total = 0
+        for q in (
+            getattr(self, "_prep_queue", None),
+            getattr(self, "_scoring_queue", None),
+            getattr(self, "_result_queue", None),
+        ):
+            if q is not None:
+                try:
+                    total += q.qsize()
+                except NotImplementedError:
+                    pass
+        return total
+
     def process_directory(self, input_dir, output_dir_unused, callback=None):
         """
         Main entry point for batch processing.
@@ -114,18 +134,19 @@ class BatchImageProcessor:
         prep_queue = queue.Queue(maxsize=int(prep_queue_size))
         scoring_queue = queue.Queue(maxsize=int(scoring_queue_size)) # Keep small to avoid VRAM overload if buffering
         result_queue = queue.Queue(maxsize=int(result_queue_size)) # Just for sync
-        
+        self._prep_queue = prep_queue
+        self._scoring_queue = scoring_queue
+        self._result_queue = result_queue
+
         self.stop_event.clear()
         
         # Workers
         prep_worker = pipeline.PrepWorker(prep_queue, scoring_queue, self.stop_event, self.scorer)
         scoring_worker = pipeline.ScoringWorker(scoring_queue, result_queue, self.stop_event, self.scorer)
         
-        # Result callback wrapper
+        # Result callback wrapper — self.log() forwards to log_func when set (ScoringRunner), so per-image progress appears in UI console
         def result_logger(msg):
             self.log(msg)
-            # If we want to yield to the UI generator, we strictly can't "return" from here
-            # but the log_func passed from ScoringRunner is capturing this.
             
         result_worker = pipeline.ResultWorker(result_queue, None, self.stop_event, scorer_instance=self.scorer, progress_callback=result_logger, item_finished_callback=self._on_item_finished)
         
@@ -163,14 +184,15 @@ class BatchImageProcessor:
                 target_phases=self.target_phases
             )
             
-            try:
-                prep_queue.put(job, timeout=2.0)
-                # Check status periodically
-                while prep_queue.full() and not self.stop_event.is_set():
-                     time.sleep(0.1)
-            except KeyboardInterrupt:
-                self.stop_event.set()
-                break
+            while not self.stop_event.is_set():
+                try:
+                    prep_queue.put(job, timeout=2.0)
+                    break  # successfully enqueued
+                except queue.Full:
+                    continue  # retry same job
+                except KeyboardInterrupt:
+                    self.stop_event.set()
+                    break
                 
         # 5. Wait for completion
         # Send sentinels

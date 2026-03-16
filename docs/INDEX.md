@@ -173,6 +173,7 @@ Model specifications, scoring strategy, and fallback systems.
 
 | Document | Description |
 |----------|-------------|
+| [CROSS_APP_INTEGRATION_AUDIT.md](testing/CROSS_APP_INTEGRATION_AUDIT.md) | Audit of shared backend/Electron integration coverage and gaps |
 | [TEST_STATUS.md](testing/TEST_STATUS.md) | Unit test status overview |
 | [WSL_TESTS.md](testing/WSL_TESTS.md) | WSL-only pytest markers |
 | [DOCUMENTATION_ISSUES.md](testing/DOCUMENTATION_ISSUES.md) | Testing documentation issues and recommendations |

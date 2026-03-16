@@ -6,9 +6,9 @@ Backend tasks for embedding-based features. See [NEXT_STEPS.md](NEXT_STEPS.md) f
 
 ## API REST Endpoints (Priority 1)
 
-- [ ] `GET /api/similarity/similar?image_id=123` — Visually similar images across folders
-- [ ] `GET /api/similarity/duplicates?folder_path=...` — Near-duplicate pairs
-- [ ] `GET /api/similarity/outliers?folder_path=...` — Low neighborhood similarity images
+- [x] `GET /api/similarity/similar?image_id=123` — Visually similar images across folders
+- [x] `GET /api/similarity/duplicates?folder_path=...` — Near-duplicate pairs
+- [x] `GET /api/similarity/outliers?folder_path=...` — Low neighborhood similarity images
 
 ## Clustering & Selection
 

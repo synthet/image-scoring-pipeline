@@ -87,6 +87,16 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                         <div class="panel-header">
                             <h2 class="panel-title">Pipeline Progress</h2>
                         </div>
+                        <div class="pipeline-overview" role="region" aria-label="Pipeline explanation">
+                            <p class="section-microcopy">
+                                <strong>5 phases</strong> run in order: <strong>1. Index</strong> (discover & register images) →
+                                <strong>2. Meta</strong> (extract EXIF/XMP) →
+                                <strong>3. Scoring</strong> (AI quality scores) →
+                                <strong>4. Culling</strong> (pick best per stack) →
+                                <strong>5. Keywords</strong> (tagging). Each phase shows <em>done / total</em> images for that phase.
+                                Index and Meta run inside Scoring; their counts can differ until Scoring completes.
+                            </p>
+                        </div>
                         """
                     )
                     with gr.Column(elem_classes=["panel-body"]):
@@ -94,10 +104,14 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                         with gr.Row(elem_classes=["pipeline-actions"]):
                             components["run_all_btn"] = gr.Button("Run All Pending", variant="primary", elem_classes=["primary-btn"])
                             components["stop_all_btn"] = gr.Button("Stop All", variant="stop", elem_classes=["danger-btn"])
+                            components["repair_index_meta_btn"] = gr.Button("Repair Index/Meta", variant="secondary", elem_classes=["secondary-btn"])
+                            components["run_metadata_btn"] = gr.Button("Run Metadata", variant="secondary", elem_classes=["secondary-btn"])
                         gr.HTML(
                             "<p class='section-microcopy'>"
                             "<strong>Run All Pending</strong> \u2014 starts Scoring, Culling, and Keywords for images not yet processed. "
-                            "<strong>Stop All</strong> \u2014 halts the active job; progress is preserved."
+                            "<strong>Stop All</strong> \u2014 halts the active job; progress is preserved. "
+                            "<strong>Repair Index/Meta</strong> \u2014 backfills Index and Meta status for images with Scoring done but missing phase status. "
+                            "<strong>Run Metadata</strong> \u2014 extracts EXIF/XMP and creates thumbnails for images missing metadata (no scoring)."
                             "</p>"
                         )
                         # Stop All confirmation (hidden until Stop All clicked)
@@ -183,7 +197,7 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
 
     # Wire up folder selection to update HTML rendering (force_refresh to avoid stale cache)
     components["selected_path"].change(
-        fn=lambda p: _update_folder_selection(p, force_refresh=True),
+        fn=lambda p: _update_folder_selection(p, force_refresh=True)[:6],
         inputs=[components["selected_path"]],
         outputs=[
             components["folder_summary_html"],
@@ -201,7 +215,29 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
             db.invalidate_folder_phase_aggregates(folder_path=selected_path)
         tree_html = ui_tree.get_tree_html()
         folder_outputs = _update_folder_selection(selected_path or "", force_refresh=True)
-        return (tree_html,) + folder_outputs
+        # Outputs: tree_view + 6 UI components (folder_outputs has 7th elem total_count for internal use)
+        return (tree_html,) + folder_outputs[:6]
+
+    def _on_repair_index_meta(selected_path):
+        """Backfill Index/Meta for images with Scoring done but missing phase status."""
+        if not selected_path or not selected_path.strip():
+            return _on_refresh_click("")
+        updated = db.backfill_index_meta_for_folder(selected_path)
+        return _on_refresh_click(selected_path)
+
+    components["repair_index_meta_btn"].click(
+        fn=_on_repair_index_meta,
+        inputs=[components["selected_path"]],
+        outputs=[
+            components["tree_view"],
+            components["folder_summary_html"],
+            components["stepper_html"],
+            components["scoring_card_html"],
+            components["culling_card_html"],
+            components["keywords_card_html"],
+            components["quick_start_html"],
+        ],
+    )
 
     components["refresh_btn"].click(
         fn=_on_refresh_click,
@@ -228,6 +264,21 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
             phase_code="scoring",
             job_type="scoring",
             queue_payload={"input_path": path, "skip_existing": not force},
+        )
+
+    def _run_metadata(path):
+        """Run indexing and metadata extraction only (no scoring)."""
+        if not path:
+            return
+        db.enqueue_job(
+            path,
+            phase_code="scoring",
+            job_type="scoring",
+            queue_payload={
+                "input_path": path,
+                "skip_existing": False,
+                "target_phases": ["indexing", "metadata"],
+            },
         )
 
     def _run_culling(path, force):
@@ -315,6 +366,11 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
     )
     components["run_all_btn"].click(
         fn=_run_all_pending,
+        inputs=[components["selected_path"]],
+        outputs=[]
+    )
+    components["run_metadata_btn"].click(
+        fn=_run_metadata,
         inputs=[components["selected_path"]],
         outputs=[]
     )
@@ -421,7 +477,10 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
 
 
 def _update_folder_selection(folder_path: str, force_refresh=False, is_running=False):
-    """Updates the static UI components when a new folder is selected."""
+    """Updates the static UI components when a new folder is selected.
+
+    Returns: (summary_html, stepper_html, scoring_card, culling_card, keywords_card, quick_start_html, total_count)
+    """
     if not folder_path:
         return (
             _build_folder_summary(None, 0),
@@ -430,6 +489,7 @@ def _update_folder_selection(folder_path: str, force_refresh=False, is_running=F
             _build_phase_card_html("CULLING", "Not Started", 0, 0),
             _build_phase_card_html("KEYWORDS", "Not Started", 0, 0),
             _build_quick_start_html(None, is_running=is_running),
+            0,
         )
 
     summary_by_code, total_count = _parse_phase_summary(folder_path, force_refresh=force_refresh)
@@ -445,6 +505,7 @@ def _update_folder_selection(folder_path: str, force_refresh=False, is_running=F
         _build_phase_card_html("CULLING", cu.get("status", "not_started"), cu.get("done_count", 0), total_count),
         _build_phase_card_html("KEYWORDS", kw.get("status", "not_started"), kw.get("done_count", 0), total_count),
         _build_quick_start_html(folder_path, summary_by_code, is_running=is_running),
+        total_count,
     )
 
 
@@ -453,14 +514,22 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
     # Process Orchestrator tick
     orchestrator.on_tick()
 
-    is_running, mon_name, mon_msg, mon_cur, mon_tot, console_out = _unified_monitor_status(
+    is_running, mon_name, mon_msg, mon_cur, mon_tot, console_out, pipeline_depth = _unified_monitor_status(
         scoring_runner, tagging_runner, selection_runner
     )
 
     queued_jobs = db.get_queued_jobs(limit=5)
 
+    # Rebuild stepper/cards from current folder state (force_refresh when running for real-time updates)
+    res_summary, res_stepper, res_sc, res_cu, res_kw, res_qs, folder_total = _update_folder_selection(
+        selected_folder, force_refresh=is_running, is_running=is_running
+    )
+
     if is_running:
-        monitor_html = _build_monitor_html(mon_name, mon_msg, mon_cur, mon_tot, queued_jobs)
+        monitor_html = _build_monitor_html(
+            mon_name, mon_msg, mon_cur, mon_tot, queued_jobs,
+            folder_total=folder_total, pipeline_depth=pipeline_depth
+        )
     else:
         status = orchestrator.get_status()
         monitor_html = _build_idle_html(
@@ -470,14 +539,9 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
 
     not_running = not is_running
 
-    # Rebuild stepper/cards from current folder state
-    res_summary, res_stepper, res_sc, res_cu, res_kw, res_qs = _update_folder_selection(
-        selected_folder, is_running=is_running
-    )
-
     # Return order must match monitor_outputs in app.py:
     # stepper, scoring_card, culling_card, keywords_card,
-    # monitor, console, run_all, stop_all, sc_run, cu_run, kw_run, quick_start
+    # monitor, console, run_all, stop_all, sc_run, cu_run, kw_run, repair, run_meta, quick_start
     result = (
         res_stepper,
         res_sc,
@@ -490,13 +554,15 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
         gr.update(interactive=not_running),  # scoring_run
         gr.update(interactive=not_running),  # culling_run
         gr.update(interactive=not_running),  # keywords_run
+        gr.update(interactive=not_running),  # repair_index_meta
+        gr.update(interactive=not_running),  # run_metadata
         res_qs,                              # quick_start
     )
 
     # Skip SSE push if nothing changed since last tick
     cache_key = (res_stepper, res_sc, res_cu, res_kw, monitor_html, console_out, is_running)
     if cache_key == _last_status_cache["state"]:
-        return tuple(gr.skip() for _ in range(12))
+        return tuple(gr.skip() for _ in range(14))
     _last_status_cache["state"] = cache_key
 
     return result
@@ -513,10 +579,12 @@ def _unified_monitor_status(scoring_runner, tagging_runner, selection_runner):
     ]:
         if not runner_obj:
             continue
-        is_running, log, msg, cur, tot = runner_obj.get_status()
+        result = runner_obj.get_status()
+        is_running, log, msg, cur, tot = result[:5]
+        depth = result[5] if len(result) > 5 else 0
         if is_running:
-            return True, name, msg, cur, tot, log
-    return False, "", "", 0, 0, ""
+            return True, name, msg, cur, tot, log, depth
+    return False, "", "", 0, 0, "", 0
 
 
 def _build_quick_start_html(folder_path, summary_by_code=None, is_running=False):
@@ -583,9 +651,9 @@ def _build_folder_summary(path, count):
 
 def _render_queue_html(queued_jobs):
     if not queued_jobs:
-        return "<p class='phase-stats'>Queue: empty</p>"
+        return "<p class='phase-stats'>Job queue: empty</p>"
 
-    lines = ["<div class='phase-stats'>Queue:</div>", "<ul class='phase-stats'>"]
+    lines = ["<div class='phase-stats'>Job queue:</div>", "<ul class='phase-stats'>"]
     for job in queued_jobs:
         lines.append(
             f"<li>#{job.get('id')} {job.get('job_type') or 'job'} "
@@ -611,15 +679,27 @@ def _build_idle_html(recovery_info=None, queued_jobs=None):
     return base + _render_queue_html(queued_jobs) + "</div>"
 
 
-def _build_monitor_html(name, msg, current, total, queued_jobs=None):
+def _build_monitor_html(name, msg, current, total, queued_jobs=None, folder_total=None, pipeline_depth=0):
+    """Build monitor HTML. Numbers show current batch progress; folder_total adds folder-scope context."""
     queued_jobs = queued_jobs or []
     pct = (current / total * 100) if total > 0 else 0
+    batch_line = f"{msg} ({current}/{total})"
+    folder_line = ""
+    if folder_total is not None and folder_total > 0 and folder_total != total:
+        folder_line = f"<p class='section-microcopy'>Batch: {current}/{total} · Folder total: {folder_total} images</p>"
+    else:
+        folder_line = "<p class='section-microcopy'>Processing images in current batch. See Console Output for per-image progress.</p>"
+    pipeline_line = ""
+    if pipeline_depth > 0:
+        pipeline_line = f"<p class='section-microcopy'>Pipeline: {pipeline_depth} image(s) in queue</p>"
     return f"""
     <div class="panel-body">
       <div class="phase-head">
         <div class="phase-title">{name} Progress</div>
       </div>
-      <div class="phase-stats">{msg} ({current}/{total})</div>
+      <div class="phase-stats">{batch_line}</div>
+      {folder_line}
+      {pipeline_line}
       <div class="progress"><div class="progress-fill" style="width: {pct:.1f}%;"></div></div>
       {_render_queue_html(queued_jobs)}
     </div>
@@ -713,7 +793,7 @@ def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
 
       <div class="step {get_state(met, total)}" role="listitem" aria-label="Metadata: {met_done} of {total}">
         <div class="step-dot">2</div>
-        <div class="step-label">Meta</div>
+        <div class="step-label">Metadata</div>
         <div class="step-count">{met_done} / {total}</div>
       </div>
       <div class="connector {get_state(met, total)}" aria-hidden="true"></div>

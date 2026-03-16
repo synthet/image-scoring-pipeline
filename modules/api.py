@@ -46,7 +46,8 @@ Endpoints:
 """
 
 from fastapi import APIRouter, HTTPException, Body, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+import json
 
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
@@ -566,6 +567,11 @@ class PipelinePhaseControlRequest(BaseModel):
     phase_code: str = Field(..., description="Phase code (e.g. scoring, culling, keywords).")
     reason: Optional[str] = Field(None, description="Skip reason when action=skip.")
     actor: Optional[str] = Field(None, description="Actor identifier who initiated action.")
+
+
+class PipelineBackfillRequest(BaseModel):
+    """Request model for backfill Index/Meta phase status."""
+    input_path: str = Field(..., description="Folder path for backfill operation.")
 
 
 class ApiResponse(BaseModel):
@@ -1706,7 +1712,205 @@ def create_api_router() -> APIRouter:
                  
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-    
+
+    @router.post(
+        "/images/generate-thumbnail",
+        summary="Generate thumbnail for an image",
+        description="Generate and persist a thumbnail for an image that is missing one. "
+                    "Updates the database with the new thumbnail path.",
+    )
+    async def generate_thumbnail_endpoint(request: SingleImageRequest):
+        """Generate a thumbnail on demand for a single image."""
+        import urllib.parse
+        from modules import thumbnails
+        from modules import db
+
+        file_path = request.file_path
+        decoded_path = urllib.parse.unquote(file_path)
+
+        # --- path resolution (mirrors get_raw_preview) ---
+        if not os.path.exists(decoded_path) and not os.path.isabs(decoded_path):
+            try:
+                conn = db.get_db()
+                cursor = conn.cursor()
+                try:
+                    cursor.execute("SELECT file_path FROM images WHERE file_name = ?", (decoded_path,))
+                    row = cursor.fetchone()
+                    if row:
+                        decoded_path = row[0]
+                except Exception:
+                    pass
+                finally:
+                    conn.close()
+            except Exception:
+                pass
+
+        if not os.path.exists(decoded_path):
+            if decoded_path.startswith('/mnt/'):
+                try:
+                    parts = decoded_path.split('/')
+                    if len(parts) > 2:
+                        drive = parts[2].upper()
+                        rest = os.sep.join(parts[3:])
+                        win_path = f"{drive}:{os.sep}{rest}"
+                        if os.path.exists(win_path):
+                            decoded_path = win_path
+                except (OSError, IndexError, ValueError):
+                    pass
+
+        if not os.path.exists(decoded_path):
+            abs_path = os.path.abspath(decoded_path)
+            if os.path.exists(abs_path):
+                decoded_path = abs_path
+            else:
+                raise HTTPException(status_code=404, detail=f"File not found: {decoded_path}")
+
+        # --- generate thumbnail ---
+        try:
+            thumb_path = thumbnails.generate_thumbnail(decoded_path)
+            if not thumb_path or not os.path.exists(thumb_path):
+                raise HTTPException(status_code=500, detail="Thumbnail generation failed")
+
+            # Compute both path formats for DB
+            thumb_wsl = thumbnails.thumb_path_to_wsl(thumb_path)
+            thumb_win = thumbnails.thumb_path_to_win(thumb_path)
+
+            # Update DB
+            try:
+                conn = db.get_db()
+                cursor = conn.cursor()
+                try:
+                    cursor.execute(
+                        "UPDATE images SET thumbnail_path=?, thumbnail_path_win=? WHERE file_path=?",
+                        (thumb_wsl, thumb_win, file_path),
+                    )
+                    if cursor.rowcount == 0:
+                        # Try matching by resolved path
+                        cursor.execute(
+                            "UPDATE images SET thumbnail_path=?, thumbnail_path_win=? WHERE file_path=?",
+                            (thumb_wsl, thumb_win, decoded_path),
+                        )
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Warning: thumbnail generated but DB update failed: {e}")
+                finally:
+                    conn.close()
+            except Exception as e:
+                print(f"Warning: could not update DB with thumbnail path: {e}")
+
+            return {
+                "success": True,
+                "thumbnail_path": thumb_win,
+                "message": "Thumbnail generated successfully",
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # ========== Tasks (Unified Active State) ==========
+
+    @router.get(
+        "/tasks/active",
+        response_model=Dict[str, Any],
+        summary="Get active tasks (unified)",
+        description="""
+        Returns a unified view of active tasks, workers, and jobs in a single response.
+        Combines runner status, dispatcher state, and the currently running job.
+
+        **Response Structure:**
+        - runners: Status of scoring, tagging, clustering runners (is_running, progress, log)
+        - dispatcher: Queue state (queue, queue_size, active_runner, is_dispatcher_running)
+        - active_job: The currently running job if any, or null
+        """
+    )
+    async def get_tasks_active(limit: int = 200):
+        """Get unified active tasks, workers, and jobs."""
+        from modules import db
+        try:
+            # Runners status (same logic as get_all_status)
+            runners = {
+                "scoring": {"available": False},
+                "tagging": {"available": False},
+                "clustering": {"available": False}
+            }
+            if _scoring_runner:
+                try:
+                    is_running, log, status_msg, current, total = _scoring_runner.get_status()
+                    runners["scoring"] = {
+                        "available": True,
+                        "is_running": is_running,
+                        "status_message": status_msg,
+                        "progress": {"current": current, "total": total},
+                        "log": log[-2000:] if log else "",
+                        "job_type": getattr(_scoring_runner, 'job_type', None)
+                    }
+                except Exception as e:
+                    runners["scoring"]["error"] = str(e)
+            if _tagging_runner:
+                try:
+                    is_running, log, status_msg, current, total = _tagging_runner.get_status()
+                    runners["tagging"] = {
+                        "available": True,
+                        "is_running": is_running,
+                        "status_message": status_msg,
+                        "progress": {"current": current, "total": total},
+                        "log": log[-2000:] if log else ""
+                    }
+                except Exception as e:
+                    runners["tagging"]["error"] = str(e)
+            if _clustering_runner:
+                try:
+                    is_running, log, status_msg, current, total = _clustering_runner.get_status()
+                    runners["clustering"] = {
+                        "available": True,
+                        "is_running": is_running,
+                        "status_message": status_msg,
+                        "progress": {"current": current, "total": total},
+                        "log": log[-2000:] if log else ""
+                    }
+                except Exception as e:
+                    runners["clustering"]["error"] = str(e)
+
+            # Dispatcher state
+            state = _job_dispatcher.get_state()
+            state["queue"] = db.get_queued_jobs(limit=limit)
+            state["queue_size"] = len(state["queue"])
+            dispatcher = state
+
+            # Active job: first running job from recent jobs, or from active runner's job_id
+            active_job = None
+            active_runner = dispatcher.get("active_runner")
+            if active_runner:
+                # Try to get job_id from the active runner
+                runner = None
+                if active_runner == "scoring" and _scoring_runner:
+                    runner = _scoring_runner
+                elif active_runner == "tagging" and _tagging_runner:
+                    runner = _tagging_runner
+                elif active_runner == "clustering" and _clustering_runner:
+                    runner = _clustering_runner
+                job_id = getattr(runner, "job_id", None) if runner else None
+                if job_id:
+                    active_job = db.get_job_by_id(job_id)
+            if not active_job:
+                # Fallback: first running job from recent jobs
+                recent = db.get_jobs(limit=20)
+                for j in recent:
+                    if (j.get("status") or "").lower() == "running":
+                        active_job = j
+                        break
+
+            return {
+                "runners": runners,
+                "dispatcher": dispatcher,
+                "active_job": active_job
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     @router.get(
         "/jobs/recent",
         response_model=List[Dict[str, Any]],
@@ -1807,6 +2011,26 @@ def create_api_router() -> APIRouter:
 
     @router.get(
         "/similar",
+        summary="[DEPRECATED] Find similar images",
+        description="DEPRECATED: Use GET /api/similarity/search instead.",
+        deprecated=True,
+    )
+    def get_similar_images_legacy(
+        image_id: int = Query(..., description="ID of the query image"),
+        limit: int = Query(20, ge=1, le=100, description="Maximum number of results"),
+        folder_path: Optional[str] = Query(None, description="Scope search to folder"),
+        min_similarity: Optional[float] = Query(0.80, ge=0.0, le=1.0, description="Minimum similarity threshold"),
+    ):
+        """Deprecated legacy similarity search."""
+        return get_similar_images_similarity_namespace(
+            image_id=image_id,
+            limit=limit,
+            folder_path=folder_path,
+            min_similarity=min_similarity,
+        )
+
+    @router.get(
+        "/similarity/search",
         summary="Find similar images",
         description="""
         Find images visually similar to a given image using embedding-based cosine similarity.
@@ -1821,20 +2045,16 @@ def create_api_router() -> APIRouter:
         - query_image_id: ID of the query image
         - results: List of {image_id, file_path, similarity}
         - count: Number of results returned
-        
-        **Errors:**
-        - 400: Missing or invalid image_id
-        - 404: Image not found
-        - 400: No embeddings (run clustering first)
-        """
+        """,
+        tags=["Similarity"]
     )
-    def get_similar_images(
+    def get_similar_images_similarity_namespace(
         image_id: int = Query(..., description="ID of the query image"),
         limit: int = Query(20, ge=1, le=100, description="Maximum number of results"),
         folder_path: Optional[str] = Query(None, description="Scope search to folder"),
         min_similarity: Optional[float] = Query(0.80, ge=0.0, le=1.0, description="Minimum similarity threshold"),
     ):
-        """Find images similar to the given image by ID."""
+        """Find images similar to the given image by ID (new similarity namespace)."""
         from modules import similar_search, db
         # Verify image exists before searching
         conn = db.get_db()
@@ -1865,9 +2085,26 @@ def create_api_router() -> APIRouter:
 
     # ========== Find Duplicates Endpoints ==========
 
-    @router.post("/duplicates/find", response_model=ApiResponse)
-    def find_duplicates(req: FindDuplicatesRequest = Body(...)):
-        """Find near-duplicate image pairs in the database."""
+    @router.post(
+        "/duplicates/find", 
+        response_model=ApiResponse,
+        summary="[DEPRECATED] Find near-duplicate images",
+        description="DEPRECATED: Use POST /api/similarity/duplicates instead.",
+        deprecated=True,
+    )
+    def find_duplicates_legacy(req: FindDuplicatesRequest = Body(...)):
+        """Deprecated legacy duplicate detection."""
+        return post_duplicates_similarity_namespace(req)
+
+    @router.post(
+        "/similarity/duplicates", 
+        response_model=ApiResponse,
+        summary="Find near-duplicate images",
+        description="Detect likely duplicate image pairs using embedding cosine similarity.",
+        tags=["Similarity"]
+    )
+    def post_duplicates_similarity_namespace(req: FindDuplicatesRequest = Body(...)):
+        """Find near-duplicate image pairs in the database (similarity namespace)."""
         try:
             from modules import similar_search
             results = similar_search.find_near_duplicates(
@@ -1885,17 +2122,18 @@ def create_api_router() -> APIRouter:
 
     @router.get(
         "/similarity/similar",
-        summary="Find similar images (similarity namespace)",
-        description="Alias endpoint for GET /api/similar under the /api/similarity namespace.",
+        summary="[DEPRECATED] Find similar images",
+        description="DEPRECATED: Use GET /api/similarity/search instead.",
+        deprecated=True,
     )
-    def get_similar_images_similarity_namespace(
+    def get_similar_images_alias(
         image_id: int = Query(..., description="ID of the query image"),
         limit: int = Query(20, ge=1, le=100, description="Maximum number of results"),
         folder_path: Optional[str] = Query(None, description="Scope search to folder"),
         min_similarity: Optional[float] = Query(0.80, ge=0.0, le=1.0, description="Minimum similarity threshold"),
     ):
-        """Compatibility alias for similarity search under /api/similarity/similar."""
-        return get_similar_images(
+        """Deprecated alias for similarity search."""
+        return get_similar_images_similarity_namespace(
             image_id=image_id,
             limit=limit,
             folder_path=folder_path,
@@ -1937,7 +2175,28 @@ def create_api_router() -> APIRouter:
     @router.get(
         "/outliers",
         response_model=OutlierResponse,
-        summary="Find visual outliers in a folder",
+        summary="[DEPRECATED] Find visual outliers in a folder",
+        description="DEPRECATED: Use GET /api/similarity/outliers instead.",
+        deprecated=True,
+    )
+    def get_outliers_legacy(
+        folder_path: str = Query(..., description="Folder path to analyze"),
+        z_threshold: Optional[float] = Query(None, ge=0.0, description="Outlier z-score threshold"),
+        k: Optional[int] = Query(None, ge=1, description="Top-K neighbors used for local density"),
+        limit: int = Query(100, ge=1, le=1000, description="Maximum outlier results to return"),
+    ):
+        """Deprecated legacy outlier search."""
+        return get_outliers_similarity_namespace(
+            folder_path=folder_path,
+            z_threshold=z_threshold,
+            k=k,
+            limit=limit,
+        )
+
+    @router.get(
+        "/similarity/outliers",
+        response_model=OutlierResponse,
+        summary="Find visual outliers",
         description="""
         Identify visually atypical images inside a folder using embedding-based similarity analysis.
 
@@ -1951,15 +2210,16 @@ def create_api_router() -> APIRouter:
         - outliers: List of flagged images with outlier scores, z-scores, and nearest-neighbor explainability.
         - stats: Folder-level summary statistics used during detection.
         - skipped: Images skipped due to missing embeddings.
-        """
+        """,
+        tags=["Similarity"]
     )
-    def get_outliers(
+    def get_outliers_similarity_namespace(
         folder_path: str = Query(..., description="Folder path to analyze"),
         z_threshold: Optional[float] = Query(None, ge=0.0, description="Outlier z-score threshold"),
         k: Optional[int] = Query(None, ge=1, description="Top-K neighbors used for local density"),
         limit: int = Query(100, ge=1, le=1000, description="Maximum outlier results to return"),
     ):
-        """Find statistically atypical images based on embedding similarity."""
+        """Find statistically atypical images based on embedding similarity (similarity namespace)."""
         from modules import similar_search
         try:
             result = similar_search.find_outliers(
@@ -1977,25 +2237,6 @@ def create_api_router() -> APIRouter:
             logger.error("Error in get_outliers for %s: %s", folder_path, exc)
             raise HTTPException(status_code=500, detail=str(exc))
 
-    @router.get(
-        "/similarity/outliers",
-        response_model=OutlierResponse,
-        summary="Find visual outliers (similarity namespace)",
-        description="Alias endpoint for GET /api/outliers under the /api/similarity namespace.",
-    )
-    def get_outliers_similarity_namespace(
-        folder_path: str = Query(..., description="Folder path to analyze"),
-        z_threshold: Optional[float] = Query(None, ge=0.0, description="Outlier z-score threshold"),
-        k: Optional[int] = Query(None, ge=1, description="Top-K neighbors used for local density"),
-        limit: int = Query(100, ge=1, le=1000, description="Maximum outlier results to return"),
-    ):
-        """Compatibility alias for outlier search under /api/similarity/outliers."""
-        return get_outliers(
-            folder_path=folder_path,
-            z_threshold=z_threshold,
-            k=k,
-            limit=limit,
-        )
 
     # ========== Clustering Endpoints ==========
 
@@ -2291,17 +2532,15 @@ def create_api_router() -> APIRouter:
     # ========== Import Register Endpoint ==========
 
     @router.post(
-        "/import/register",
-        response_model=ApiResponse,
-        summary="Register images from folder (import without scoring)",
+        "/import/register/stream",
+        summary="Register images from folder with streaming progress",
         description="""
-        Scans a folder for image files and adds them to the database without scoring.
-        Skips images already in the database (by path or EXIF ImageUniqueID).
-        Supports Windows (D:\\...) and WSL (/mnt/...) paths.
+        Similar to /import/register, but returns a stream of JSON objects (NDJSON) 
+        providing real-time progress updates during the folder scan and registration process.
         """
     )
-    async def import_register(request: ImportRegisterRequest):
-        """Register images from a folder via API (used by Electron when Gradio is available)."""
+    async def import_register_stream(request: ImportRegisterRequest):
+        """Streaming version of image registration."""
         from modules.ui.security import _check_rate_limit
         from modules import db, utils
         from modules.exif_extractor import extract_exif
@@ -2310,8 +2549,6 @@ def create_api_router() -> APIRouter:
 
         _check_rate_limit("import_register")
 
-        # Convert Windows path to WSL only when backend runs in WSL (Linux).
-        # When running natively on Windows, keep path as-is.
         folder_path = request.folder_path
         try:
             if platform.system() == "Linux" and (":" in folder_path or "\\" in folder_path) and hasattr(utils, "convert_path_to_wsl"):
@@ -2323,66 +2560,92 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=400, detail=f"Path is not a directory or not found: {request.folder_path}")
 
         IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".nef", ".arw", ".cr2", ".dng", ".heic", ".webp", ".tiff", ".tif", ".raw", ".orf", ".rw2"}
-        added = 0
-        skipped = 0
-        errors = []
 
-        try:
-            folder_id = db.get_or_create_folder(folder_path)
-            if not folder_id:
-                raise HTTPException(status_code=500, detail="Failed to get or create folder")
+        async def progress_generator():
+            added = 0
+            skipped = 0
+            processed = 0
+            errors = []
 
-            entries = os.listdir(folder_path)
-            for name in entries:
-                file_path = os.path.join(folder_path, name)
-                if not os.path.isfile(file_path):
-                    continue
-                ext = os.path.splitext(name)[1].lower()
-                if ext not in IMAGE_EXTENSIONS:
-                    continue
+            try:
+                folder_id = db.get_or_create_folder(folder_path)
+                if not folder_id:
+                    yield json.dumps({"type": "error", "message": "Failed to get or create folder"}) + "\n"
+                    return
 
-                file_name = os.path.basename(name)
-                file_type = ext.lstrip(".") or "unknown"
+                entries = os.listdir(folder_path)
+                file_entries = [e for e in entries if os.path.isfile(os.path.join(folder_path, e))]
+                total_files = len(file_entries)
 
-                if db.find_image_id_by_path(file_path):
-                    skipped += 1
-                    continue
+                yield json.dumps({"type": "init", "total_files": total_files, "folder_path": folder_path}) + "\n"
 
-                image_uuid = None
-                try:
-                    exif_data = extract_exif(file_path)
-                    if exif_data:
-                        uid = exif_data.get("image_unique_id")
-                        if uid and isinstance(uid, str) and uid.strip():
-                            image_uuid = uid.strip()
-                            if db.find_image_id_by_uuid(image_uuid):
-                                skipped += 1
-                                continue
-                except Exception:
-                    pass
+                for i, name in enumerate(file_entries):
+                    file_path = os.path.join(folder_path, name)
+                    ext = os.path.splitext(name)[1].lower()
+                    
+                    if ext not in IMAGE_EXTENSIONS:
+                        processed += 1
+                        continue
 
-                image_id = db.register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid)
-                if image_id:
-                    added += 1
-                    # Explicitly set INDEXING phase as DONE for Electron-initiated imports
-                    db.set_image_phase_status(
-                        image_id, 
-                        PhaseCode.INDEXING, 
-                        PhaseStatus.DONE,
-                        app_version=APP_VERSION
-                    )
-                else:
-                    errors.append(f"{file_name}: insert failed")
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+                    file_name = os.path.basename(name)
+                    file_type = ext.lstrip(".") or "unknown"
 
-        return ApiResponse(
-            success=True,
-            message=f"Import complete: {added} added, {skipped} skipped",
-            data={"added": added, "skipped": skipped, "errors": errors}
-        )
+                    try:
+                        if db.find_image_id_by_path(file_path):
+                            skipped += 1
+                        else:
+                            image_uuid = None
+                            try:
+                                exif_data = extract_exif(file_path)
+                                if exif_data:
+                                    uid = exif_data.get("image_unique_id")
+                                    if uid and isinstance(uid, str) and uid.strip():
+                                        image_uuid = uid.strip()
+                                        if db.find_image_id_by_uuid(image_uuid):
+                                            skipped += 1
+                                            image_uuid = "ALREADY_IN_DB" # Flag to skip registration
+                            except Exception:
+                                pass
+
+                            if image_uuid != "ALREADY_IN_DB":
+                                image_id, was_new = db.register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid)
+                                if image_id:
+                                    if was_new:
+                                        added += 1
+                                        db.set_image_phase_status(image_id, PhaseCode.INDEXING, PhaseStatus.DONE, app_version=APP_VERSION)
+                                    else:
+                                        skipped += 1
+                                else:
+                                    errors.append(f"{file_name}: insert failed")
+                    except Exception as e:
+                        errors.append(f"{file_name}: {str(e)}")
+
+                    processed += 1
+                    
+                    # Periodic progress status update
+                    if processed % 5 == 0 or processed == total_files:
+                        yield json.dumps({
+                            "type": "progress", 
+                            "processed": processed, 
+                            "total": total_files, 
+                            "added": added, 
+                            "skipped": skipped,
+                            "current_file": file_name
+                        }) + "\n"
+
+                yield json.dumps({
+                    "type": "done", 
+                    "success": True, 
+                    "added": added, 
+                    "skipped": skipped, 
+                    "total": total_files, 
+                    "errors": errors[:50] # Limit reported errors
+                }) + "\n"
+
+            except Exception as e:
+                yield json.dumps({"type": "error", "message": f"Unexpected error during scan: {str(e)}"}) + "\n"
+
+        return StreamingResponse(progress_generator(), media_type="application/x-ndjson")
 
     # ========== Pipeline Submit Endpoint ==========
 
@@ -2964,5 +3227,26 @@ def create_api_router() -> APIRouter:
             return ApiResponse(success=True, message=f"Config section '{section}' saved.", data={})
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post(
+        "/pipeline/phase/backfill-index-meta",
+        response_model=ApiResponse,
+        summary="Backfill Index/Meta phase status",
+        description="Sets INDEXING=DONE and METADATA=DONE for images that have SCORING=DONE but lack these statuses (repairs legacy or new-image backfill gap)."
+    )
+    async def backfill_index_meta(request: PipelineBackfillRequest):
+        from modules.ui.security import _check_rate_limit
+        from modules import db
+        _check_rate_limit("pipeline_backfill")
+
+        if not os.path.exists(request.input_path):
+            raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
+
+        updated = db.backfill_index_meta_for_folder(request.input_path)
+        return ApiResponse(
+            success=True,
+            message=f"Backfilled Index/Meta for {updated} image(s)",
+            data={"updated_images": updated}
+        )
 
     return router

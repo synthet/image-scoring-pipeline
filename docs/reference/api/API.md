@@ -244,25 +244,25 @@ Content-Type: application/json
 
 #### Find Similar Images
 ```http
-GET /api/similarity/similar?image_id=123&limit=20&min_similarity=0.80
+GET /api/similarity/search?image_id=123&limit=20&min_similarity=0.80
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "Found 3 similar images",
-  "data": {
-    "results": [
-      {
-        "image_id": 456,
-        "file_path": "/path/to/images/IMG_0456.jpg",
-        "similarity": 0.942311
-      }
-    ]
-  }
+  "query_image_id": 123,
+  "results": [
+    {
+      "image_id": 456,
+      "file_path": "/path/to/images/IMG_0456.jpg",
+      "similarity": 0.942311
+    }
+  ],
+  "count": 1
 }
 ```
+
+Compatibility alias: `GET /api/similarity/similar` returns the same payload.
 
 #### Find Near-Duplicate Pairs
 ```http
@@ -272,48 +272,50 @@ GET /api/similarity/duplicates?threshold=0.98&limit=100
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "Found 2 duplicate pairs",
-  "data": {
-    "results": [
-      {
-        "image_id_a": 1001,
-        "image_id_b": 1002,
-        "file_path_a": "/path/to/images/IMG_1001.jpg",
-        "file_path_b": "/path/to/images/IMG_1002.jpg",
-        "similarity": 0.996501
-      }
-    ]
-  }
+  "duplicates": [
+    {
+      "a_image_id": 1001,
+      "b_image_id": 1002,
+      "similarity": 0.996501
+    }
+  ],
+  "count": 1
 }
 ```
 
 #### Find Visual Outliers
 ```http
-GET /api/similarity/outliers?folder_path=/path/to/images&z_threshold=2.0&k=10
+GET /api/outliers?folder_path=/path/to/images&z_threshold=2.0&k=10
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "Found 4 outliers",
-  "data": {
-    "results": [
-      {
-        "image_id": 777,
-        "file_path": "/path/to/images/IMG_0777.jpg",
-        "mean_knn_similarity": 0.321441,
-        "z_score": -2.41,
-        "nearest_neighbors": [
-          { "image_id": 701, "similarity": 0.441122 },
-          { "image_id": 702, "similarity": 0.438510 }
-        ]
-      }
-    ]
-  }
+  "outliers": [
+    {
+      "image_id": 777,
+      "file_path": "/path/to/images/IMG_0777.jpg",
+      "outlier_score": 0.321441,
+      "z_score": -2.41,
+      "nearest_neighbors": [
+        { "image_id": 701, "file_path": "/path/to/images/IMG_0701.jpg", "similarity": 0.441122 },
+        { "image_id": 702, "file_path": "/path/to/images/IMG_0702.jpg", "similarity": 0.438510 }
+      ]
+    }
+  ],
+  "stats": {
+    "total_with_embeddings": 250,
+    "folder_mean": 0.86,
+    "folder_std": 0.07,
+    "z_threshold": 2.0,
+    "k_neighbors": 10,
+    "outliers_found": 1
+  },
+  "skipped": []
 }
 ```
+
+Compatibility alias: `GET /api/similarity/outliers` returns the same payload.
 
 ### Import Operations
 
@@ -473,7 +475,7 @@ Path conversion: when the backend runs on Linux (WSL), Windows paths are convert
 
 ### Pipeline Submit
 
-Submit to the score→tag→cluster pipeline. Starts the first operation immediately; returns `remaining_operations` for chaining.
+Submit a file or folder to the pipeline. For folders, the API queues only the first operation and returns the remaining operations plus a persisted phase plan for client-side chaining.
 
 ```http
 POST /api/pipeline/submit
@@ -481,11 +483,90 @@ Content-Type: application/json
 
 {
   "input_path": "/path/to/folder",
-  "operations": ["score", "tag", "cluster"],
+  "operations": ["indexing", "metadata", "score", "tag", "cluster"],
   "skip_existing": true,
   "custom_keywords": ["landscape"],
   "generate_captions": false,
-  "clustering_threshold": 0.15
+  "clustering_threshold": 0.15,
+  "clustering_time_gap": 5,
+  "clustering_force_rescan": false
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Pipeline queued: indexing",
+  "data": {
+    "job_id": 123,
+    "input_path": "/path/to/folder",
+    "current_operation": "indexing",
+    "queue_position": 1,
+    "phase_plan": [
+      { "phase_order": 0, "phase_code": "indexing", "state": "running" },
+      { "phase_order": 1, "phase_code": "metadata", "state": "pending" },
+      { "phase_order": 2, "phase_code": "scoring", "state": "pending" },
+      { "phase_order": 3, "phase_code": "keywords", "state": "pending" },
+      { "phase_order": 4, "phase_code": "culling", "state": "pending" }
+    ],
+    "remaining_operations": ["metadata", "score", "tag", "cluster"]
+  }
+}
+```
+
+Notes:
+- Single-file submissions support only `score` and `tag`.
+- `indexing`, `metadata`, and `score` all use the scoring runner; `target_phases` is derived from the requested operations.
+- `tag` maps to phase code `keywords`; `cluster` maps to phase code `culling`.
+
+### Pipeline Phase Controls
+
+#### Skip a Phase
+```http
+POST /api/pipeline/phase/skip
+Content-Type: application/json
+
+{
+  "input_path": "/path/to/folder",
+  "phase_code": "keywords",
+  "reason": "manual_skip",
+  "actor": "api_user"
+}
+```
+
+#### Retry a Skipped Phase
+```http
+POST /api/pipeline/phase/retry
+Content-Type: application/json
+
+{
+  "input_path": "/path/to/folder",
+  "phase_code": "scoring"
+}
+```
+
+Response shape:
+```json
+{
+  "success": true,
+  "message": "Retry scoring: Started",
+  "data": {
+    "updated_images": 8,
+    "phase_code": "scoring"
+  }
+}
+```
+
+Supported retry phases: `scoring`, `keywords`, `culling`.
+
+#### Backfill Index and Metadata Status
+```http
+POST /api/pipeline/phase/backfill-index-meta
+Content-Type: application/json
+
+{
+  "input_path": "/path/to/folder"
 }
 ```
 

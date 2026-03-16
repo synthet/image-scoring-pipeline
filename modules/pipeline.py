@@ -408,6 +408,7 @@ class ResultWorker(PipelineWorker):
         elif job.status == "success":
             # Write Metadata using unified XMP module
             # Doing this here takes I/O off the GPU thread
+            metadata_written = False
             if self.scorer and "weighted_scores" in job.result["summary"]:
                 try:
                     normalized_scores_dict = {}
@@ -428,7 +429,7 @@ class ResultWorker(PipelineWorker):
                     
                     # Use unified XMP module for consistent metadata handling
                     # Write XMP sidecar (non-destructive) for all images
-                    success = xmp.write_metadata_unified(
+                    metadata_written = xmp.write_metadata_unified(
                         image_path=job.image_path,
                         rating=rating,
                         label=label,
@@ -436,7 +437,7 @@ class ResultWorker(PipelineWorker):
                         use_embedded=job.is_raw  # Only write embedded for RAW files
                     )
                     
-                    if success:
+                    if metadata_written:
                         # Inject metadata into result for DB upsert
                         job.result["nef_metadata"] = {
                             "rating": rating,
@@ -461,6 +462,7 @@ class ResultWorker(PipelineWorker):
                 db.upsert_image(job.job_id, job.result)
                 
                 # Resolve image_id for phase tracking (may have been created by upsert)
+                had_no_image_id = not job.image_id
                 if not job.image_id:
                     try:
                         img_rec = db.get_image_details(job.image_path)
@@ -476,9 +478,18 @@ class ResultWorker(PipelineWorker):
                                               executor_version=self.scorer.VERSION if self.scorer else None,
                                               job_id=job.job_id)
 
-                score = job.result["summary"]["weighted_scores"].get("general", 0)
+                    # Backfill INDEXING for newly created images (PrepWorker had no image_id)
+                    if had_no_image_id:
+                        db.set_image_phase_status(job.image_id, PhaseCode.INDEXING, PhaseStatus.DONE,
+                                                  app_version=APP_VERSION, job_id=job.job_id)
+
+                    # Set METADATA DONE for every successful image — metadata sync/check is complete for this image
+                    db.set_image_phase_status(job.image_id, PhaseCode.METADATA, PhaseStatus.DONE,
+                                              app_version=APP_VERSION, job_id=job.job_id)
+
+                score = job.result.get("summary", {}).get("weighted_scores", {}).get("general", 0)
                 if self.progress_callback:
-                    self.progress_callback(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} [INFO] [ResultWorker] Scored: {Path(job.image_path).name} - {score:.2f}")
+                    self.progress_callback(f"Scored: {Path(job.image_path).name} - {score:.2f}")
             except Exception as e:
                 # Phase C (Scoring) — failed
                 if job.image_id:

@@ -22,7 +22,7 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 
 ### API & Embedding
 
-- [ ] **[Python]** Similarity endpoints: `GET /api/similarity/similar?image_id=123`, `/api/similarity/duplicates`, `/api/similarity/outliers`
+- [x] **[Python]** Similarity endpoints: `GET /api/similarity/similar?image_id=123`, `/api/similarity/duplicates`, `/api/similarity/outliers`
 - [ ] **[Electron]** **[DB]** Notify electron-image-scoring when API/schema changes; update `apiService.ts`, `db.ts` (see [AGENT_COORDINATION.md](docs/technical/AGENT_COORDINATION.md))
 
 ---

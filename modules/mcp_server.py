@@ -805,6 +805,113 @@ def get_runner_status() -> dict:
 
 
 @mcp.tool(annotations=_RO)
+def get_pipeline_stats() -> dict:
+    """Get statistics about the processing pipeline and active jobs. Runner status, queue sizes, dispatcher state, and active job info."""
+    result = {
+        "runners": get_runner_status(),
+        "dispatcher": {"dispatcher_available": False},
+        "queue_config": {}
+    }
+
+    # Dispatcher state (only when WebUI is running and api module has job_dispatcher)
+    try:
+        from modules import api
+        dispatcher = getattr(api, "_job_dispatcher", None)
+        if dispatcher is not None:
+            state = dispatcher.get_state()
+            result["dispatcher"] = {
+                "dispatcher_available": True,
+                "is_dispatcher_running": state.get("is_dispatcher_running", False),
+                "active_runner": state.get("active_runner"),
+                "queue_size": state.get("queue_size", 0),
+                "queue": state.get("queue", [])
+            }
+    except ImportError:
+        pass
+    except Exception as e:
+        result["dispatcher"]["error"] = str(e)
+
+    # Queue config from config.json
+    try:
+        proc = config.get_config_section("processing") or {}
+        result["queue_config"] = {
+            "prep_queue_size": proc.get("prep_queue_size"),
+            "scoring_queue_size": proc.get("scoring_queue_size"),
+            "result_queue_size": proc.get("result_queue_size"),
+            "clustering_batch_size": proc.get("clustering_batch_size"),
+        }
+    except Exception:
+        pass
+
+    return result
+
+
+@mcp.tool(annotations=_RO)
+@_require_db
+def get_performance_metrics(days: int = 7) -> dict:
+    """Get performance metrics from recent jobs: avg job duration, jobs completed/failed, success rate, jobs by status."""
+    import datetime
+    result = {
+        "avg_job_duration_seconds": None,
+        "jobs_completed_7d": 0,
+        "jobs_failed_7d": 0,
+        "jobs_cancelled_7d": 0,
+        "jobs_interrupted_7d": 0,
+        "success_rate": None,
+        "jobs_by_status": {},
+        "total_jobs_7d": 0,
+        "images_processed_7d": None,
+    }
+    try:
+        cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
+        with db.connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                SELECT status, started_at, finished_at, completed_at
+                FROM jobs
+                WHERE created_at >= ?
+                """,
+                (cutoff,),
+            )
+            rows = c.fetchall()
+
+        jobs_by_status = {}
+        durations = []
+        for row in rows:
+            status = (row[0] or "unknown").strip().lower()
+            jobs_by_status[status] = jobs_by_status.get(status, 0) + 1
+            started = row[1]
+            finished = row[2] or row[3]
+            if started and finished:
+                try:
+                    delta = (finished - started).total_seconds()
+                    if delta >= 0:
+                        durations.append(delta)
+                except (TypeError, AttributeError):
+                    pass
+
+        result["jobs_by_status"] = jobs_by_status
+        result["total_jobs_7d"] = len(rows)
+        result["jobs_completed_7d"] = jobs_by_status.get("completed", 0)
+        result["jobs_failed_7d"] = jobs_by_status.get("failed", 0)
+        result["jobs_cancelled_7d"] = jobs_by_status.get("cancelled", 0)
+        result["jobs_interrupted_7d"] = jobs_by_status.get("interrupted", 0)
+
+        if durations:
+            result["avg_job_duration_seconds"] = round(sum(durations) / len(durations), 1)
+
+        terminal = result["jobs_completed_7d"] + result["jobs_failed_7d"] + result["jobs_cancelled_7d"] + result["jobs_interrupted_7d"]
+        if terminal > 0:
+            result["success_rate"] = round(100.0 * result["jobs_completed_7d"] / terminal, 1)
+
+        result["period_days"] = days
+    except Exception as e:
+        result["error"] = str(e)
+    return result
+
+
+@mcp.tool(annotations=_RO)
 def get_model_status() -> dict:
     """Get status of loaded models, GPU availability, and CUDA/PyTorch/TensorFlow configuration."""
     status = {

@@ -2708,7 +2708,8 @@ def invalidate_folder_phase_aggregates(folder_id=None, folder_path=None):
 def register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid=None):
     """
     Insert a minimal image record for import (no scoring).
-    Returns the new image id, or None on failure.
+    Returns (image_id, was_new): image_id on success, None on failure; was_new True if inserted, False if already existed.
+    On duplicate (UQ_IMAGES_FILE_PATH), returns the existing image_id with was_new=False.
     """
     conn = get_db()
     c = conn.cursor()
@@ -2727,14 +2728,23 @@ def register_image_for_import(file_path, file_name, file_type, folder_id, image_
                 resolve_windows_path(image_id, file_path, verify=False)
             except Exception:
                 pass
-        return image_id
+        return (image_id, True)
     except Exception as e:
+        err_str = str(e)
+        if "UQ_IMAGES_FILE_PATH" in err_str or "duplicate value" in err_str.lower():
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            existing_id = find_image_id_by_path(file_path)
+            if existing_id:
+                return (existing_id, False)
         logger.warning("register_image_for_import failed for %s: %s", file_path, e)
         try:
             conn.rollback()
         except Exception:
             pass
-        return None
+        return (None, False)
     finally:
         conn.close()
 
@@ -6938,6 +6948,71 @@ def set_folder_phase_status(folder_path, phase_code, status, reason=None, actor=
         )
 
     return len(image_ids)
+
+
+def backfill_index_meta_for_folder(folder_path):
+    """
+    Set INDEXING=DONE and METADATA=DONE for images that have SCORING=DONE
+    but lack INDEXING or METADATA status (backfill gap from legacy runs or new-image flow).
+
+    Args:
+        folder_path: Target folder path (includes subfolders).
+
+    Returns:
+        int: number of images updated.
+    """
+    from modules import utils
+
+    if not folder_path:
+        return 0
+
+    wsl_path = utils.convert_path_to_wsl(folder_path) if hasattr(utils, 'convert_path_to_wsl') else folder_path
+    target_path = wsl_path if wsl_path else folder_path
+    path_like_unix = target_path + "/%"
+    path_like_win = target_path + "\\%"
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute(
+            """
+            SELECT i.id
+            FROM images i
+            JOIN folders f ON f.id = i.folder_id
+            WHERE f.path = ? OR f.path LIKE ? OR f.path LIKE ?
+            AND EXISTS (
+                SELECT 1 FROM image_phase_status ips
+                JOIN pipeline_phases pp ON pp.id = ips.phase_id
+                WHERE ips.image_id = i.id AND pp.code = 'scoring' AND ips.status = 'done'
+            )
+            AND (
+                NOT EXISTS (
+                    SELECT 1 FROM image_phase_status ips2
+                    JOIN pipeline_phases pp2 ON pp2.id = ips2.phase_id
+                    WHERE ips2.image_id = i.id AND pp2.code = 'indexing' AND ips2.status = 'done'
+                )
+                OR NOT EXISTS (
+                    SELECT 1 FROM image_phase_status ips3
+                    JOIN pipeline_phases pp3 ON pp3.id = ips3.phase_id
+                    WHERE ips3.image_id = i.id AND pp3.code = 'metadata' AND ips3.status = 'done'
+                )
+            )
+            """,
+            (target_path, path_like_unix, path_like_win)
+        )
+        image_ids = [row[0] for row in c.fetchall()]
+    finally:
+        conn.close()
+
+    for image_id in image_ids:
+        set_image_phase_status(image_id, "indexing", "done")
+        set_image_phase_status(image_id, "metadata", "done")
+
+    if image_ids:
+        invalidate_folder_phase_aggregates(folder_path=target_path)
+
+    return len(image_ids)
+
 
 def _is_firebird_running(host_ip, port=3050):
     import socket

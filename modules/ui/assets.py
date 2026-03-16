@@ -1182,7 +1182,9 @@ button.media-button.svelte-ao1xvt {
 .progress-fill {
   height: 100% !important;
   background-color: var(--text-muted) !important;
-  width: 0% !important;
+  /* width comes from inline style (e.g. width: 84.5%) to match displayed numbers */
+  min-width: 0;
+  transition: width 0.2s ease;
 }
 
 .phase-card.running .progress-fill {

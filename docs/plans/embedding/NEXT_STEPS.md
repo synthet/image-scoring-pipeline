@@ -12,18 +12,22 @@ This document summarizes the current implementation status and outlines the prio
 | 04 | Outlier Detection | **Implemented** | `similar_search.py` (`find_outliers`). |
 | 05 | 2D Embedding Map | **Planned** | Needs `umap-learn`, REST endpoint, and UI. |
 | 06 | Smart Stack Representative | **Partial** | Needs Centroid-based logic in `ClusteringEngine`. |
-| 07 | "More Like This" UI | **Partial** | Search logic exists; needs REST API and UI wiring. |
+| 07 | "More Like This" UI | **Partial** | Search logic and REST API exist; UI wiring is still needed. |
 | 08 | Gradio Integration | **Planned** | Major architectural task (WebSockets, Headless). |
 
 ---
 
 ## Priority 1: Backend Infrastructure (Short Term)
 
-### 1.1 API REST Endpoints
-Implement the following endpoints in `modules/api.py` to expose existing embedding logic to the Electron frontend and Gradio UI:
-- `GET /api/similarity/similar?image_id=123`: Returns visually similar images across folders.
-- `GET /api/similarity/duplicates?folder_path=...`: Returns pairs of near-duplicates.
-- `GET /api/similarity/outliers?folder_path=...`: Returns a list of images with low neighborhood similarity scores.
+### 1.1 Similarity API Exposure
+Completed in `modules/api.py`:
+- `GET /api/similarity/search` and compatibility alias `GET /api/similarity/similar`
+- `GET /api/similarity/duplicates`
+- `GET /api/outliers` and compatibility alias `GET /api/similarity/outliers`
+
+Next contract tasks:
+- Keep Electron-side API types in sync with the backend contract
+- Add UI wiring for similarity-driven workflows
 
 ### 1.2 Clustering Refinement
 Update the `ClusteringEngine` in `modules/clustering.py`:

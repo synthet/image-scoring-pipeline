@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.11.0] - 2026-03-15
+
+### Added
+- **Pipeline architecture docs**: `docs/technical/PIPELINE_ARCHITECTURE.md`.
+- **Cross-app audit**: `docs/testing/CROSS_APP_INTEGRATION_AUDIT.md` and `scripts/powershell/Run-CrossAppAudit.ps1`.
+
+### Changed
+- **API**: Expanded endpoints and queue handling in `modules/api.py`.
+- **DB**: Schema and query updates in `modules/db.py`.
+- **Engine, pipeline, scoring**: Refinements across pipeline components.
+- **MCP server**: Enhanced tooling and diagnostics in `modules/mcp_server.py`.
+- **Pipeline tab**: UI improvements in `modules/ui/tabs/pipeline.py`.
+- **Docs index**: Updated `docs/INDEX.md`, `docs/technical/INDEX.md`, `docs/testing/INDEX.md`.
+- **Tests**: Updates to `test_api_queue.py` and `test_ddl.py`.
+
 ## [4.10.1] - 2026-03-14
 
 ### Changed

@@ -227,21 +227,28 @@ Used by Electron when the backend is available. Path conversion applies per back
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/pipeline/submit` | Submit to score→tag→cluster pipeline |
+| POST | `/api/pipeline/submit` | Submit to folder/file pipeline execution |
+| POST | `/api/pipeline/phase/skip` | Mark a folder phase as skipped |
+| POST | `/api/pipeline/phase/retry` | Retry a supported skipped phase |
+| POST | `/api/pipeline/phase/backfill-index-meta` | Repair missing indexing/metadata status |
 
 ### PipelineSubmitRequest
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | input_path | string | Yes | File or directory path |
-| operations | string[] | No | ["score","tag","cluster"] (default: ["score","tag"]) |
+| operations | string[] | No | `indexing`, `metadata`, `score`, `tag`, `cluster` in execution order |
 | skip_existing | bool | No | Skip images with results (default: true) |
 | custom_keywords | string[] | No | For tagging |
 | generate_captions | bool | No | For tagging (default: false) |
 | clustering_threshold | float | No | For clustering |
+| clustering_time_gap | int | No | Burst grouping gap for clustering |
+| clustering_force_rescan | bool | No | Force clustering rerun |
 
 ### Pipeline Submit Behavior
 - Starts the **first** operation immediately.
+- For folder requests, `indexing`, `metadata`, and `score` all enqueue the scoring runner with derived `target_phases`.
 - Returns `remaining_operations` in `data` for the client to chain.
+- Returns `queue_position` and persisted `phase_plan` rows for folder requests.
 - Electron app chains by polling status and re-submitting with the next operation.
 - Single files: only `score` and `tag` supported; `cluster` requires a folder.
 
@@ -249,15 +256,33 @@ Used by Electron when the backend is available. Path conversion applies per back
 ```json
 {
   "success": true,
-  "message": "Pipeline started: scoring",
+  "message": "Pipeline queued: indexing",
   "data": {
     "job_id": 123,
     "input_path": "D:/Photos/2024",
-    "current_operation": "score",
-    "remaining_operations": ["tag", "cluster"]
+    "current_operation": "indexing",
+    "queue_position": 1,
+    "phase_plan": [
+      { "phase_order": 0, "phase_code": "indexing", "state": "running" },
+      { "phase_order": 1, "phase_code": "metadata", "state": "pending" }
+    ],
+    "remaining_operations": ["metadata", "score", "tag", "cluster"]
   }
 }
 ```
+
+### PipelinePhaseControlRequest
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| input_path | string | Yes | Folder path |
+| phase_code | string | Yes | Supported retry phases: `scoring`, `keywords`, `culling` |
+| reason | string | No | Skip reason |
+| actor | string | No | Caller identifier |
+
+### PipelineBackfillRequest
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| input_path | string | Yes | Folder path to repair |
 
 ---
 

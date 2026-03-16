@@ -43,9 +43,11 @@ class ScoringRunner:
         
     def get_status(self):
         """
-        Returns (is_running, log_text, status_message, current, total)
+        Returns (is_running, log_text, status_message, current, total, pipeline_depth)
         """
-        return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count
+        processor = self.current_processor
+        depth = processor.get_pipeline_depth() if processor else 0
+        return self.is_running, "\n".join(self.log_history), self.status_message, self.current_count, self.total_count, depth
 
     def start_batch(self, input_path, job_id, skip_existing=False, resolved_image_ids=None, target_phases=None):
         """

@@ -6,13 +6,13 @@ Tasks for the REST API layer. See [API.md](API.md) and [API_CONTRACT.md](../../t
 
 ## Endpoints to Add
 
-- [ ] Similarity endpoints: `/api/similarity/similar`, `/api/similarity/duplicates`, `/api/similarity/outliers`
+- [x] Similarity endpoints: `/api/similarity/similar`, `/api/similarity/duplicates`, `/api/similarity/outliers`
 - [ ] Streaming/progress for `POST /api/import/register` (currently single-request; no incremental progress)
 
 ## Contract & Documentation
 
-- [ ] Keep OpenAPI schema (`openapi.yaml`) in sync with `modules/api.py`
-- [ ] Add request/response examples for new endpoints to `API.md`
+- [x] Keep OpenAPI schema (`openapi.yaml`) in sync with `modules/api.py`
+- [x] Add request/response examples for new endpoints to `API.md`
 
 ## Cross-Project Sync
 
