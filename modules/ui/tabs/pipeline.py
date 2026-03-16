@@ -37,14 +37,14 @@ def _parse_phase_summary(folder_path, force_refresh=False):
 
 
 def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orchestrator) -> dict:
-    """Consolidated Pipeline tab containing Folder Tree, Progress Stepper, Phase Controls, and active job monitor."""
+    """Consolidated Runs tab containing scope navigation, workflow progress, stage controls, and active run monitor."""
     components = {}
 
-    with gr.Tab("Pipeline", id="pipeline"):
+    with gr.Tab("Runs", id="pipeline"):
         with gr.Row(equal_height=False):
             # SIDEBAR
             with gr.Column(scale=1, min_width=300, elem_classes=["sidebar"]):
-                gr.Markdown("### Folders")
+                gr.Markdown("### Scope Navigator")
                 with gr.Row():
                     components["refresh_btn"] = gr.Button("Refresh", elem_classes=["secondary-btn"])
 
@@ -80,21 +80,21 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                     elem_classes=["animate-in"],
                 )
 
-                # PANEL: Pipeline Progress
+                # PANEL: Workflow Progress
                 with gr.Group(elem_classes=["panel"]):
                     gr.HTML(
                         """
                         <div class="panel-header">
-                            <h2 class="panel-title">Pipeline Progress</h2>
+                            <h2 class="panel-title">Workflow Progress</h2>
                         </div>
-                        <div class="pipeline-overview" role="region" aria-label="Pipeline explanation">
+                        <div class="pipeline-overview" role="region" aria-label="Workflow explanation">
                             <p class="section-microcopy">
-                                <strong>5 phases</strong> run in order: <strong>1. Index</strong> (discover & register images) →
-                                <strong>2. Meta</strong> (extract EXIF/XMP) →
-                                <strong>3. Scoring</strong> (AI quality scores) →
-                                <strong>4. Culling</strong> (pick best per stack) →
-                                <strong>5. Keywords</strong> (tagging). Each phase shows <em>done / total</em> images for that phase.
-                                Index and Meta run inside Scoring; their counts can differ until Scoring completes.
+                                <strong>5 stages</strong> run in order: <strong>1. Discovery</strong> (scan and register images) →
+                                <strong>2. Inspection</strong> (extract EXIF/XMP) →
+                                <strong>3. Quality Analysis</strong> (AI quality scores) →
+                                <strong>4. Similarity Clustering</strong> (pick best per stack) →
+                                <strong>5. Tagging</strong> (keywords/captions). Each stage shows <em>done / total</em> work items.
+                                Discovery and Inspection run inside Quality Analysis; counts can differ until scoring finishes.
                             </p>
                         </div>
                         """
@@ -102,26 +102,26 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                     with gr.Column(elem_classes=["panel-body"]):
                         components["stepper_html"] = gr.HTML(_build_pipeline_stepper_html(None))
                         with gr.Row(elem_classes=["pipeline-actions"]):
-                            components["run_all_btn"] = gr.Button("Run All Pending", variant="primary", elem_classes=["primary-btn"])
-                            components["stop_all_btn"] = gr.Button("Stop All", variant="stop", elem_classes=["danger-btn"])
-                            components["repair_index_meta_btn"] = gr.Button("Repair Index/Meta", variant="secondary", elem_classes=["secondary-btn"])
-                            components["run_metadata_btn"] = gr.Button("Run Metadata", variant="secondary", elem_classes=["secondary-btn"])
+                            components["run_all_btn"] = gr.Button("Queue All Pending", variant="primary", elem_classes=["primary-btn"])
+                            components["stop_all_btn"] = gr.Button("Cancel Active Run", variant="stop", elem_classes=["danger-btn"])
+                            components["repair_index_meta_btn"] = gr.Button("Repair Discovery/Inspection", variant="secondary", elem_classes=["secondary-btn"])
+                            components["run_metadata_btn"] = gr.Button("Run Inspection", variant="secondary", elem_classes=["secondary-btn"])
                         gr.HTML(
                             "<p class='section-microcopy'>"
-                            "<strong>Run All Pending</strong> \u2014 starts Scoring, Culling, and Keywords for images not yet processed. "
-                            "<strong>Stop All</strong> \u2014 halts the active job; progress is preserved. "
-                            "<strong>Repair Index/Meta</strong> \u2014 backfills Index and Meta status for images with Scoring done but missing phase status. "
-                            "<strong>Run Metadata</strong> \u2014 extracts EXIF/XMP and creates thumbnails for images missing metadata (no scoring)."
+                            "<strong>Queue All Pending</strong> \u2014 queues Quality Analysis, Similarity Clustering, and Tagging for items not yet processed. "
+                            "<strong>Cancel Active Run</strong> \u2014 halts active processing while preserving completed progress. "
+                            "<strong>Repair Discovery/Inspection</strong> \u2014 backfills stage status for items scored but missing Discovery/Inspection state. "
+                            "<strong>Run Inspection</strong> \u2014 extracts EXIF/XMP and creates thumbnails for items missing metadata (no scoring)."
                             "</p>"
                         )
                         # Stop All confirmation (hidden until Stop All clicked)
                         with gr.Row(visible=False, elem_classes=["confirm-row"]) as stop_confirm_row:
                             gr.HTML(
                                 "<span class='confirm-text'>"
-                                "This will halt all active jobs immediately. The current batch will not complete."
+                                "This will cancel the active run immediately. The current batch will not complete."
                                 "</span>"
                             )
-                            stop_confirm_yes = gr.Button("Yes, Stop All", elem_classes=["danger-btn"], size="sm")
+                            stop_confirm_yes = gr.Button("Yes, Cancel Run", elem_classes=["danger-btn"], size="sm")
                             stop_confirm_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
                         components["stop_confirm_row"] = stop_confirm_row
                         components["stop_confirm_yes"] = stop_confirm_yes
@@ -131,19 +131,19 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                             components["skip_reason"] = gr.Textbox(label="Skip reason", value="", placeholder="optional reason")
                             components["skip_actor"] = gr.Textbox(label="Actor", value="ui_user", placeholder="who skipped")
 
-                # PANEL: Phases (Card Grid)
+                # PANEL: Stages (Card Grid)
                 with gr.Group(elem_classes=["panel"]):
                     with gr.Row(elem_classes=["panel-body", "phase-grid"]):
 
                         # Scoring Card
                         with gr.Column(elem_classes=["phase-card"]):
-                            components["scoring_card_html"] = gr.HTML(_build_phase_card_html("SCORING", "Not Started", 0, 0))
-                            components["scoring_run_btn"] = gr.Button("Run Scoring", elem_classes=["secondary-btn"])
+                            components["scoring_card_html"] = gr.HTML(_build_phase_card_html("Quality Analysis", "Not Started", 0, 0))
+                            components["scoring_run_btn"] = gr.Button("Run Quality Analysis", elem_classes=["secondary-btn"])
                             with gr.Accordion("Options", open=False, elem_classes=["options-accordion"]):
                                 components["scoring_force"] = gr.Checkbox(label="Force Re-score", value=False)
-                            components["scoring_skip_btn"] = gr.Button("Skip Scoring", elem_classes=["danger-btn"])
+                            components["scoring_skip_btn"] = gr.Button("Skip Quality Analysis", elem_classes=["danger-btn"])
                             with gr.Row(visible=False, elem_classes=["confirm-row"]) as scoring_skip_confirm:
-                                gr.HTML("<span class='confirm-text'>Marks Scoring as skipped for this folder.</span>")
+                                gr.HTML("<span class='confirm-text'>Marks Quality Analysis as skipped for this scope.</span>")
                                 scoring_skip_yes = gr.Button("Yes, Skip", elem_classes=["danger-btn"], size="sm")
                                 scoring_skip_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
                             components["scoring_skip_confirm"] = scoring_skip_confirm
@@ -154,13 +154,13 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
 
                         # Culling Card
                         with gr.Column(elem_classes=["phase-card"]):
-                            components["culling_card_html"] = gr.HTML(_build_phase_card_html("CULLING", "Not Started", 0, 0))
-                            components["culling_run_btn"] = gr.Button("Run Culling", elem_classes=["secondary-btn"])
+                            components["culling_card_html"] = gr.HTML(_build_phase_card_html("Similarity Clustering", "Not Started", 0, 0))
+                            components["culling_run_btn"] = gr.Button("Run Similarity Clustering", elem_classes=["secondary-btn"])
                             with gr.Accordion("Options", open=False, elem_classes=["options-accordion"]):
                                 components["culling_force"] = gr.Checkbox(label="Force Re-run", value=False)
-                            components["culling_skip_btn"] = gr.Button("Skip Culling", elem_classes=["danger-btn"])
+                            components["culling_skip_btn"] = gr.Button("Skip Similarity Clustering", elem_classes=["danger-btn"])
                             with gr.Row(visible=False, elem_classes=["confirm-row"]) as culling_skip_confirm:
-                                gr.HTML("<span class='confirm-text'>Marks Culling as skipped for this folder.</span>")
+                                gr.HTML("<span class='confirm-text'>Marks Similarity Clustering as skipped for this scope.</span>")
                                 culling_skip_yes = gr.Button("Yes, Skip", elem_classes=["danger-btn"], size="sm")
                                 culling_skip_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
                             components["culling_skip_confirm"] = culling_skip_confirm
@@ -171,14 +171,14 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
 
                         # Keywords Card
                         with gr.Column(elem_classes=["phase-card"]):
-                            components["keywords_card_html"] = gr.HTML(_build_phase_card_html("KEYWORDS", "Not Started", 0, 0))
-                            components["keywords_run_btn"] = gr.Button("Run Keywords", elem_classes=["secondary-btn"])
+                            components["keywords_card_html"] = gr.HTML(_build_phase_card_html("Tagging", "Not Started", 0, 0))
+                            components["keywords_run_btn"] = gr.Button("Run Tagging", elem_classes=["secondary-btn"])
                             with gr.Accordion("Options", open=False, elem_classes=["options-accordion"]):
                                 components["keywords_overwrite"] = gr.Checkbox(label="Overwrite Existing", value=False)
                                 components["keywords_captions"] = gr.Checkbox(label="Generate Captions", value=False)
-                            components["keywords_skip_btn"] = gr.Button("Skip Keywords", elem_classes=["danger-btn"])
+                            components["keywords_skip_btn"] = gr.Button("Skip Tagging", elem_classes=["danger-btn"])
                             with gr.Row(visible=False, elem_classes=["confirm-row"]) as keywords_skip_confirm:
-                                gr.HTML("<span class='confirm-text'>Marks Keywords as skipped for this folder.</span>")
+                                gr.HTML("<span class='confirm-text'>Marks Tagging as skipped for this scope.</span>")
                                 keywords_skip_yes = gr.Button("Yes, Skip", elem_classes=["danger-btn"], size="sm")
                                 keywords_skip_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
                             components["keywords_skip_confirm"] = keywords_skip_confirm
@@ -485,9 +485,9 @@ def _update_folder_selection(folder_path: str, force_refresh=False, is_running=F
         return (
             _build_folder_summary(None, 0),
             _build_pipeline_stepper_html(None),
-            _build_phase_card_html("SCORING", "Not Started", 0, 0),
-            _build_phase_card_html("CULLING", "Not Started", 0, 0),
-            _build_phase_card_html("KEYWORDS", "Not Started", 0, 0),
+            _build_phase_card_html("Quality Analysis", "Not Started", 0, 0),
+            _build_phase_card_html("Similarity Clustering", "Not Started", 0, 0),
+            _build_phase_card_html("Tagging", "Not Started", 0, 0),
             _build_quick_start_html(None, is_running=is_running),
             0,
         )
@@ -501,9 +501,9 @@ def _update_folder_selection(folder_path: str, force_refresh=False, is_running=F
     return (
         _build_folder_summary(folder_path, total_count),
         _build_pipeline_stepper_html(folder_path, summary_by_code, total_count),
-        _build_phase_card_html("SCORING", sc.get("status", "not_started"), sc.get("done_count", 0), total_count),
-        _build_phase_card_html("CULLING", cu.get("status", "not_started"), cu.get("done_count", 0), total_count),
-        _build_phase_card_html("KEYWORDS", kw.get("status", "not_started"), kw.get("done_count", 0), total_count),
+        _build_phase_card_html("Quality Analysis", sc.get("status", "not_started"), sc.get("done_count", 0), total_count),
+        _build_phase_card_html("Similarity Clustering", cu.get("status", "not_started"), cu.get("done_count", 0), total_count),
+        _build_phase_card_html("Tagging", kw.get("status", "not_started"), kw.get("done_count", 0), total_count),
         _build_quick_start_html(folder_path, summary_by_code, is_running=is_running),
         total_count,
     )
@@ -571,11 +571,11 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
 # --- HTML Helpers ---
 
 def _unified_monitor_status(scoring_runner, tagging_runner, selection_runner):
-    """Finds whichever runner is active and returns data for the monitor."""
+    """Finds whichever runner is active and returns data for the live run monitor."""
     for runner_obj, name in [
-        (scoring_runner, "Scoring"),
-        (selection_runner, "Culling"),
-        (tagging_runner, "Keywords"),
+        (scoring_runner, "Quality Analysis"),
+        (selection_runner, "Similarity Clustering"),
+        (tagging_runner, "Tagging"),
     ]:
         if not runner_obj:
             continue
@@ -588,19 +588,19 @@ def _unified_monitor_status(scoring_runner, tagging_runner, selection_runner):
 
 
 def _build_quick_start_html(folder_path, summary_by_code=None, is_running=False):
-    """Context-aware Quick Start guide: 1. Select folder → 2. Run All → 3. Gallery."""
+    """Context-aware Quick Start guide: 1. Select scope → 2. Queue pending stages → 3. Review in Gallery."""
     summary_by_code = summary_by_code or {}
 
     if not folder_path:
         steps = [
-            ("current", "Select a folder from the tree"),
-            ("", "Run all pending pipeline phases"),
+            ("current", "Select a scope from the tree"),
+            ("", "Queue all pending workflow stages"),
             ("", "Open Gallery and review results"),
         ]
     elif is_running:
         steps = [
-            ("done", "Folder selected"),
-            ("current", "Pipeline is running\u2026"),
+            ("done", "Scope selected"),
+            ("current", "Run is in progress\u2026"),
             ("", "Open Gallery and review results"),
         ]
     else:
@@ -610,14 +610,14 @@ def _build_quick_start_html(folder_path, summary_by_code=None, is_running=False)
         )
         if pending:
             steps = [
-                ("done", "Folder selected"),
-                ("current", "Run All Pending to process images"),
+                ("done", "Scope selected"),
+                ("current", "Queue All Pending to process work items"),
                 ("", "Open Gallery and review results"),
             ]
         else:
             steps = [
-                ("done", "Folder selected"),
-                ("done", "All phases complete"),
+                ("done", "Scope selected"),
+                ("done", "All stages complete"),
                 ("current", "Open Gallery and review results"),
             ]
 
@@ -643,7 +643,7 @@ def _build_folder_summary(path, count):
     path_display = path if path else "-"
     return f"""
     <div class="folder-summary">
-      <h3>Selected Folder</h3>
+      <h3>Selected Scope</h3>
       <p><strong>{path_display}</strong><br>{count} images</p>
     </div>
     """
@@ -651,12 +651,12 @@ def _build_folder_summary(path, count):
 
 def _render_queue_html(queued_jobs):
     if not queued_jobs:
-        return "<p class='phase-stats'>Job queue: empty</p>"
+        return "<p class='phase-stats'>Run queue: empty</p>"
 
-    lines = ["<div class='phase-stats'>Job queue:</div>", "<ul class='phase-stats'>"]
+    lines = ["<div class='phase-stats'>Run queue:</div>", "<ul class='phase-stats'>"]
     for job in queued_jobs:
         lines.append(
-            f"<li>#{job.get('id')} {job.get('job_type') or 'job'} "
+            f"<li>#{job.get('id')} {job.get('job_type') or 'run'} "
             f"(position {job.get('queue_position')})</li>"
         )
     lines.append("</ul>")
@@ -664,15 +664,15 @@ def _render_queue_html(queued_jobs):
 
 
 def _build_idle_html(recovery_info=None, queued_jobs=None):
-    base = "<div class='panel-body'><p>No active jobs in the pipeline.</p>"
+    base = "<div class='panel-body'><p>No active runs in the workflow.</p>"
     if recovery_info:
         recovered = recovery_info.get("recovered_running_jobs") or []
         interrupted = recovery_info.get("interrupted_pipeline_jobs") or []
         auto_resumed = recovery_info.get("auto_resumed")
         if recovered or interrupted or auto_resumed:
             base += (
-                f"<p><strong>Recovery:</strong> marked {len(recovered)} running job(s) as interrupted; "
-                f"found {len(interrupted)} interrupted pipeline job(s); "
+                f"<p><strong>Recovery:</strong> marked {len(recovered)} running run(s) as interrupted; "
+                f"found {len(interrupted)} interrupted workflow run(s); "
                 f"auto-resumed: {'yes' if auto_resumed else 'no'}.</p>"
             )
     queued_jobs = queued_jobs or []
@@ -691,7 +691,7 @@ def _build_monitor_html(name, msg, current, total, queued_jobs=None, folder_tota
         folder_line = "<p class='section-microcopy'>Processing images in current batch. See Console Output for per-image progress.</p>"
     pipeline_line = ""
     if pipeline_depth > 0:
-        pipeline_line = f"<p class='section-microcopy'>Pipeline: {pipeline_depth} image(s) in queue</p>"
+        pipeline_line = f"<p class='section-microcopy'>Workflow: {pipeline_depth} work item(s) in queue</p>"
     return f"""
     <div class="panel-body">
       <div class="phase-head">
@@ -742,7 +742,7 @@ def _build_phase_card_html(title, status, done, total):
         </div>
         <div class="{badge_cls}">{status_label}</div>
       </div>
-      <div class="phase-stats">{done}/{total} images processed</div>
+      <div class="phase-stats">{done}/{total} work items processed</div>
       <div class="progress"><div class="progress-fill" style="width: {pct:.1f}%;"></div></div>
     </div>
     """
@@ -750,12 +750,12 @@ def _build_phase_card_html(title, status, done, total):
 
 def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
     if not folder_path:
-        return "<p>Select a folder from the tree to view pipeline progress.</p>"
+        return "<p>Select a scope from the tree to view workflow progress.</p>"
 
     if not summary_by_code or total == 0:
         return (
             "<p class='section-microcopy'>No images in this folder. "
-            "Run Scoring first to index images from disk.</p>"
+            "Run Quality Analysis first to index images from disk.</p>"
         )
 
     def _phase(phase_code, default_done=0):
@@ -784,37 +784,37 @@ def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
 
     return f"""
     <div class="stepper" role="list" aria-label="Pipeline progress">
-      <div class="step {get_state(idx, total)}" role="listitem" aria-label="Index: {idx_done} of {total}">
+      <div class="step {get_state(idx, total)}" role="listitem" aria-label="Discovery: {idx_done} of {total}">
         <div class="step-dot">1</div>
-        <div class="step-label">Index</div>
+        <div class="step-label">Discovery</div>
         <div class="step-count">{idx_done} / {total}</div>
       </div>
       <div class="connector {get_state(idx, total)}" aria-hidden="true"></div>
 
-      <div class="step {get_state(met, total)}" role="listitem" aria-label="Metadata: {met_done} of {total}">
+      <div class="step {get_state(met, total)}" role="listitem" aria-label="Inspection: {met_done} of {total}">
         <div class="step-dot">2</div>
-        <div class="step-label">Metadata</div>
+        <div class="step-label">Inspection</div>
         <div class="step-count">{met_done} / {total}</div>
       </div>
       <div class="connector {get_state(met, total)}" aria-hidden="true"></div>
 
-      <div class="step {get_state(sco, total)}" role="listitem" aria-label="Scoring: {sco_done} of {total}">
+      <div class="step {get_state(sco, total)}" role="listitem" aria-label="Quality Analysis: {sco_done} of {total}">
         <div class="step-dot">3</div>
-        <div class="step-label">Scoring</div>
+        <div class="step-label">Quality Analysis</div>
         <div class="step-count">{sco_done} / {total}</div>
       </div>
       <div class="connector {get_state(cul, total)}" aria-hidden="true"></div>
 
-      <div class="step {get_state(cul, total)}" role="listitem" aria-label="Culling: {cul_done} of {total}">
+      <div class="step {get_state(cul, total)}" role="listitem" aria-label="Similarity Clustering: {cul_done} of {total}">
         <div class="step-dot">4</div>
-        <div class="step-label">Culling</div>
+        <div class="step-label">Similarity Clustering</div>
         <div class="step-count">{cul_done} / {total}</div>
       </div>
       <div class="connector {get_state(key, total)}" aria-hidden="true"></div>
 
-      <div class="step {get_state(key, total)}" role="listitem" aria-label="Keywords: {key_done} of {total}">
+      <div class="step {get_state(key, total)}" role="listitem" aria-label="Tagging: {key_done} of {total}">
         <div class="step-dot">5</div>
-        <div class="step-label">Keywords</div>
+        <div class="step-label">Tagging</div>
         <div class="step-count">{key_done} / {total}</div>
       </div>
     </div>

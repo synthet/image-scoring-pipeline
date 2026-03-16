@@ -63,8 +63,8 @@ def create_ui():
     favicon_links = """
 <link rel="icon" href="/favicon.ico" sizes="any">
 """
-    with gr.Blocks(title="Image Scoring WebUI", css=custom_css, head=tree_js + favicon_links) as demo:
-        gr.Markdown("# Image Scoring WebUI")
+    with gr.Blocks(title="Image Scoring Runs", css=custom_css, head=tree_js + favicon_links) as demo:
+        gr.Markdown("# Image Scoring Runs")
         
         # Shared States
         current_page = gr.State(1)
