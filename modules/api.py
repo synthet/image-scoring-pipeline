@@ -1113,17 +1113,21 @@ def create_api_router() -> APIRouter:
                 )
             selector_folder_paths.append(request.input_path)
 
-        selector_result = resolve_selectors(
-            image_ids=request.image_ids,
-            image_paths=request.image_paths,
-            folder_ids=request.folder_ids,
-            folder_paths=selector_folder_paths,
-            recursive=request.recursive,
-            index_missing=True,
-        )
+        selector_result = {"resolved_image_ids": None}
+        has_explicit_selectors = any([request.image_ids, request.image_paths, request.folder_ids, request.folder_paths])
+        if has_explicit_selectors:
+            selector_result = resolve_selectors(
+                image_ids=request.image_ids,
+                image_paths=request.image_paths,
+                folder_ids=request.folder_ids,
+                folder_paths=selector_folder_paths,
+                recursive=request.recursive,
+                index_missing=True,
+            )
 
         from modules import db
-        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        resolved_ids = selector_result.get("resolved_image_ids")
+        resolved_count = len(resolved_ids or []) if resolved_ids is not None else None
         job_source = request.input_path or "SELECTOR_SCORING"
         skip_existing = not request.force_rescore if request.force_rescore else request.skip_existing
         queue_payload = {
@@ -1353,17 +1357,21 @@ def create_api_router() -> APIRouter:
                 )
             selector_folder_paths.append(request.input_path)
 
-        selector_result = resolve_selectors(
-            image_ids=request.image_ids,
-            image_paths=request.image_paths,
-            folder_ids=request.folder_ids,
-            folder_paths=selector_folder_paths,
-            recursive=request.recursive,
-            index_missing=True,
-        )
+        selector_result = {"resolved_image_ids": None}
+        has_explicit_selectors = any([request.image_ids, request.image_paths, request.folder_ids, request.folder_paths])
+        if has_explicit_selectors:
+            selector_result = resolve_selectors(
+                image_ids=request.image_ids,
+                image_paths=request.image_paths,
+                folder_ids=request.folder_ids,
+                folder_paths=selector_folder_paths,
+                recursive=request.recursive,
+                index_missing=True,
+            )
 
         from modules import db
-        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        resolved_ids = selector_result.get("resolved_image_ids")
+        resolved_count = len(resolved_ids or []) if resolved_ids is not None else None
         job_source = request.input_path or "SELECTOR_TAGGING"
         job_id, queue_position = db.enqueue_job(
             job_source,
@@ -2307,17 +2315,21 @@ def create_api_router() -> APIRouter:
                 )
             selector_folder_paths.append(request.input_path)
 
-        selector_result = resolve_selectors(
-            image_ids=request.image_ids,
-            image_paths=request.image_paths,
-            folder_ids=request.folder_ids,
-            folder_paths=selector_folder_paths,
-            recursive=request.recursive,
-            index_missing=True,
-        )
+        selector_result = {"resolved_image_ids": None}
+        has_explicit_selectors = any([request.image_ids, request.image_paths, request.folder_ids, request.folder_paths])
+        if has_explicit_selectors:
+            selector_result = resolve_selectors(
+                image_ids=request.image_ids,
+                image_paths=request.image_paths,
+                folder_ids=request.folder_ids,
+                folder_paths=selector_folder_paths,
+                recursive=request.recursive,
+                index_missing=True,
+            )
 
         from modules import db
-        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        resolved_ids = selector_result.get("resolved_image_ids")
+        resolved_count = len(resolved_ids or []) if resolved_ids is not None else None
         job_source = request.input_path or "SELECTOR_CLUSTERING"
         job_id, queue_position = db.enqueue_job(
             job_source,
@@ -2942,10 +2954,11 @@ def create_api_router() -> APIRouter:
             job_id = db.create_job(request.input_path, phase_code="keywords")
             result = _tagging_runner.start_batch(request.input_path, job_id=job_id, overwrite=False, generate_captions=False)
         elif phase == "culling":
-            if _selection_runner is None:
+            culling_runner = _selection_runner or _clustering_runner
+            if culling_runner is None:
                 raise HTTPException(status_code=503, detail="Selection runner not available")
             job_id = db.create_job(request.input_path, phase_code="culling")
-            result = _selection_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
+            result = culling_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported phase_code: {request.phase_code}")
 
@@ -3061,10 +3074,11 @@ def create_api_router() -> APIRouter:
             job_id = db.create_job(request.input_path, phase_code="scoring")
             result = _scoring_runner.start_batch(request.input_path, job_id, True)
         elif phase == "culling":
-            if _selection_runner is None:
+            culling_runner = _selection_runner or _clustering_runner
+            if culling_runner is None:
                 raise HTTPException(status_code=503, detail="Selection runner not available")
             job_id = db.create_job(request.input_path, phase_code="culling")
-            result = _selection_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
+            result = culling_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
         else:
             if _tagging_runner is None:
                 raise HTTPException(status_code=503, detail="Tagging runner not available")
