@@ -81,6 +81,91 @@ class ClusteringEngine:
             return details['image_hash']
         return None
 
+    def _select_best_image(self, img_ids, id_to_score, id_to_feature=None):
+        """
+        Select the best representative image from a stack.
+
+        Strategy is read from config key ``clustering.best_image_strategy``
+        (``score`` | ``centroid`` | ``balanced``).  Falls back to ``score``
+        when embeddings are unavailable.
+
+        Args:
+            img_ids: List of image IDs in the stack.
+            id_to_score: Dict mapping image_id -> score_general (float or None).
+            id_to_feature: Optional dict mapping image_id -> 1-D numpy embedding.
+
+        Returns:
+            The image_id selected as best representative.
+        """
+        if not img_ids:
+            return None
+        if len(img_ids) == 1:
+            return img_ids[0]
+
+        clustering_config = config.get_config_section('clustering')
+        strategy = clustering_config.get('best_image_strategy', 'score')
+        alpha = float(clustering_config.get('best_image_alpha', 0.65))
+
+        # Normalise scores to [0, 1] across the stack
+        scores = np.array([float(id_to_score.get(i) or 0.0) for i in img_ids], dtype=np.float64)
+        score_range = scores.max() - scores.min()
+        if score_range > 0:
+            norm_scores = (scores - scores.min()) / score_range
+        else:
+            norm_scores = np.zeros_like(scores)
+
+        # Build embedding matrix; may be incomplete/missing
+        features_available = id_to_feature is not None
+        feat_matrix = None
+        valid_mask = None
+        if features_available:
+            feats = [id_to_feature.get(i) for i in img_ids]
+            valid_mask = [f is not None for f in feats]
+            if any(valid_mask):
+                feat_matrix = np.array(
+                    [f if f is not None else np.zeros_like(next(x for x in feats if x is not None))
+                     for f in feats],
+                    dtype=np.float64
+                )
+
+        # Fall back to score strategy if no useful embeddings
+        if strategy != 'score' and feat_matrix is None:
+            strategy = 'score'
+
+        if strategy == 'score':
+            best_idx = int(np.argmax(norm_scores))
+            return img_ids[best_idx]
+
+        # Compute centroid from valid-embedding images only
+        valid_feats = feat_matrix[[i for i, v in enumerate(valid_mask) if v]]
+        centroid = valid_feats.mean(axis=0)
+
+        # Cosine distance to centroid per image
+        norms = np.linalg.norm(feat_matrix, axis=1, keepdims=True)
+        centroid_norm = np.linalg.norm(centroid)
+        # Avoid division by zero
+        safe_norms = np.where(norms > 0, norms, 1.0)
+        safe_centroid_norm = centroid_norm if centroid_norm > 0 else 1.0
+        cosine_sim = feat_matrix.dot(centroid) / (safe_norms.squeeze() * safe_centroid_norm)
+        # Images without valid embeddings should not be preferred
+        cosine_sim[[i for i, v in enumerate(valid_mask) if not v]] = -1.0
+
+        # Normalise cosine similarity to [0, 1]
+        sim_range = cosine_sim.max() - cosine_sim.min()
+        if sim_range > 0:
+            norm_represent = (cosine_sim - cosine_sim.min()) / sim_range
+        else:
+            norm_represent = np.zeros_like(cosine_sim)
+
+        if strategy == 'centroid':
+            best_idx = int(np.argmax(norm_represent))
+            return img_ids[best_idx]
+
+        # balanced: alpha * quality + (1 - alpha) * representativeness
+        combined = alpha * norm_scores + (1.0 - alpha) * norm_represent
+        best_idx = int(np.argmax(combined))
+        return img_ids[best_idx]
+
     def load_model(self):
         if self.model is None:
             # Deferred import
@@ -478,15 +563,10 @@ class ClusteringEngine:
                     non_burst_rows.extend(group_rows)
                     continue
                 
-                # Find best image by score
+                # Find best image (no embeddings available for burst path; falls back to score)
                 img_ids = [r['id'] for r in group_rows]
-                best_id = img_ids[0]
-                max_score = -1.0
-                for r in group_rows:
-                    s = r['score_general'] if r.get('score_general') else 0
-                    if s > max_score:
-                        max_score = s
-                        best_id = r['id']
+                id_to_score_burst = {r['id']: r['score_general'] if r.get('score_general') else 0 for r in group_rows}
+                best_id = self._select_best_image(img_ids, id_to_score_burst)
                 
                 s_name = f"Burst {os.path.basename(folder)} ({len(group_rows)} shots)"
                 burst_stacks_data.append({
@@ -592,35 +672,35 @@ class ClusteringEngine:
                 )
                 labels = clustering.fit_predict(features)
                 
+                # Build id -> feature map for centroid/balanced strategies
+                id_to_feature = {}
+                for i, feat in enumerate(features):
+                    orig_idx = valid_indices[i]
+                    img_id = batch_ids[orig_idx]
+                    id_to_feature[img_id] = feat
+
                 local_clusters = {}
                 for i, lbl in enumerate(labels):
-                    orig_idx = valid_indices[i] 
+                    orig_idx = valid_indices[i]
                     img_id = batch_ids[orig_idx]
-                    
+
                     if lbl not in local_clusters:
                         local_clusters[lbl] = []
                     local_clusters[lbl].append(img_id)
-                    
+
                 # Collect stacks for this batch
                 batch_stacks_data = [] # List of dicts
-                
+
+                # Build score lookup once per batch
+                id_to_score_batch = {}
+                for r, t in batch:
+                    id_to_score_batch[r['id']] = r['score_general'] if r['score_general'] else 0
+
                 for lbl, img_ids in local_clusters.items():
                     if len(img_ids) < 2:
                         continue
-                        
-                    # Find best image
-                    # Use provided scores OR fetch? Rows have score_general
-                    id_to_score = {}
-                    for r, t in batch:
-                         id_to_score[r['id']] = r['score_general'] if r['score_general'] else 0
-                    
-                    best_id = img_ids[0]
-                    max_score = -1.0
-                    for mid in img_ids:
-                        s = id_to_score.get(mid, 0)
-                        if s > max_score:
-                            max_score = s
-                            best_id = mid
+
+                    best_id = self._select_best_image(img_ids, id_to_score_batch, id_to_feature)
                             
                     # Name based on Time? or Folder?
                     # Stack (Time)
