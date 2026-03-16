@@ -4,6 +4,8 @@ import os
 import datetime
 import logging
 import time
+import threading
+from collections import deque
 from pathlib import Path
 import traceback
 
@@ -32,6 +34,52 @@ JOB_ALLOWED_TRANSITIONS = {
     "failed": set(),
     "canceled": set(),
 }
+
+
+_PIPELINE_TELEMETRY_LOCK = threading.Lock()
+_PIPELINE_TELEMETRY_SEQ = 0
+_PIPELINE_TELEMETRY_EVENTS = deque(maxlen=3000)
+
+
+def record_pipeline_event(event_type, message, *, workflow_run=None, stage_run=None,
+                          step_run=None, category=None, severity="info",
+                          metadata=None, critical=False, noisy=False, source="db"):
+    """Append a normalized pipeline telemetry event to an in-memory ring buffer."""
+    global _PIPELINE_TELEMETRY_SEQ
+    event = {
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+        "event_type": event_type or "log",
+        "message": message or "",
+        "workflow_run": workflow_run,
+        "stage_run": stage_run,
+        "step_run": step_run,
+        "category": category or "pipeline",
+        "severity": severity or "info",
+        "metadata": metadata or {},
+        "critical": bool(critical),
+        "noisy": bool(noisy),
+        "source": source,
+    }
+    with _PIPELINE_TELEMETRY_LOCK:
+        _PIPELINE_TELEMETRY_SEQ += 1
+        event["seq"] = _PIPELINE_TELEMETRY_SEQ
+        _PIPELINE_TELEMETRY_EVENTS.append(event)
+    return event["seq"]
+
+
+def get_pipeline_events(since_seq=0, limit=250):
+    """Return pipeline telemetry events with sequence greater than `since_seq`."""
+    try:
+        since = int(since_seq or 0)
+    except (TypeError, ValueError):
+        since = 0
+    lim = max(1, min(int(limit or 250), 1000))
+    with _PIPELINE_TELEMETRY_LOCK:
+        rows = [evt.copy() for evt in _PIPELINE_TELEMETRY_EVENTS if evt.get("seq", 0) > since]
+        if len(rows) > lim:
+            rows = rows[-lim:]
+        latest_seq = _PIPELINE_TELEMETRY_SEQ
+    return {"events": rows, "latest_seq": latest_seq}
 
 
 def generate_image_uuid(metadata: dict | None) -> str:
@@ -3310,6 +3358,17 @@ def create_job(input_path, phase_code=None, job_type=None, status="pending", cur
     job_id = row[0] if row else None
     conn.commit()
     conn.close()
+
+    record_pipeline_event(
+        "state-change",
+        f"Job #{job_id} created ({status})",
+        workflow_run=job_id,
+        stage_run=phase_code or job_type or "pipeline",
+        step_run="job:create",
+        category="job",
+        metadata={"status": status, "input_path": input_path, "job_type": job_type, "phase_code": phase_code},
+        source="db.create_job",
+    )
     return job_id
 
 
@@ -3332,6 +3391,17 @@ def set_job_execution_cursor(job_id, current_phase=None, next_phase_index=None, 
     )
     conn.commit()
     conn.close()
+
+    record_pipeline_event(
+        "state-change",
+        f"Job #{job_id} cursor updated",
+        workflow_run=job_id,
+        stage_run=current_phase or "pipeline",
+        step_run="job:cursor",
+        category="phase-transition",
+        metadata={"current_phase": current_phase, "next_phase_index": next_phase_index, "runner_state": runner_state},
+        source="db.set_job_execution_cursor",
+    )
 
 
 def update_job_status(job_id, status, log=None, current_phase=None, next_phase_index=None, runner_state=None):
@@ -3406,6 +3476,34 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
 
     conn.commit()
     conn.close()
+
+    event_type = "state-change"
+    severity = "info"
+    if new_status == "failed":
+        event_type = "error"
+        severity = "error"
+    elif new_status in ("completed", "canceled"):
+        event_type = "recovery"
+        severity = "warning" if new_status == "canceled" else "info"
+
+    record_pipeline_event(
+        event_type,
+        f"Job #{job_id} status: {old_status} → {new_status}",
+        workflow_run=job_id,
+        stage_run=final_phase or "pipeline",
+        step_run="job:status",
+        category="job",
+        severity=severity,
+        metadata={
+            "old_status": old_status,
+            "status": new_status,
+            "current_phase": final_phase,
+            "next_phase_index": final_next_idx,
+            "runner_state": final_runner_state,
+        },
+        critical=new_status in ("failed", "interrupted"),
+        source="db.update_job_status",
+    )
 
     # Broadcast job status update
     try:
@@ -6667,6 +6765,23 @@ def set_image_phase_status(image_id, phase_code, status,
             pass
     finally:
         conn.close()
+
+    phase_text = phase_code.value if hasattr(phase_code, "value") else str(phase_code)
+    event_type = "progress" if status == PhaseStatus.RUNNING else "state-change"
+    severity = "error" if status == PhaseStatus.FAILED else ("warning" if status == PhaseStatus.SKIPPED else "info")
+    record_pipeline_event(
+        "error" if status == PhaseStatus.FAILED else event_type,
+        f"Image #{image_id} phase {phase_text}: {status}",
+        workflow_run=job_id,
+        stage_run=phase_text,
+        step_run=f"image:{image_id}",
+        category="phase",
+        severity=severity,
+        metadata={"image_id": image_id, "phase": phase_text, "status": status, "error": error, "skip_reason": skip_reason},
+        critical=status == PhaseStatus.FAILED,
+        noisy=True,
+        source="db.set_image_phase_status",
+    )
 
     if folder_id:
         invalidate_folder_phase_aggregates(folder_id=folder_id)
