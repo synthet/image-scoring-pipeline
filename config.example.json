@@ -55,5 +55,12 @@
     "method": "rawpy_half",
     "max_resolution": 512,
     "jpeg_quality": 85
+  },
+  "embedding_map": {
+    "enabled": false,
+    "method": "umap",
+    "n_neighbors": 30,
+    "min_dist": 0.1,
+    "max_points": 50000
   }
 }

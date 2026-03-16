@@ -6352,6 +6352,65 @@ def get_embeddings_for_search(folder_path=None, limit=None):
         conn.close()
 
 
+def get_embeddings_with_metadata(folder_path=None, limit=None):
+    """
+    Return embedding vectors together with display metadata for each image.
+
+    Each returned dict has keys:
+        image_id, file_path, embedding (bytes), thumbnail_path,
+        label, rating, score_general
+    Optionally filter by folder_path and cap results with limit.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        if folder_path:
+            norm = os.path.normpath(folder_path)
+            c.execute("SELECT id FROM folders WHERE path = ?", (norm,))
+            frow = c.fetchone()
+            if not frow:
+                return []
+            folder_id = frow[0]
+            query = """
+                SELECT id, file_path, image_embedding,
+                       thumbnail_path, label, rating, score_general
+                FROM images
+                WHERE image_embedding IS NOT NULL AND folder_id = ?
+            """
+            params = [folder_id]
+        else:
+            query = """
+                SELECT id, file_path, image_embedding,
+                       thumbnail_path, label, rating, score_general
+                FROM images
+                WHERE image_embedding IS NOT NULL
+            """
+            params = []
+
+        if limit:
+            query += " ROWS ?"
+            params.append(limit)
+
+        c.execute(query, tuple(params))
+        results = []
+        for row in c.fetchall():
+            results.append({
+                "image_id": row[0],
+                "file_path": row[1],
+                "embedding": bytes(row[2]),
+                "thumbnail_path": row[3],
+                "label": row[4],
+                "rating": row[5],
+                "score_general": float(row[6]) if row[6] is not None else None,
+            })
+        return results
+    except Exception as e:
+        logger.error("Error loading embeddings with metadata: %s", e)
+        return []
+    finally:
+        conn.close()
+
+
 def get_images_missing_embeddings(folder_path=None, limit=None):
     """
     Return image rows with image_embedding IS NULL.
