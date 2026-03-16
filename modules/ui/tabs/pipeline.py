@@ -37,14 +37,14 @@ def _parse_phase_summary(folder_path, force_refresh=False):
 
 
 def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orchestrator) -> dict:
-    """Consolidated WorkflowRun tab containing WorkspaceTarget tree, StageRun stepper, controls, and active monitor."""
+    """Consolidated Pipeline tab containing workspace targets, stage progress, controls, and active monitor."""
     components = {}
 
     with gr.Tab("Pipeline", id="pipeline"):
         with gr.Row(equal_height=False):
             # SIDEBAR
             with gr.Column(scale=1, min_width=300, elem_classes=["sidebar"]):
-                gr.Markdown("### Workspace Targets")
+                gr.Markdown("### Workspace Targets (Folders)")
                 with gr.Row():
                     components["refresh_btn"] = gr.Button("Refresh", elem_classes=["secondary-btn"])
 
@@ -85,11 +85,11 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                     gr.HTML(
                         """
                         <div class="panel-header">
-                            <h2 class="panel-title">WorkflowRun Progress</h2>
+                            <h2 class="panel-title">Pipeline / WorkflowRun Progress</h2>
                         </div>
-                        <div class="pipeline-overview" role="region" aria-label="WorkflowRun explanation">
+                        <div class="pipeline-overview" role="region" aria-label="Pipeline workflow explanation">
                             <p class="section-microcopy">
-                                <strong>5 StageRuns</strong> execute in order: <strong>1. Index</strong> (discover & register images) →
+                                <strong>5 stages (StageRuns)</strong> execute in order: <strong>1. Index</strong> (discover & register images) →
                                 <strong>2. Meta</strong> (extract EXIF/XMP) →
                                 <strong>3. Scoring</strong> (AI quality scores) →
                                 <strong>4. Culling</strong> (pick best per stack) →
@@ -593,8 +593,8 @@ def _build_quick_start_html(folder_path, summary_by_code=None, is_running=False)
 
     if not folder_path:
         steps = [
-            ("current", "Select a WorkspaceTarget from the tree"),
-            ("", "Run all pending StageRuns"),
+            ("current", "Select a WorkspaceTarget (folder) from the tree"),
+            ("", "Run all pending stages"),
             ("", "Open Gallery and review results"),
         ]
     elif is_running:
@@ -617,7 +617,7 @@ def _build_quick_start_html(folder_path, summary_by_code=None, is_running=False)
         else:
             steps = [
                 ("done", "WorkspaceTarget selected"),
-                ("done", "All StageRuns complete"),
+                ("done", "All stages complete"),
                 ("current", "Open Gallery and review results"),
             ]
 
@@ -643,7 +643,7 @@ def _build_folder_summary(path, count):
     path_display = path if path else "-"
     return f"""
     <div class="folder-summary">
-      <h3>Selected WorkspaceTarget</h3>
+      <h3>Selected WorkspaceTarget (Folder)</h3>
       <p><strong>{path_display}</strong><br>{count} images</p>
     </div>
     """
@@ -651,9 +651,9 @@ def _build_folder_summary(path, count):
 
 def _render_queue_html(queued_jobs):
     if not queued_jobs:
-        return "<p class='phase-stats'>WorkflowRun queue: empty</p>"
+        return "<p class='phase-stats'>Pipeline queue: empty</p>"
 
-    lines = ["<div class='phase-stats'>WorkflowRun queue:</div>", "<ul class='phase-stats'>"]
+    lines = ["<div class='phase-stats'>Pipeline queue:</div>", "<ul class='phase-stats'>"]
     for job in queued_jobs:
         lines.append(
             f"<li>#{job.get('id')} {job.get('job_type') or 'job'} "
@@ -664,7 +664,7 @@ def _render_queue_html(queued_jobs):
 
 
 def _build_idle_html(recovery_info=None, queued_jobs=None):
-    base = "<div class='panel-body'><p>No active WorkflowRuns.</p>"
+    base = "<div class='panel-body'><p>No active pipeline runs.</p>"
     if recovery_info:
         recovered = recovery_info.get("recovered_running_jobs") or []
         interrupted = recovery_info.get("interrupted_pipeline_jobs") or []
@@ -672,7 +672,7 @@ def _build_idle_html(recovery_info=None, queued_jobs=None):
         if recovered or interrupted or auto_resumed:
             base += (
                 f"<p><strong>Recovery:</strong> marked {len(recovered)} running job(s) as interrupted; "
-                f"found {len(interrupted)} interrupted WorkflowRun(s); "
+                f"found {len(interrupted)} interrupted pipeline run(s); "
                 f"auto-resumed: {'yes' if auto_resumed else 'no'}.</p>"
             )
     queued_jobs = queued_jobs or []
@@ -691,7 +691,7 @@ def _build_monitor_html(name, msg, current, total, queued_jobs=None, folder_tota
         folder_line = "<p class='section-microcopy'>Processing images in current batch. See Console Output for per-image progress.</p>"
     pipeline_line = ""
     if pipeline_depth > 0:
-        pipeline_line = f"<p class='section-microcopy'>WorkflowRun queue: {pipeline_depth} image(s) pending</p>"
+        pipeline_line = f"<p class='section-microcopy'>Pipeline queue: {pipeline_depth} image(s) pending</p>"
     return f"""
     <div class="panel-body">
       <div class="phase-head">
@@ -734,7 +734,7 @@ def _build_phase_card_html(title, status, done, total):
     badge_cls = f"phase-status status-badge {badge_class}" if badge_class else "phase-status"
     running_cls = " phase-card running" if status in ("running", "partial") else ""
     return f"""
-    <div class="phase-card{running_cls}" role="region" aria-label="{title} StageRun: {status_label}">
+    <div class="phase-card{running_cls}" role="region" aria-label="{title} stage: {status_label}">
       <div class="phase-head">
         <div class="phase-title">
           <div class="phase-icon">{initial}</div>
@@ -750,7 +750,7 @@ def _build_phase_card_html(title, status, done, total):
 
 def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
     if not folder_path:
-        return "<p>Select a WorkspaceTarget from the tree to view WorkflowRun progress.</p>"
+        return "<p>Select a WorkspaceTarget from the tree to view pipeline progress.</p>"
 
     if not summary_by_code or total == 0:
         return (
@@ -783,7 +783,7 @@ def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
         return ""
 
     return f"""
-    <div class="stepper" role="list" aria-label="WorkflowRun stage progress">
+    <div class="stepper" role="list" aria-label="Pipeline stage progress">
       <div class="step {get_state(idx, total)}" role="listitem" aria-label="Index: {idx_done} of {total}">
         <div class="step-dot">1</div>
         <div class="step-label">Index</div>
