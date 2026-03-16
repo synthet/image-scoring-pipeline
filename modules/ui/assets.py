@@ -1170,6 +1170,62 @@ button.media-button.svelte-ao1xvt {
   margin-bottom: 12px !important;
 }
 
+
+.queue-board {
+  margin-top: 10px !important;
+}
+
+.queue-table-wrap {
+  overflow-x: auto !important;
+}
+
+.queue-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  font-size: 0.8rem !important;
+}
+
+.queue-table th,
+.queue-table td {
+  border: 1px solid var(--border-color) !important;
+  padding: 6px 8px !important;
+  text-align: left !important;
+  vertical-align: top !important;
+}
+
+.queue-table th[data-sort-col] {
+  cursor: pointer !important;
+}
+
+.queue-chip {
+  display: inline-block !important;
+  padding: 2px 6px !important;
+  border-radius: 999px !important;
+  font-size: 0.72rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.02em !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.queue-chip-queued { background: rgba(0, 122, 204, 0.22) !important; color: #9ad6ff !important; }
+.queue-chip-paused { background: rgba(255, 166, 0, 0.18) !important; color: #ffd38a !important; }
+.queue-chip-failed { background: rgba(255, 59, 48, 0.18) !important; color: #ffb0aa !important; }
+
+.queue-action-btn {
+  font-size: 0.72rem !important;
+  margin: 2px !important;
+  padding: 3px 6px !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--border-color) !important;
+  background: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+}
+
+.queue-action-btn:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
 .progress {
   height: 6px !important;
   background-color: var(--bg-primary) !important;

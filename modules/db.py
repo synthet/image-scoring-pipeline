@@ -1047,6 +1047,10 @@ def _init_db_impl():
             phase_id INTEGER,
             job_type VARCHAR(50),
             status VARCHAR(50),
+            priority SMALLINT DEFAULT 100,
+            retry_count INTEGER DEFAULT 0,
+            target_scope VARCHAR(255),
+            paused_at TIMESTAMP,
             queue_position INTEGER,
             cancel_requested SMALLINT DEFAULT 0,
             queue_payload BLOB SUB_TYPE TEXT,
@@ -1750,6 +1754,46 @@ def _init_db_impl():
                     try: conn.rollback()
                     except Exception: pass
                     c = conn.cursor()
+            if "priority" not in jobs_cols:
+                try:
+                    c.execute("ALTER TABLE jobs ADD priority SMALLINT DEFAULT 100")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding jobs.priority: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
+            if "retry_count" not in jobs_cols:
+                try:
+                    c.execute("ALTER TABLE jobs ADD retry_count INTEGER DEFAULT 0")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding jobs.retry_count: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
+            if "target_scope" not in jobs_cols:
+                try:
+                    c.execute("ALTER TABLE jobs ADD target_scope VARCHAR(255)")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding jobs.target_scope: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
+            if "paused_at" not in jobs_cols:
+                try:
+                    c.execute("ALTER TABLE jobs ADD paused_at TIMESTAMP")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception as m:
+                    logger.debug("Adding jobs.paused_at: %s", m)
+                    try: conn.rollback()
+                    except Exception: pass
+                    c = conn.cursor()
             # FK for phase_id
             if not _constraint_exists(c, 'FK_JOBS_PHASES'):
                 try:
@@ -1781,6 +1825,20 @@ def _init_db_impl():
                     conn.commit()
                     c = conn.cursor()
                 except Exception: pass
+            if not _index_exists(c, 'IDX_JOBS_PRIORITY_STATUS'):
+                try:
+                    c.execute("CREATE INDEX idx_jobs_priority_status ON jobs(status, priority)")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception:
+                    pass
+            if not _index_exists(c, 'IDX_JOBS_PAUSED_AT'):
+                try:
+                    c.execute("CREATE INDEX idx_jobs_paused_at ON jobs(paused_at)")
+                    conn.commit()
+                    c = conn.cursor()
+                except Exception:
+                    pass
 
         # JOB_PHASES migration / constraints / indexes
         if _table_exists(c, 'JOB_PHASES'):
@@ -3431,15 +3489,23 @@ def enqueue_job(input_path, phase_code, job_type=None, queue_payload=None):
 
     now = datetime.datetime.now()
     payload_json = json.dumps(queue_payload) if queue_payload is not None else None
+    priority = int((queue_payload or {}).get("priority", 100)) if isinstance(queue_payload, dict) else 100
+    priority = max(1, min(priority, 999))
+    target_scope = None
+    if isinstance(queue_payload, dict):
+        target_scope = queue_payload.get("target_scope") or queue_payload.get("scope")
+    if not target_scope:
+        target_scope = input_path
 
     c.execute(
         """
         INSERT INTO jobs (
             input_path, phase_id, job_type, status, queue_position,
-            created_at, enqueued_at, queue_payload, cancel_requested
-        ) VALUES (?, ?, ?, 'queued', NULL, ?, ?, ?, 0) RETURNING id
+            created_at, enqueued_at, queue_payload, cancel_requested,
+            priority, target_scope, retry_count
+        ) VALUES (?, ?, ?, 'queued', NULL, ?, ?, ?, 0, ?, ?, 0) RETURNING id
         """,
-        (input_path, phase_id, job_type, now, now, payload_json)
+        (input_path, phase_id, job_type, now, now, payload_json, priority, target_scope)
     )
     row = c.fetchone()
     job_id = row[0] if row else None
@@ -3481,7 +3547,7 @@ def dequeue_next_job():
             """
             SELECT id FROM jobs
             WHERE status = 'queued' AND COALESCE(cancel_requested, 0) = 0
-            ORDER BY COALESCE(queue_position, id) ASC, enqueued_at ASC, id ASC
+            ORDER BY COALESCE(priority, 100) DESC, COALESCE(queue_position, id) ASC, enqueued_at ASC, id ASC
             FETCH FIRST 1 ROWS ONLY
             """
         )
@@ -3509,7 +3575,7 @@ def dequeue_next_job():
 
 
 
-def get_queued_jobs(limit=200):
+def get_queued_jobs(limit=200, include_related=False):
     try:
         limit = int(limit)
     except (ValueError, TypeError):
@@ -3522,18 +3588,125 @@ def get_queued_jobs(limit=200):
     c = conn.cursor()
     c.execute(
         """
-        SELECT * FROM jobs
-        WHERE status = 'queued'
-        ORDER BY COALESCE(queue_position, id) ASC, enqueued_at ASC, id ASC
+        SELECT
+            j.*,
+            p.name AS phase_name,
+            ph.selected_phases,
+            ph.dependency_blockers
+        FROM jobs j
+        LEFT JOIN pipeline_phases p ON p.id = j.phase_id
+        LEFT JOIN (
+            SELECT
+                jp.job_id,
+                LIST(jp.phase_code, ', ') AS selected_phases,
+                LIST(CASE WHEN jp.state IN ('blocked', 'waiting', 'pending_dependency') THEN jp.phase_code ELSE NULL END, ', ') AS dependency_blockers
+            FROM job_phases jp
+            GROUP BY jp.job_id
+        ) ph ON ph.job_id = j.id
+        WHERE j.status IN ('queued', 'paused', 'failed')
+          AND (? = 1 OR j.status = 'queued')
+        ORDER BY
+            CASE j.status WHEN 'queued' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,
+            COALESCE(j.priority, 100) DESC,
+            COALESCE(j.queue_position, j.id) ASC,
+            j.enqueued_at ASC,
+            j.id ASC
         FETCH FIRST ? ROWS ONLY
         """,
-        (limit,)
+        (1 if include_related else 0, limit)
     )
     rows = [dict(r) for r in c.fetchall()]
-    for idx, row in enumerate(rows, start=1):
-        row["queue_position"] = idx
+
+    avg_seconds = 120
+    try:
+        c.execute(
+            """
+            SELECT AVG(DATEDIFF(SECOND FROM started_at TO completed_at))
+            FROM jobs
+            WHERE status = 'completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL
+            """
+        )
+        avg_row = c.fetchone()
+        if avg_row and avg_row[0]:
+            avg_seconds = max(15, int(avg_row[0]))
+    except Exception:
+        pass
+
+    queue_idx = 0
+    now = datetime.datetime.now()
+    for row in rows:
+        if row.get("status") in ("queued", "paused"):
+            queue_idx += 1
+            row["queue_position"] = queue_idx
+            eta = now + datetime.timedelta(seconds=(queue_idx - 1) * avg_seconds)
+            row["estimated_start"] = eta.isoformat(sep=" ", timespec="seconds")
+        else:
+            row["queue_position"] = "-"
+            row["estimated_start"] = "-"
+        row["target_scope"] = row.get("target_scope") or row.get("input_path") or "-"
+        row["selected_phases"] = row.get("selected_phases") or row.get("phase_name") or row.get("job_type") or "-"
+        row["dependency_blockers"] = row.get("dependency_blockers") or "None"
+        row["retry_count"] = int(row.get("retry_count") or 0)
+        row["priority"] = int(row.get("priority") or 100)
     conn.close()
     return rows
+
+
+def set_job_priority(job_id, priority):
+    """Update job priority for queued/paused jobs."""
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        p = max(1, min(int(priority), 999))
+    except Exception:
+        p = 100
+    c.execute("UPDATE jobs SET priority = ? WHERE id = ? AND status IN ('queued', 'paused')", (p, job_id))
+    updated = c.rowcount > 0
+    if updated:
+        conn.commit()
+    else:
+        conn.rollback()
+    conn.close()
+    return {"success": updated, "priority": p}
+
+
+def pause_queue_job(job_id):
+    """Pause a queued job so it is temporarily skipped by dequeue."""
+    conn = get_db()
+    c = conn.cursor()
+    now = datetime.datetime.now()
+    c.execute("UPDATE jobs SET status = 'paused', paused_at = ? WHERE id = ? AND status = 'queued'", (now, job_id))
+    updated = c.rowcount > 0
+    if updated:
+        conn.commit()
+    else:
+        conn.rollback()
+    conn.close()
+    return {"success": updated}
+
+
+def restart_failed_job(job_id):
+    """Move failed job back to queued and increment retry_count."""
+    conn = get_db()
+    c = conn.cursor()
+    now = datetime.datetime.now()
+    c.execute(
+        """
+        UPDATE jobs
+        SET status = 'queued', cancel_requested = 0, enqueued_at = ?, queue_position = id,
+            retry_count = COALESCE(retry_count, 0) + 1, paused_at = NULL,
+            started_at = NULL, finished_at = NULL, completed_at = NULL
+        WHERE id = ? AND status = 'failed'
+        """,
+        (now, job_id)
+    )
+    updated = c.rowcount > 0
+    if updated:
+        conn.commit()
+    else:
+        conn.rollback()
+    conn.close()
+    return {"success": updated}
 
 
 def request_cancel_job(job_id):
@@ -3554,7 +3727,7 @@ def request_cancel_job(job_id):
         conn.close()
         return {"success": False, "reason": "running_not_supported", "status": status}
 
-    if status != "queued":
+    if status not in ("queued", "paused"):
         conn.close()
         return {"success": False, "reason": "not_cancellable_state", "status": status}
 
@@ -3563,7 +3736,7 @@ def request_cancel_job(job_id):
         """
         UPDATE jobs
         SET status = 'cancelled', cancel_requested = 1, queue_position = NULL, finished_at = ?, completed_at = ?
-        WHERE id = ? AND status = 'queued'
+        WHERE id = ? AND status IN ('queued', 'paused')
         """,
         (now, now, job_id)
     )
