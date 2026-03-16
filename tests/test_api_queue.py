@@ -662,3 +662,78 @@ class _FakeConn:
 
     def close(self):
         return None
+
+
+def test_ipc_bridge_routes_pipeline_submit(monkeypatch, tmp_path):
+    monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+
+    monkeypatch.setattr(db, "enqueue_job", lambda *a, **kw: (900, 4))
+    monkeypatch.setattr(db, "create_job_phases", lambda job_id, phase_codes: [])
+
+    with _build_client() as client:
+        response = client.post(
+            "/api/ipc/bridge",
+            json={
+                "channel": "pipeline:submit",
+                "payload": {
+                    "input_path": str(tmp_path),
+                    "operations": ["score"],
+                    "skip_existing": True,
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["channel"] == "pipeline:submit"
+    assert payload["ok"] is True
+    assert payload["data"]["success"] is True
+    assert payload["data"]["data"]["job_id"] == 900
+
+
+def test_ipc_bridge_routes_tasks_active(monkeypatch):
+    monkeypatch.setattr(api._job_dispatcher, "get_state", lambda: {
+        "queue": [],
+        "queue_size": 0,
+        "active_runner": None,
+        "is_dispatcher_running": True,
+    })
+    monkeypatch.setattr(db, "get_queued_jobs", lambda limit=200: [])
+    monkeypatch.setattr(db, "get_jobs", lambda limit=20: [])
+    monkeypatch.setattr(db, "get_job_by_id", lambda job_id: None)
+
+    with _build_client() as client:
+        response = client.post(
+            "/api/ipc/bridge",
+            json={"channel": "tasks:active", "payload": {"limit": 11}},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["channel"] == "tasks:active"
+    assert payload["ok"] is True
+    assert "dispatcher" in payload["data"]
+
+
+def test_ipc_bridge_rejects_unknown_channel():
+    with _build_client() as client:
+        response = client.post(
+            "/api/ipc/bridge",
+            json={"channel": "unknown:channel", "payload": {}},
+        )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "Unsupported IPC channel" in detail["message"]
+
+
+def test_ipc_bridge_folders_phase_status_requires_path():
+    with _build_client() as client:
+        response = client.post(
+            "/api/ipc/bridge",
+            json={"channel": "folders:phase-status", "payload": {}},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "payload.path is required for folders:phase-status"

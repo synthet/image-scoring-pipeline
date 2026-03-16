@@ -574,6 +574,26 @@ class PipelineBackfillRequest(BaseModel):
     input_path: str = Field(..., description="Folder path for backfill operation.")
 
 
+class IpcBridgeRequest(BaseModel):
+    """Generic IPC-style message wrapper for Electron -> FastAPI bridging."""
+    channel: str = Field(
+        ...,
+        description="IPC channel name (e.g. 'pipeline:submit', 'tasks:active').",
+        example="pipeline:submit",
+    )
+    payload: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Channel-specific payload; mirrors the endpoint body/query shape.",
+    )
+
+
+class IpcBridgeResponse(BaseModel):
+    """Response envelope for IPC bridge requests."""
+    channel: str = Field(..., description="Echoed IPC channel")
+    ok: bool = Field(..., description="True when handler succeeded")
+    data: Optional[Any] = Field(None, description="Handler result payload")
+
+
 class ApiResponse(BaseModel):
     """Standard API response model for operation results.
     
@@ -3249,4 +3269,77 @@ def create_api_router() -> APIRouter:
             data={"updated_images": updated}
         )
 
+
+
+    @router.post(
+        "/ipc/bridge",
+        response_model=IpcBridgeResponse,
+        summary="Electron IPC -> FastAPI bridge",
+        description="""
+        Bridges Electron-style IPC messages into FastAPI handlers so the desktop
+        main process can forward a single contract to Python.
+
+        Supported channels:
+        - `pipeline:submit` -> POST /api/pipeline/submit
+        - `pipeline:phase:skip` -> POST /api/pipeline/phase/skip
+        - `pipeline:phase:retry` -> POST /api/pipeline/phase/retry
+        - `tasks:active` -> GET /api/tasks/active
+        - `jobs:queue` -> GET /api/jobs/queue
+        - `folders:tree` -> GET /api/folders/tree
+        - `folders:phase-status` -> GET /api/folders/phase-status
+        """
+    )
+    async def ipc_bridge(request: IpcBridgeRequest):
+        channel = (request.channel or "").strip()
+        payload = request.payload or {}
+
+        if channel == "pipeline:submit":
+            result = await submit_pipeline(PipelineSubmitRequest(**payload))
+            return IpcBridgeResponse(channel=channel, ok=True, data=result.model_dump())
+
+        if channel == "pipeline:phase:skip":
+            result = await skip_pipeline_phase(PipelinePhaseControlRequest(**payload))
+            return IpcBridgeResponse(channel=channel, ok=True, data=result.model_dump())
+
+        if channel == "pipeline:phase:retry":
+            result = await retry_pipeline_phase(PipelinePhaseControlRequest(**payload))
+            return IpcBridgeResponse(channel=channel, ok=True, data=result.model_dump())
+
+        if channel == "tasks:active":
+            limit = int(payload.get("limit", 200) or 200)
+            result = await get_tasks_active(limit=limit)
+            return IpcBridgeResponse(channel=channel, ok=True, data=result)
+
+        if channel == "jobs:queue":
+            limit = int(payload.get("limit", 200) or 200)
+            result = await get_jobs_queue(limit=limit)
+            return IpcBridgeResponse(channel=channel, ok=True, data=result)
+
+        if channel == "folders:tree":
+            result = await get_folder_tree()
+            return IpcBridgeResponse(channel=channel, ok=True, data=result)
+
+        if channel == "folders:phase-status":
+            path = (payload.get("path") or payload.get("input_path") or "").strip()
+            if not path:
+                raise HTTPException(status_code=400, detail="payload.path is required for folders:phase-status")
+            force_refresh = bool(payload.get("force_refresh", False))
+            result = await get_folder_phase_status(path=path, force_refresh=force_refresh)
+            return IpcBridgeResponse(channel=channel, ok=True, data=result)
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": f"Unsupported IPC channel: {channel}",
+                "supported_channels": [
+                    "pipeline:submit",
+                    "pipeline:phase:skip",
+                    "pipeline:phase:retry",
+                    "tasks:active",
+                    "jobs:queue",
+                    "folders:tree",
+                    "folders:phase-status",
+                ],
+            },
+        )
     return router
