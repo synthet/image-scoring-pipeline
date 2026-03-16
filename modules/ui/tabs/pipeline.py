@@ -459,8 +459,19 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         idempotent_phases = {"metadata", "keywords", "culling"}
         if phase not in idempotent_phases:
             return _pipeline_action_result(f"Step rerun blocked for non-idempotent phase: {phase}", level="warn")
-        db.set_image_phase_status(int(image_id), phase, "running")
-        return _pipeline_action_result(f"Marked image {int(image_id)} phase '{phase}' for rerun", level="info")
+
+        img_id = int(image_id)
+        statuses = db.get_image_phase_statuses(img_id) or []
+        phase_row = next((row for row in statuses if str(row.get("phase_code") or "").lower() == phase), None)
+        current_status = str((phase_row or {}).get("status") or "not_started").lower()
+        if current_status != "failed":
+            return _pipeline_action_result(
+                f"Step rerun requires failed status. Current status for phase '{phase}' is '{current_status}'",
+                level="warn",
+            )
+
+        db.set_image_phase_status(img_id, phase, "running")
+        return _pipeline_action_result(f"Marked image {img_id} phase '{phase}' for rerun", level="info")
 
     components["scoring_run_btn"].click(
         fn=_run_scoring,

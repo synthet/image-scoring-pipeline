@@ -3055,11 +3055,28 @@ def create_api_router() -> APIRouter:
         for code in ordered[start_idx:]:
             updated_total += int(db.set_folder_phase_status(request.input_path, code, "running") or 0)
 
+        if phase == "scoring":
+            if _scoring_runner is None:
+                raise HTTPException(status_code=503, detail="Scoring runner not available")
+            job_id = db.create_job(request.input_path, phase_code="scoring")
+            result = _scoring_runner.start_batch(request.input_path, job_id, True)
+        elif phase == "culling":
+            if _selection_runner is None:
+                raise HTTPException(status_code=503, detail="Selection runner not available")
+            job_id = db.create_job(request.input_path, phase_code="culling")
+            result = _selection_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
+        else:
+            if _tagging_runner is None:
+                raise HTTPException(status_code=503, detail="Tagging runner not available")
+            job_id = db.create_job(request.input_path, phase_code="keywords")
+            result = _tagging_runner.start_batch(request.input_path, job_id=job_id, overwrite=True, generate_captions=False)
+
         return ApiResponse(
-            success=True,
-            message=f"Restarted from stage '{phase}'",
+            success=(result == "Started"),
+            message=f"Restart from stage '{phase}': {result}",
             data={
                 "phase_code": phase,
+                "job_id": job_id,
                 "updated_images": updated_total,
                 "rollback_guidance": "Use skip with reason for non-actionable stage failures.",
             },
@@ -3085,6 +3102,15 @@ def create_api_router() -> APIRouter:
         finally:
             conn.close()
 
+        statuses = db.get_image_phase_statuses(request.image_id) or []
+        phase_row = next((row for row in statuses if str(row.get("phase_code") or "").lower() == phase), None)
+        current_status = str((phase_row or {}).get("status") or "not_started").lower()
+        if current_status != "failed":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Step rerun requires failed status. Current status for phase '{phase}' is '{current_status}'.",
+            )
+
         db.set_image_phase_status(request.image_id, phase, "running")
         return ApiResponse(
             success=True,
@@ -3092,6 +3118,7 @@ def create_api_router() -> APIRouter:
             data={
                 "image_id": request.image_id,
                 "phase_code": phase,
+                "previous_status": current_status,
                 "rollback_guidance": "If rerun fails again, skip stage with a reason and continue.",
             },
         )
