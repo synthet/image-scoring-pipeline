@@ -3303,6 +3303,336 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    # ─── New Runs API (React SPA) ────────────────────────────────────────────
+
+    class RunSubmitRequest(BaseModel):
+        scope_type: str = "folder_recursive"  # file|folder|folder_recursive|path_list
+        scope_paths: List[str]
+        stages: Optional[List[str]] = None
+        skip_done: bool = True
+        force_rerun: bool = False
+
+    @router.post("/runs/submit", summary="Submit a new Run")
+    async def submit_run(request: RunSubmitRequest):
+        from modules import db
+        from modules.phases import normalize_phase_codes
+        if not request.scope_paths:
+            raise HTTPException(status_code=400, detail="scope_paths must not be empty")
+        primary_path = request.scope_paths[0]
+        phases = normalize_phase_codes(request.stages) if request.stages else None
+        payload = {
+            "scope_type": request.scope_type,
+            "scope_paths": request.scope_paths,
+            "skip_done": request.skip_done,
+            "force_rerun": request.force_rerun,
+            "phases": [p.value for p in phases] if phases else None,
+        }
+        try:
+            job_id, position = db.enqueue_job(
+                input_path=primary_path,
+                phase_code=None,
+                queue_payload=json.dumps(payload),
+            )
+            return {"run_id": job_id, "queue_position": position, "success": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/pause", summary="Soft-pause a running Run")
+    async def pause_run(run_id: int):
+        """Soft pause: sets a flag so the runner finishes the current image then stops."""
+        from modules import db
+        try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+            if job.get("status") != "running":
+                raise HTTPException(status_code=400, detail=f"Run {run_id} is not running (status={job.get('status')})")
+            db.update_job_status(run_id, "paused")
+            return {"success": True, "message": f"Run {run_id} paused after current image completes"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/resume", summary="Resume a paused Run")
+    async def resume_run(run_id: int):
+        """Re-enqueue a paused run. It will resume with skip_done=True."""
+        from modules import db
+        try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+            if job.get("status") not in ("paused", "interrupted"):
+                raise HTTPException(status_code=400, detail=f"Run {run_id} cannot be resumed (status={job.get('status')})")
+            # Re-enqueue with same payload + skip_done=True
+            payload_raw = job.get("queue_payload") or "{}"
+            try:
+                payload = json.loads(payload_raw)
+            except Exception:
+                payload = {}
+            payload["skip_done"] = True
+            new_job_id, position = db.enqueue_job(
+                input_path=job.get("input_path", ""),
+                phase_code=None,
+                queue_payload=json.dumps(payload),
+            )
+            return {"success": True, "run_id": new_job_id, "queue_position": position}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/cancel", summary="Cancel a Run")
+    async def cancel_run(run_id: int):
+        from modules import db
+        try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+            status = job.get("status", "")
+            if status == "queued":
+                db.request_cancel_job(run_id)
+            elif status == "running":
+                db.update_job_status(run_id, "canceled")
+            else:
+                raise HTTPException(status_code=400, detail=f"Cannot cancel run with status={status}")
+            return {"success": True, "message": f"Run {run_id} canceled"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/retry", summary="Retry a failed/canceled Run")
+    async def retry_run(run_id: int):
+        from modules import db
+        try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+            payload_raw = job.get("queue_payload") or "{}"
+            try:
+                payload = json.loads(payload_raw)
+            except Exception:
+                payload = {}
+            payload["skip_done"] = True
+            new_job_id, position = db.enqueue_job(
+                input_path=job.get("input_path", ""),
+                phase_code=None,
+                queue_payload=json.dumps(payload),
+            )
+            return {"success": True, "run_id": new_job_id, "queue_position": position}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/runs/{run_id}/stages", summary="Get all stages for a Run")
+    async def get_run_stages(run_id: int):
+        from modules import db
+        try:
+            phases = db.get_job_phases(run_id)
+            if phases is None:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found or has no phases")
+            return phases
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/stages/{stage_code}/retry", summary="Retry a specific stage")
+    async def retry_run_stage(run_id: int, stage_code: str):
+        from modules import db
+        try:
+            db.set_job_phase_state(run_id, stage_code, "pending")
+            return {"success": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/stages/{stage_code}/skip", summary="Skip a specific stage")
+    async def skip_run_stage(run_id: int, stage_code: str):
+        from modules import db
+        try:
+            db.set_job_phase_state(run_id, stage_code, "skipped")
+            return {"success": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/runs/{run_id}/stages/{stage_code}/steps", summary="Get steps for a stage")
+    async def get_stage_steps(run_id: int, stage_code: str):
+        """Returns step-level telemetry for a stage (e.g. individual ML model runs)."""
+        from modules import db
+        try:
+            steps = db.get_job_steps(run_id, stage_code)
+            return steps or []
+        except AttributeError:
+            return []  # get_job_steps not yet implemented — return empty
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/runs/{run_id}/stages/{stage_code}/items", summary="Get work items for a stage")
+    async def get_stage_work_items(
+        run_id: int,
+        stage_code: str,
+        offset: int = 0,
+        limit: int = 50,
+    ):
+        """Returns individual images and their processing status for a stage."""
+        from modules import db
+        try:
+            items_data = db.get_job_stage_images(run_id, stage_code, offset=offset, limit=limit)
+            if items_data is None:
+                return {"items": [], "total": 0}
+            return items_data
+        except AttributeError:
+            return {"items": [], "total": 0}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    class ScopePreviewRequest(BaseModel):
+        paths: List[str]
+        recursive: bool = True
+
+    @router.post("/scope/preview", summary="Preview scope before submitting a Run")
+    async def scope_preview(request: ScopePreviewRequest):
+        """Returns image count and per-stage phase statuses for the given paths."""
+        from modules import db
+        from modules.phases import PhaseCode
+        if not request.paths:
+            raise HTTPException(status_code=400, detail="paths must not be empty")
+        try:
+            total_images = 0
+            folder_count = 0
+            stage_done: Dict[str, int] = {}
+            stage_failed: Dict[str, int] = {}
+            stage_skipped: Dict[str, int] = {}
+            stage_total: Dict[str, int] = {}
+            phase_codes = [p.value for p in PhaseCode]
+
+            for path in request.paths:
+                if not os.path.exists(path):
+                    continue
+                summary = db.get_folder_phase_summary(path, force_refresh=True)
+                if not summary:
+                    continue
+                folder_count += 1
+                # Use first phase's total as image count proxy
+                if summary:
+                    img_count = summary[0].get("total_count", 0) if summary else 0
+                    total_images += img_count
+                for row in summary:
+                    code = row.get("code", "")
+                    stage_total[code] = stage_total.get(code, 0) + row.get("total_count", 0)
+                    stage_done[code] = stage_done.get(code, 0) + row.get("done_count", 0)
+                    stage_failed[code] = stage_failed.get(code, 0) + row.get("failed_count", 0)
+                    stage_skipped[code] = stage_skipped.get(code, 0) + row.get("skipped_count", 0)
+
+            stage_statuses = {}
+            stage_counts = {}
+            for code in phase_codes:
+                total = stage_total.get(code, 0)
+                done = stage_done.get(code, 0)
+                failed = stage_failed.get(code, 0)
+                skipped = stage_skipped.get(code, 0)
+                if total == 0:
+                    status = "not_started"
+                elif done == total:
+                    status = "done"
+                elif failed > 0:
+                    status = "failed"
+                elif done > 0 or skipped > 0:
+                    status = "partial"
+                else:
+                    status = "not_started"
+                stage_statuses[code] = status
+                stage_counts[code] = {"done": done, "failed": failed, "skipped": skipped, "total": total}
+
+            return {
+                "image_count": total_images,
+                "folder_count": folder_count,
+                "stage_statuses": stage_statuses,
+                "stage_counts": stage_counts,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/scope/tree", summary="Folder tree with phase status overlays")
+    async def scope_tree():
+        """Enhanced folder tree with per-folder phase status for the Scope Navigator sidebar."""
+        from modules import db, utils
+        from modules.ui_tree import build_tree_dict
+        try:
+            raw_folders = db.get_all_folders()
+            folders = []
+            for p in raw_folders:
+                local_p = utils.convert_path_to_local(p) if hasattr(utils, 'convert_path_to_local') else p
+                if not local_p:
+                    continue
+                norm = os.path.normpath(local_p)
+                basename = os.path.basename(norm).lower()
+                if basename in ['.tmp.drivedownload', '.tmp.driveupload', 'keywords_output', '.']:
+                    continue
+                folders.append(local_p)
+            folders = list(set(folders))
+            tree_dict = build_tree_dict(folders)
+
+            def enrich(nodes: List[Dict]) -> List[Dict]:
+                result = []
+                for node in nodes:
+                    path = node.get("path", "")
+                    if path:
+                        try:
+                            summary = db.get_folder_phase_summary(path)
+                            if summary:
+                                node["phase_statuses"] = {
+                                    row["code"]: row.get("status", "not_started") for row in summary
+                                }
+                        except Exception:
+                            pass
+                    if "children" in node:
+                        node["children"] = enrich(node["children"])
+                    result.append(node)
+                return result
+
+            return enrich(tree_dict)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/queue", summary="Get the current Run Queue")
+    async def get_run_queue(limit: int = 100):
+        from modules import db
+        try:
+            queued = db.get_queued_jobs(limit=limit)
+            return [
+                {
+                    "run_id": j.get("id"),
+                    "position": j.get("queue_position"),
+                    "input_path": j.get("input_path", ""),
+                    "scope_paths": json.loads(j.get("scope_paths") or "[]") or [j.get("input_path", "")],
+                    "created_at": j.get("created_at"),
+                    "enqueued_at": j.get("enqueued_at"),
+                }
+                for j in (queued or [])
+            ]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    class QueueReorderRequest(BaseModel):
+        run_id: int
+        new_position: int
+
+    @router.post("/queue/reorder", summary="Reorder a queued Run")
+    async def reorder_queue(request: QueueReorderRequest):
+        from modules import db
+        try:
+            db.reorder_queued_job(request.run_id, request.new_position)
+            return {"success": True}
+        except AttributeError:
+            raise HTTPException(status_code=501, detail="Queue reordering not yet implemented")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # ─── End new Runs API ────────────────────────────────────────────────────
+
     @router.post(
         "/pipeline/phase/backfill-index-meta",
         response_model=ApiResponse,
