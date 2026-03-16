@@ -2693,11 +2693,11 @@ def create_api_router() -> APIRouter:
 
         selector_request = compose_selector_request(
             input_path=request.input_path,
-            image_ids_raw=",".join(str(i) for i in (request.image_ids or [])),
-            image_paths_raw=",".join(request.image_paths or []),
-            folder_ids_raw=",".join(str(i) for i in (request.folder_ids or [])),
-            folder_paths_raw=",".join(request.folder_paths or []),
-            exclude_image_paths_raw=",".join(request.exclude_image_paths or []),
+            image_ids_raw=request.image_ids,
+            image_paths_raw=request.image_paths,
+            folder_ids_raw=request.folder_ids,
+            folder_paths_raw=request.folder_paths,
+            exclude_image_paths_raw=request.exclude_image_paths,
             recursive=request.recursive,
         )
         preview = validate_and_preview(selector_request)
@@ -2715,6 +2715,10 @@ def create_api_router() -> APIRouter:
         is_file = bool(request.input_path and os.path.isfile(request.input_path))
         if is_file and "cluster" in request.operations:
             raise HTTPException(status_code=400, detail="Clustering requires a folder path, not a single file")
+        if "cluster" in request.operations and not any([request.input_path, request.folder_ids, request.folder_paths]):
+            raise HTTPException(status_code=400, detail="Clustering requires a folder selector")
+
+        queue_input_path = request.input_path or "SELECTOR_PIPELINE"
 
         from modules import db
         first_op = request.operations[0]
@@ -2780,7 +2784,7 @@ def create_api_router() -> APIRouter:
             target_phases = [op_to_phase_code.get(op) for op in request.operations if op in ["indexing", "metadata", "score"]]
             
             job_id, queue_position = db.enqueue_job(
-                request.input_path,
+                queue_input_path,
                 phase_code=op_to_phase_code[first_op],
                 job_type="scoring", # Scoring runner handles indexing/metadata/scoring
                 queue_payload=serialize_queue_payload(
@@ -2796,7 +2800,7 @@ def create_api_router() -> APIRouter:
             if _tagging_runner is None:
                 raise HTTPException(status_code=503, detail="Tagging runner not available")
             job_id, queue_position = db.enqueue_job(
-                request.input_path,
+                queue_input_path,
                 phase_code="keywords",
                 job_type="tagging",
                 queue_payload=serialize_queue_payload(
@@ -2813,7 +2817,7 @@ def create_api_router() -> APIRouter:
             if _clustering_runner is None:
                 raise HTTPException(status_code=503, detail="Clustering runner not available")
             job_id, queue_position = db.enqueue_job(
-                request.input_path,
+                queue_input_path,
                 phase_code="culling",
                 job_type="clustering",
                 queue_payload=serialize_queue_payload(
@@ -2838,6 +2842,7 @@ def create_api_router() -> APIRouter:
             data={
                 "job_id": job_id,
                 "input_path": request.input_path,
+                "selector_source": queue_input_path,
                 "current_operation": first_op,
                 "queue_position": queue_position,
                 "phase_plan": phase_rows,

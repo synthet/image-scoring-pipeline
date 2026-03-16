@@ -12,18 +12,25 @@ from modules.selector_resolver import resolve_selectors
 PRESET_FILE = os.path.join("tmp", "pipeline_selector_presets.json")
 
 
-def _split_csv_lines(raw: str | None) -> list[str]:
-    if not raw:
+def _coerce_items(raw: Any) -> list[str]:
+    if raw is None:
         return []
+    if isinstance(raw, (list, tuple, set)):
+        return [str(item) for item in raw]
+    return [str(raw)]
+
+
+def _split_csv_lines(raw: Any) -> list[str]:
     out: list[str] = []
-    for line in str(raw).replace("\n", ",").split(","):
-        val = line.strip()
-        if val:
-            out.append(val)
+    for chunk in _coerce_items(raw):
+        for line in chunk.replace("\n", ",").split(","):
+            val = line.strip()
+            if val:
+                out.append(val)
     return out
 
 
-def _to_ints(values: Iterable[str]) -> list[int]:
+def _to_ints(values: Iterable[Any]) -> list[int]:
     out: list[int] = []
     for value in values:
         try:
@@ -35,11 +42,11 @@ def _to_ints(values: Iterable[str]) -> list[int]:
 
 def compose_selector_request(
     input_path: str | None = None,
-    image_ids_raw: str | None = None,
-    image_paths_raw: str | None = None,
-    folder_ids_raw: str | None = None,
-    folder_paths_raw: str | None = None,
-    exclude_image_paths_raw: str | None = None,
+    image_ids_raw: Any = None,
+    image_paths_raw: Any = None,
+    folder_ids_raw: Any = None,
+    folder_paths_raw: Any = None,
+    exclude_image_paths_raw: Any = None,
     recursive: bool = True,
 ) -> dict[str, Any]:
     image_ids = _to_ints(_split_csv_lines(image_ids_raw))
@@ -48,16 +55,15 @@ def compose_selector_request(
     folder_paths = _split_csv_lines(folder_paths_raw)
     exclude_image_paths = _split_csv_lines(exclude_image_paths_raw)
 
-    if input_path:
-        normalized = input_path.strip()
-        if normalized:
-            if os.path.isdir(normalized):
-                folder_paths.append(normalized)
-            else:
-                image_paths.append(normalized)
+    normalized_input_path = input_path.strip() if isinstance(input_path, str) and input_path.strip() else None
+    if normalized_input_path:
+        if os.path.isdir(normalized_input_path):
+            folder_paths.append(normalized_input_path)
+        else:
+            image_paths.append(normalized_input_path)
 
     return {
-        "input_path": input_path.strip() if input_path else None,
+        "input_path": normalized_input_path,
         "image_ids": image_ids or None,
         "image_paths": image_paths or None,
         "folder_ids": folder_ids or None,
@@ -89,10 +95,17 @@ def validate_and_preview(request: dict[str, Any]) -> dict[str, Any]:
         excluded_ids = list(exclusion_result.get("resolved_image_ids") or [])
         missing_excluded_paths = list(exclusion_result.get("missing_image_paths") or [])
 
+    raw_selector_entries = []
+    raw_selector_entries.extend(_to_ints(request.get("image_ids") or []))
+    raw_selector_entries.extend(_split_csv_lines(request.get("image_paths") or []))
+    raw_selector_entries.extend(_to_ints(request.get("folder_ids") or []))
+    raw_selector_entries.extend(_split_csv_lines(request.get("folder_paths") or []))
+    duplicate_inclusion_count = max(0, len(raw_selector_entries) - len(set(raw_selector_entries)))
+
     resolved_ids = list(selector_result.get("resolved_image_ids") or [])
-    duplicate_inclusion_count = max(0, len(resolved_ids) - len(set(resolved_ids)))
     before_exclusion_count = len(set(resolved_ids))
-    resolved_ids = [image_id for image_id in resolved_ids if image_id not in set(excluded_ids)]
+    excluded_id_set = set(excluded_ids)
+    resolved_ids = [image_id for image_id in resolved_ids if image_id not in excluded_id_set]
 
     warnings: list[str] = []
     missing_paths = list(selector_result.get("missing_image_paths") or []) + list(selector_result.get("missing_folder_paths") or [])
