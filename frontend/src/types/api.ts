@@ -139,52 +139,53 @@ export interface QueueEntry {
 //
 // electron/types.ts ImageRow fields are authoritative (Electron reads from DB directly).
 // The Python REST API returns the same column names from the IMAGES table.
+// DB naming convention: score_* prefix (score_general, score_liqe, …)
 
 export interface Image {
   // Identity
   id: number
-  file_path: string      // absolute file path (DB: file_path)
-  filename: string       // base filename (DB: file_name)
-  folder_path: string
-  uuid?: string
+  file_path: string           // absolute file path
+  file_name: string           // base filename (DB: file_name)
+  folder_path?: string        // derived, may not be in DB row
+  folder_id?: number | null
 
   // Thumbnails
-  thumbnail_path: string | null
-  thumbnail_path_win?: string | null  // Windows path variant
+  thumbnail_path?: string | null
+  win_path?: string | null    // Windows path variant (from file_paths join)
 
   // User metadata
-  rating: number | null              // 0–5 stars
-  label: string | null               // 'Pick' | 'Reject' | 'Normal'
+  rating: number | null       // 0–5 stars
+  label: string | null        // 'Pick' | 'Reject' | 'Normal'
   title?: string | null
   description?: string | null
-  keywords: string[]
-  caption: string | null
+  keywords?: string | null    // stored as BLOB/string in DB (comma-separated)
+  caption?: string | null
 
-  // Quality scores — align with Electron's ImageRow naming
-  // Legacy aggregate scores (used by Electron)
-  score?: number | null              // general composite (DB: score)
-  general_score?: number | null
-  technical_score?: number | null
-  aesthetic_score?: number | null
-  // Individual model scores
-  musiq_score?: number | null        // MUSIQ
-  liqe_score?: number | null         // LIQE  (also used by Electron)
-  topiq_score?: number | null        // TOPIQ
-  qalign_score?: number | null       // Q-Align
-  spaq_score?: number | null         // SPAQ (legacy)
-  ava_score?: number | null          // AVA (legacy)
-  koniq_score?: number | null        // KonIQ (legacy)
-  paq2piq_score?: number | null      // PAQ2PIQ (legacy)
-  composite_score?: number | null    // computed composite
+  // Quality scores — DB column names (score_* prefix matches Electron & DB)
+  score?: number | null             // legacy composite (DB: score)
+  score_general?: number | null     // general quality
+  score_technical?: number | null   // technical quality
+  score_aesthetic?: number | null   // aesthetic quality
+  score_liqe?: number | null        // LIQE
+  score_spaq?: number | null        // SPAQ (legacy)
+  score_ava?: number | null         // AVA (legacy)
+  score_koniq?: number | null       // KonIQ (legacy)
+  score_paq2piq?: number | null     // PAQ2PIQ (legacy)
+  // New model scores (added by this pipeline, not yet in Electron)
+  musiq_score?: number | null       // MUSIQ
+  topiq_score?: number | null       // TOPIQ
+  qalign_score?: number | null      // Q-Align
+  composite_score?: number | null   // computed composite
 
   // File metadata
-  created_at: string | null
-  file_size: number | null
-  width: number | null
-  height: number | null
-  camera_make: string | null
-  camera_model: string | null
+  created_at?: string | null
   file_type?: string | null
+  file_size?: number | null
+  image_hash?: string | null
+  stack_id?: number | null
+  burst_uuid?: string | null
+  scores_json?: string | null
+  model_version?: string | null
 }
 
 // ─── WebSocket events ────────────────────────────────────────────────────
@@ -239,11 +240,11 @@ export type ImageRow = Image
 
 /** Image updates shape — matches electron/types.ts ImageUpdates */
 export interface ImageUpdates {
-  rating?: number | null
-  label?: string | null
+  rating?: number
+  label?: string
   title?: string
   description?: string
-  keywords?: string[]
+  keywords?: string  // DB stores as string (BLOB); comma-separated
   write_sidecar?: boolean
 }
 
@@ -252,9 +253,15 @@ export interface ElectronFolderRow {
   id: number
   path: string
   parent_id: number | null
-  indexing_status: string | null
-  scoring_status: string | null
-  tagging_status: string | null
+  is_fully_scored: number  // 0 or 1
+  image_count: number
+}
+
+/** Stack row — matches electron/types.ts StackRow */
+export interface StackRow extends Image {
+  stack_id?: number | null
+  stack_key?: number
   image_count?: number
+  sort_value?: number
 }
 
