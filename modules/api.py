@@ -27,7 +27,12 @@ Endpoints:
     Data Queries:
         GET /api/images - Query images with filters and pagination
         GET /api/images/{image_id} - Get single image details
-        GET /api/folders - Get folder listing
+        PATCH /api/images/{image_id} - Update image metadata (rating/label/title/description/keywords)
+        DELETE /api/images/{image_id} - Remove image record from database
+        GET /api/folders - Get flat folder listing
+        GET /api/folders/tree - Get hierarchical folder tree (for Electron sidebar)
+        GET /api/folders/phase-status - Get pipeline phase aggregate for a folder
+        POST /api/gallery/export - Export filtered image set to JSON/CSV/XLSX
         GET /api/stacks - Get stacks listing
         GET /api/stacks/{stack_id}/images - Get images in a stack
         GET /api/stats - Get database statistics
@@ -641,6 +646,33 @@ class OutlierResponse(BaseModel):
             }
         }
     )
+
+
+class ImageUpdateRequest(BaseModel):
+    """Request body for PATCH /api/images/{image_id}."""
+
+    rating: Optional[int] = Field(None, ge=0, le=5, description="Star rating 0–5 (0 = unrated).")
+    label: Optional[str] = Field(None, description="Color label: Red, Yellow, Green, Blue, Purple, or empty string to clear.")
+    title: Optional[str] = Field(None, description="Image title.")
+    description: Optional[str] = Field(None, description="Image description.")
+    keywords: Optional[str] = Field(None, description="Comma-separated keywords string.")
+    write_sidecar: bool = Field(True, description="If true, also write metadata to XMP sidecar / embedded tags via tagging runner.")
+
+
+class ExportRequest(BaseModel):
+    """Request body for POST /api/gallery/export."""
+
+    format: str = Field("json", description="Export format: json, csv, or xlsx.")
+    columns: Optional[List[str]] = Field(None, description="Subset of columns to include. Omit for all columns.")
+    folder_path: Optional[str] = Field(None, description="Filter to a specific folder path.")
+    rating: Optional[List[int]] = Field(None, description="Rating values to include (e.g. [3,4,5]).")
+    label: Optional[List[str]] = Field(None, description="Label values to include (e.g. ['Green','Blue']).")
+    keyword: Optional[str] = Field(None, description="Keyword substring to filter on.")
+    min_score_general: float = Field(0.0, ge=0, le=1, description="Minimum general score.")
+    min_score_aesthetic: float = Field(0.0, ge=0, le=1, description="Minimum aesthetic score.")
+    min_score_technical: float = Field(0.0, ge=0, le=1, description="Minimum technical score.")
+    date_from: Optional[str] = Field(None, description="Start date filter YYYY-MM-DD.")
+    date_to: Optional[str] = Field(None, description="End date filter YYYY-MM-DD.")
 
 # Global references to runners (set by webui.py)
 _scoring_runner = None
@@ -2555,5 +2587,311 @@ def create_api_router() -> APIRouter:
             data={"updated_images": updated, "phase_code": request.phase_code}
         )
 
+    # ========== Electron Migration — Additional Endpoints ==========
+
+    @router.get(
+        "/folders/tree",
+        summary="Get hierarchical folder tree",
+        description="""
+        Returns the folder list as a nested tree structure (rather than the flat list
+        returned by GET /api/folders). Suitable for rendering a sidebar tree widget in
+        Electron without the HTML generation done by the Gradio UI.
+
+        Each node: `{name, path, children: [...]}`. Root nodes are returned as a top-level
+        array. Platform path normalisation is applied (WSL↔Windows) the same way the
+        Gradio folder tree does it.
+        """
+    )
+    async def get_folder_tree():
+        from modules import db, utils
+        from modules.ui_tree import build_tree_dict
+        import os
+
+        try:
+            raw_folders = db.get_all_folders()
+            folders = []
+            for p in raw_folders:
+                local_p = utils.convert_path_to_local(p) if hasattr(utils, 'convert_path_to_local') else p
+                if not local_p:
+                    continue
+                norm = os.path.normpath(local_p)
+                if os.name == 'nt':
+                    if len(norm) < 2 or norm[1] != ':':
+                        continue
+                    if norm.startswith('\\mnt') or norm == '\\':
+                        continue
+                else:
+                    if local_p.startswith('\\'):
+                        continue
+                basename = os.path.basename(norm).lower()
+                if basename in ['.tmp.drivedownload', '.tmp.driveupload', 'keywords_output', '.']:
+                    continue
+                folders.append(local_p)
+
+            folders = list(set(folders))
+            tree = build_tree_dict(folders)
+            return {"tree": tree, "count": len(folders)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/folders/phase-status",
+        summary="Get pipeline phase aggregate for a folder",
+        description="""
+        Returns per-phase completion counts for all images in the given folder (and its
+        sub-folders). This is the JSON equivalent of the Pipeline tab stepper/phase cards.
+
+        Uses the same cached `phase_agg_json` column as the Gradio UI. Pass
+        `force_refresh=true` to bypass the cache and recompute live counts.
+
+        **Query Parameters:**
+        - `path` (required): Absolute folder path.
+        - `force_refresh` (optional, default false): Bypass cache.
+        """
+    )
+    async def get_folder_phase_status(
+        path: str = Query(..., description="Absolute folder path to query."),
+        force_refresh: bool = Query(False, description="Bypass cache and recompute live counts."),
+    ):
+        from modules import db
+        try:
+            phases = db.get_folder_phase_summary(path, force_refresh=force_refresh)
+            return {"folder_path": path, "phases": phases}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.patch(
+        "/images/{image_id}",
+        summary="Update image metadata",
+        description="""
+        Updates writable metadata fields for an image: rating, label, title, description,
+        and keywords. All fields are optional — only provided fields are updated.
+
+        When `write_sidecar=true` (default), metadata is also written to the XMP sidecar
+        file and embedded tags via the tagging runner, keeping file metadata in sync with
+        the database.
+
+        **IPC contract:** Column names match the `images` table schema; do not rename
+        without also updating `electron/db.ts`.
+        """
+    )
+    async def update_image(image_id: int, request: ImageUpdateRequest):
+        from modules import db
+        from modules.ui.security import _check_rate_limit
+        _check_rate_limit("image_update")
+
+        conn = db.get_db()
+        try:
+            c = conn.cursor()
+            c.execute(
+                "SELECT file_path, keywords, title, description, rating, label FROM images WHERE id = ?",
+                (image_id,)
+            )
+            row = c.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
+            file_path = row[0]
+            current_keywords = row[1] or ""
+            current_title = row[2] or ""
+            current_desc = row[3] or ""
+            current_rating = row[4] or 0
+            current_label = row[5] or ""
+        finally:
+            conn.close()
+
+        new_keywords = request.keywords if request.keywords is not None else current_keywords
+        new_title = request.title if request.title is not None else current_title
+        new_desc = request.description if request.description is not None else current_desc
+        new_rating = request.rating if request.rating is not None else current_rating
+        new_label = request.label if request.label is not None else current_label
+
+        try:
+            success = db.update_image_metadata(file_path, new_keywords, new_title, new_desc, new_rating, new_label)
+            if not success:
+                raise HTTPException(status_code=500, detail="Database update failed")
+
+            sidecar_ok = True
+            if request.write_sidecar and _tagging_runner is not None:
+                kw_list = [k.strip() for k in new_keywords.split(',') if k.strip()]
+                sidecar_ok = _tagging_runner.write_metadata(file_path, kw_list, new_title, new_desc, new_rating, new_label)
+
+            return ApiResponse(
+                success=True,
+                message=f"Updated image {image_id}",
+                data={"image_id": image_id, "sidecar_written": sidecar_ok}
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.delete(
+        "/images/{image_id}",
+        summary="Delete image record from database",
+        description="""
+        Removes an image record from the database and cleans up related rows
+        (culling picks, resolved paths, stack membership). The image file on disk is
+        NOT deleted by default.
+
+        Pass `delete_file=true` to also delete the source image file and its thumbnail
+        from disk. Use with caution — this is irreversible.
+        """
+    )
+    async def delete_image(image_id: int, delete_file: bool = Query(False, description="Also delete image file from disk.")):
+        from modules import db
+        from modules.ui.security import _check_rate_limit
+        _check_rate_limit("image_delete")
+
+        conn = db.get_db()
+        try:
+            c = conn.cursor()
+            c.execute("SELECT file_path, thumbnail_path FROM images WHERE id = ?", (image_id,))
+            row = c.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
+            file_path = row[0]
+            thumbnail_path = row[1]
+        finally:
+            conn.close()
+
+        try:
+            success, msg = db.delete_image(file_path, delete_related=True)
+            if not success:
+                raise HTTPException(status_code=500, detail=msg)
+
+            deleted_files = []
+            if delete_file:
+                for path in [file_path, thumbnail_path]:
+                    if path and os.path.exists(path):
+                        try:
+                            os.remove(path)
+                            deleted_files.append(path)
+                        except OSError as exc:
+                            logger.warning("Could not delete file %s: %s", path, exc)
+
+            return ApiResponse(
+                success=True,
+                message=msg,
+                data={"image_id": image_id, "deleted_files": deleted_files}
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post(
+        "/gallery/export",
+        summary="Export gallery images to file",
+        description="""
+        Exports the image database (or a filtered subset) to JSON, CSV, or XLSX.
+        The response is a file download. Filters mirror those available in the Gallery tab.
+
+        **Formats:** `json` | `csv` | `xlsx`
+
+        The file is written to `<app_root>/output/export_<timestamp>.<ext>` and served
+        as an attachment.
+        """
+    )
+    async def export_gallery(request: ExportRequest):
+        from modules import db
+        from modules.ui.security import _check_rate_limit
+        import datetime
+        _check_rate_limit("gallery_export")
+
+        fmt = (request.format or "json").lower()
+        if fmt not in ("json", "csv", "xlsx"):
+            raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt!r}. Use json, csv, or xlsx.")
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = os.path.join(os.getcwd(), "output")
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, f"export_{timestamp}.{fmt}")
+
+        date_range = None
+        if request.date_from or request.date_to:
+            date_range = (request.date_from, request.date_to)
+
+        try:
+            if fmt == "json":
+                success, msg = db.export_db_to_json(output_path)
+            elif fmt == "csv":
+                success, msg = db.export_db_to_csv(
+                    output_path,
+                    columns=request.columns,
+                    rating_filter=request.rating,
+                    label_filter=request.label,
+                    keyword_filter=request.keyword,
+                    folder_path=request.folder_path,
+                    min_score_general=request.min_score_general,
+                    min_score_aesthetic=request.min_score_aesthetic,
+                    min_score_technical=request.min_score_technical,
+                    date_range=date_range,
+                )
+            else:  # xlsx
+                success, msg = db.export_db_to_excel(
+                    output_path,
+                    columns=request.columns,
+                    rating_filter=request.rating,
+                    label_filter=request.label,
+                    keyword_filter=request.keyword,
+                    folder_path=request.folder_path,
+                    min_score_general=request.min_score_general,
+                    min_score_aesthetic=request.min_score_aesthetic,
+                    min_score_technical=request.min_score_technical,
+                    date_range=date_range,
+                )
+
+            if not success:
+                raise HTTPException(status_code=500, detail=msg)
+
+            media_types = {"json": "application/json", "csv": "text/csv", "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+            return FileResponse(
+                output_path,
+                media_type=media_types[fmt],
+                filename=os.path.basename(output_path),
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/config",
+        summary="Get application configuration",
+        description="""
+        Returns the current `config.json` contents. Sections: `scoring`, `processing`,
+        `culling`, `ui`, `tagging`. Used by the Settings tab; Electron should read this
+        on startup and display values in its Settings pane.
+        """
+    )
+    async def get_config():
+        from modules.config import load_config
+        try:
+            return load_config()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post(
+        "/config/{section}",
+        summary="Save a configuration section",
+        description="""
+        Persists a configuration section to `config.json`. Pass the section name as a
+        path parameter (e.g. `scoring`, `ui`, `tagging`) and the section dict as the
+        JSON body. Equivalent to clicking "Save All Configuration" in the Settings tab
+        for a specific section.
+        """
+    )
+    async def save_config(section: str, body: Dict[str, Any] = Body(...)):
+        from modules.config import save_config_section
+        from modules.ui.security import _check_rate_limit
+        _check_rate_limit("config_save")
+        valid_sections = {"scoring", "processing", "culling", "ui", "tagging"}
+        if section not in valid_sections:
+            raise HTTPException(status_code=400, detail=f"Unknown config section: {section!r}. Valid: {sorted(valid_sections)}")
+        try:
+            save_config_section(section, body)
+            return ApiResponse(success=True, message=f"Config section '{section}' saved.", data={})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
     return router

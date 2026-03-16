@@ -260,3 +260,194 @@ Migration implication: these should become first-class renderer logic in Electro
   - Settings accordions => schema-driven form sections
 - **Parity-first phase**: Keep labels/ordering/defaults/actions equivalent before introducing UX redesign.
 
+---
+
+## 11) REST API Contract for Electron
+
+The Python backend (`webui.py`) serves a FastAPI application on `http://127.0.0.1:7860` (default). All REST endpoints are prefixed `/api`. CORS is pre-configured for Electron dev-server origins: **5173**, **4173**, **7860**.
+
+### 11.1 Job Control Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/scoring/start` | Start batch scoring job |
+| `POST` | `/api/scoring/stop` | Stop running scoring job |
+| `GET` | `/api/scoring/status` | Poll scoring status |
+| `POST` | `/api/scoring/single` | Score a single image file |
+| `POST` | `/api/tagging/start` | Start batch tagging job |
+| `POST` | `/api/tagging/stop` | Stop running tagging job |
+| `GET` | `/api/tagging/status` | Poll tagging status |
+| `POST` | `/api/tagging/single` | Tag a single image file |
+| `POST` | `/api/clustering/start` | Start clustering/culling job |
+| `POST` | `/api/clustering/stop` | Stop clustering job |
+| `GET` | `/api/clustering/status` | Poll clustering status |
+| `GET` | `/api/status` | Unified status for all runners |
+| `GET` | `/api/health` | Health check + runner availability |
+| `POST` | `/api/pipeline/submit` | Chain operations (score → tag → cluster) |
+| `POST` | `/api/pipeline/phase/skip` | Mark all images in a folder phase as skipped |
+| `POST` | `/api/pipeline/phase/retry` | Retry skipped phase (starts runner) |
+
+**Status response shape** (`GET /api/{scoring,tagging,clustering}/status`):
+```json
+{
+  "is_running": true,
+  "status_message": "Scoring 45/142",
+  "progress": { "current": 45, "total": 142 },
+  "log": "...",
+  "job_type": "scoring"
+}
+```
+
+Recommended polling interval: **2 seconds** (matches current Gradio timer).
+
+### 11.2 Job Queue Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/jobs/queue` | List queued jobs with position |
+| `GET` | `/api/jobs/recent` | Recent completed/failed jobs |
+| `GET` | `/api/jobs/{job_id}` | Get specific job details |
+| `POST` | `/api/jobs/{job_id}/cancel` | Cancel a queued job |
+
+### 11.3 Data Query Endpoints
+
+#### Images
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/images` | Paginated, filtered image list |
+| `GET` | `/api/images/{image_id}` | Full image record with scores, metadata, file paths |
+| `PATCH` | `/api/images/{image_id}` | Update rating / label / title / description / keywords |
+| `DELETE` | `/api/images/{image_id}` | Remove image record; optionally delete file |
+
+**GET /api/images — query params:**
+`page`, `page_size`, `sort_by`, `order`, `rating` (CSV), `label` (CSV), `keyword`, `min_score_general`, `min_score_aesthetic`, `min_score_technical`, `folder_path`, `stack_id`
+
+**GET /api/images response:**
+```json
+{
+  "images": [...],
+  "total": 420,
+  "page": 1,
+  "page_size": 50,
+  "total_pages": 9
+}
+```
+
+**PATCH /api/images/{image_id} body:**
+```json
+{
+  "rating": 4,
+  "label": "Green",
+  "title": "Sunset",
+  "description": "...",
+  "keywords": "sunset,landscape",
+  "write_sidecar": true
+}
+```
+All fields are optional. `write_sidecar: true` (default) also writes XMP sidecar + embedded tags via tagging runner, keeping DB and file metadata in sync.
+
+**DELETE /api/images/{image_id}:**
+`?delete_file=true` also removes the source file and thumbnail from disk.
+
+> **IPC contract:** Column names in image records match the `images` table schema (schema authority: `modules/db.py`). Do **not** rename columns without updating `electron/db.ts`.
+
+#### Folders
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/folders` | Flat folder list with paths |
+| `POST` | `/api/folders/rebuild` | Rebuild folder cache from images table |
+| `GET` | `/api/folders/tree` | Hierarchical folder tree (for sidebar) |
+| `GET` | `/api/folders/phase-status` | Pipeline phase aggregate for a folder |
+
+**GET /api/folders/tree response:**
+```json
+{
+  "tree": [
+    {
+      "name": "photos",
+      "path": "/mnt/d/photos",
+      "children": [
+        { "name": "2024", "path": "/mnt/d/photos/2024", "children": [] }
+      ]
+    }
+  ],
+  "count": 12
+}
+```
+
+**GET /api/folders/phase-status — query params:** `path` (required), `force_refresh` (bool, default false)
+
+**GET /api/folders/phase-status response:**
+```json
+{
+  "folder_path": "/mnt/d/photos/2024",
+  "phases": [
+    { "code": "index",    "name": "Index",    "total_images": 142, "done_count": 142, "failed_count": 0, "running_count": 0, "skipped_count": 0, "optional": false },
+    { "code": "scoring",  "name": "Scoring",  "total_images": 142, "done_count": 98,  "failed_count": 0, "running_count": 1,  "skipped_count": 0, "optional": false },
+    { "code": "culling",  "name": "Culling",  "total_images": 142, "done_count": 0,   "failed_count": 0, "running_count": 0,  "skipped_count": 0, "optional": true  },
+    { "code": "keywords", "name": "Keywords", "total_images": 142, "done_count": 0,   "failed_count": 0, "running_count": 0,  "skipped_count": 0, "optional": true  }
+  ]
+}
+```
+
+#### Export
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/gallery/export` | Export filtered image set to JSON / CSV / XLSX |
+
+**POST /api/gallery/export body:**
+```json
+{
+  "format": "csv",
+  "columns": ["file_name", "score_general", "rating", "keywords"],
+  "folder_path": "/mnt/d/photos/2024",
+  "rating": [4, 5],
+  "min_score_general": 0.7,
+  "date_from": "2024-01-01",
+  "date_to": "2024-12-31"
+}
+```
+Response: file download attachment (`Content-Disposition: attachment`).
+
+#### Other Data Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/stacks` | Stacks with cover images |
+| `GET` | `/api/stacks/{stack_id}/images` | All images in a stack |
+| `GET` | `/api/stats` | Database statistics |
+| `GET` | `/api/images/similar` | Visually similar images (embedding cosine) |
+| `GET` | `/api/images/outliers` | Visual outlier detection |
+| `POST` | `/api/duplicates/find` | Near-duplicate pairs |
+| `POST` | `/api/import/register` | Register images from folder without scoring |
+| `GET` | `/api/raw-preview` | Extract/generate JPEG preview for RAW file (`?path=...`) |
+
+### 11.4 WebSocket — Real-Time Events
+
+**Endpoint:** `ws://127.0.0.1:7860/ws/updates`
+
+Connect once on app start. The server broadcasts JSON messages for all job lifecycle events. The Electron renderer can use this to update progress indicators without polling.
+
+**Message shape:**
+```json
+{ "type": "<event_type>", "data": { ... } }
+```
+
+**Event catalog:**
+
+| Event type | Trigger | Key data fields |
+|------------|---------|-----------------|
+| `job_started` | Runner begins processing | `job_type`, `input_path`, `total` |
+| `progress_update` | Per-image/batch progress tick | `job_type`, `current`, `total`, `message` |
+| `job_completed` | Runner finishes (success or error) | `job_type`, `success`, `message` |
+| `image_updated` | Image metadata written to DB | `file_path`, `fields` (dict of changed values) |
+
+> **Fallback:** If WebSocket is unavailable, poll `GET /api/status` every 2 seconds for equivalent runner status information.
+
+### 11.5 Settings Persistence
+
+`GET /api/config` / `POST /api/config` — reads and writes `config.json` sections used by the Settings tab. Sections: `scoring`, `processing`, `culling`, `ui`, `tagging`.
+
