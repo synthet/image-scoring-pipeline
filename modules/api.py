@@ -516,7 +516,7 @@ class ImportRegisterRequest(BaseModel):
 class PipelineSubmitRequest(BaseModel):
     """Request model for submitting images/folders to the processing pipeline.
 
-    Chains requested operations sequentially (score -> tag -> cluster).
+    Chains requested StageRuns sequentially (indexing/metadata/score/tag/cluster).
 
     Attributes:
         workspace_target: File or directory path to process.
@@ -549,7 +549,7 @@ class PipelineSubmitRequest(BaseModel):
     )
     custom_keywords: Optional[List[str]] = Field(
         None,
-        description="Custom keywords for tagging (if 'tag' is in operations)."
+        description="Custom keywords for tagging (if 'tag' is in stage_codes)."
     )
     generate_captions: bool = Field(
         False,
@@ -558,11 +558,11 @@ class PipelineSubmitRequest(BaseModel):
     )
     clustering_threshold: Optional[float] = Field(
         None,
-        description="Distance threshold for clustering (if 'cluster' is in operations)."
+        description="Distance threshold for clustering (if 'cluster' is in stage_codes)."
     )
     clustering_time_gap: Optional[int] = Field(
         None,
-        description="Time gap in seconds for clustering burst grouping (if 'cluster' is in operations)."
+        description="Time gap in seconds for clustering burst grouping (if 'cluster' is in stage_codes)."
     )
     clustering_force_rescan: bool = Field(
         False,
@@ -2700,7 +2700,6 @@ def create_api_router() -> APIRouter:
 
         from modules import db
         first_op = request.stage_codes[0]
-        phase_plan = list(request.stage_codes)
 
         if is_file:
             if first_op == "score":
@@ -2731,10 +2730,14 @@ def create_api_router() -> APIRouter:
                 message=message,
                 data={
                     "workspace_target": request.workspace_target,
+                    "input_path": request.workspace_target,
                     "workflow_template": request.workflow_template,
                     "completed_stage_run": first_op,
+                    "completed_operation": first_op,
                     "stage_run_plan": phase_plan,
+                    "phase_plan": phase_plan,
                     "remaining_stage_runs": request.stage_codes[1:],
+                    "remaining_operations": request.stage_codes[1:],
                 },
             )
 
@@ -2814,12 +2817,17 @@ def create_api_router() -> APIRouter:
             message=f"WorkflowRun queued: {op_to_label[first_op]}",
             data={
                 "workflow_run_id": job_id,
+                "job_id": job_id,
                 "workspace_target": request.workspace_target,
+                "input_path": request.workspace_target,
                 "workflow_template": request.workflow_template,
                 "active_stage_run": first_op,
+                "active_operation": first_op,
                 "queue_position": queue_position,
                 "stage_run_plan": phase_rows,
+                "phase_plan": phase_rows,
                 "remaining_stage_runs": request.stage_codes[1:],
+                "remaining_operations": request.stage_codes[1:],
             },
         )
 
