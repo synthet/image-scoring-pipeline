@@ -130,6 +130,58 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                         with gr.Row():
                             components["skip_reason"] = gr.Textbox(label="Skip reason", value="", placeholder="optional reason")
                             components["skip_actor"] = gr.Textbox(label="Actor", value="ui_user", placeholder="who skipped")
+                        with gr.Group(elem_classes=["panel"]):
+                            gr.Markdown("#### Scoped Controls")
+                            with gr.Row():
+                                components["run_pause_btn"] = gr.Button("Pause Run", elem_classes=["secondary-btn"])
+                                components["run_cancel_btn"] = gr.Button("Cancel Run", elem_classes=["danger-btn"])
+                                components["run_restart_btn"] = gr.Button("Restart Run", elem_classes=["danger-btn"])
+                            with gr.Row(visible=False, elem_classes=["confirm-row"]) as run_pause_confirm_row:
+                                gr.HTML("<span class='confirm-text'>Pause current run? You can resume by pressing Run All Pending.</span>")
+                                run_pause_yes = gr.Button("Yes, Pause", elem_classes=["secondary-btn"], size="sm")
+                                run_pause_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
+                            components["run_pause_confirm_row"] = run_pause_confirm_row
+                            components["run_pause_yes"] = run_pause_yes
+                            components["run_pause_cancel"] = run_pause_cancel
+
+                            with gr.Row():
+                                components["run_strong_confirm_text"] = gr.Textbox(
+                                    label="Strong confirm",
+                                    placeholder="Type CANCEL or RESTART to enable destructive actions",
+                                    value="",
+                                )
+                            with gr.Row(visible=False, elem_classes=["confirm-row"]) as run_cancel_confirm_row:
+                                gr.HTML("<span class='confirm-text'>Cancel is destructive: queued work is dropped and active work is stopped.</span>")
+                                run_cancel_yes = gr.Button("Yes, Cancel Run", elem_classes=["danger-btn"], size="sm")
+                                run_cancel_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
+                            components["run_cancel_confirm_row"] = run_cancel_confirm_row
+                            components["run_cancel_yes"] = run_cancel_yes
+                            components["run_cancel_cancel"] = run_cancel_cancel
+
+                            with gr.Row(visible=False, elem_classes=["confirm-row"]) as run_restart_confirm_row:
+                                gr.HTML("<span class='confirm-text'>Restart is destructive: in-flight progress may be interrupted.</span>")
+                                run_restart_yes = gr.Button("Yes, Restart Run", elem_classes=["danger-btn"], size="sm")
+                                run_restart_cancel = gr.Button("Cancel", elem_classes=["secondary-btn"], size="sm")
+                            components["run_restart_confirm_row"] = run_restart_confirm_row
+                            components["run_restart_yes"] = run_restart_yes
+                            components["run_restart_cancel"] = run_restart_cancel
+
+                            with gr.Row():
+                                components["restart_stage"] = gr.Dropdown(
+                                    choices=["scoring", "culling", "keywords"],
+                                    value="scoring",
+                                    label="Restart from stage",
+                                )
+                                components["restart_stage_btn"] = gr.Button("Restart From Stage", elem_classes=["danger-btn"])
+
+                            with gr.Row():
+                                components["step_image_id"] = gr.Number(label="Step image_id", precision=0)
+                                components["step_phase_code"] = gr.Dropdown(
+                                    choices=["indexing", "metadata", "scoring", "culling", "keywords"],
+                                    value="metadata",
+                                    label="Step phase",
+                                )
+                                components["step_rerun_btn"] = gr.Button("Rerun Failed Step", elem_classes=["secondary-btn"])
 
                 # PANEL: Phases (Card Grid)
                 with gr.Group(elem_classes=["panel"]):
@@ -190,6 +242,12 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                 # PANEL: Active Job Monitor
                 with gr.Group(elem_classes=["panel", "monitor-card"]):
                     components["monitor_html"] = gr.HTML(_build_idle_html(recovery_info=app_config.get("job_recovery"), queued_jobs=[]))
+                    components["action_snackbar"] = gr.Textbox(
+                        label="Action status",
+                        value="",
+                        interactive=False,
+                        elem_classes=["section-microcopy"],
+                    )
                     with gr.Accordion("Console Output", open=False):
                         components["console_output"] = gr.Textbox(
                             lines=12, label="", max_lines=12, interactive=False, elem_classes=["console-code"]
@@ -342,12 +400,67 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
             return
         orchestrator.start(path)
 
+    def _pipeline_action_result(message, level="info"):
+        rollback = "Rollback: use Retry Stage or Restart From Stage to recover."
+        return f"[{level.upper()}] {message} | {rollback}"
+
     def _stop_all():
         orchestrator.stop()
         # Also stop individual runners in case they were started independently
         scoring_runner.stop()
         selection_runner.stop()
         tagging_runner.stop()
+
+    def _pause_run():
+        _stop_all()
+        return _pipeline_action_result("Run paused", level="soft")
+
+    def _cancel_run(path):
+        _stop_all()
+        if path:
+            for job in db.get_queued_jobs(limit=500):
+                input_path = str(job.get("input_path") or "")
+                if input_path.startswith(path):
+                    db.request_cancel_job(job.get("id"))
+        return _pipeline_action_result("Run canceled", level="strong")
+
+    def _restart_run(path):
+        _stop_all()
+        if path:
+            orchestrator.start(path)
+        return _pipeline_action_result("Run restarted", level="strong")
+
+    def _restart_from_stage(path, phase_code):
+        if not path:
+            return _pipeline_action_result("Select a folder first", level="warn")
+        ordered = ["scoring", "culling", "keywords"]
+        phase = (phase_code or "scoring").strip().lower()
+        if phase not in ordered:
+            return _pipeline_action_result(f"Unsupported stage: {phase_code}", level="warn")
+
+        start = ordered.index(phase)
+        for code in ordered[start:]:
+            db.set_folder_phase_status(folder_path=path, phase_code=code, status="running")
+
+        if phase == "scoring":
+            _run_scoring(path, force=True)
+        elif phase == "culling":
+            _run_culling(path, force=True)
+        elif phase == "keywords":
+            _run_tagging(path, overwrite=True, captions=False)
+
+        return _pipeline_action_result(f"Restarted from stage: {phase}", level="strong")
+
+    def _rerun_step(image_id, phase_code):
+        if image_id is None:
+            return _pipeline_action_result("Provide image_id", level="warn")
+        phase = (phase_code or "").strip().lower()
+        # Conservative idempotency allow-list for targeted per-step rerun
+        idempotent_phases = {"metadata", "keywords", "culling"}
+        if phase not in idempotent_phases:
+            return _pipeline_action_result(f"Step rerun blocked for non-idempotent phase: {phase}", level="warn")
+        db.set_image_phase_status(int(image_id), phase, "running")
+        return _pipeline_action_result(f"Marked image {int(image_id)} phase '{phase}' for rerun", level="info")
 
     components["scoring_run_btn"].click(
         fn=_run_scoring,
@@ -471,6 +584,78 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         fn=lambda p: _retry_phase(p, "keywords"),
         inputs=[components["selected_path"]],
         outputs=[]
+    )
+
+    # Scoped run controls with confirmation levels
+    components["run_pause_btn"].click(
+        fn=lambda: gr.update(visible=True),
+        inputs=[],
+        outputs=[components["run_pause_confirm_row"]],
+    )
+    components["run_pause_cancel"].click(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["run_pause_confirm_row"]],
+    )
+    components["run_pause_yes"].click(
+        fn=_pause_run,
+        inputs=[],
+        outputs=[components["action_snackbar"]],
+    ).then(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["run_pause_confirm_row"]],
+    )
+
+    components["run_cancel_btn"].click(
+        fn=lambda txt: gr.update(visible=(txt or "").strip().upper() == "CANCEL"),
+        inputs=[components["run_strong_confirm_text"]],
+        outputs=[components["run_cancel_confirm_row"]],
+    )
+    components["run_cancel_cancel"].click(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["run_cancel_confirm_row"]],
+    )
+    components["run_cancel_yes"].click(
+        fn=_cancel_run,
+        inputs=[components["selected_path"]],
+        outputs=[components["action_snackbar"]],
+    ).then(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["run_cancel_confirm_row"]],
+    )
+
+    components["run_restart_btn"].click(
+        fn=lambda txt: gr.update(visible=(txt or "").strip().upper() == "RESTART"),
+        inputs=[components["run_strong_confirm_text"]],
+        outputs=[components["run_restart_confirm_row"]],
+    )
+    components["run_restart_cancel"].click(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["run_restart_confirm_row"]],
+    )
+    components["run_restart_yes"].click(
+        fn=_restart_run,
+        inputs=[components["selected_path"]],
+        outputs=[components["action_snackbar"]],
+    ).then(
+        fn=lambda: gr.update(visible=False),
+        inputs=[],
+        outputs=[components["run_restart_confirm_row"]],
+    )
+
+    components["restart_stage_btn"].click(
+        fn=_restart_from_stage,
+        inputs=[components["selected_path"], components["restart_stage"]],
+        outputs=[components["action_snackbar"]],
+    )
+    components["step_rerun_btn"].click(
+        fn=_rerun_step,
+        inputs=[components["step_image_id"], components["step_phase_code"]],
+        outputs=[components["action_snackbar"]],
     )
 
     return components
