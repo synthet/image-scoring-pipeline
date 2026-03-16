@@ -1,6 +1,9 @@
 import gradio as gr
+import html
+import json
 from modules import db
 from modules import ui_tree
+from modules.phases import PhaseRegistry
 
 # Cache for timer-based status updates to avoid unnecessary SSE pushes
 _last_status_cache = {"state": None}
@@ -758,64 +761,250 @@ def _build_pipeline_stepper_html(folder_path, summary_by_code=None, total=0):
             "Run Scoring first to index images from disk.</p>"
         )
 
-    def _phase(phase_code, default_done=0):
-        return summary_by_code.get(phase_code, {"done_count": default_done, "status": "not_started", "advance_ready": False})
+    phase_defs = db.get_all_phases(enabled_only=True) or []
+    if not phase_defs:
+        return "<p class='section-microcopy'>No enabled phases found.</p>"
 
-    idx = _phase("indexing", total)
-    met = _phase("metadata", total)
-    sco = _phase("scoring")
-    cul = _phase("culling")
-    key = _phase("keywords")
+    summary_by_code = summary_by_code or {}
+    registry = {}
+    for executor in PhaseRegistry.get_all():
+        code = executor.code.value if hasattr(executor.code, "value") else str(executor.code)
+        registry[code] = executor
 
-    idx_done, met_done = idx.get("done_count", total), met.get("done_count", total)
-    sco_done, cul_done, key_done = sco.get("done_count", 0), cul.get("done_count", 0), key.get("done_count", 0)
+    retry_totals = _get_folder_phase_retry_totals(folder_path)
+    selected_targets, step_runs_by_phase = _get_folder_step_run_breakdowns(folder_path)
 
-    def get_state(phase_info, total_c):
-        done = phase_info.get("done_count", 0)
-        status = phase_info.get("status", "not_started")
-        advance_ready = phase_info.get("advance_ready", False)
-        if total_c == 0:
-            return ""
-        if status == "done" or done == total_c or advance_ready:
-            return "done"
-        if status in ("partial", "running", "skipped") or done > 0:
-            return "running"
-        return ""
+    phase_codes = [p.get("code") for p in phase_defs if p.get("code")]
+    x_positions = {code: (idx * 180) + 72 for idx, code in enumerate(phase_codes)}
+    svg_w = max(220, len(phase_codes) * 180)
+
+    edge_lines = []
+    for phase in phase_defs:
+        code = phase.get("code")
+        executor = registry.get(code)
+        dependencies = executor.depends_on if executor and executor.depends_on else []
+        for dep in dependencies:
+            dep_code = dep.value if hasattr(dep, "value") else str(dep)
+            if dep_code in x_positions and code in x_positions:
+                x1 = x_positions[dep_code] + 54
+                x2 = x_positions[code] - 54
+                edge_lines.append(
+                    f"<line x1='{x1}' y1='70' x2='{x2}' y2='70' stroke='var(--border-color-primary)' stroke-width='2' marker-end='url(#phaseArrow)' />"
+                )
+
+    node_html = []
+    for idx, phase in enumerate(phase_defs, start=1):
+        code = phase.get("code")
+        name = phase.get("name") or code
+        info = summary_by_code.get(code, {})
+        status = info.get("status", "not_started")
+        status_label = _STATUS_LABELS.get(status, status.replace("_", " ").title())
+        done = info.get("done_count", 0)
+        failed = info.get("failed_count", 0)
+        skipped = info.get("skipped_count", 0)
+        retries = retry_totals.get(code, 0)
+        is_selected = (not selected_targets) or (code in selected_targets)
+        selected_label = "Selected in run" if is_selected else "Not selected"
+        executor = registry.get(code)
+        deps = executor.depends_on if executor and executor.depends_on else []
+        dep_labels = []
+        for dep in deps:
+            dep_code = dep.value if hasattr(dep, "value") else str(dep)
+            dep_labels.append(dep_code)
+        dep_line = ", ".join(dep_labels) if dep_labels else "None"
+        run_rows = step_runs_by_phase.get(code, [])
+        run_items = []
+        if run_rows:
+            for run in run_rows:
+                err = html.escape((run.get("error") or "").strip())
+                err_line = f"<div><strong>Error:</strong> {err}</div>" if err else ""
+                run_items.append(
+                    "<li>"
+                    f"<div><strong>Job #{run.get('job_id')}</strong> · {run.get('job_status')} · {run.get('duration')}</div>"
+                    f"<div>Sub-phase state: {run.get('step_state')}</div>"
+                    f"<div>Started: {run.get('started')}</div>"
+                    f"<div>Finished: {run.get('finished')}</div>"
+                    f"{err_line}"
+                    "</li>"
+                )
+        else:
+            run_items.append("<li>No recorded StepRun data for this phase in this folder yet.</li>")
+
+        node_html.append(
+            f"""
+            <details class="pipeline-node status-{status} {'selected' if is_selected else 'not-selected'}" style="left:{x_positions[code]-62}px;" open={"open" if status in ("running", "failed") else ""}>
+              <summary>
+                <div class="node-title">{idx}. {html.escape(name)}</div>
+                <div class="node-meta">{status_label} · {selected_label}</div>
+                <div class="node-mini-stats">{done}/{total} · failed {failed} · skipped {skipped} · retries {retries}</div>
+              </summary>
+              <div class="node-breakdown">
+                <div><strong>Dependencies:</strong> {html.escape(dep_line)}</div>
+                <div><strong>Executor:</strong> {html.escape(getattr(executor, 'executor_version', 'unbound') if executor else 'unbound')}</div>
+                <div><strong>StepRun breakdown:</strong></div>
+                <ul>{''.join(run_items)}</ul>
+              </div>
+            </details>
+            """
+        )
 
     return f"""
-    <div class="stepper" role="list" aria-label="Pipeline progress">
-      <div class="step {get_state(idx, total)}" role="listitem" aria-label="Index: {idx_done} of {total}">
-        <div class="step-dot">1</div>
-        <div class="step-label">Index</div>
-        <div class="step-count">{idx_done} / {total}</div>
-      </div>
-      <div class="connector {get_state(idx, total)}" aria-hidden="true"></div>
-
-      <div class="step {get_state(met, total)}" role="listitem" aria-label="Metadata: {met_done} of {total}">
-        <div class="step-dot">2</div>
-        <div class="step-label">Metadata</div>
-        <div class="step-count">{met_done} / {total}</div>
-      </div>
-      <div class="connector {get_state(met, total)}" aria-hidden="true"></div>
-
-      <div class="step {get_state(sco, total)}" role="listitem" aria-label="Scoring: {sco_done} of {total}">
-        <div class="step-dot">3</div>
-        <div class="step-label">Scoring</div>
-        <div class="step-count">{sco_done} / {total}</div>
-      </div>
-      <div class="connector {get_state(cul, total)}" aria-hidden="true"></div>
-
-      <div class="step {get_state(cul, total)}" role="listitem" aria-label="Culling: {cul_done} of {total}">
-        <div class="step-dot">4</div>
-        <div class="step-label">Culling</div>
-        <div class="step-count">{cul_done} / {total}</div>
-      </div>
-      <div class="connector {get_state(key, total)}" aria-hidden="true"></div>
-
-      <div class="step {get_state(key, total)}" role="listitem" aria-label="Keywords: {key_done} of {total}">
-        <div class="step-dot">5</div>
-        <div class="step-label">Keywords</div>
-        <div class="step-count">{key_done} / {total}</div>
+    <div class="pipeline-graph-view">
+      <style>
+        .pipeline-graph-view .graph-canvas {{ position: relative; min-height: 300px; overflow-x: auto; padding: 8px 0 0; }}
+        .pipeline-graph-view .pipeline-node {{ position: absolute; width: 124px; border: 1px solid var(--border-color-primary); border-radius: 10px; background: var(--panel-background-fill); }}
+        .pipeline-graph-view .pipeline-node summary {{ list-style: none; cursor: pointer; padding: 8px; }}
+        .pipeline-graph-view .pipeline-node summary::-webkit-details-marker {{ display:none; }}
+        .pipeline-graph-view .node-title {{ font-weight: 600; font-size: 0.82rem; }}
+        .pipeline-graph-view .node-meta, .pipeline-graph-view .node-mini-stats {{ font-size: 0.72rem; color: var(--body-text-color-subdued); }}
+        .pipeline-graph-view .node-breakdown {{ padding: 0 8px 8px; font-size: 0.74rem; }}
+        .pipeline-graph-view .node-breakdown ul {{ margin: 6px 0 0 16px; padding: 0; }}
+        .pipeline-graph-view .status-done {{ border-color: #27ae60; }}
+        .pipeline-graph-view .status-partial, .pipeline-graph-view .status-running {{ border-color: #3498db; }}
+        .pipeline-graph-view .status-failed {{ border-color: #e74c3c; }}
+        .pipeline-graph-view .status-skipped {{ border-color: #f39c12; }}
+        .pipeline-graph-view .pipeline-node.not-selected {{ opacity: 0.6; }}
+      </style>
+      <div class="section-microcopy">Graph view from <code>pipeline_phases</code> + executor bindings. Click a node to inspect StepRun breakdown (sub-phases, timings, errors).</div>
+      <div class="graph-canvas" role="group" aria-label="Pipeline phase graph">
+        <svg width="{svg_w}" height="250" viewBox="0 0 {svg_w} 250" aria-hidden="true">
+          <defs>
+            <marker id="phaseArrow" markerWidth="8" markerHeight="8" refX="5" refY="3" orient="auto">
+              <polygon points="0 0, 6 3, 0 6" fill="var(--border-color-primary)" />
+            </marker>
+          </defs>
+          {''.join(edge_lines)}
+        </svg>
+        {''.join(node_html)}
       </div>
     </div>
     """
+
+
+def _get_folder_phase_retry_totals(folder_path):
+    """Aggregate retry totals (attempt_count - 1) per phase for folder descendants."""
+    from modules import utils
+
+    wsl_path = utils.convert_path_to_wsl(folder_path) if hasattr(utils, "convert_path_to_wsl") else folder_path
+    target_path = wsl_path if wsl_path else folder_path
+    if not target_path:
+        return {}
+
+    retries = {}
+    conn = db.get_db()
+    c = conn.cursor()
+    try:
+        path_like_unix = target_path + "/%"
+        path_like_win = target_path + "\\%"
+        c.execute(
+            """
+            SELECT pp.code, COALESCE(SUM(CASE WHEN ips.attempt_count > 1 THEN ips.attempt_count - 1 ELSE 0 END), 0) AS retries
+            FROM image_phase_status ips
+            JOIN pipeline_phases pp ON pp.id = ips.phase_id
+            JOIN images i ON i.id = ips.image_id
+            JOIN folders f ON f.id = i.folder_id
+            WHERE f.path = ? OR f.path LIKE ? OR f.path LIKE ?
+            GROUP BY pp.code
+            """,
+            (target_path, path_like_unix, path_like_win),
+        )
+        for row in c.fetchall():
+            code = row[0].strip() if isinstance(row[0], str) else row[0]
+            retries[code] = row[1] or 0
+    except Exception:
+        return {}
+    finally:
+        conn.close()
+    return retries
+
+
+def _get_folder_step_run_breakdowns(folder_path):
+    """Return (selected_target_phases, phase->recent step runs) for a folder."""
+    selected_targets = set()
+    phase_runs = {}
+    conn = db.get_db()
+    c = conn.cursor()
+    try:
+        c.execute(
+            """
+            SELECT id, status, created_at, started_at, finished_at, queue_payload
+            FROM jobs
+            WHERE input_path = ?
+            ORDER BY COALESCE(started_at, created_at) DESC
+            FETCH FIRST 20 ROWS ONLY
+            """,
+            (folder_path,),
+        )
+        jobs = c.fetchall()
+        for row in jobs:
+            job_id = row[0]
+            job_status = (row[1] or "unknown").strip()
+            queue_payload = row[5]
+            payload = None
+            if queue_payload:
+                try:
+                    payload = json.loads(queue_payload)
+                except Exception:
+                    payload = None
+            if payload and isinstance(payload, dict) and not selected_targets:
+                for code in payload.get("target_phases") or []:
+                    selected_targets.add(str(code))
+
+            c.execute(
+                """
+                SELECT phase_code, state, started_at, completed_at, error_message
+                FROM job_phases
+                WHERE job_id = ?
+                ORDER BY phase_order
+                """,
+                (job_id,),
+            )
+            step_rows = c.fetchall()
+            if not step_rows and payload and isinstance(payload, dict):
+                codes = payload.get("target_phases") or []
+                for code in codes:
+                    phase_runs.setdefault(str(code), [])
+                continue
+
+            for step in step_rows:
+                code = step[0]
+                if not code:
+                    continue
+                started = step[2] or row[3]
+                finished = step[3] or row[4]
+                phase_runs.setdefault(code, []).append({
+                    "job_id": job_id,
+                    "job_status": job_status,
+                    "step_state": step[1] or "unknown",
+                    "started": str(started) if started else "-",
+                    "finished": str(finished) if finished else "-",
+                    "duration": _format_duration(started, finished),
+                    "error": step[4] or "",
+                })
+
+        for code in phase_runs:
+            phase_runs[code] = phase_runs[code][:3]
+    except Exception:
+        return selected_targets, phase_runs
+    finally:
+        conn.close()
+    return selected_targets, phase_runs
+
+
+def _format_duration(started, finished):
+    if not started:
+        return "-"
+    if not finished:
+        return "running"
+    try:
+        delta = finished - started
+        total = int(delta.total_seconds())
+        mins, secs = divmod(max(total, 0), 60)
+        hrs, mins = divmod(mins, 60)
+        if hrs:
+            return f"{hrs}h {mins}m {secs}s"
+        if mins:
+            return f"{mins}m {secs}s"
+        return f"{secs}s"
+    except Exception:
+        return "-"
