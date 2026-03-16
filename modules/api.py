@@ -2701,6 +2701,20 @@ def create_api_router() -> APIRouter:
         from modules import db
         first_op = request.stage_codes[0]
 
+        def _normalize_stage_run_plan(rows: List[dict]) -> List[dict]:
+            """Return semantic StageRun keys while preserving legacy phase aliases."""
+            normalized: List[dict] = []
+            for row in rows:
+                stage_order = row.get("stage_order", row.get("phase_order"))
+                stage_code = row.get("stage_code", row.get("phase_code"))
+                item = dict(row)
+                item["stage_order"] = stage_order
+                item["stage_code"] = stage_code
+                item.setdefault("phase_order", stage_order)
+                item.setdefault("phase_code", stage_code)
+                normalized.append(item)
+            return normalized
+
         if is_file:
             if first_op == "score":
                 if _scoring_runner is None:
@@ -2721,21 +2735,24 @@ def create_api_router() -> APIRouter:
             else:
                 raise HTTPException(status_code=400, detail="Single-file pipeline supports score/tag only")
 
-            phase_plan = [
-                {"phase_order": i, "phase_code": op, "state": "completed" if i == 0 else "pending"}
+            stage_run_plan = _normalize_stage_run_plan([
+                {"stage_order": i, "stage_code": op, "state": "completed" if i == 0 else "pending"}
                 for i, op in enumerate(request.stage_codes)
-            ]
+            ])
             return ApiResponse(
                 success=success,
                 message=message,
                 data={
+                    "workflow_run_id": None,
                     "workspace_target": request.workspace_target,
                     "input_path": request.workspace_target,
                     "workflow_template": request.workflow_template,
+                    "active_stage_run": None,
+                    "active_operation": None,
                     "completed_stage_run": first_op,
                     "completed_operation": first_op,
-                    "stage_run_plan": phase_plan,
-                    "phase_plan": phase_plan,
+                    "stage_run_plan": stage_run_plan,
+                    "phase_plan": stage_run_plan,
                     "remaining_stage_runs": request.stage_codes[1:],
                     "remaining_operations": request.stage_codes[1:],
                 },
@@ -2772,6 +2789,8 @@ def create_api_router() -> APIRouter:
                 queue_payload={
                     "input_path": request.workspace_target,
                     "workspace_target": request.workspace_target,
+                    "workflow_template": request.workflow_template,
+                    "stage_codes": request.stage_codes,
                     "skip_existing": request.skip_existing,
                     "target_phases": target_phases
                 },
@@ -2786,6 +2805,8 @@ def create_api_router() -> APIRouter:
                 queue_payload={
                     "input_path": request.workspace_target,
                     "workspace_target": request.workspace_target,
+                    "workflow_template": request.workflow_template,
+                    "stage_codes": request.stage_codes,
                     "custom_keywords": request.custom_keywords,
                     "overwrite": not request.skip_existing,
                     "generate_captions": request.generate_captions,
@@ -2801,6 +2822,8 @@ def create_api_router() -> APIRouter:
                 queue_payload={
                     "input_path": request.workspace_target,
                     "workspace_target": request.workspace_target,
+                    "workflow_template": request.workflow_template,
+                    "stage_codes": request.stage_codes,
                     "threshold": request.clustering_threshold,
                     "time_gap": request.clustering_time_gap,
                     "force_rescan": request.clustering_force_rescan,
@@ -2811,6 +2834,7 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=500, detail=f"Failed to enqueue WorkflowRun for StageRun: {first_op}")
 
         phase_rows = db.create_job_phases(job_id, phase_plan_codes)
+        stage_run_plan = _normalize_stage_run_plan(phase_rows)
 
         return ApiResponse(
             success=True,
@@ -2824,8 +2848,8 @@ def create_api_router() -> APIRouter:
                 "active_stage_run": first_op,
                 "active_operation": first_op,
                 "queue_position": queue_position,
-                "stage_run_plan": phase_rows,
-                "phase_plan": phase_rows,
+                "stage_run_plan": stage_run_plan,
+                "phase_plan": stage_run_plan,
                 "remaining_stage_runs": request.stage_codes[1:],
                 "remaining_operations": request.stage_codes[1:],
             },
