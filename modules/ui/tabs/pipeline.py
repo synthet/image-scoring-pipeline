@@ -106,6 +106,11 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                             components["stop_all_btn"] = gr.Button("Stop All", variant="stop", elem_classes=["danger-btn"])
                             components["repair_index_meta_btn"] = gr.Button("Repair Index/Meta", variant="secondary", elem_classes=["secondary-btn"])
                             components["run_metadata_btn"] = gr.Button("Run Metadata", variant="secondary", elem_classes=["secondary-btn"])
+                        with gr.Row(elem_classes=["pipeline-actions"]):
+                            components["pause_workflow_btn"] = gr.Button("Pause", elem_classes=["secondary-btn"])
+                            components["resume_workflow_btn"] = gr.Button("Resume", elem_classes=["secondary-btn"])
+                            components["restart_workflow_btn"] = gr.Button("Restart", elem_classes=["danger-btn"])
+                        components["lifecycle_status"] = gr.Markdown("", elem_classes=["section-microcopy"])
                         gr.HTML(
                             "<p class='section-microcopy'>"
                             "<strong>Run All Pending</strong> \u2014 starts Scoring, Culling, and Keywords for images not yet processed. "
@@ -337,6 +342,32 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         elif phase_code == "keywords":
             _run_tagging(path, overwrite=False, captions=False)
 
+    def _find_latest_workflow_job(path):
+        jobs = db.get_jobs(limit=200)
+        for job in jobs:
+            status = (job.get("status") or "").strip().lower()
+            if path and (job.get("input_path") or "") != path:
+                continue
+            if status in {"queued", "running", "paused", "restarting", "cancel_requested"}:
+                return job
+        return jobs[0] if jobs else None
+
+    def _control_workflow(path, action):
+        job = _find_latest_workflow_job(path)
+        if not job:
+            return "⚠️ No workflow job found for this folder."
+        target_by_action = {"pause": "paused", "resume": "running", "restart": "restarting"}
+        target = target_by_action[action]
+        try:
+            db.update_job_status(job["id"], target, log=f"ui_{action}_requested")
+            if action == "restart":
+                db.update_job_status(job["id"], "queued", log="ui_restart_queued")
+            return f"✅ {action.title()} requested for job #{job['id']} (optimistic)."
+        except ValueError as exc:
+            return f"⚠️ Conflict: {exc}"
+        except Exception as exc:
+            return f"❌ {action.title()} failed: {exc}"
+
     def _run_all_pending(path):
         if not path:
             return
@@ -471,6 +502,22 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         fn=lambda p: _retry_phase(p, "keywords"),
         inputs=[components["selected_path"]],
         outputs=[]
+    )
+
+    components["pause_workflow_btn"].click(
+        fn=lambda p: _control_workflow(p, "pause"),
+        inputs=[components["selected_path"]],
+        outputs=[components["lifecycle_status"]],
+    )
+    components["resume_workflow_btn"].click(
+        fn=lambda p: _control_workflow(p, "resume"),
+        inputs=[components["selected_path"]],
+        outputs=[components["lifecycle_status"]],
+    )
+    components["restart_workflow_btn"].click(
+        fn=lambda p: _control_workflow(p, "restart"),
+        inputs=[components["selected_path"]],
+        outputs=[components["lifecycle_status"]],
     )
 
     return components
@@ -712,6 +759,10 @@ _STATUS_LABELS = {
     "not_started": "Not Started",
     "failed": "Failed",
     "running": "Running",
+    "queued": "Queued",
+    "paused": "Paused",
+    "cancel_requested": "Cancel Requested",
+    "restarting": "Restarting",
     "skipped": "Skipped",
 }
 
@@ -720,6 +771,10 @@ _STATUS_BADGE_CLASS = {
     "done": "success",
     "partial": "info",
     "running": "info",
+    "queued": "info",
+    "paused": "warning",
+    "cancel_requested": "warning",
+    "restarting": "info",
     "failed": "error",
     "skipped": "warning",
     "not_started": "",

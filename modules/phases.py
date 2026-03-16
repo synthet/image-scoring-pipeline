@@ -72,18 +72,26 @@ def normalize_phase_codes(phase_codes: Optional[List[Any]]) -> List[PhaseCode]:
 
 class PhaseStatus(str, Enum):
     NOT_STARTED = "not_started"
+    QUEUED      = "queued"
     RUNNING     = "running"
+    PAUSED      = "paused"
+    CANCEL_REQUESTED = "cancel_requested"
+    RESTARTING  = "restarting"
     DONE        = "done"
     SKIPPED     = "skipped"
     FAILED      = "failed"
 
 # Allowed transitions: from_status -> set of to_statuses
 ALLOWED_TRANSITIONS = {
-    PhaseStatus.NOT_STARTED: {PhaseStatus.RUNNING},
-    PhaseStatus.RUNNING:     {PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED},
-    PhaseStatus.DONE:        {PhaseStatus.RUNNING},      # rerun
-    PhaseStatus.FAILED:      {PhaseStatus.RUNNING},      # retry
-    PhaseStatus.SKIPPED:     {PhaseStatus.RUNNING},      # explicit rerun
+    PhaseStatus.NOT_STARTED: {PhaseStatus.QUEUED, PhaseStatus.RUNNING},
+    PhaseStatus.QUEUED:      {PhaseStatus.RUNNING, PhaseStatus.CANCEL_REQUESTED, PhaseStatus.SKIPPED},
+    PhaseStatus.RUNNING:     {PhaseStatus.PAUSED, PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED, PhaseStatus.CANCEL_REQUESTED, PhaseStatus.RESTARTING},
+    PhaseStatus.PAUSED:      {PhaseStatus.RUNNING, PhaseStatus.CANCEL_REQUESTED, PhaseStatus.RESTARTING},
+    PhaseStatus.CANCEL_REQUESTED: {PhaseStatus.SKIPPED, PhaseStatus.FAILED, PhaseStatus.NOT_STARTED},
+    PhaseStatus.RESTARTING:  {PhaseStatus.QUEUED, PhaseStatus.RUNNING, PhaseStatus.FAILED},
+    PhaseStatus.DONE:        {PhaseStatus.RESTARTING, PhaseStatus.RUNNING},      # rerun
+    PhaseStatus.FAILED:      {PhaseStatus.RESTARTING, PhaseStatus.RUNNING},      # retry
+    PhaseStatus.SKIPPED:     {PhaseStatus.RESTARTING, PhaseStatus.RUNNING},      # explicit rerun
 }
 
 
