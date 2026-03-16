@@ -84,6 +84,11 @@ def test_jobs_queue_endpoint_refreshes_from_db_with_limit_zero(monkeypatch):
 def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
 
     captured = {}
 
@@ -131,6 +136,9 @@ def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
         "threshold": 0.2,
         "time_gap": 12,
         "force_rescan": True,
+        "resolved_image_ids": [11, 12],
+        "selector_preview_count": 2,
+        "missing_paths": [],
     }
     assert created_phase_codes["job_id"] == 321
     assert created_phase_codes["phase_codes"] == ["culling"]
@@ -139,6 +147,11 @@ def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
 def test_pipeline_submit_metadata_enqueues_scoring_runner_with_target_phases(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
 
     captured = {}
 
@@ -182,6 +195,9 @@ def test_pipeline_submit_metadata_enqueues_scoring_runner_with_target_phases(mon
             "input_path": str(tmp_path),
             "skip_existing": False,
             "target_phases": ["indexing", "metadata"],
+            "resolved_image_ids": [11, 12],
+            "selector_preview_count": 2,
+            "missing_paths": [],
         },
     }
 
@@ -189,6 +205,11 @@ def test_pipeline_submit_metadata_enqueues_scoring_runner_with_target_phases(mon
 def test_pipeline_submit_mixed_operations_only_targets_scoring_side(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
 
     captured = {}
 
@@ -220,6 +241,9 @@ def test_pipeline_submit_mixed_operations_only_targets_scoring_side(monkeypatch,
             "input_path": str(tmp_path),
             "skip_existing": True,
             "target_phases": ["scoring"],
+            "resolved_image_ids": [11, 12],
+            "selector_preview_count": 2,
+            "missing_paths": [],
         },
     }
 
@@ -227,6 +251,11 @@ def test_pipeline_submit_mixed_operations_only_targets_scoring_side(monkeypatch,
 def test_pipeline_submit_metadata_requires_scoring_runner(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", None)
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
 
     with _build_client() as client:
         response = client.post(
@@ -416,6 +445,11 @@ def test_pipeline_phase_backfill_returns_400_for_missing_path(monkeypatch):
 def test_scoring_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "resolve_selectors",
+        lambda **kwargs: {"resolved_image_ids": [11], "missing_image_paths": [], "missing_folder_paths": []},
+    )
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
     with _build_client() as client:
@@ -428,6 +462,11 @@ def test_scoring_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 def test_tagging_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_tagging_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "resolve_selectors",
+        lambda **kwargs: {"resolved_image_ids": [11], "missing_image_paths": [], "missing_folder_paths": []},
+    )
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
     with _build_client() as client:
@@ -440,6 +479,11 @@ def test_tagging_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 def test_clustering_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "resolve_selectors",
+        lambda **kwargs: {"resolved_image_ids": [11], "missing_image_paths": [], "missing_folder_paths": []},
+    )
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
     with _build_client() as client:
@@ -452,6 +496,11 @@ def test_clustering_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 def test_pipeline_submit_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
     body = {
@@ -472,7 +521,8 @@ def test_pipeline_submit_requires_input_path(monkeypatch):
     with _build_client() as client:
         response = client.post("/api/pipeline/submit", json={"operations": ["score"]})
 
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Provide input_path or at least one selector"
 
 
 def test_outliers_endpoint_returns_detector_payload(monkeypatch):

@@ -57,6 +57,11 @@ import logging
 from pathlib import Path
 from modules.phases_policy import explain_phase_run_decision
 from modules.selector_resolver import resolve_selectors
+from modules.pipeline_selector_composer import (
+    compose_selector_request,
+    validate_and_preview,
+    serialize_queue_payload,
+)
 
 from modules.job_dispatcher import JobDispatcher
 
@@ -513,7 +518,7 @@ class ImportRegisterRequest(BaseModel):
     })
 
 
-class PipelineSubmitRequest(BaseModel):
+class PipelineSubmitRequest(SelectorRequest):
     """Request model for submitting images/folders to the processing pipeline.
 
     Chains requested operations sequentially (score -> tag -> cluster).
@@ -523,8 +528,8 @@ class PipelineSubmitRequest(BaseModel):
         operations: List of operations to run in order. Valid: "score", "tag", "cluster".
         options: Optional per-operation options.
     """
-    input_path: str = Field(
-        ...,
+    input_path: Optional[str] = Field(
+        None,
         description="File or directory path to process.",
         example="D:/Photos/2024"
     )
@@ -558,6 +563,10 @@ class PipelineSubmitRequest(BaseModel):
     clustering_force_rescan: bool = Field(
         False,
         description="If True, force re-clustering even when folder was already clustered."
+    )
+    exclude_image_paths: Optional[List[str]] = Field(
+        None,
+        description="Optional image paths to exclude from resolved selector targets."
     )
 
 
@@ -2672,10 +2681,29 @@ def create_api_router() -> APIRouter:
         from modules.ui.security import _check_rate_limit
         _check_rate_limit("pipeline_submit")
 
-        if not request.input_path or not request.input_path.strip():
-            raise HTTPException(status_code=400, detail="input_path is required")
-        if not os.path.exists(request.input_path):
-            raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
+        has_selector = any([
+            request.input_path,
+            request.image_ids,
+            request.image_paths,
+            request.folder_ids,
+            request.folder_paths,
+        ])
+        if not has_selector:
+            raise HTTPException(status_code=400, detail="Provide input_path or at least one selector")
+
+        selector_request = compose_selector_request(
+            input_path=request.input_path,
+            image_ids_raw=",".join(str(i) for i in (request.image_ids or [])),
+            image_paths_raw=",".join(request.image_paths or []),
+            folder_ids_raw=",".join(str(i) for i in (request.folder_ids or [])),
+            folder_paths_raw=",".join(request.folder_paths or []),
+            exclude_image_paths_raw=",".join(request.exclude_image_paths or []),
+            recursive=request.recursive,
+        )
+        preview = validate_and_preview(selector_request)
+        resolved_count = int(preview.get("preview_count") or 0)
+        if resolved_count <= 0:
+            raise HTTPException(status_code=400, detail="No images matched selectors")
 
         valid_ops = {"indexing", "metadata", "score", "tag", "cluster"}
         invalid_ops = [op for op in request.operations if op not in valid_ops]
@@ -2684,7 +2712,7 @@ def create_api_router() -> APIRouter:
         if not request.operations:
             raise HTTPException(status_code=400, detail="At least one operation is required")
 
-        is_file = os.path.isfile(request.input_path)
+        is_file = bool(request.input_path and os.path.isfile(request.input_path))
         if is_file and "cluster" in request.operations:
             raise HTTPException(status_code=400, detail="Clustering requires a folder path, not a single file")
 
@@ -2755,11 +2783,14 @@ def create_api_router() -> APIRouter:
                 request.input_path,
                 phase_code=op_to_phase_code[first_op],
                 job_type="scoring", # Scoring runner handles indexing/metadata/scoring
-                queue_payload={
-                    "input_path": request.input_path, 
-                    "skip_existing": request.skip_existing,
-                    "target_phases": target_phases
-                },
+                queue_payload=serialize_queue_payload(
+                    {
+                        "input_path": request.input_path,
+                        "skip_existing": request.skip_existing,
+                        "target_phases": target_phases,
+                    },
+                    preview,
+                ),
             )
         elif first_op == "tag":
             if _tagging_runner is None:
@@ -2768,12 +2799,15 @@ def create_api_router() -> APIRouter:
                 request.input_path,
                 phase_code="keywords",
                 job_type="tagging",
-                queue_payload={
-                    "input_path": request.input_path,
-                    "custom_keywords": request.custom_keywords,
-                    "overwrite": not request.skip_existing,
-                    "generate_captions": request.generate_captions,
-                },
+                queue_payload=serialize_queue_payload(
+                    {
+                        "input_path": request.input_path,
+                        "custom_keywords": request.custom_keywords,
+                        "overwrite": not request.skip_existing,
+                        "generate_captions": request.generate_captions,
+                    },
+                    preview,
+                ),
             )
         else:
             if _clustering_runner is None:
@@ -2782,12 +2816,15 @@ def create_api_router() -> APIRouter:
                 request.input_path,
                 phase_code="culling",
                 job_type="clustering",
-                queue_payload={
-                    "input_path": request.input_path,
-                    "threshold": request.clustering_threshold,
-                    "time_gap": request.clustering_time_gap,
-                    "force_rescan": request.clustering_force_rescan,
-                },
+                queue_payload=serialize_queue_payload(
+                    {
+                        "input_path": request.input_path,
+                        "threshold": request.clustering_threshold,
+                        "time_gap": request.clustering_time_gap,
+                        "force_rescan": request.clustering_force_rescan,
+                    },
+                    preview,
+                ),
             )
 
         if job_id is None:
@@ -2805,6 +2842,8 @@ def create_api_router() -> APIRouter:
                 "queue_position": queue_position,
                 "phase_plan": phase_rows,
                 "remaining_operations": request.operations[1:],
+                "resolved_count": resolved_count,
+                "warnings": preview.get("warnings") or [],
             },
         )
 
