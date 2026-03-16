@@ -2258,6 +2258,61 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=500, detail=str(exc))
 
 
+    # ========== Embedding Map Endpoint ==========
+
+    @router.get(
+        "/embedding_map",
+        response_model=ApiResponse,
+        summary="2D embedding map",
+        description="""
+        Project image embeddings to 2D coordinates for spatial visualisation.
+
+        Uses UMAP (default) or t-SNE to reduce 1280-d MobileNetV2 embeddings to
+        two dimensions.  Results are cached on disk; pass `refresh=true` to force
+        recomputation.
+
+        **Query Parameters:**
+        - folder_path: Optional.  Scope projection to one folder; omit for all images.
+        - method: `umap` (default) or `tsne`.
+        - refresh: If true, ignore the on-disk cache and recompute.
+        - sample_limit: Cap the number of images projected (default: config `embedding_map.max_points`).
+        - n_neighbors: UMAP/t-SNE neighbourhood size (default: 30).
+        - min_dist: UMAP min_dist (default: 0.1, ignored for t-SNE).
+
+        **Returns:**
+        - points: List of `{image_id, x, y, file_path, thumbnail_path, label, rating, score_general}`.
+        - meta: `{count, method, computed_at, cache_key}`.
+          When too few images are available `meta.error == "too_few_points"` and
+          `points` is empty.
+        """,
+        tags=["Similarity"],
+    )
+    def get_embedding_map(
+        folder_path: Optional[str] = Query(None, description="Scope to folder path"),
+        method: str = Query("umap", description="Projection method: umap or tsne"),
+        refresh: bool = Query(False, description="Force recomputation, ignoring cache"),
+        sample_limit: Optional[int] = Query(None, ge=1, le=50000, description="Max images to project"),
+        n_neighbors: int = Query(30, ge=2, le=200, description="UMAP/t-SNE neighbourhood size"),
+        min_dist: float = Query(0.1, ge=0.0, le=1.0, description="UMAP min_dist parameter"),
+    ):
+        """Return 2D projection of image embeddings."""
+        if method not in ("umap", "tsne"):
+            raise HTTPException(status_code=422, detail="method must be 'umap' or 'tsne'")
+        from modules import projections
+        try:
+            result = projections.compute_embedding_map(
+                folder_path=folder_path,
+                method=method,
+                refresh=refresh,
+                sample_limit=sample_limit,
+                n_neighbors=n_neighbors,
+                min_dist=min_dist,
+            )
+            return ApiResponse(success=True, message="OK", data=result)
+        except Exception as exc:
+            logger.error("Error computing embedding map: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
     # ========== Clustering Endpoints ==========
 
     @router.post(

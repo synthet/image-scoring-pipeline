@@ -46,7 +46,7 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 
 - [ ] **[Python]** Add `stack_representative_strategy` config option to `ClusteringEngine`
 - [ ] **[Python]** Implement centroid strategy (mean embedding → select closest image) in `modules/clustering.py`
-- [ ] **[Python]** 2D embedding map: add `umap-learn`, implement `modules/projections.py` (UMAP 2D coords + folder-level caching)
+- [x] **[Python]** 2D embedding map: add `umap-learn`, implement `modules/projections.py` (UMAP 2D coords + folder-level caching), `GET /api/embedding_map` endpoint
 - [ ] **[Electron]** **[Gradio]** Bidirectional WebSocket command channel — coordinate protocol with Electron's IPC/WebSocket bridge enhancement (see [EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md](docs/plans/embedding/EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md))
 - [ ] **[Electron]** **[DB]** Pipeline mode selector, headless lifecycle, `INTEGRATION_QUEUE` table
 - [ ] **[Gradio]** "Similarity Search" tab or context menu in Gradio WebUI using `similar_search.py`
