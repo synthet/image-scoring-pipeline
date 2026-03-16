@@ -222,6 +222,9 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                             lines=12, label="", max_lines=12, interactive=False, elem_classes=["console-code"]
                         )
 
+    def _sync_composer_path(path):
+        return path or ""
+
     # Wire up folder selection to update HTML rendering (force_refresh to avoid stale cache)
     components["selected_path"].change(
         fn=lambda p: _update_folder_selection(p, force_refresh=True)[:6],
@@ -234,6 +237,10 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
             components["keywords_card_html"],
             components["quick_start_html"],
         ]
+    ).then(
+        fn=_sync_composer_path,
+        inputs=[components["selected_path"]],
+        outputs=[components["composer_input_path"]],
     )
 
     def _on_refresh_click(selected_path):
@@ -264,6 +271,10 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
             components["keywords_card_html"],
             components["quick_start_html"],
         ],
+    ).then(
+        fn=_sync_composer_path,
+        inputs=[components["selected_path"]],
+        outputs=[components["composer_input_path"]],
     )
 
     components["refresh_btn"].click(
@@ -278,6 +289,10 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
             components["keywords_card_html"],
             components["quick_start_html"],
         ],
+    ).then(
+        fn=_sync_composer_path,
+        inputs=[components["selected_path"]],
+        outputs=[components["composer_input_path"]],
     )
 
     def _compose_request(input_path, image_ids, image_paths, folder_ids, folder_paths, exclude_paths, recursive):
