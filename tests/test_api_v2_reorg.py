@@ -5,6 +5,7 @@ Tests for reorganized similarity API and streaming import endpoint.
 import pytest
 import json
 import os
+from unittest.mock import MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from modules import api, similar_search, db
@@ -24,32 +25,48 @@ def _build_client():
     app.include_router(api.create_api_router())
     return TestClient(app)
 
+def _mock_db_image_exists(monkeypatch):
+    """Mock db.get_db so the image existence check passes (image_id=1 exists)."""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = (1,)
+    mock_conn.cursor.return_value = mock_cursor
+    monkeypatch.setattr(db, "get_db", lambda: mock_conn)
+
 def test_similarity_search_new_endpoint(monkeypatch):
-    def mock_search(image_id, limit, folder_path, min_similarity):
+    def mock_search(example_image_id, limit, folder_path, min_similarity):
         return [{"id": 123, "similarity": 0.95}]
     
     monkeypatch.setattr(similar_search, "search_similar_images", mock_search)
+    _mock_db_image_exists(monkeypatch)
     
     with _build_client() as client:
         response = client.get("/api/similarity/search?image_id=1")
     
     assert response.status_code == 200
-    assert response.json() == [{"id": 123, "similarity": 0.95}]
+    data = response.json()
+    assert data["query_image_id"] == 1
+    assert data["results"] == [{"id": 123, "similarity": 0.95}]
+    assert data["count"] == 1
 
 def test_similarity_search_alias(monkeypatch):
-    def mock_search(image_id, limit, folder_path, min_similarity):
+    def mock_search(example_image_id, limit, folder_path, min_similarity):
         return [{"id": 123, "similarity": 0.95}]
     
     monkeypatch.setattr(similar_search, "search_similar_images", mock_search)
+    _mock_db_image_exists(monkeypatch)
     
     with _build_client() as client:
-        response = client.get("/similar?image_id=1")
+        response = client.get("/api/similar?image_id=1")
     
     assert response.status_code == 200
-    assert response.json() == [{"id": 123, "similarity": 0.95}]
+    data = response.json()
+    assert data["query_image_id"] == 1
+    assert data["results"] == [{"id": 123, "similarity": 0.95}]
+    assert data["count"] == 1
 
 def test_find_duplicates_new_endpoint(monkeypatch):
-    def mock_duplicates(folder_path, threshold, limit):
+    def mock_duplicates(threshold, folder_path, limit):
         return [{"image1": "a.jpg", "image2": "b.jpg", "similarity": 0.99}]
     
     monkeypatch.setattr(similar_search, "find_near_duplicates", mock_duplicates)
@@ -58,11 +75,25 @@ def test_find_duplicates_new_endpoint(monkeypatch):
         response = client.post("/api/similarity/duplicates", json={"folder_path": "test", "threshold": 0.9})
     
     assert response.status_code == 200
-    assert response.json() == [{"image1": "a.jpg", "image2": "b.jpg", "similarity": 0.99}]
+    data = response.json()
+    assert data["success"] is True
+    assert data["data"]["duplicates"] == [{"image1": "a.jpg", "image2": "b.jpg", "similarity": 0.99}]
 
 def test_find_outliers_new_endpoint(monkeypatch):
     def mock_outliers(folder_path, z_threshold, k, limit):
-        return [{"id": 999, "score": 3.5}]
+        return {
+            "outliers": [
+                {
+                    "image_id": 999,
+                    "file_path": "/path/to/img.jpg",
+                    "outlier_score": 3.5,
+                    "z_score": -2.0,
+                    "nearest_neighbors": [],
+                }
+            ],
+            "stats": {"total_with_embeddings": 10},
+            "skipped": [],
+        }
     
     monkeypatch.setattr(similar_search, "find_outliers", mock_outliers)
     
@@ -70,7 +101,10 @@ def test_find_outliers_new_endpoint(monkeypatch):
         response = client.get("/api/similarity/outliers?folder_path=test")
     
     assert response.status_code == 200
-    assert response.json() == [{"id": 999, "score": 3.5}]
+    data = response.json()
+    assert len(data["outliers"]) == 1
+    assert data["outliers"][0]["image_id"] == 999
+    assert data["outliers"][0]["outlier_score"] == 3.5
 
 def test_import_register_stream(monkeypatch):
     # Mocking OS and DB interactions

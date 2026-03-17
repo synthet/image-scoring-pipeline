@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import gradio as gr
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 from modules.ui import app as app_module
 from modules.events import event_manager
@@ -164,10 +165,12 @@ def main():
     origins = [
         "http://127.0.0.1:7860",
         "http://localhost:7860",
-        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5173",  # Vite dev server (React SPA)
         "http://localhost:5173",
-        "http://127.0.0.1:4173",
+        "http://127.0.0.1:4173",  # Vite preview
         "http://localhost:4173",
+        "http://127.0.0.1:5174",  # Alternate Vite dev port
+        "http://localhost:5174",
     ]
     
     app.add_middleware(
@@ -278,14 +281,36 @@ def main():
             logging.error(f"WebSocket error: {e}")
             event_manager.disconnect(websocket)
 
-    # Mount Gradio App onto FastAPI
-    # Mount at /app so /api routes are not shadowed by Gradio's catch-all at /
+    # Mount Gradio App onto FastAPI at /app (legacy fallback)
     app = gr.mount_gradio_app(app, demo, path="/app", allowed_paths=allowed_paths, favicon_path="static/favicon.ico")
 
-    @app.get("/")
-    async def root_redirect():
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/app", status_code=302)
+    # Serve React SPA build (static/app/) — must be mounted AFTER /api routes
+    # SPA files are built via: cd frontend && npm run build  (outputs to static/app/)
+    _spa_dir = os.path.join(os.path.dirname(__file__), "static", "app")
+    if os.path.isdir(_spa_dir):
+        from fastapi.responses import FileResponse
+
+        @app.get("/ui/{full_path:path}")
+        async def serve_spa(full_path: str):
+            """Serve React SPA for all /ui/* paths (client-side routing)."""
+            file_path = os.path.join(_spa_dir, full_path)
+            if os.path.isfile(file_path):
+                return FileResponse(file_path)
+            return FileResponse(os.path.join(_spa_dir, "index.html"))
+
+        @app.get("/")
+        async def root_redirect():
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url="/ui/", status_code=302)
+
+        print(f"React SPA: served at http://{display_host}:{server_port}/ui/")
+    else:
+        @app.get("/")
+        async def root_redirect():
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url="/app", status_code=302)
+
+        print(f"React SPA: build not found at {_spa_dir}. Run: cd frontend && npm run build")
     
     # Apply logging filter to suppress repetitive Gradio queue polling messages
 

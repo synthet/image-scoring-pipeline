@@ -12,7 +12,7 @@ Backend tasks for embedding-based features. See [NEXT_STEPS.md](NEXT_STEPS.md) f
 
 ## Clustering & Selection
 
-- [ ] Add `stack_representative_strategy` config option to `ClusteringEngine`
+- [x] Add `stack_representative_strategy` config option to `ClusteringEngine`
 - [ ] Implement centroid strategy (mean embedding → select closest image) in `modules/clustering.py`
 
 ## 2D Embedding Map (Priority 2)

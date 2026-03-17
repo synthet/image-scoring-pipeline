@@ -764,7 +764,8 @@ def get_runner_status() -> dict:
 
     if _scoring_runner:
         try:
-            is_running, log, status_msg, current, total = _scoring_runner.get_status()
+            result = _scoring_runner.get_status()
+            is_running, log, status_msg, current, total = result[:5]
             status["scoring"] = {
                 "available": True,
                 "is_running": is_running,
@@ -777,7 +778,8 @@ def get_runner_status() -> dict:
 
     if _tagging_runner:
         try:
-            is_running, log, status_msg, current, total = _tagging_runner.get_status()
+            result = _tagging_runner.get_status()
+            is_running, log, status_msg, current, total = result[:5]
             status["tagging"] = {
                 "available": True,
                 "is_running": is_running,
@@ -790,7 +792,8 @@ def get_runner_status() -> dict:
 
     if _clustering_runner:
         try:
-            is_running, log, status_msg, current, total = _clustering_runner.get_status()
+            result = _clustering_runner.get_status()
+            is_running, log, status_msg, current, total = result[:5]
             status["clustering"] = {
                 "available": True,
                 "is_running": is_running,

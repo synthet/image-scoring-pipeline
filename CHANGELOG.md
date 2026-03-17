@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.11.1] - 2026-03-16
+
+### Changed
+- **API, MCP, pipeline**: Adapt `get_status()` unpacking to `result[:5]` for runners that return extended tuples.
+- **Tests**: Update `test_api_v2_reorg` for new similarity/duplicates/outliers response shapes; add DB mock for image existence.
+- **Tests**: Update `test_scoring_runner` for `get_status()` tuple handling.
+
+### Removed
+- **Backup file**: `TEST_stacks_*.bak` (temporary backup, no longer tracked).
+
 ## [4.11.0] - 2026-03-15
 
 ### Added

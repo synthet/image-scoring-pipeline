@@ -583,6 +583,26 @@ class PipelineBackfillRequest(BaseModel):
     input_path: str = Field(..., description="Folder path for backfill operation.")
 
 
+class IpcBridgeRequest(BaseModel):
+    """Generic IPC-style message wrapper for Electron -> FastAPI bridging."""
+    channel: str = Field(
+        ...,
+        description="IPC channel name (e.g. 'pipeline:submit', 'tasks:active').",
+        example="pipeline:submit",
+    )
+    payload: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Channel-specific payload; mirrors the endpoint body/query shape.",
+    )
+
+
+class IpcBridgeResponse(BaseModel):
+    """Response envelope for IPC bridge requests."""
+    channel: str = Field(..., description="Echoed IPC channel")
+    ok: bool = Field(..., description="True when handler succeeded")
+    data: Optional[Any] = Field(None, description="Handler result payload")
+
+
 class ApiResponse(BaseModel):
     """Standard API response model for operation results.
     
@@ -1177,7 +1197,8 @@ def create_api_router() -> APIRouter:
         if _scoring_runner is None:
             raise HTTPException(status_code=503, detail="Scoring runner not available")
         
-        is_running, log_text, status_message, current, total = _scoring_runner.get_status()
+        result = _scoring_runner.get_status()
+        is_running, log_text, status_message, current, total = result[:5]
         
         return StatusResponse(
             is_running=is_running,
@@ -1403,7 +1424,8 @@ def create_api_router() -> APIRouter:
         if _tagging_runner is None:
             raise HTTPException(status_code=503, detail="Tagging runner not available")
         
-        is_running, log_text, status_message, current, total = _tagging_runner.get_status()
+        result = _tagging_runner.get_status()
+        is_running, log_text, status_message, current, total = result[:5]
         
         return StatusResponse(
             is_running=is_running,
@@ -1533,7 +1555,8 @@ def create_api_router() -> APIRouter:
 
         if _scoring_runner:
             try:
-                is_running, log, status_msg, current, total = _scoring_runner.get_status()
+                result = _scoring_runner.get_status()
+                is_running, log, status_msg, current, total = result[:5]
                 status["scoring"] = {
                     "available": True,
                     "is_running": is_running,
@@ -1547,7 +1570,8 @@ def create_api_router() -> APIRouter:
 
         if _tagging_runner:
             try:
-                is_running, log, status_msg, current, total = _tagging_runner.get_status()
+                result = _tagging_runner.get_status()
+                is_running, log, status_msg, current, total = result[:5]
                 status["tagging"] = {
                     "available": True,
                     "is_running": is_running,
@@ -1560,7 +1584,8 @@ def create_api_router() -> APIRouter:
 
         if _clustering_runner:
             try:
-                is_running, log, status_msg, current, total = _clustering_runner.get_status()
+                result = _clustering_runner.get_status()
+                is_running, log, status_msg, current, total = result[:5]
                 status["clustering"] = {
                     "available": True,
                     "is_running": is_running,
@@ -1848,7 +1873,8 @@ def create_api_router() -> APIRouter:
             }
             if _scoring_runner:
                 try:
-                    is_running, log, status_msg, current, total = _scoring_runner.get_status()
+                    result = _scoring_runner.get_status()
+                    is_running, log, status_msg, current, total = result[:5]
                     runners["scoring"] = {
                         "available": True,
                         "is_running": is_running,
@@ -1861,7 +1887,8 @@ def create_api_router() -> APIRouter:
                     runners["scoring"]["error"] = str(e)
             if _tagging_runner:
                 try:
-                    is_running, log, status_msg, current, total = _tagging_runner.get_status()
+                    result = _tagging_runner.get_status()
+                    is_running, log, status_msg, current, total = result[:5]
                     runners["tagging"] = {
                         "available": True,
                         "is_running": is_running,
@@ -1873,7 +1900,8 @@ def create_api_router() -> APIRouter:
                     runners["tagging"]["error"] = str(e)
             if _clustering_runner:
                 try:
-                    is_running, log, status_msg, current, total = _clustering_runner.get_status()
+                    result = _clustering_runner.get_status()
+                    is_running, log, status_msg, current, total = result[:5]
                     runners["clustering"] = {
                         "available": True,
                         "is_running": is_running,
@@ -2248,6 +2276,61 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=500, detail=str(exc))
 
 
+    # ========== Embedding Map Endpoint ==========
+
+    @router.get(
+        "/embedding_map",
+        response_model=ApiResponse,
+        summary="2D embedding map",
+        description="""
+        Project image embeddings to 2D coordinates for spatial visualisation.
+
+        Uses UMAP (default) or t-SNE to reduce 1280-d MobileNetV2 embeddings to
+        two dimensions.  Results are cached on disk; pass `refresh=true` to force
+        recomputation.
+
+        **Query Parameters:**
+        - folder_path: Optional.  Scope projection to one folder; omit for all images.
+        - method: `umap` (default) or `tsne`.
+        - refresh: If true, ignore the on-disk cache and recompute.
+        - sample_limit: Cap the number of images projected (default: config `embedding_map.max_points`).
+        - n_neighbors: UMAP/t-SNE neighbourhood size (default: 30).
+        - min_dist: UMAP min_dist (default: 0.1, ignored for t-SNE).
+
+        **Returns:**
+        - points: List of `{image_id, x, y, file_path, thumbnail_path, label, rating, score_general}`.
+        - meta: `{count, method, computed_at, cache_key}`.
+          When too few images are available `meta.error == "too_few_points"` and
+          `points` is empty.
+        """,
+        tags=["Similarity"],
+    )
+    def get_embedding_map(
+        folder_path: Optional[str] = Query(None, description="Scope to folder path"),
+        method: str = Query("umap", description="Projection method: umap or tsne"),
+        refresh: bool = Query(False, description="Force recomputation, ignoring cache"),
+        sample_limit: Optional[int] = Query(None, ge=1, le=50000, description="Max images to project"),
+        n_neighbors: int = Query(30, ge=2, le=200, description="UMAP/t-SNE neighbourhood size"),
+        min_dist: float = Query(0.1, ge=0.0, le=1.0, description="UMAP min_dist parameter"),
+    ):
+        """Return 2D projection of image embeddings."""
+        if method not in ("umap", "tsne"):
+            raise HTTPException(status_code=422, detail="method must be 'umap' or 'tsne'")
+        from modules import projections
+        try:
+            result = projections.compute_embedding_map(
+                folder_path=folder_path,
+                method=method,
+                refresh=refresh,
+                sample_limit=sample_limit,
+                n_neighbors=n_neighbors,
+                min_dist=min_dist,
+            )
+            return ApiResponse(success=True, message="OK", data=result)
+        except Exception as exc:
+            logger.error("Error computing embedding map: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
     # ========== Clustering Endpoints ==========
 
     @router.post(
@@ -2352,7 +2435,8 @@ def create_api_router() -> APIRouter:
         if _clustering_runner is None:
             raise HTTPException(status_code=503, detail="Clustering runner not available")
 
-        is_running, log_text, status_message, current, total = _clustering_runner.get_status()
+        result = _clustering_runner.get_status()
+        is_running, log_text, status_message, current, total = result[:5]
 
         return StatusResponse(
             is_running=is_running,
@@ -2539,119 +2623,207 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    # ========== Import Register Endpoint ==========
+    # ========== Import Register Endpoints ==========
 
-    @router.post(
-        "/import/register/stream",
-        summary="Register images from folder with streaming progress",
-        description="""
-        Similar to /import/register, but returns a stream of JSON objects (NDJSON) 
-        providing real-time progress updates during the folder scan and registration process.
-        """
-    )
-    async def import_register_stream(request: ImportRegisterRequest):
-        """Streaming version of image registration."""
-        from modules.ui.security import _check_rate_limit
-        from modules import db, utils
-        from modules.exif_extractor import extract_exif
-        from modules.phases import PhaseCode, PhaseStatus
-        from modules.version import APP_VERSION
+    _IMPORT_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".nef", ".arw", ".cr2", ".dng", ".heic", ".webp", ".tiff", ".tif", ".raw", ".orf", ".rw2"}
 
-        _check_rate_limit("import_register")
-
-        folder_path = request.folder_path
+    def _resolve_import_path(raw_path: str) -> str:
+        """Convert Windows path to WSL if needed, validate directory exists."""
+        from modules import utils
+        folder_path = raw_path
         try:
             if platform.system() == "Linux" and (":" in folder_path or "\\" in folder_path) and hasattr(utils, "convert_path_to_wsl"):
                 folder_path = utils.convert_path_to_wsl(folder_path)
         except Exception:
             pass
-
         if not os.path.isdir(folder_path):
-            raise HTTPException(status_code=400, detail=f"Path is not a directory or not found: {request.folder_path}")
+            raise HTTPException(status_code=400, detail=f"Path is not a directory or not found: {raw_path}")
+        return folder_path
 
-        IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".nef", ".arw", ".cr2", ".dng", ".heic", ".webp", ".tiff", ".tif", ".raw", ".orf", ".rw2"}
+    def _import_folder_iter(folder_path: str):
+        """Generator that yields progress/done/error dicts during folder import.
 
-        async def progress_generator():
-            added = 0
-            skipped = 0
-            processed = 0
-            errors = []
+        Yields:
+            {"type": "init", "total_files": int, "folder_path": str}
+            {"type": "progress", "processed": int, "total": int, "added": int, "skipped": int, "current_file": str}
+            {"type": "done", "success": bool, "added": int, "skipped": int, "total": int, "errors": list}
+            {"type": "error", "message": str}
+        """
+        from modules import db
+        from modules.exif_extractor import extract_exif
+        from modules.phases import PhaseCode, PhaseStatus
+        from modules.version import APP_VERSION
+
+        folder_id = db.get_or_create_folder(folder_path)
+        if not folder_id:
+            yield {"type": "error", "message": "Failed to get or create folder"}
+            return
+
+        entries = os.listdir(folder_path)
+        file_entries = [e for e in entries if os.path.isfile(os.path.join(folder_path, e))]
+        total_files = len(file_entries)
+
+        yield {"type": "init", "total_files": total_files, "folder_path": folder_path}
+
+        added = 0
+        skipped = 0
+        processed = 0
+        errors = []
+
+        for name in file_entries:
+            fp = os.path.join(folder_path, name)
+            ext = os.path.splitext(name)[1].lower()
+
+            if ext not in _IMPORT_IMAGE_EXTENSIONS:
+                processed += 1
+                if processed % 5 == 0 or processed == total_files:
+                    yield {
+                        "type": "progress",
+                        "processed": processed,
+                        "total": total_files,
+                        "added": added,
+                        "skipped": skipped,
+                        "current_file": os.path.basename(name),
+                    }
+                continue
+
+            file_name = os.path.basename(name)
+            file_type = ext.lstrip(".") or "unknown"
 
             try:
-                folder_id = db.get_or_create_folder(folder_path)
-                if not folder_id:
-                    yield json.dumps({"type": "error", "message": "Failed to get or create folder"}) + "\n"
-                    return
-
-                entries = os.listdir(folder_path)
-                file_entries = [e for e in entries if os.path.isfile(os.path.join(folder_path, e))]
-                total_files = len(file_entries)
-
-                yield json.dumps({"type": "init", "total_files": total_files, "folder_path": folder_path}) + "\n"
-
-                for i, name in enumerate(file_entries):
-                    file_path = os.path.join(folder_path, name)
-                    ext = os.path.splitext(name)[1].lower()
-                    
-                    if ext not in IMAGE_EXTENSIONS:
-                        processed += 1
-                        continue
-
-                    file_name = os.path.basename(name)
-                    file_type = ext.lstrip(".") or "unknown"
-
+                if db.find_image_id_by_path(fp):
+                    skipped += 1
+                else:
+                    image_uuid = None
                     try:
-                        if db.find_image_id_by_path(file_path):
-                            skipped += 1
+                        exif_data = extract_exif(fp)
+                        if exif_data:
+                            uid = exif_data.get("image_unique_id")
+                            if uid and isinstance(uid, str) and uid.strip():
+                                image_uuid = uid.strip()
+                                if db.find_image_id_by_uuid(image_uuid):
+                                    skipped += 1
+                                    image_uuid = "ALREADY_IN_DB"
+                    except Exception:
+                        pass
+
+                    if image_uuid != "ALREADY_IN_DB":
+                        image_id, was_new = db.register_image_for_import(fp, file_name, file_type, folder_id, image_uuid)
+                        if image_id:
+                            if was_new:
+                                added += 1
+                                db.set_image_phase_status(image_id, PhaseCode.INDEXING, PhaseStatus.DONE, app_version=APP_VERSION)
+                            else:
+                                skipped += 1
                         else:
-                            image_uuid = None
-                            try:
-                                exif_data = extract_exif(file_path)
-                                if exif_data:
-                                    uid = exif_data.get("image_unique_id")
-                                    if uid and isinstance(uid, str) and uid.strip():
-                                        image_uuid = uid.strip()
-                                        if db.find_image_id_by_uuid(image_uuid):
-                                            skipped += 1
-                                            image_uuid = "ALREADY_IN_DB" # Flag to skip registration
-                            except Exception:
-                                pass
+                            errors.append(f"{file_name}: insert failed")
+            except Exception as e:
+                errors.append(f"{file_name}: {str(e)}")
 
-                            if image_uuid != "ALREADY_IN_DB":
-                                image_id, was_new = db.register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid)
-                                if image_id:
-                                    if was_new:
-                                        added += 1
-                                        db.set_image_phase_status(image_id, PhaseCode.INDEXING, PhaseStatus.DONE, app_version=APP_VERSION)
-                                    else:
-                                        skipped += 1
-                                else:
-                                    errors.append(f"{file_name}: insert failed")
-                    except Exception as e:
-                        errors.append(f"{file_name}: {str(e)}")
+            processed += 1
 
-                    processed += 1
-                    
-                    # Periodic progress status update
-                    if processed % 5 == 0 or processed == total_files:
-                        yield json.dumps({
-                            "type": "progress", 
-                            "processed": processed, 
-                            "total": total_files, 
-                            "added": added, 
-                            "skipped": skipped,
-                            "current_file": file_name
-                        }) + "\n"
+            if processed % 5 == 0 or processed == total_files:
+                yield {
+                    "type": "progress",
+                    "processed": processed,
+                    "total": total_files,
+                    "added": added,
+                    "skipped": skipped,
+                    "current_file": file_name,
+                }
 
-                yield json.dumps({
-                    "type": "done", 
-                    "success": True, 
-                    "added": added, 
-                    "skipped": skipped, 
-                    "total": total_files, 
-                    "errors": errors[:50] # Limit reported errors
-                }) + "\n"
+        yield {
+            "type": "done",
+            "success": True,
+            "added": added,
+            "skipped": skipped,
+            "total": total_files,
+            "errors": errors[:50],
+        }
 
+    @router.post(
+        "/import/register",
+        summary="Register images from folder",
+        description="""
+        Scans a folder for image files and registers them in the database.
+        Returns a single JSON response when complete.
+        Broadcasts real-time progress via WebSocket (event types:
+        import_started, import_progress, import_completed).
+        For streaming NDJSON progress, use /import/register/stream instead.
+        """
+    )
+    async def import_register(request: ImportRegisterRequest):
+        """Non-streaming image registration with WebSocket progress broadcasts."""
+        from modules.ui.security import _check_rate_limit
+        from modules.events import event_manager
+
+        _check_rate_limit("import_register")
+        folder_path = _resolve_import_path(request.folder_path)
+
+        result = None
+        for msg in _import_folder_iter(folder_path):
+            msg_type = msg["type"]
+            if msg_type == "init":
+                event_manager.broadcast_threadsafe("import_started", {
+                    "folder_path": msg["folder_path"],
+                    "total_files": msg["total_files"],
+                })
+            elif msg_type == "progress":
+                event_manager.broadcast_threadsafe("import_progress", {
+                    "processed": msg["processed"],
+                    "total": msg["total"],
+                    "added": msg["added"],
+                    "skipped": msg["skipped"],
+                    "current_file": msg["current_file"],
+                })
+            elif msg_type == "done":
+                result = msg
+            elif msg_type == "error":
+                event_manager.broadcast_threadsafe("import_completed", {
+                    "added": 0, "skipped": 0, "total": 0, "errors": [msg["message"]],
+                })
+                raise HTTPException(status_code=500, detail=msg["message"])
+
+        # Broadcast completion
+        event_manager.broadcast_threadsafe("import_completed", {
+            "added": result["added"],
+            "skipped": result["skipped"],
+            "total": result["total"],
+            "errors": result["errors"],
+        })
+
+        errors = result["errors"]
+        return {
+            "success": len(errors) == 0 or result["added"] > 0,
+            "message": f"Import complete: {result['added']} added, {result['skipped']} skipped"
+                       + (f", {len(errors)} errors" if errors else ""),
+            "data": {
+                "added": result["added"],
+                "skipped": result["skipped"],
+                "errors": errors,
+            },
+        }
+
+    @router.post(
+        "/import/register/stream",
+        summary="Register images from folder with streaming progress",
+        description="""
+        Returns a stream of JSON objects (NDJSON) providing real-time progress
+        updates during the folder scan and registration process.
+        For a single JSON response, use /import/register instead.
+        """
+    )
+    async def import_register_stream(request: ImportRegisterRequest):
+        """Streaming version of image registration (NDJSON)."""
+        from modules.ui.security import _check_rate_limit
+
+        _check_rate_limit("import_register")
+        folder_path = _resolve_import_path(request.folder_path)
+
+        async def progress_generator():
+            try:
+                for msg in _import_folder_iter(folder_path):
+                    yield json.dumps(msg) + "\n"
             except Exception as e:
                 yield json.dumps({"type": "error", "message": f"Unexpected error during scan: {str(e)}"}) + "\n"
 
@@ -3275,6 +3447,336 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    # ─── New Runs API (React SPA) ────────────────────────────────────────────
+
+    class RunSubmitRequest(BaseModel):
+        scope_type: str = "folder_recursive"  # file|folder|folder_recursive|path_list
+        scope_paths: List[str]
+        stages: Optional[List[str]] = None
+        skip_done: bool = True
+        force_rerun: bool = False
+
+    @router.post("/runs/submit", summary="Submit a new Run")
+    async def submit_run(request: RunSubmitRequest):
+        from modules import db
+        from modules.phases import normalize_phase_codes
+        if not request.scope_paths:
+            raise HTTPException(status_code=400, detail="scope_paths must not be empty")
+        primary_path = request.scope_paths[0]
+        phases = normalize_phase_codes(request.stages) if request.stages else None
+        payload = {
+            "scope_type": request.scope_type,
+            "scope_paths": request.scope_paths,
+            "skip_done": request.skip_done,
+            "force_rerun": request.force_rerun,
+            "phases": [p.value for p in phases] if phases else None,
+        }
+        try:
+            job_id, position = db.enqueue_job(
+                input_path=primary_path,
+                phase_code=None,
+                queue_payload=json.dumps(payload),
+            )
+            return {"run_id": job_id, "queue_position": position, "success": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/pause", summary="Soft-pause a running Run")
+    async def pause_run(run_id: int):
+        """Soft pause: sets a flag so the runner finishes the current image then stops."""
+        from modules import db
+        try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+            if job.get("status") != "running":
+                raise HTTPException(status_code=400, detail=f"Run {run_id} is not running (status={job.get('status')})")
+            db.update_job_status(run_id, "paused")
+            return {"success": True, "message": f"Run {run_id} paused after current image completes"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/resume", summary="Resume a paused Run")
+    async def resume_run(run_id: int):
+        """Re-enqueue a paused run. It will resume with skip_done=True."""
+        from modules import db
+        try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+            if job.get("status") not in ("paused", "interrupted"):
+                raise HTTPException(status_code=400, detail=f"Run {run_id} cannot be resumed (status={job.get('status')})")
+            # Re-enqueue with same payload + skip_done=True
+            payload_raw = job.get("queue_payload") or "{}"
+            try:
+                payload = json.loads(payload_raw)
+            except Exception:
+                payload = {}
+            payload["skip_done"] = True
+            new_job_id, position = db.enqueue_job(
+                input_path=job.get("input_path", ""),
+                phase_code=None,
+                queue_payload=json.dumps(payload),
+            )
+            return {"success": True, "run_id": new_job_id, "queue_position": position}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/cancel", summary="Cancel a Run")
+    async def cancel_run(run_id: int):
+        from modules import db
+        try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+            status = job.get("status", "")
+            if status == "queued":
+                db.request_cancel_job(run_id)
+            elif status == "running":
+                db.update_job_status(run_id, "canceled")
+            else:
+                raise HTTPException(status_code=400, detail=f"Cannot cancel run with status={status}")
+            return {"success": True, "message": f"Run {run_id} canceled"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/retry", summary="Retry a failed/canceled Run")
+    async def retry_run(run_id: int):
+        from modules import db
+        try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+            payload_raw = job.get("queue_payload") or "{}"
+            try:
+                payload = json.loads(payload_raw)
+            except Exception:
+                payload = {}
+            payload["skip_done"] = True
+            new_job_id, position = db.enqueue_job(
+                input_path=job.get("input_path", ""),
+                phase_code=None,
+                queue_payload=json.dumps(payload),
+            )
+            return {"success": True, "run_id": new_job_id, "queue_position": position}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/runs/{run_id}/stages", summary="Get all stages for a Run")
+    async def get_run_stages(run_id: int):
+        from modules import db
+        try:
+            phases = db.get_job_phases(run_id)
+            if phases is None:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found or has no phases")
+            return phases
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/stages/{stage_code}/retry", summary="Retry a specific stage")
+    async def retry_run_stage(run_id: int, stage_code: str):
+        from modules import db
+        try:
+            db.set_job_phase_state(run_id, stage_code, "pending")
+            return {"success": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/runs/{run_id}/stages/{stage_code}/skip", summary="Skip a specific stage")
+    async def skip_run_stage(run_id: int, stage_code: str):
+        from modules import db
+        try:
+            db.set_job_phase_state(run_id, stage_code, "skipped")
+            return {"success": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/runs/{run_id}/stages/{stage_code}/steps", summary="Get steps for a stage")
+    async def get_stage_steps(run_id: int, stage_code: str):
+        """Returns step-level telemetry for a stage (e.g. individual ML model runs)."""
+        from modules import db
+        try:
+            steps = db.get_job_steps(run_id, stage_code)
+            return steps or []
+        except AttributeError:
+            return []  # get_job_steps not yet implemented — return empty
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/runs/{run_id}/stages/{stage_code}/items", summary="Get work items for a stage")
+    async def get_stage_work_items(
+        run_id: int,
+        stage_code: str,
+        offset: int = 0,
+        limit: int = 50,
+    ):
+        """Returns individual images and their processing status for a stage."""
+        from modules import db
+        try:
+            items_data = db.get_job_stage_images(run_id, stage_code, offset=offset, limit=limit)
+            if items_data is None:
+                return {"items": [], "total": 0}
+            return items_data
+        except AttributeError:
+            return {"items": [], "total": 0}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    class ScopePreviewRequest(BaseModel):
+        paths: List[str]
+        recursive: bool = True
+
+    @router.post("/scope/preview", summary="Preview scope before submitting a Run")
+    async def scope_preview(request: ScopePreviewRequest):
+        """Returns image count and per-stage phase statuses for the given paths."""
+        from modules import db
+        from modules.phases import PhaseCode
+        if not request.paths:
+            raise HTTPException(status_code=400, detail="paths must not be empty")
+        try:
+            total_images = 0
+            folder_count = 0
+            stage_done: Dict[str, int] = {}
+            stage_failed: Dict[str, int] = {}
+            stage_skipped: Dict[str, int] = {}
+            stage_total: Dict[str, int] = {}
+            phase_codes = [p.value for p in PhaseCode]
+
+            for path in request.paths:
+                if not os.path.exists(path):
+                    continue
+                summary = db.get_folder_phase_summary(path, force_refresh=True)
+                if not summary:
+                    continue
+                folder_count += 1
+                # Use first phase's total as image count proxy
+                if summary:
+                    img_count = summary[0].get("total_count", 0) if summary else 0
+                    total_images += img_count
+                for row in summary:
+                    code = row.get("code", "")
+                    stage_total[code] = stage_total.get(code, 0) + row.get("total_count", 0)
+                    stage_done[code] = stage_done.get(code, 0) + row.get("done_count", 0)
+                    stage_failed[code] = stage_failed.get(code, 0) + row.get("failed_count", 0)
+                    stage_skipped[code] = stage_skipped.get(code, 0) + row.get("skipped_count", 0)
+
+            stage_statuses = {}
+            stage_counts = {}
+            for code in phase_codes:
+                total = stage_total.get(code, 0)
+                done = stage_done.get(code, 0)
+                failed = stage_failed.get(code, 0)
+                skipped = stage_skipped.get(code, 0)
+                if total == 0:
+                    status = "not_started"
+                elif done == total:
+                    status = "done"
+                elif failed > 0:
+                    status = "failed"
+                elif done > 0 or skipped > 0:
+                    status = "partial"
+                else:
+                    status = "not_started"
+                stage_statuses[code] = status
+                stage_counts[code] = {"done": done, "failed": failed, "skipped": skipped, "total": total}
+
+            return {
+                "image_count": total_images,
+                "folder_count": folder_count,
+                "stage_statuses": stage_statuses,
+                "stage_counts": stage_counts,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/scope/tree", summary="Folder tree with phase status overlays")
+    async def scope_tree():
+        """Enhanced folder tree with per-folder phase status for the Scope Navigator sidebar."""
+        from modules import db, utils
+        from modules.ui_tree import build_tree_dict
+        try:
+            raw_folders = db.get_all_folders()
+            folders = []
+            for p in raw_folders:
+                local_p = utils.convert_path_to_local(p) if hasattr(utils, 'convert_path_to_local') else p
+                if not local_p:
+                    continue
+                norm = os.path.normpath(local_p)
+                basename = os.path.basename(norm).lower()
+                if basename in ['.tmp.drivedownload', '.tmp.driveupload', 'keywords_output', '.']:
+                    continue
+                folders.append(local_p)
+            folders = list(set(folders))
+            tree_dict = build_tree_dict(folders)
+
+            def enrich(nodes: List[Dict]) -> List[Dict]:
+                result = []
+                for node in nodes:
+                    path = node.get("path", "")
+                    if path:
+                        try:
+                            summary = db.get_folder_phase_summary(path)
+                            if summary:
+                                node["phase_statuses"] = {
+                                    row["code"]: row.get("status", "not_started") for row in summary
+                                }
+                        except Exception:
+                            pass
+                    if "children" in node:
+                        node["children"] = enrich(node["children"])
+                    result.append(node)
+                return result
+
+            return enrich(tree_dict)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get("/queue", summary="Get the current Run Queue")
+    async def get_run_queue(limit: int = 100):
+        from modules import db
+        try:
+            queued = db.get_queued_jobs(limit=limit)
+            return [
+                {
+                    "run_id": j.get("id"),
+                    "position": j.get("queue_position"),
+                    "input_path": j.get("input_path", ""),
+                    "scope_paths": json.loads(j.get("scope_paths") or "[]") or [j.get("input_path", "")],
+                    "created_at": j.get("created_at"),
+                    "enqueued_at": j.get("enqueued_at"),
+                }
+                for j in (queued or [])
+            ]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    class QueueReorderRequest(BaseModel):
+        run_id: int
+        new_position: int
+
+    @router.post("/queue/reorder", summary="Reorder a queued Run")
+    async def reorder_queue(request: QueueReorderRequest):
+        from modules import db
+        try:
+            db.reorder_queued_job(request.run_id, request.new_position)
+            return {"success": True}
+        except AttributeError:
+            raise HTTPException(status_code=501, detail="Queue reordering not yet implemented")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # ─── End new Runs API ────────────────────────────────────────────────────
+
     @router.post(
         "/pipeline/phase/backfill-index-meta",
         response_model=ApiResponse,
@@ -3296,4 +3798,77 @@ def create_api_router() -> APIRouter:
             data={"updated_images": updated}
         )
 
+
+
+    @router.post(
+        "/ipc/bridge",
+        response_model=IpcBridgeResponse,
+        summary="Electron IPC -> FastAPI bridge",
+        description="""
+        Bridges Electron-style IPC messages into FastAPI handlers so the desktop
+        main process can forward a single contract to Python.
+
+        Supported channels:
+        - `pipeline:submit` -> POST /api/pipeline/submit
+        - `pipeline:phase:skip` -> POST /api/pipeline/phase/skip
+        - `pipeline:phase:retry` -> POST /api/pipeline/phase/retry
+        - `tasks:active` -> GET /api/tasks/active
+        - `jobs:queue` -> GET /api/jobs/queue
+        - `folders:tree` -> GET /api/folders/tree
+        - `folders:phase-status` -> GET /api/folders/phase-status
+        """
+    )
+    async def ipc_bridge(request: IpcBridgeRequest):
+        channel = (request.channel or "").strip()
+        payload = request.payload or {}
+
+        if channel == "pipeline:submit":
+            result = await submit_pipeline(PipelineSubmitRequest(**payload))
+            return IpcBridgeResponse(channel=channel, ok=True, data=result.model_dump())
+
+        if channel == "pipeline:phase:skip":
+            result = await skip_pipeline_phase(PipelinePhaseControlRequest(**payload))
+            return IpcBridgeResponse(channel=channel, ok=True, data=result.model_dump())
+
+        if channel == "pipeline:phase:retry":
+            result = await retry_pipeline_phase(PipelinePhaseControlRequest(**payload))
+            return IpcBridgeResponse(channel=channel, ok=True, data=result.model_dump())
+
+        if channel == "tasks:active":
+            limit = int(payload.get("limit", 200) or 200)
+            result = await get_tasks_active(limit=limit)
+            return IpcBridgeResponse(channel=channel, ok=True, data=result)
+
+        if channel == "jobs:queue":
+            limit = int(payload.get("limit", 200) or 200)
+            result = await get_jobs_queue(limit=limit)
+            return IpcBridgeResponse(channel=channel, ok=True, data=result)
+
+        if channel == "folders:tree":
+            result = await get_folder_tree()
+            return IpcBridgeResponse(channel=channel, ok=True, data=result)
+
+        if channel == "folders:phase-status":
+            path = (payload.get("path") or payload.get("input_path") or "").strip()
+            if not path:
+                raise HTTPException(status_code=400, detail="payload.path is required for folders:phase-status")
+            force_refresh = bool(payload.get("force_refresh", False))
+            result = await get_folder_phase_status(path=path, force_refresh=force_refresh)
+            return IpcBridgeResponse(channel=channel, ok=True, data=result)
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": f"Unsupported IPC channel: {channel}",
+                "supported_channels": [
+                    "pipeline:submit",
+                    "pipeline:phase:skip",
+                    "pipeline:phase:retry",
+                    "tasks:active",
+                    "jobs:queue",
+                    "folders:tree",
+                    "folders:phase-status",
+                ],
+            },
+        )
     return router
