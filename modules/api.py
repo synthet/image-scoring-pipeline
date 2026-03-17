@@ -59,6 +59,7 @@ from modules.phases_policy import explain_phase_run_decision
 from modules.selector_resolver import resolve_selectors
 
 from modules.job_dispatcher import JobDispatcher
+from modules import db
 
 logger = logging.getLogger(__name__)
 
@@ -583,6 +584,11 @@ class PipelineBackfillRequest(BaseModel):
     input_path: str = Field(..., description="Folder path for backfill operation.")
 
 
+class LifecycleControlRequest(BaseModel):
+    """Generic lifecycle control request for workflow/stage/step runs."""
+    reason: Optional[str] = Field(None, description="Optional reason for pause/cancel/restart request.")
+
+
 class IpcBridgeRequest(BaseModel):
     """Generic IPC-style message wrapper for Electron -> FastAPI bridging."""
     channel: str = Field(
@@ -753,6 +759,43 @@ def create_api_router() -> APIRouter:
         }
     )
     
+
+    def _http_for_transition_error(exc: Exception):
+        msg = str(exc)
+        if "Invalid" in msg and "transition" in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        raise exc
+
+    def _control_job(job_id: int, target_status: str, reason: Optional[str] = None):
+        job = db.get_job_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        try:
+            db.update_job_status(job_id, target_status, log=reason)
+            return db.get_job_by_id(job_id)
+        except Exception as exc:
+            _http_for_transition_error(exc)
+
+    def _control_stage(job_id: int, phase_code: str, target_state: str, reason: Optional[str] = None):
+        job = db.get_job_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        phases = db.get_job_phases(job_id)
+        if not any((p.get("phase_code") or "").strip().lower() == phase_code.strip().lower() for p in phases):
+            raise HTTPException(status_code=404, detail=f"Stage not found: {phase_code}")
+        try:
+            rows = db.set_job_phase_state(job_id, phase_code.strip().lower(), target_state, error_message=reason)
+            return rows
+        except Exception as exc:
+            _http_for_transition_error(exc)
+
+    def _control_step(image_id: int, phase_code: str, target_status: str, reason: Optional[str] = None):
+        try:
+            db.set_image_phase_status(image_id, phase_code.strip().lower(), target_status, error=reason)
+            return db.get_image_phase_statuses(image_id)
+        except Exception as exc:
+            _http_for_transition_error(exc)
+
     # Add schema endpoint for LLM agents
     @router.get(
         "/schema",
@@ -2044,6 +2087,56 @@ def create_api_router() -> APIRouter:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
+
+
+    @router.post("/workflow-runs/{job_id}/pause", response_model=ApiResponse, summary="Pause workflow run")
+    async def pause_workflow_run(job_id: int, request: LifecycleControlRequest):
+        state = _control_job(job_id, "paused", request.reason)
+        return ApiResponse(success=True, message="Workflow paused", data={"job": state})
+
+    @router.post("/workflow-runs/{job_id}/resume", response_model=ApiResponse, summary="Resume workflow run")
+    async def resume_workflow_run(job_id: int, request: LifecycleControlRequest):
+        state = _control_job(job_id, "running", request.reason)
+        return ApiResponse(success=True, message="Workflow resumed", data={"job": state})
+
+    @router.post("/workflow-runs/{job_id}/restart", response_model=ApiResponse, summary="Restart workflow run")
+    async def restart_workflow_run(job_id: int, request: LifecycleControlRequest):
+        _control_job(job_id, "restarting", request.reason)
+        state = _control_job(job_id, "queued", request.reason)
+        return ApiResponse(success=True, message="Workflow restarting", data={"job": state})
+
+    @router.post("/stage-runs/{job_id}/{phase_code}/pause", response_model=ApiResponse, summary="Pause stage run")
+    async def pause_stage_run(job_id: int, phase_code: str, request: LifecycleControlRequest):
+        rows = _control_stage(job_id, phase_code, "paused", request.reason)
+        return ApiResponse(success=True, message="Stage paused", data={"phases": rows, "phase_code": phase_code})
+
+    @router.post("/stage-runs/{job_id}/{phase_code}/resume", response_model=ApiResponse, summary="Resume stage run")
+    async def resume_stage_run(job_id: int, phase_code: str, request: LifecycleControlRequest):
+        rows = _control_stage(job_id, phase_code, "running", request.reason)
+        return ApiResponse(success=True, message="Stage resumed", data={"phases": rows, "phase_code": phase_code})
+
+    @router.post("/stage-runs/{job_id}/{phase_code}/restart", response_model=ApiResponse, summary="Restart stage run")
+    async def restart_stage_run(job_id: int, phase_code: str, request: LifecycleControlRequest):
+        _control_stage(job_id, phase_code, "restarting", request.reason)
+        rows = _control_stage(job_id, phase_code, "queued", request.reason)
+        return ApiResponse(success=True, message="Stage restarting", data={"phases": rows, "phase_code": phase_code})
+
+    @router.post("/step-runs/{image_id}/{phase_code}/pause", response_model=ApiResponse, summary="Pause step run")
+    async def pause_step_run(image_id: int, phase_code: str, request: LifecycleControlRequest):
+        statuses = _control_step(image_id, phase_code, "paused", request.reason)
+        return ApiResponse(success=True, message="Step paused", data={"image_id": image_id, "statuses": statuses})
+
+    @router.post("/step-runs/{image_id}/{phase_code}/resume", response_model=ApiResponse, summary="Resume step run")
+    async def resume_step_run(image_id: int, phase_code: str, request: LifecycleControlRequest):
+        statuses = _control_step(image_id, phase_code, "running", request.reason)
+        return ApiResponse(success=True, message="Step resumed", data={"image_id": image_id, "statuses": statuses})
+
+    @router.post("/step-runs/{image_id}/{phase_code}/restart", response_model=ApiResponse, summary="Restart step run")
+    async def restart_step_run(image_id: int, phase_code: str, request: LifecycleControlRequest):
+        _control_step(image_id, phase_code, "restarting", request.reason)
+        statuses = _control_step(image_id, phase_code, "queued", request.reason)
+        return ApiResponse(success=True, message="Step restarting", data={"image_id": image_id, "statuses": statuses})
 
     # ========== Similar Images Endpoint ==========
 

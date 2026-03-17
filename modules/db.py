@@ -25,14 +25,19 @@ logger = logging.getLogger(__name__)
 DEBUG_DB_CONNECTION = os.environ.get("DEBUG_DB_CONNECTION", "").lower() in ("1", "true", "yes")
 
 
-JOB_TERMINAL_STATES = {"completed", "failed", "canceled", "interrupted"}
+JOB_TERMINAL_STATES = {"completed", "failed", "canceled", "cancelled", "interrupted"}
 JOB_ALLOWED_TRANSITIONS = {
-    "pending": {"running", "canceled", "interrupted"},
-    "running": {"completed", "failed", "canceled", "interrupted"},
-    "interrupted": {"running", "canceled"},
+    "pending": {"queued", "running", "canceled", "cancelled", "interrupted"},
+    "queued": {"running", "paused", "cancel_requested", "canceled", "cancelled", "interrupted", "restarting"},
+    "running": {"paused", "completed", "failed", "cancel_requested", "canceled", "cancelled", "interrupted", "restarting"},
+    "paused": {"queued", "running", "cancel_requested", "canceled", "cancelled", "interrupted", "restarting"},
+    "cancel_requested": {"canceled", "cancelled", "failed", "interrupted"},
+    "restarting": {"queued", "running", "failed", "interrupted"},
+    "interrupted": {"queued", "running", "canceled", "cancelled", "restarting"},
     "completed": set(),
     "failed": set(),
     "canceled": set(),
+    "cancelled": set(),
 }
 
 
@@ -3508,12 +3513,20 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
                 phase_code = get_next_running_job_phase(job_id)
 
         if phase_code:
-            phase_state = "running"
-            if status == "completed":
-                phase_state = "completed"
-            elif status == "failed":
-                phase_state = "failed"
-            set_job_phase_state(job_id, phase_code, phase_state, error_message=log if status == "failed" else None)
+            phase_state_map = {
+                "queued": "queued",
+                "running": "running",
+                "paused": "paused",
+                "cancel_requested": "cancel_requested",
+                "restarting": "restarting",
+                "completed": "completed",
+                "failed": "failed",
+                "canceled": "canceled",
+                "cancelled": "canceled",
+                "interrupted": "failed",
+            }
+            phase_state = phase_state_map.get(new_status, "running")
+            set_job_phase_state(job_id, phase_code, phase_state, error_message=log if new_status in {"failed", "interrupted"} else None)
     except Exception as e:
         logger.debug("update_job_status: failed to sync job_phases for job %s: %s", job_id, e)
 
@@ -3761,11 +3774,23 @@ def create_job_phases(job_id, phase_codes):
 
 def set_job_phase_state(job_id, phase_code, state, error_message=None):
     """Update state metadata for one phase of a job and auto-advance next pending phase."""
+    allowed = {
+        "pending": {"queued", "running", "skipped", "canceled"},
+        "queued": {"running", "paused", "cancel_requested", "canceled"},
+        "running": {"paused", "completed", "failed", "cancel_requested", "restarting", "canceled"},
+        "paused": {"running", "restarting", "cancel_requested", "canceled"},
+        "cancel_requested": {"canceled", "failed"},
+        "restarting": {"queued", "running", "failed"},
+        "completed": set(),
+        "failed": set(),
+        "skipped": set(),
+        "canceled": set(),
+    }
     conn = get_db()
     c = conn.cursor()
     now = datetime.datetime.now()
     c.execute(
-        "SELECT id FROM job_phases WHERE job_id = ? AND phase_code = ?",
+        "SELECT id, state FROM job_phases WHERE job_id = ? AND phase_code = ?",
         (job_id, phase_code),
     )
     row = c.fetchone()
@@ -3774,6 +3799,11 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
         return None
 
     phase_id = row[0]
+    old_state = (row[1] or "pending").strip().lower()
+    new_state = (state or "").strip().lower()
+    if old_state != new_state and new_state not in allowed.get(old_state, set()):
+        conn.close()
+        raise ValueError(f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})")
     fields = ["state = ?"]
     params = [state]
     if state == "running":
@@ -6914,6 +6944,14 @@ def set_image_phase_status(image_id, phase_code, status,
                 )
                 return
 
+            old_enum = PhaseStatus(old_status) if old_status in {x.value for x in PhaseStatus} else None
+            new_enum = PhaseStatus(status) if status in {x.value for x in PhaseStatus} else None
+            if old_enum and new_enum and old_enum != new_enum:
+                from modules.phases import ALLOWED_TRANSITIONS
+                allowed = ALLOWED_TRANSITIONS.get(old_enum, set())
+                if new_enum not in allowed:
+                    raise ValueError(f"Invalid image phase transition: {old_status} -> {status} (img={image_id}, phase={phase_code})")
+
             # Increment attempt on rerun transitions
             if status == PhaseStatus.RUNNING and old_status in (
                 PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED
@@ -7144,6 +7182,10 @@ def get_folder_phase_summary(folder_path, force_refresh=False):
                 COALESCE(SUM(CASE WHEN ips.status = 'done' THEN 1 ELSE 0 END), 0) as done_count,
                 COALESCE(SUM(CASE WHEN ips.status = 'failed' THEN 1 ELSE 0 END), 0) as failed_count,
                 COALESCE(SUM(CASE WHEN ips.status = 'running' THEN 1 ELSE 0 END), 0) as running_count,
+                COALESCE(SUM(CASE WHEN ips.status = 'queued' THEN 1 ELSE 0 END), 0) as queued_count,
+                COALESCE(SUM(CASE WHEN ips.status = 'paused' THEN 1 ELSE 0 END), 0) as paused_count,
+                COALESCE(SUM(CASE WHEN ips.status = 'cancel_requested' THEN 1 ELSE 0 END), 0) as cancel_requested_count,
+                COALESCE(SUM(CASE WHEN ips.status = 'restarting' THEN 1 ELSE 0 END), 0) as restarting_count,
                 COALESCE(SUM(CASE WHEN ips.status = 'skipped' THEN 1 ELSE 0 END), 0) as skipped_count,
                 pp.optional
             FROM pipeline_phases pp
@@ -7173,8 +7215,12 @@ def get_folder_phase_summary(folder_path, force_refresh=False):
             done = row[4] or 0
             failed = row[5] or 0
             running = row[6] or 0
-            skipped = row[7] or 0
-            is_optional = bool(row[8])
+            queued = row[7] or 0
+            paused = row[8] or 0
+            cancel_requested = row[9] or 0
+            restarting = row[10] or 0
+            skipped = row[11] or 0
+            is_optional = bool(row[12])
 
             advance_ready = done + skipped if is_optional else done
             if total == 0:
@@ -7186,7 +7232,15 @@ def get_folder_phase_summary(folder_path, force_refresh=False):
             elif advance_ready == total and is_optional:
                 status = "done"
             elif running > 0:
-                status = "partial"
+                status = "running"
+            elif paused > 0:
+                status = "paused"
+            elif queued > 0:
+                status = "queued"
+            elif restarting > 0:
+                status = "restarting"
+            elif cancel_requested > 0:
+                status = "cancel_requested"
             elif done > 0 or skipped > 0:
                 status = "partial"
             elif failed > 0:
@@ -7205,6 +7259,10 @@ def get_folder_phase_summary(folder_path, force_refresh=False):
                 "done_count": done,
                 "failed_count": failed,
                 "running_count": running,
+                "queued_count": queued,
+                "paused_count": paused,
+                "cancel_requested_count": cancel_requested,
+                "restarting_count": restarting,
                 "skipped_count": skipped,
                 "total_count": total,
                 "optional": is_optional,

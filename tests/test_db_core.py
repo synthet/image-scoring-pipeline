@@ -138,6 +138,15 @@ def test_update_job_status_changes_status(test_db):
     assert row[0].strip() == "running"
 
 
+
+
+def test_update_job_status_rejects_invalid_transition(test_db):
+    job_id = db.create_job("/test/job_invalid/path")
+    db.update_job_status(job_id, "completed")
+    with pytest.raises(ValueError):
+        db.update_job_status(job_id, "paused")
+
+
 def test_request_cancel_job_returns_not_found_for_missing(test_db):
     result = db.request_cancel_job(999999)
     assert result.get("success") is False
