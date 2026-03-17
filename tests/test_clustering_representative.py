@@ -103,9 +103,9 @@ def make_engine():
 
 
 def cfg_patch(strategy="score", alpha=0.65):
-    """Patch modules.config.get_config_section for the clustering section."""
+    """Patch modules.clustering.config.get_config_section for clustering config."""
     return patch(
-        "modules.config.get_config_section",
+        "modules.clustering.config.get_config_section",
         return_value={
             "best_image_strategy": strategy,
             "best_image_alpha": alpha,
@@ -159,6 +159,27 @@ class TestSelectBestImageScore:
 # Tests: centroid strategy
 # ---------------------------------------------------------------------------
 
+
+
+    def test_prefers_stack_representative_strategy_over_legacy_key(self):
+        engine = make_engine()
+        img_ids = [1, 2, 3]
+        id_to_score = {1: 0.9, 2: 0.1, 3: 0.2}
+        id_to_feature = {
+            1: np.array([1.0, 0.0, 0.0], dtype=np.float32),
+            2: np.array([0.577, 0.577, 0.577], dtype=np.float32),
+            3: np.array([0.0, 0.0, 1.0], dtype=np.float32),
+        }
+        with patch(
+            "modules.clustering.config.get_config_section",
+            return_value={
+                "stack_representative_strategy": "centroid",
+                "best_image_strategy": "score",
+                "best_image_alpha": 0.65,
+            },
+        ):
+            result = engine._select_best_image(img_ids, id_to_score, id_to_feature)
+        assert result == 2
 class TestSelectBestImageCentroid:
     def _make_feats(self):
         """Three 3-D embeddings: id=2 is closest to the centroid direction."""
@@ -250,7 +271,7 @@ class TestSelectBestImageBalanced:
             2: np.array([0.0, 1.0], dtype=np.float32),
         }
         with patch(
-            "modules.config.get_config_section",
+            "modules.clustering.config.get_config_section",
             return_value={"best_image_strategy": "balanced"},  # no alpha key
         ):
             result = engine._select_best_image(img_ids, id_to_score, id_to_feature)

@@ -173,7 +173,8 @@ class PipelineOrchestrator:
             if self.current_phase:
                 runner = self._runners.get(self.current_phase)
                 if runner:
-                    is_running, log, msg, current, total = runner.get_status()
+                    result = runner.get_status()
+                    is_running, log, msg, current, total = result[:5]
                     if not is_running:
                         phase_job = db.get_job_by_id(self.current_phase_job_id) if self.current_phase_job_id else None
                         if phase_job and phase_job.get("status") == "failed":

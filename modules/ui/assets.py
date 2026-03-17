@@ -39,8 +39,8 @@ custom_css = """
     --text-secondary: #c7c9d2;
     --text-muted: #8b8f99;
     
-    --accent-primary: #007acc;
-    --accent-hover: #159cff;
+    --accent-primary: #1d70ff;
+    --accent-hover: #4894ff;
     --accent-success: #4caf50;
     --accent-warning: #d29922;
     --accent-danger: #f14f45;
@@ -145,7 +145,7 @@ h1 {
   border: none !important;
   border-radius: var(--radius-md) !important;
   color: var(--text-secondary) !important;
-  padding: 9px 12px !important;
+  padding: 10px 14px !important;
   font-size: 0.9rem !important;
   font-weight: 500 !important;
   box-shadow: none !important;
@@ -156,6 +156,7 @@ h1 {
   background: transparent !important;
   color: var(--accent-hover) !important;
   box-shadow: inset 0 -2px 0 var(--accent-primary) !important;
+  font-weight: 600 !important;
 }
 
 .tabs .tab-nav button:hover:not(.selected) {
@@ -1279,6 +1280,29 @@ button.media-button.svelte-ao1xvt {
   border: none !important;
   color: #d4d4d4 !important;
   box-shadow: none !important;
+}
+
+.telemetry-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  max-height: 320px !important;
+  overflow-y: auto !important;
+}
+
+.telemetry-item {
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 8px !important;
+  background: rgba(255,255,255,0.02) !important;
+}
+
+.telemetry-item.telemetry-warning {
+  border-color: var(--accent-warning) !important;
+}
+
+.telemetry-item.telemetry-error {
+  border-color: var(--accent-danger) !important;
 }
 
 .section-divider {

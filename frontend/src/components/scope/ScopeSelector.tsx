@@ -1,0 +1,308 @@
+import { useState, useEffect } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { clsx } from 'clsx'
+import { X, Plus, Trash2, FolderOpen, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { runsApi, type RunSubmitRequest } from '@/api/runs'
+import { scopeApi } from '@/api/scope'
+import { Button } from '@/components/ui/button'
+import { useUiStore } from '@/stores/uiStore'
+import { STAGE_DISPLAY } from '@/types/api'
+import type { StageCode, ScopePreviewResult } from '@/types/api'
+
+const ALL_STAGES: StageCode[] = ['indexing', 'metadata', 'scoring', 'culling', 'keywords']
+
+export function ScopeSelector() {
+  const { newRunModalOpen, setNewRunModalOpen, newRunInitialPath } = useUiStore()
+  const qc = useQueryClient()
+
+  const [scopeType, setScopeType] = useState<'folder_recursive' | 'folder' | 'file'>('folder_recursive')
+  const [paths, setPaths] = useState<string[]>([''])
+  const [stages, setStages] = useState<Set<StageCode>>(new Set(['indexing', 'metadata', 'scoring']))
+  const [skipDone, setSkipDone] = useState(true)
+  const [forceRerun, setForceRerun] = useState(false)
+  const [preview, setPreview] = useState<ScopePreviewResult | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+
+  useEffect(() => {
+    if (newRunInitialPath) {
+      setPaths([newRunInitialPath])
+    }
+  }, [newRunInitialPath])
+
+  const validPaths = paths.filter((p) => p.trim().length > 0)
+
+  async function loadPreview() {
+    if (validPaths.length === 0) return
+    setPreviewLoading(true)
+    try {
+      const res = await scopeApi.preview(validPaths, scopeType === 'folder_recursive')
+      setPreview(res)
+    } catch {
+      setPreview(null)
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const submitMut = useMutation({
+    mutationFn: (req: RunSubmitRequest) => runsApi.submit(req),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['runs'] })
+      setNewRunModalOpen(false)
+      setPaths([''])
+      setPreview(null)
+    },
+  })
+
+  function submit() {
+    submitMut.mutate({
+      scope_type: scopeType,
+      scope_paths: validPaths,
+      stages: Array.from(stages),
+      skip_done: skipDone,
+      force_rerun: forceRerun,
+    })
+  }
+
+  function toggleStage(code: StageCode) {
+    setStages((prev) => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }
+
+  if (!newRunModalOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-[#252526] border border-[#474747] rounded-lg shadow-2xl w-[600px] max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-[#3c3c3c]">
+          <h2 className="text-base font-semibold text-[#cccccc]">New Run</h2>
+          <button
+            onClick={() => setNewRunModalOpen(false)}
+            className="text-[#6d6d6d] hover:text-[#cccccc] transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {/* Scope type */}
+          <div>
+            <label className="block text-xs font-semibold text-[#9d9d9d] mb-2 uppercase tracking-wider">
+              Scope Type
+            </label>
+            <div className="flex gap-2">
+              {(
+                [
+                  { value: 'folder_recursive', label: 'Folder (recursive)' },
+                  { value: 'folder', label: 'Folder (flat)' },
+                  { value: 'file', label: 'Single file' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setScopeType(opt.value)}
+                  className={clsx(
+                    'px-3 py-1.5 rounded text-xs font-medium border transition-colors',
+                    scopeType === opt.value
+                      ? 'bg-[#003f6e] border-[#007acc] text-[#4fc1ff]'
+                      : 'bg-[#3c3c3c] border-[#474747] text-[#9d9d9d] hover:border-[#4fc1ff]',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Paths */}
+          <div>
+            <label className="block text-xs font-semibold text-[#9d9d9d] mb-2 uppercase tracking-wider">
+              Path{scopeType === 'folder_recursive' ? 's' : ''}
+            </label>
+            <div className="space-y-2">
+              {paths.map((path, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="flex-1 flex items-center gap-2 bg-[#1e1e1e] border border-[#474747] rounded px-3 py-2 focus-within:border-[#4fc1ff]">
+                    <FolderOpen size={13} className="text-[#6d6d6d] shrink-0" />
+                    <input
+                      value={path}
+                      onChange={(e) => {
+                        const next = [...paths]
+                        next[i] = e.target.value
+                        setPaths(next)
+                        setPreview(null)
+                      }}
+                      placeholder="/path/to/folder"
+                      className="flex-1 bg-transparent text-sm text-[#cccccc] outline-none placeholder:text-[#6d6d6d]"
+                    />
+                  </div>
+                  {paths.length > 1 && (
+                    <button
+                      onClick={() => setPaths(paths.filter((_, j) => j !== i))}
+                      className="text-[#6d6d6d] hover:text-[#f44747] transition-colors"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => setPaths([...paths, ''])}
+              >
+                <Plus size={11} />
+                Add path
+              </Button>
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-[#9d9d9d] uppercase tracking-wider">
+                Preview
+              </label>
+              <Button size="xs" variant="secondary" onClick={loadPreview} loading={previewLoading}>
+                {previewLoading ? '' : 'Refresh'}
+              </Button>
+            </div>
+            {preview ? (
+              <PreviewPanel preview={preview} />
+            ) : (
+              <div className="bg-[#1e1e1e] border border-[#3c3c3c] rounded p-3 text-xs text-[#6d6d6d]">
+                {validPaths.length > 0
+                  ? 'Click Refresh to preview scope'
+                  : 'Enter a path above to preview'}
+              </div>
+            )}
+          </div>
+
+          {/* Workflow (stages) */}
+          <div>
+            <label className="block text-xs font-semibold text-[#9d9d9d] mb-2 uppercase tracking-wider">
+              Workflow Stages
+            </label>
+            <div className="space-y-2">
+              {ALL_STAGES.map((code) => {
+                const display = STAGE_DISPLAY[code]
+                const checked = stages.has(code)
+                return (
+                  <label
+                    key={code}
+                    className={clsx(
+                      'flex items-start gap-3 rounded p-3 border cursor-pointer transition-colors',
+                      checked
+                        ? 'bg-[#1e1e1e] border-[#007acc]'
+                        : 'bg-[#1e1e1e] border-[#3c3c3c] opacity-60',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleStage(code)}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-[#cccccc]">{display.name}</div>
+                      <div className="text-xs text-[#6d6d6d]">{display.description}</div>
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Options */}
+          <div>
+            <label className="block text-xs font-semibold text-[#9d9d9d] mb-2 uppercase tracking-wider">
+              Options
+            </label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-[#9d9d9d] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={skipDone}
+                  onChange={(e) => setSkipDone(e.target.checked)}
+                />
+                Skip already completed stages
+              </label>
+              <label className="flex items-center gap-2 text-sm text-[#9d9d9d] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={forceRerun}
+                  onChange={(e) => setForceRerun(e.target.checked)}
+                />
+                Force re-run all stages
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-5 py-4 border-t border-[#3c3c3c]">
+          <Button variant="ghost" onClick={() => setNewRunModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={submit}
+            loading={submitMut.isPending}
+            disabled={validPaths.length === 0 || stages.size === 0}
+          >
+            Queue Run →
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PreviewPanel({ preview }: { preview: ScopePreviewResult }) {
+  return (
+    <div className="bg-[#1e1e1e] border border-[#3c3c3c] rounded p-3 space-y-2">
+      <div className="flex items-center gap-3 text-sm">
+        <span className="text-[#cccccc] font-semibold">{preview.image_count.toLocaleString()}</span>
+        <span className="text-[#9d9d9d]">images in</span>
+        <span className="text-[#cccccc] font-semibold">{preview.folder_count}</span>
+        <span className="text-[#9d9d9d]">folder{preview.folder_count !== 1 ? 's' : ''}</span>
+      </div>
+      <div className="grid grid-cols-1 gap-1">
+        {Object.entries(preview.stage_statuses).map(([code, status]) => {
+          const display = STAGE_DISPLAY[code as StageCode]
+          const counts = preview.stage_counts[code as StageCode]
+          return (
+            <div key={code} className="flex items-center gap-2 text-xs">
+              <StageStatusIcon status={status} />
+              <span className="text-[#9d9d9d] w-32">{display?.name ?? code}</span>
+              <span className="text-[#6d6d6d]">
+                {status === 'not_started' && '— not started'}
+                {status === 'done' && '✓ all done'}
+                {status === 'partial' && counts && `${counts.done} / ${counts.total} done`}
+                {status === 'failed' && counts && `${counts.failed} failed`}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function StageStatusIcon({ status }: { status: string }) {
+  switch (status) {
+    case 'done':
+      return <CheckCircle2 size={12} className="text-[#89d185]" />
+    case 'failed':
+      return <AlertCircle size={12} className="text-[#f44747]" />
+    case 'partial':
+      return <Loader2 size={12} className="text-[#cca700]" />
+    default:
+      return <div className="w-3 h-3 rounded-full border border-[#474747]" />
+  }
+}
