@@ -49,7 +49,8 @@ def _fake_thread_factory(target):
 
 def test_get_status_initial_returns_idle():
     runner = ScoringRunner()
-    is_running, log_text, status_message, current, total = runner.get_status()
+    result = runner.get_status()
+    is_running, log_text, status_message, current, total = result[:5]
     assert is_running is False
     assert status_message == "Idle"
     assert current == 0

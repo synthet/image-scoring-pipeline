@@ -1187,7 +1187,8 @@ def create_api_router() -> APIRouter:
         if _scoring_runner is None:
             raise HTTPException(status_code=503, detail="Scoring runner not available")
         
-        is_running, log_text, status_message, current, total = _scoring_runner.get_status()
+        result = _scoring_runner.get_status()
+        is_running, log_text, status_message, current, total = result[:5]
         
         return StatusResponse(
             is_running=is_running,
@@ -1413,7 +1414,8 @@ def create_api_router() -> APIRouter:
         if _tagging_runner is None:
             raise HTTPException(status_code=503, detail="Tagging runner not available")
         
-        is_running, log_text, status_message, current, total = _tagging_runner.get_status()
+        result = _tagging_runner.get_status()
+        is_running, log_text, status_message, current, total = result[:5]
         
         return StatusResponse(
             is_running=is_running,
@@ -1543,7 +1545,8 @@ def create_api_router() -> APIRouter:
 
         if _scoring_runner:
             try:
-                is_running, log, status_msg, current, total = _scoring_runner.get_status()
+                result = _scoring_runner.get_status()
+                is_running, log, status_msg, current, total = result[:5]
                 status["scoring"] = {
                     "available": True,
                     "is_running": is_running,
@@ -1557,7 +1560,8 @@ def create_api_router() -> APIRouter:
 
         if _tagging_runner:
             try:
-                is_running, log, status_msg, current, total = _tagging_runner.get_status()
+                result = _tagging_runner.get_status()
+                is_running, log, status_msg, current, total = result[:5]
                 status["tagging"] = {
                     "available": True,
                     "is_running": is_running,
@@ -1570,7 +1574,8 @@ def create_api_router() -> APIRouter:
 
         if _clustering_runner:
             try:
-                is_running, log, status_msg, current, total = _clustering_runner.get_status()
+                result = _clustering_runner.get_status()
+                is_running, log, status_msg, current, total = result[:5]
                 status["clustering"] = {
                     "available": True,
                     "is_running": is_running,
@@ -1858,7 +1863,8 @@ def create_api_router() -> APIRouter:
             }
             if _scoring_runner:
                 try:
-                    is_running, log, status_msg, current, total = _scoring_runner.get_status()
+                    result = _scoring_runner.get_status()
+                    is_running, log, status_msg, current, total = result[:5]
                     runners["scoring"] = {
                         "available": True,
                         "is_running": is_running,
@@ -1871,7 +1877,8 @@ def create_api_router() -> APIRouter:
                     runners["scoring"]["error"] = str(e)
             if _tagging_runner:
                 try:
-                    is_running, log, status_msg, current, total = _tagging_runner.get_status()
+                    result = _tagging_runner.get_status()
+                    is_running, log, status_msg, current, total = result[:5]
                     runners["tagging"] = {
                         "available": True,
                         "is_running": is_running,
@@ -1883,7 +1890,8 @@ def create_api_router() -> APIRouter:
                     runners["tagging"]["error"] = str(e)
             if _clustering_runner:
                 try:
-                    is_running, log, status_msg, current, total = _clustering_runner.get_status()
+                    result = _clustering_runner.get_status()
+                    is_running, log, status_msg, current, total = result[:5]
                     runners["clustering"] = {
                         "available": True,
                         "is_running": is_running,
@@ -2417,7 +2425,8 @@ def create_api_router() -> APIRouter:
         if _clustering_runner is None:
             raise HTTPException(status_code=503, detail="Clustering runner not available")
 
-        is_running, log_text, status_message, current, total = _clustering_runner.get_status()
+        result = _clustering_runner.get_status()
+        is_running, log_text, status_message, current, total = result[:5]
 
         return StatusResponse(
             is_running=is_running,
@@ -2604,119 +2613,207 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    # ========== Import Register Endpoint ==========
+    # ========== Import Register Endpoints ==========
 
-    @router.post(
-        "/import/register/stream",
-        summary="Register images from folder with streaming progress",
-        description="""
-        Similar to /import/register, but returns a stream of JSON objects (NDJSON) 
-        providing real-time progress updates during the folder scan and registration process.
-        """
-    )
-    async def import_register_stream(request: ImportRegisterRequest):
-        """Streaming version of image registration."""
-        from modules.ui.security import _check_rate_limit
-        from modules import db, utils
-        from modules.exif_extractor import extract_exif
-        from modules.phases import PhaseCode, PhaseStatus
-        from modules.version import APP_VERSION
+    _IMPORT_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".nef", ".arw", ".cr2", ".dng", ".heic", ".webp", ".tiff", ".tif", ".raw", ".orf", ".rw2"}
 
-        _check_rate_limit("import_register")
-
-        folder_path = request.folder_path
+    def _resolve_import_path(raw_path: str) -> str:
+        """Convert Windows path to WSL if needed, validate directory exists."""
+        from modules import utils
+        folder_path = raw_path
         try:
             if platform.system() == "Linux" and (":" in folder_path or "\\" in folder_path) and hasattr(utils, "convert_path_to_wsl"):
                 folder_path = utils.convert_path_to_wsl(folder_path)
         except Exception:
             pass
-
         if not os.path.isdir(folder_path):
-            raise HTTPException(status_code=400, detail=f"Path is not a directory or not found: {request.folder_path}")
+            raise HTTPException(status_code=400, detail=f"Path is not a directory or not found: {raw_path}")
+        return folder_path
 
-        IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".nef", ".arw", ".cr2", ".dng", ".heic", ".webp", ".tiff", ".tif", ".raw", ".orf", ".rw2"}
+    def _import_folder_iter(folder_path: str):
+        """Generator that yields progress/done/error dicts during folder import.
 
-        async def progress_generator():
-            added = 0
-            skipped = 0
-            processed = 0
-            errors = []
+        Yields:
+            {"type": "init", "total_files": int, "folder_path": str}
+            {"type": "progress", "processed": int, "total": int, "added": int, "skipped": int, "current_file": str}
+            {"type": "done", "success": bool, "added": int, "skipped": int, "total": int, "errors": list}
+            {"type": "error", "message": str}
+        """
+        from modules import db
+        from modules.exif_extractor import extract_exif
+        from modules.phases import PhaseCode, PhaseStatus
+        from modules.version import APP_VERSION
+
+        folder_id = db.get_or_create_folder(folder_path)
+        if not folder_id:
+            yield {"type": "error", "message": "Failed to get or create folder"}
+            return
+
+        entries = os.listdir(folder_path)
+        file_entries = [e for e in entries if os.path.isfile(os.path.join(folder_path, e))]
+        total_files = len(file_entries)
+
+        yield {"type": "init", "total_files": total_files, "folder_path": folder_path}
+
+        added = 0
+        skipped = 0
+        processed = 0
+        errors = []
+
+        for name in file_entries:
+            fp = os.path.join(folder_path, name)
+            ext = os.path.splitext(name)[1].lower()
+
+            if ext not in _IMPORT_IMAGE_EXTENSIONS:
+                processed += 1
+                if processed % 5 == 0 or processed == total_files:
+                    yield {
+                        "type": "progress",
+                        "processed": processed,
+                        "total": total_files,
+                        "added": added,
+                        "skipped": skipped,
+                        "current_file": os.path.basename(name),
+                    }
+                continue
+
+            file_name = os.path.basename(name)
+            file_type = ext.lstrip(".") or "unknown"
 
             try:
-                folder_id = db.get_or_create_folder(folder_path)
-                if not folder_id:
-                    yield json.dumps({"type": "error", "message": "Failed to get or create folder"}) + "\n"
-                    return
-
-                entries = os.listdir(folder_path)
-                file_entries = [e for e in entries if os.path.isfile(os.path.join(folder_path, e))]
-                total_files = len(file_entries)
-
-                yield json.dumps({"type": "init", "total_files": total_files, "folder_path": folder_path}) + "\n"
-
-                for i, name in enumerate(file_entries):
-                    file_path = os.path.join(folder_path, name)
-                    ext = os.path.splitext(name)[1].lower()
-                    
-                    if ext not in IMAGE_EXTENSIONS:
-                        processed += 1
-                        continue
-
-                    file_name = os.path.basename(name)
-                    file_type = ext.lstrip(".") or "unknown"
-
+                if db.find_image_id_by_path(fp):
+                    skipped += 1
+                else:
+                    image_uuid = None
                     try:
-                        if db.find_image_id_by_path(file_path):
-                            skipped += 1
+                        exif_data = extract_exif(fp)
+                        if exif_data:
+                            uid = exif_data.get("image_unique_id")
+                            if uid and isinstance(uid, str) and uid.strip():
+                                image_uuid = uid.strip()
+                                if db.find_image_id_by_uuid(image_uuid):
+                                    skipped += 1
+                                    image_uuid = "ALREADY_IN_DB"
+                    except Exception:
+                        pass
+
+                    if image_uuid != "ALREADY_IN_DB":
+                        image_id, was_new = db.register_image_for_import(fp, file_name, file_type, folder_id, image_uuid)
+                        if image_id:
+                            if was_new:
+                                added += 1
+                                db.set_image_phase_status(image_id, PhaseCode.INDEXING, PhaseStatus.DONE, app_version=APP_VERSION)
+                            else:
+                                skipped += 1
                         else:
-                            image_uuid = None
-                            try:
-                                exif_data = extract_exif(file_path)
-                                if exif_data:
-                                    uid = exif_data.get("image_unique_id")
-                                    if uid and isinstance(uid, str) and uid.strip():
-                                        image_uuid = uid.strip()
-                                        if db.find_image_id_by_uuid(image_uuid):
-                                            skipped += 1
-                                            image_uuid = "ALREADY_IN_DB" # Flag to skip registration
-                            except Exception:
-                                pass
+                            errors.append(f"{file_name}: insert failed")
+            except Exception as e:
+                errors.append(f"{file_name}: {str(e)}")
 
-                            if image_uuid != "ALREADY_IN_DB":
-                                image_id, was_new = db.register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid)
-                                if image_id:
-                                    if was_new:
-                                        added += 1
-                                        db.set_image_phase_status(image_id, PhaseCode.INDEXING, PhaseStatus.DONE, app_version=APP_VERSION)
-                                    else:
-                                        skipped += 1
-                                else:
-                                    errors.append(f"{file_name}: insert failed")
-                    except Exception as e:
-                        errors.append(f"{file_name}: {str(e)}")
+            processed += 1
 
-                    processed += 1
-                    
-                    # Periodic progress status update
-                    if processed % 5 == 0 or processed == total_files:
-                        yield json.dumps({
-                            "type": "progress", 
-                            "processed": processed, 
-                            "total": total_files, 
-                            "added": added, 
-                            "skipped": skipped,
-                            "current_file": file_name
-                        }) + "\n"
+            if processed % 5 == 0 or processed == total_files:
+                yield {
+                    "type": "progress",
+                    "processed": processed,
+                    "total": total_files,
+                    "added": added,
+                    "skipped": skipped,
+                    "current_file": file_name,
+                }
 
-                yield json.dumps({
-                    "type": "done", 
-                    "success": True, 
-                    "added": added, 
-                    "skipped": skipped, 
-                    "total": total_files, 
-                    "errors": errors[:50] # Limit reported errors
-                }) + "\n"
+        yield {
+            "type": "done",
+            "success": True,
+            "added": added,
+            "skipped": skipped,
+            "total": total_files,
+            "errors": errors[:50],
+        }
 
+    @router.post(
+        "/import/register",
+        summary="Register images from folder",
+        description="""
+        Scans a folder for image files and registers them in the database.
+        Returns a single JSON response when complete.
+        Broadcasts real-time progress via WebSocket (event types:
+        import_started, import_progress, import_completed).
+        For streaming NDJSON progress, use /import/register/stream instead.
+        """
+    )
+    async def import_register(request: ImportRegisterRequest):
+        """Non-streaming image registration with WebSocket progress broadcasts."""
+        from modules.ui.security import _check_rate_limit
+        from modules.events import event_manager
+
+        _check_rate_limit("import_register")
+        folder_path = _resolve_import_path(request.folder_path)
+
+        result = None
+        for msg in _import_folder_iter(folder_path):
+            msg_type = msg["type"]
+            if msg_type == "init":
+                event_manager.broadcast_threadsafe("import_started", {
+                    "folder_path": msg["folder_path"],
+                    "total_files": msg["total_files"],
+                })
+            elif msg_type == "progress":
+                event_manager.broadcast_threadsafe("import_progress", {
+                    "processed": msg["processed"],
+                    "total": msg["total"],
+                    "added": msg["added"],
+                    "skipped": msg["skipped"],
+                    "current_file": msg["current_file"],
+                })
+            elif msg_type == "done":
+                result = msg
+            elif msg_type == "error":
+                event_manager.broadcast_threadsafe("import_completed", {
+                    "added": 0, "skipped": 0, "total": 0, "errors": [msg["message"]],
+                })
+                raise HTTPException(status_code=500, detail=msg["message"])
+
+        # Broadcast completion
+        event_manager.broadcast_threadsafe("import_completed", {
+            "added": result["added"],
+            "skipped": result["skipped"],
+            "total": result["total"],
+            "errors": result["errors"],
+        })
+
+        errors = result["errors"]
+        return {
+            "success": len(errors) == 0 or result["added"] > 0,
+            "message": f"Import complete: {result['added']} added, {result['skipped']} skipped"
+                       + (f", {len(errors)} errors" if errors else ""),
+            "data": {
+                "added": result["added"],
+                "skipped": result["skipped"],
+                "errors": errors,
+            },
+        }
+
+    @router.post(
+        "/import/register/stream",
+        summary="Register images from folder with streaming progress",
+        description="""
+        Returns a stream of JSON objects (NDJSON) providing real-time progress
+        updates during the folder scan and registration process.
+        For a single JSON response, use /import/register instead.
+        """
+    )
+    async def import_register_stream(request: ImportRegisterRequest):
+        """Streaming version of image registration (NDJSON)."""
+        from modules.ui.security import _check_rate_limit
+
+        _check_rate_limit("import_register")
+        folder_path = _resolve_import_path(request.folder_path)
+
+        async def progress_generator():
+            try:
+                for msg in _import_folder_iter(folder_path):
+                    yield json.dumps(msg) + "\n"
             except Exception as e:
                 yield json.dumps({"type": "error", "message": f"Unexpected error during scan: {str(e)}"}) + "\n"
 
