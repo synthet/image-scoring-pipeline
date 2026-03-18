@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import {
   AlertCircle, SkipForward, RefreshCw, ChevronDown, ChevronUp,
-  CheckCircle2, XCircle, Clock, Loader2, Circle,
+  CheckCircle2, XCircle, Clock, Loader2, Circle, Square,
 } from 'lucide-react'
 import { runsApi } from '@/api/runs'
 import { Button } from '@/components/ui/button'
@@ -47,6 +47,14 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
     mutationFn: () => runsApi.skipStage(runId, stage.phase_code),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['run-stages', runId] }),
   })
+  const cancelMut = useMutation({
+    mutationFn: () => runsApi.cancel(runId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['run', runId] })
+      qc.invalidateQueries({ queryKey: ['run-stages', runId] })
+      qc.invalidateQueries({ queryKey: ['runs'] })
+    },
+  })
 
   const done = activeLive?.items_done ?? stage.items_done ?? 0
   const total = activeLive?.items_total ?? stage.items_total ?? 0
@@ -71,6 +79,17 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {stage.state === 'running' && (
+            <Button
+              size="xs"
+              variant="danger"
+              onClick={() => cancelMut.mutate()}
+              loading={cancelMut.isPending}
+            >
+              <Square size={11} />
+              Stop
+            </Button>
+          )}
           {(stage.state === 'failed' || stage.state === 'completed') && (
             <Button
               size="xs"

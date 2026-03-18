@@ -30,11 +30,12 @@ export function RunDetailPage() {
     refetchInterval: 5000,
   })
 
-  const { data: stages = [], isLoading: stagesLoading } = useQuery({
+  const { data: stagesData, isLoading: stagesLoading } = useQuery({
     queryKey: ['run-stages', id, runsVersion, lastTransition?.run_id === id ? lastTransition.to_state : null],
     queryFn: () => runsApi.getStages(id),
     refetchInterval: run?.status === 'running' ? 5000 : false,
   })
+  const stages = Array.isArray(stagesData) ? stagesData : []
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['run', id] })
@@ -55,7 +56,9 @@ export function RunDetailPage() {
 
   const selectedStageData = stages.find((s) => s.phase_code === activeStage)
 
-  const scopePaths = run?.scope_paths?.length ? run.scope_paths : run ? [run.input_path] : []
+  const scopePaths = run && Array.isArray(run.scope_paths) && run.scope_paths.length > 0
+    ? run.scope_paths
+    : run ? [run.input_path ?? ''] : []
 
   if (runLoading) {
     return (
@@ -120,7 +123,7 @@ export function RunDetailPage() {
               Retry
             </Button>
           )}
-          {(run.status === 'running' || run.status === 'queued' || run.status === 'paused') && (
+          {(run.status === 'pending' || run.status === 'running' || run.status === 'queued' || run.status === 'paused') && (
             <Button
               size="sm"
               variant="danger"

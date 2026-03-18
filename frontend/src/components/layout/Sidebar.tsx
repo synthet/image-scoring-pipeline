@@ -45,7 +45,7 @@ export function Sidebar() {
         {isLoading && (
           <div className="text-xs text-[#6d6d6d] px-2">Loading folders…</div>
         )}
-        {tree?.map((node) => (
+        {Array.isArray(tree) && tree.map((node) => (
           <FolderTreeNode
             key={node.path}
             node={node}
@@ -55,7 +55,7 @@ export function Sidebar() {
             onNewRun={openNewRun}
           />
         ))}
-        {!isLoading && (!tree || tree.length === 0) && (
+        {!isLoading && (!Array.isArray(tree) || tree.length === 0) && (
           <div className="text-xs text-[#6d6d6d] px-2">No indexed folders yet</div>
         )}
       </div>

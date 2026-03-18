@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { Star, Filter, X } from 'lucide-react'
@@ -22,16 +22,18 @@ export function GalleryPage() {
   const loadingRef = useRef(false)
 
   // Initial/filter-change load (page 1)
-  const { isLoading } = useQuery({
+  const { data: initialData, isLoading } = useQuery({
     queryKey: ['gallery', baseFilters],
-    queryFn: async () => {
-      const res = await galleryApi.list({ ...baseFilters, page: 1, page_size: PER_PAGE })
-      setLoadedImages(res.images)
-      setTotal(res.total)
-      setPage(2)
-      return res
-    },
+    queryFn: () => galleryApi.list({ ...baseFilters, page: 1, page_size: PER_PAGE }),
   })
+
+  useEffect(() => {
+    if (initialData) {
+      setLoadedImages(initialData.images)
+      setTotal(initialData.total)
+      setPage(2)
+    }
+  }, [initialData])
 
   const loadMore = useCallback(async () => {
     if (loadingRef.current || loadedImages.length >= total) return

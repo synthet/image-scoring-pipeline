@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.12.0] - 2026-03-18
+
+### Added
+- **Runs API**: `POST /runs/submit`, `GET /runs`, `GET /runs/{id}`, pause/resume/cancel/retry, stage retry/skip, steps, work items, queue endpoints.
+- **Frontend Runs UI**: Runs page, Run detail page, stage panel, run cards, WebSocket updates for run progress.
+- **Maintenance scripts**: `backup_high_scored.py`, `fix_backup_lens_misalignments.py`, `move_misplaced_by_lens.py`, `remove_folders_without_nef.py`.
+- **Profiling**: `modules/profiling.py` for performance diagnostics.
+
+### Changed
+- **API**: Expanded runs, queue, and pipeline endpoints in `modules/api.py`.
+- **DB**: Schema and query updates in `modules/db.py`.
+- **Pipeline orchestrator**: Refinements in `modules/pipeline_orchestrator.py`.
+- **MCP server**: Enhanced tooling in `modules/mcp_server.py`.
+- **Frontend**: Gallery, settings, sidebar, scope API, runs API integration.
+- **WebUI**: Launch and run script updates.
+
 ## [4.11.2] - 2026-03-17
 
 ### Fixed

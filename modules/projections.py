@@ -36,11 +36,11 @@ def _ensure_cache_dir():
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _make_cache_key(folder_path, count, method, n_neighbors, min_dist):
+def _make_cache_key(folder_path, method, n_neighbors, min_dist):
+    """Cache key excludes count so we can check cache before DB query."""
     payload = json.dumps(
         {
             "folder_path": folder_path,
-            "count": count,
             "method": method,
             "n_neighbors": n_neighbors,
             "min_dist": min_dist,
@@ -168,6 +168,13 @@ def compute_embedding_map(
 
     from modules import db
 
+    cache_key = _make_cache_key(folder_path, method, n_neighbors, min_dist)
+    if not refresh:
+        cached = _load_cache(cache_key)
+        if cached:
+            logger.debug("Embedding map: cache hit %s", cache_key)
+            return cached
+
     rows = db.get_embeddings_with_metadata(folder_path=folder_path, limit=max_points)
     count = len(rows)
 
@@ -179,14 +186,6 @@ def compute_embedding_map(
             "points": [],
             "meta": {**meta_base, "error": "too_few_points"},
         }
-
-    cache_key = _make_cache_key(folder_path, count, method, n_neighbors, min_dist)
-
-    if not refresh:
-        cached = _load_cache(cache_key)
-        if cached:
-            logger.debug("Embedding map: cache hit %s", cache_key)
-            return cached
 
     # Build embedding matrix
     vecs = np.array(

@@ -15,13 +15,14 @@ export interface RunsListResponse {
 }
 
 export const runsApi = {
-  list: (params?: { status?: string; limit?: number; offset?: number }) => {
+  list: async (params?: { status?: string; limit?: number; offset?: number }) => {
     const q = new URLSearchParams()
     if (params?.status) q.set('status', params.status)
     if (params?.limit != null) q.set('limit', String(params.limit))
     if (params?.offset != null) q.set('offset', String(params.offset))
     const qs = q.toString()
-    return api.get<Run[]>(`/jobs/recent?${qs}`)
+    const res = await api.get<Run[] | { runs?: Run[] }>(`/jobs/recent?${qs}`)
+    return Array.isArray(res) ? res : (res && 'runs' in res && Array.isArray(res.runs) ? res.runs : [])
   },
   get: (id: number) => api.get<Run>(`/jobs/${id}`),
   submit: (body: RunSubmitRequest) => api.post<{ run_id: number; queue_position: number }>('/runs/submit', body),

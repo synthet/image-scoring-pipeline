@@ -15,11 +15,12 @@ export function RunsPage() {
   const runsVersion = useWsStore((s) => s.runsVersion)
   const [tab, setTab] = useState<TabFilter>('active')
 
-  const { data: runs = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['runs', runsVersion],
     queryFn: () => runsApi.list({ limit: 100 }),
     refetchInterval: 5000,
   })
+  const runs: Run[] = Array.isArray(data) ? data : []
 
   const active = runs.filter((r) => r.status === 'running' || r.status === 'paused')
   const queued = runs.filter((r) => r.status === 'queued' || r.status === 'pending')

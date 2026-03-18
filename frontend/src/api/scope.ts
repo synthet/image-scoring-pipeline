@@ -7,6 +7,9 @@ export const scopeApi = {
 
   tree: () => api.get<FolderNode[]>('/scope/tree'),
 
-  // Fallback to existing endpoint if /scope/tree not yet implemented
-  foldersTree: () => api.get<FolderNode[]>('/folders/tree'),
+  // Fallback: /folders/tree returns { tree, count }, normalize to FolderNode[]
+  foldersTree: () =>
+    api
+      .get<{ tree?: FolderNode[]; count?: number }>('/folders/tree')
+      .then((r) => (Array.isArray(r?.tree) ? r.tree : [])),
 }

@@ -15,6 +15,7 @@ Troubleshooting Firebird "file in use" error:
 - Close WebUI and any other process that may have the DB open.
 - If DB doesn't exist, run migrate_to_firebird.py first.
 """
+import re
 import sys
 import os
 import argparse
@@ -91,9 +92,15 @@ def main():
         if not args.exif_only:
             where_parts.append("NOT EXISTS (SELECT 1 FROM image_xmp x WHERE x.image_id = i.id)")
     if args.folder:
-        folder_id = db.get_or_create_folder(args.folder)
+        # Normalize Windows path (D:/...) to WSL (/mnt/d/...) when in WSL, so folder lookup
+        # matches DB (images use WSL paths). Otherwise "D:/Photos/..." + abspath in WSL
+        # becomes "/mnt/d/Projects/.../D:/Photos/..." and matches wrong folder.
+        folder_path = args.folder.replace("\\", "/")
+        if re.match(r"^[a-zA-Z]:", folder_path):
+            folder_path = utils.convert_path_to_wsl(folder_path)
+        folder_id = db.get_or_create_folder(folder_path)
         if not folder_id:
-            logger.error("Folder not found or could not be created: %s", args.folder)
+            logger.error("Folder not found or could not be created: %s", folder_path)
             sys.exit(1)
         where_parts.append("i.folder_id = ?")
         params.append(folder_id)

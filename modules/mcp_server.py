@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 _scoring_runner = None
 _tagging_runner = None
 _clustering_runner = None
+_selection_runner = None
+_orchestrator = None
 
 # Gradio context (set by webui when MCP runs in integrated/SSE mode)
 _gradio_context: dict | None = None
@@ -75,12 +77,14 @@ def _require_db(fn):
     return wrapper
 
 
-def set_runners(scoring_runner, tagging_runner, clustering_runner=None):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None):
     """Set references to the runner instances from webui."""
-    global _scoring_runner, _tagging_runner, _clustering_runner
+    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
+    _selection_runner = selection_runner
+    _orchestrator = orchestrator
 
 
 def set_gradio_context(
@@ -759,7 +763,8 @@ def get_runner_status() -> dict:
     status = {
         "scoring": {"available": False},
         "tagging": {"available": False},
-        "clustering": {"available": False}
+        "clustering": {"available": False},
+        "selection": {"available": False}
     }
 
     if _scoring_runner:
@@ -803,6 +808,20 @@ def get_runner_status() -> dict:
             }
         except Exception as e:
             status["clustering"]["error"] = str(e)
+
+    if _selection_runner:
+        try:
+            result = _selection_runner.get_status()
+            is_running, log, status_msg, current, total = result[:5]
+            status["selection"] = {
+                "available": True,
+                "is_running": is_running,
+                "status_message": status_msg,
+                "progress": {"current": current, "total": total},
+                "recent_log": log[-2000:] if log else ""
+            }
+        except Exception as e:
+            status["selection"]["error"] = str(e)
 
     return status
 

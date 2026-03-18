@@ -89,7 +89,17 @@ def main():
         loop = asyncio.get_running_loop()
         event_manager.set_loop(loop)
         print("EventManager: Event loop attached.")
+
+        # Start event loop health monitor
+        from modules.profiling import get_loop_monitor
+        monitor = get_loop_monitor()
+        if monitor:
+            await monitor.start()
+
         yield
+
+        if monitor:
+            await monitor.stop()
 
     # Create Main FastAPI App with comprehensive OpenAPI documentation
     app = FastAPI(
@@ -181,6 +191,10 @@ def main():
         allow_headers=["*"],
     )
 
+    # Request profiling and event loop health monitoring
+    from modules.profiling import setup_profiling
+    setup_profiling(app)
+
     @app.get("/mcp-status")
     def mcp_status():
         return {
@@ -211,7 +225,7 @@ def main():
     # Setup MCP server if enabled
     mcp_sse_app = None
     if mcp_available and mcp_enabled:
-        mcp_server.set_runners(runner, tagging_runner, clustering_runner)
+        mcp_server.set_runners(runner, tagging_runner, clustering_runner, selection_runner, orchestrator)
         mcp_server.set_gradio_context(
             demo=demo,
             pipeline_components=pipeline_components,
@@ -251,7 +265,7 @@ def main():
     print(f"Starting WebUI on {platform.system()}...")
     
     # Configure server endpoints using the FastAPI app directly
-    app_module.setup_server_endpoints(app, runner, tagging_runner, clustering_runner, selection_runner)
+    app_module.setup_server_endpoints(app, runner, tagging_runner, clustering_runner, selection_runner, orchestrator)
     
     # Mount MCP SSE endpoints (if enabled) onto the final app instance.
     # MUST be mounted BEFORE Gradio to avoid being shadowed by Gradio's catch-all route at /

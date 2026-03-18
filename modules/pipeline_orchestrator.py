@@ -32,58 +32,70 @@ class PipelineOrchestrator:
         self._lock = threading.Lock()
         self._resume_policy: bool = bool(config.get_config_value("pipeline.auto_resume_interrupted", False))
         self._last_recovery_info: Dict = {}
+        
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
 
-    def start(self, folder_path: str) -> str:
-        """Starts the pipeline for the given folder and persists phase plan."""
+    def _run_loop(self):
+        import time
+        while not self._stop_event.is_set():
+            try:
+                self.on_tick()
+            except Exception as e:
+                logger.error(f"PipelineOrchestrator tick error: {e}")
+            self._stop_event.wait(2.0)
+
+    def start(self, folder_path: str, target_phases: List[str] = None, force_rerun: bool = False) -> int:
+        """Starts the pipeline for the given folder and persists phase plan. Returns root_job_id."""
         with self._lock:
             if self._active:
-                return "Pipeline is already running."
+                logger.warning("Pipeline is already running.")
+                return self.root_job_id
 
             self.folder_path = folder_path
 
-            # get_folder_phase_summary returns a LIST of dicts:
-            #   [{code, name, sort_order, status, done_count, total_count, ...}, ...]
             summary_list = db.get_folder_phase_summary(folder_path)
             summary_by_code = {item["code"]: item for item in summary_list}
             phases_by_code = {p["code"]: p for p in db.get_all_phases(enabled_only=True)}
 
-            # Build ordered list of pending phases:
-            # - done means complete
-            # - optional + skipped means intentionally bypassed
-            # - default_skip optional phases are auto-bypassed
-            # - indexing/metadata have no dedicated runner; they run implicitly inside scoring
             phase_plan: List[str] = []
             for phase in self.PHASE_ORDER:
                 code = phase.value
                 if code not in self._runners:
-                    # Indexing and metadata: no runner; scoring does both internally
                     continue
-                phase_info = summary_by_code.get(code) or {}
-                phase_def = phases_by_code.get(code) or {}
-                phase_status = phase_info.get("status")
-                is_optional = bool(phase_def.get("optional"))
-                default_skip = bool(phase_def.get("default_skip"))
+                    
+                # If target phases are explicitly provided, only run those
+                if target_phases is not None and code not in target_phases:
+                    continue
 
-                if phase_status == "done":
-                    continue
-                if is_optional and phase_status == "skipped":
-                    continue
-                if is_optional and default_skip and phase_status in (None, "not_started"):
-                    logger.info("Pipeline: default-skipping optional phase '%s'", code)
-                    db.set_folder_phase_status(
-                        folder_path=self.folder_path,
-                        phase_code=code,
-                        status="skipped",
-                        reason="default_skip",
-                        actor="system",
-                    )
-                    continue
+                if not force_rerun:
+                    phase_info = summary_by_code.get(code) or {}
+                    phase_def = phases_by_code.get(code) or {}
+                    phase_status = phase_info.get("status")
+                    is_optional = bool(phase_def.get("optional"))
+                    default_skip = bool(phase_def.get("default_skip"))
+
+                    if phase_status == "done":
+                        continue
+                    if is_optional and phase_status == "skipped":
+                        continue
+                    if is_optional and default_skip and phase_status in (None, "not_started"):
+                        logger.info("Pipeline: default-skipping optional phase '%s'", code)
+                        db.set_folder_phase_status(
+                            folder_path=self.folder_path,
+                            phase_code=code,
+                            status="skipped",
+                            reason="default_skip",
+                            actor="system",
+                        )
+                        continue
 
                 phase_plan.append(code)
 
             if not phase_plan:
                 self.folder_path = None
-                return "All phases are already complete."
+                return None
 
             self.root_job_id = db.create_job(
                 folder_path,

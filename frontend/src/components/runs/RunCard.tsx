@@ -29,7 +29,9 @@ export function RunCard({ run, compact = false }: RunCardProps) {
   const cancelMut = useMutation({ mutationFn: () => runsApi.cancel(run.id), onSuccess: invalidate })
   const retryMut = useMutation({ mutationFn: () => runsApi.retry(run.id), onSuccess: invalidate })
 
-  const scopePaths = run.scope_paths?.length > 0 ? run.scope_paths : [run.input_path]
+  const scopePaths = Array.isArray(run.scope_paths) && run.scope_paths.length > 0
+    ? run.scope_paths
+    : [run.input_path ?? '']
   const scopeLabel = scopePaths[0] ?? '(unknown)'
   const extraPaths = scopePaths.length - 1
 
@@ -126,7 +128,7 @@ export function RunCard({ run, compact = false }: RunCardProps) {
               Retry
             </Button>
           )}
-          {(run.status === 'running' || run.status === 'queued' || run.status === 'paused') && (
+          {(run.status === 'pending' || run.status === 'running' || run.status === 'queued' || run.status === 'paused') && (
             <Button
               size="xs"
               variant="ghost"

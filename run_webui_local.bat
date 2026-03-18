@@ -13,5 +13,5 @@ set "WSL_PATH=!WSL_PATH:/mnt/E=/mnt/e!"
 set "WSL_PATH=!WSL_PATH:/mnt/F=/mnt/f!"
 if "!WSL_PATH:~-1!"=="/" set "WSL_PATH=!WSL_PATH:~0,-1!"
 
-wsl bash -c "export FIREBIRD_USE_LOCAL_PATH=1 && export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:!WSL_PATH!/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib && export ENABLE_MCP_SERVER=${ENABLE_MCP_SERVER:-1} && source ~/.venvs/tf/bin/activate && python launch.py %*"
+wsl bash -c "cd '!WSL_PATH!' && export FIREBIRD_USE_LOCAL_PATH=1 && export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:!WSL_PATH!/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib && export ENABLE_MCP_SERVER=${ENABLE_MCP_SERVER:-1} && source ~/.venvs/tf/bin/activate && python launch.py %*"
 pause

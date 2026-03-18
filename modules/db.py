@@ -32,7 +32,7 @@ JOB_ALLOWED_TRANSITIONS = {
     "running": {"paused", "completed", "failed", "cancel_requested", "canceled", "cancelled", "interrupted", "restarting"},
     "paused": {"queued", "running", "cancel_requested", "canceled", "cancelled", "interrupted", "restarting"},
     "cancel_requested": {"canceled", "cancelled", "failed", "interrupted"},
-    "restarting": {"queued", "running", "failed", "interrupted"},
+    "restarting": {"queued", "running", "failed", "interrupted", "canceled", "cancelled"},
     "interrupted": {"queued", "running", "canceled", "cancelled", "restarting"},
     "completed": set(),
     "failed": set(),
@@ -159,8 +159,8 @@ def _add_keyword_filter(conditions, params, keyword_filter, table_ref="images"):
 
 DB_CONFIG = config.get_config_section('database')
 DB_FILE = DB_CONFIG.get('filename', "scoring_history.fdb")
-DB_USER = DB_CONFIG.get('user', "sysdba")
-DB_PASS = (
+DB_USER = str(DB_CONFIG.get('user', "sysdba") or "sysdba")
+DB_PASS = str(
     os.environ.get("FIREBIRD_PASSWORD")
     or DB_CONFIG.get('password')
     or "masterkey"
@@ -238,6 +238,16 @@ FB_CLIENT_LIBRARY = _resolve_firebird_client_library()
 _logged_wsl_info = False
 _logged_dsn = False
 
+# Cached WSL host IP so all threads use the same value (avoids JobDispatcher using
+# resolv.conf nameserver 10.255.255.254 when ip route fails in a thread).
+_cached_wsl_host_ip = None
+
+# Serialize connect() to avoid "Invalid clumplet buffer structure" when multiple
+# threads call get_db() concurrently (driver_config + DPB build are not thread-safe).
+_DB_CONNECT_LOCK = threading.Lock()
+_IP_RESOLVE_LOCK = threading.Lock()
+_cached_host_ip = None
+
 # Configure driver if possible
 if connect and FB_CLIENT_LIBRARY:
     try:
@@ -300,39 +310,63 @@ def get_db():
                          _logged_wsl_info = True
 
              # Must use TCP to Windows Host to avoid corruption and locking issues
+             # Use cached host so all threads (MainThread, JobDispatcher) share the same
+             # value. Otherwise JobDispatcher may get resolv.conf nameserver (10.255.255.254)
+             # when ip route fails in its thread, which does not run Firebird.
              
-             # 1. Try Env Var
-             host_ip = os.environ.get("FIREBIRD_HOST")
-             
-             # 2. Check for Docker
              is_docker = os.environ.get("DOCKER_CONTAINER") == "1"
-             if is_docker and not host_ip:
-                 host_ip = "host.docker.internal"
+             # 0. Check Cache
+             global _cached_host_ip
+             with _IP_RESOLVE_LOCK:
+                 host_ip = _cached_host_ip
+             
+             if not host_ip:
+                 # 1. Try Env Var
+                 host_ip = os.environ.get("FIREBIRD_HOST")
+                 if host_ip and DEBUG_DB_CONNECTION:
+                     logger.debug("WSL: Using host_ip from FIREBIRD_HOST: %s", host_ip)
+                 
+                 # 2. Check for Docker
+                 if is_docker and not host_ip:
+                     host_ip = "host.docker.internal"
+                     if DEBUG_DB_CONNECTION:
+                         logger.debug("WSL: Using host_ip for Docker: %s", host_ip)
 
-             # 3. Try Default Gateway (Most reliable for WSL2)
-             if not host_ip:
-                 try:
-                     import subprocess
-                     # output: default via 172.22.144.1 dev eth0 ...
-                     route_out = subprocess.check_output(["ip", "route", "show", "default"], timeout=2).decode().strip()
-                     if "via" in route_out:
-                         host_ip = route_out.split("via")[1].split()[0]
-                 except Exception as e:
-                     logger.debug("Could not resolve default gateway: %s", e)
+                 # 3. Try Default Gateway (Most reliable for WSL2)
+                 if not host_ip:
+                     try:
+                         import subprocess
+                         # output: default via 172.22.144.1 dev eth0 ...
+                         route_out = subprocess.check_output(["ip", "route", "show", "default"], timeout=2).decode().strip()
+                         if "via" in route_out:
+                             host_ip = route_out.split("via")[1].split()[0]
+                             if DEBUG_DB_CONNECTION:
+                                 logger.debug("WSL: Resolved host_ip via ip route: %s", host_ip)
+                     except Exception as e:
+                         logger.debug("Could not resolve default gateway: %s", e)
 
-             # 4. Fallback to Resolv.conf
-             if not host_ip:
-                 try:
-                     with open("/etc/resolv.conf", "r") as f:
-                         for line in f:
-                             if "nameserver" in line:
-                                 host_ip = line.split()[1]
-                                 break
-                 except (OSError, IndexError) as e:
-                     logger.debug("Could not read resolv.conf: %s", e)
-                     
-             if not host_ip:
-                 host_ip = "127.0.0.1"
+                 # 4. Fallback to Resolv.conf
+                 if not host_ip:
+                     try:
+                         if os.path.exists("/etc/resolv.conf"):
+                             with open("/etc/resolv.conf", "r") as f:
+                                 for line in f:
+                                     if "nameserver" in line:
+                                         host_ip = line.split()[1]
+                                         if DEBUG_DB_CONNECTION:
+                                             logger.debug("WSL: Fallback host_ip via resolv.conf: %s", host_ip)
+                                         break
+                     except (OSError, IndexError) as e:
+                         logger.debug("Could not read resolv.conf: %s", e)
+                         
+                 if not host_ip:
+                     host_ip = "127.0.0.1"
+                     if DEBUG_DB_CONNECTION:
+                         logger.debug("WSL: Host resolution failed, defaulting to 127.0.0.1")
+                 
+                 # Update Cache
+                 with _IP_RESOLVE_LOCK:
+                     _cached_host_ip = host_ip
              
              # Need to map the path correctly. Firebird on Windows expects Windows path.
              # We assume DB_FILE ("scoring_history.fdb") is in the simple root.
@@ -390,11 +424,12 @@ def get_db():
 
 
 
-        # Basic connection
+        # Basic connection (serialized: firebird driver_config + DPB build are not thread-safe)
         if DEBUG_DB_CONNECTION:
             logger.debug("get_db attempting connect to dsn=%s", dsn)
         try:
-            conn = connect(dsn, user=DB_USER, password=DB_PASS, charset='UTF8')
+            with _DB_CONNECT_LOCK:
+                conn = connect(dsn, user=DB_USER, password=DB_PASS, charset='UTF8')
             if DEBUG_DB_CONNECTION:
                 logger.debug("get_db connection successful")
         except Exception as e:
@@ -529,6 +564,15 @@ def get_db():
                 if isinstance(key, int):
                     return self._values[key]
                 return self._map[key.lower()]
+            
+            def get(self, key, default=None):
+                """Dict-like .get() for compatibility with code expecting dict access."""
+                if isinstance(key, int):
+                    try:
+                        return self._values[key]
+                    except IndexError:
+                        return default
+                return self._map.get(key.lower(), default)
             
             def keys(self):
                 return self._map.keys()
@@ -3782,7 +3826,7 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
         "cancel_requested": {"canceled", "failed"},
         "restarting": {"queued", "running", "failed"},
         "completed": set(),
-        "failed": set(),
+        "failed": {"skipped", "pending"},
         "skipped": set(),
         "canceled": set(),
     }
@@ -3799,11 +3843,13 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
         return None
 
     phase_id = row[0]
-    old_state = (row[1] or "pending").strip().lower()
-    new_state = (state or "").strip().lower()
+    old_state = str(row[1] or "pending").strip().lower()
+    new_state = str(state or "").strip().lower()
     if old_state != new_state and new_state not in allowed.get(old_state, set()):
-        conn.close()
-        raise ValueError(f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})")
+        # Allow failed->skipped and failed->pending (user recovery)
+        if not (old_state == "failed" and new_state in ("skipped", "pending")):
+            conn.close()
+            raise ValueError(f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})")
     fields = ["state = ?"]
     params = [state]
     if state == "running":
@@ -3820,7 +3866,7 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
     params.append(phase_id)
     c.execute(f"UPDATE job_phases SET {', '.join(fields)} WHERE id = ?", params)
 
-    if state == "completed":
+    if state in {"completed", "skipped"}:
         c.execute(
             "SELECT id FROM job_phases WHERE job_id = ? AND phase_order > (SELECT phase_order FROM job_phases WHERE id = ?) AND state = 'pending' ORDER BY phase_order FETCH FIRST 1 ROWS ONLY",
             (job_id, phase_id),
@@ -4036,8 +4082,9 @@ def get_jobs(limit=50):
     try: limit = int(limit)
     except (ValueError, TypeError): limit = 50
     if limit < 0: limit = 50
+    limit = min(limit, 1000)
     c.execute("SELECT * FROM jobs ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY", (limit,))
-    rows = c.fetchall()
+    rows = [dict(zip(r.keys(), [r[k] for k in r.keys()])) for r in c.fetchall()]
     conn.close()
     return rows
 

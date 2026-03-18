@@ -47,6 +47,7 @@ Endpoints:
 
 from fastapi import APIRouter, HTTPException, Body, Query
 from fastapi.responses import FileResponse, StreamingResponse
+import asyncio
 import json
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
@@ -720,16 +721,18 @@ _scoring_runner = None
 _tagging_runner = None
 _clustering_runner = None
 _selection_runner = None
+_orchestrator = None
 _job_dispatcher = JobDispatcher()
 
 
-def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None):
     """Set the runner instances for API access."""
-    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _job_dispatcher
+    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _job_dispatcher
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
     _selection_runner = selection_runner
+    _orchestrator = orchestrator
     _job_dispatcher.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner)
     _job_dispatcher.start()
 
@@ -1668,8 +1671,48 @@ def create_api_router() -> APIRouter:
             clustering_available=_clustering_runner is not None
         )
     
+    # ========== Debug / Profiling Endpoints ==========
+
+    @router.get(
+        "/debug/requests",
+        summary="Request profiling dashboard",
+        tags=["Debug"],
+    )
+    async def debug_requests():
+        """In-flight requests, slow request history, and event loop health."""
+        from modules.profiling import get_tracker, get_loop_monitor
+
+        tracker = get_tracker()
+        monitor = get_loop_monitor()
+        if tracker is None:
+            return {"error": "Profiling not initialized"}
+
+        return {
+            "request_stats": tracker.get_stats(),
+            "in_flight": tracker.get_in_flight(),
+            "slow_requests": tracker.get_slow_history(limit=30),
+            "event_loop": monitor.get_stats() if monitor else {},
+            "event_loop_recent": monitor.get_recent_lags(limit=30) if monitor else [],
+        }
+
+    @router.get(
+        "/debug/loop-lag",
+        summary="Current event loop lag",
+        tags=["Debug"],
+    )
+    async def debug_loop_lag():
+        """Quick event loop health check."""
+        from modules.profiling import get_loop_monitor
+
+        monitor = get_loop_monitor()
+        if not monitor:
+            return {"lag_ms": -1, "status": "monitor_not_running"}
+        lag = monitor.current_lag_ms
+        status = "healthy" if lag < 200 else "degraded" if lag < 1000 else "blocked"
+        return {"lag_ms": round(lag, 1), "status": status}
+
     # ========== Utility Endpoints ==========
-    
+
     @router.post(
         "/scoring/fix-image",
         response_model=ApiResponse,
@@ -2016,8 +2059,31 @@ def create_api_router() -> APIRouter:
         """Get recent job history."""
         from modules import db
         try:
-            jobs = db.get_jobs(limit=limit)
-            return jobs
+            jobs = await asyncio.wait_for(
+                asyncio.to_thread(db.get_jobs, limit),
+                timeout=30.0,
+            )
+            # Ensure JSON-serializable: parse scope_paths if stored as JSON string
+            result = []
+            for j in jobs:
+                d = dict(j)
+                if isinstance(d.get("scope_paths"), str):
+                    try:
+                        d["scope_paths"] = json.loads(d["scope_paths"]) if d["scope_paths"] else []
+                    except (json.JSONDecodeError, TypeError):
+                        d["scope_paths"] = []
+                if d.get("scope_paths") is None:
+                    d["scope_paths"] = []
+                if d.get("scope_type") is None and d.get("input_path"):
+                    d["scope_type"] = "folder_recursive"
+                    d["scope_paths"] = d["scope_paths"] or [d["input_path"]]
+                result.append(d)
+            return result
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=504,
+                detail="Database operation timed out.",
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -3552,25 +3618,64 @@ def create_api_router() -> APIRouter:
     @router.post("/runs/submit", summary="Submit a new Run")
     async def submit_run(request: RunSubmitRequest):
         from modules import db
-        from modules.phases import normalize_phase_codes
+        from modules.phases import PhaseCode, normalize_phase_codes
         if not request.scope_paths:
             raise HTTPException(status_code=400, detail="scope_paths must not be empty")
         primary_path = request.scope_paths[0]
         phases = normalize_phase_codes(request.stages) if request.stages else None
+        phase_values = [p.value for p in phases] if phases else None
+
+        # Derive job_type and phase_code from stages so JobDispatcher can route the job.
+        # Scoring runner handles indexing, metadata, scoring; tagging handles keywords; selection handles culling.
+        _SCORING_PHASES = {PhaseCode.INDEXING, PhaseCode.METADATA, PhaseCode.SCORING}
+        _TAGGING_PHASES = {PhaseCode.KEYWORDS}
+        _CULLING_PHASES = {PhaseCode.CULLING}
+        phase_code = "scoring"
+        job_type = "scoring"
+        if phases:
+            for p in phases:
+                if p in _SCORING_PHASES:
+                    phase_code = "scoring"
+                    job_type = "scoring"
+                    break
+                if p in _TAGGING_PHASES:
+                    phase_code = "keywords"
+                    job_type = "tagging"
+                    break
+                if p in _CULLING_PHASES:
+                    phase_code = "culling"
+                    job_type = "selection"
+                    break
+
         payload = {
             "scope_type": request.scope_type,
             "scope_paths": request.scope_paths,
+            "input_path": primary_path,
             "skip_done": request.skip_done,
+            "skip_existing": request.skip_done,
             "force_rerun": request.force_rerun,
-            "phases": [p.value for p in phases] if phases else None,
+            "phases": phase_values,
+            "target_phases": phase_values,
         }
         try:
-            job_id, position = db.enqueue_job(
-                input_path=primary_path,
-                phase_code=None,
-                queue_payload=json.dumps(payload),
+            job_id, position = await asyncio.wait_for(
+                asyncio.to_thread(
+                    db.enqueue_job,
+                    primary_path,
+                    phase_code,
+                    job_type,
+                    payload,
+                ),
+                timeout=30.0,
             )
+            if phase_values:
+                await asyncio.to_thread(db.create_job_phases, job_id, phase_values)
             return {"run_id": job_id, "queue_position": position, "success": True}
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=504,
+                detail="Database operation timed out. The database may be busy or unreachable.",
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -3626,11 +3731,26 @@ def create_api_router() -> APIRouter:
             job = db.get_job(run_id)
             if not job:
                 raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
-            status = job.get("status", "")
+            status = str(job.get("status") or "").strip().lower()
             if status == "queued":
                 db.request_cancel_job(run_id)
-            elif status == "running":
+            elif status in ("pending", "running", "paused", "interrupted", "cancel_requested", "restarting"):
                 db.update_job_status(run_id, "canceled")
+                # Stop the active runner when running (DB update alone doesn't stop the process)
+                if status == "running":
+                    state = _job_dispatcher.get_state()
+                    active = state.get("active_runner")
+                    runner = None
+                    if active == "scoring" and _scoring_runner:
+                        runner = _scoring_runner
+                    elif active == "tagging" and _tagging_runner:
+                        runner = _tagging_runner
+                    elif active == "clustering" and _clustering_runner:
+                        runner = _clustering_runner
+                    elif active == "selection" and _selection_runner:
+                        runner = _selection_runner
+                    if runner and getattr(runner, "is_running", False):
+                        runner.stop()
             else:
                 raise HTTPException(status_code=400, detail=f"Cannot cancel run with status={status}")
             return {"success": True, "message": f"Run {run_id} canceled"}
@@ -3729,9 +3849,50 @@ def create_api_router() -> APIRouter:
         paths: List[str]
         recursive: bool = True
 
+    _SCOPE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".nef", ".arw", ".cr2", ".dng", ".heic", ".webp", ".tiff", ".tif", ".raw", ".orf", ".rw2", ".nrw", ".cr3"}
+
+    def _scope_resolve_path(raw_path: str) -> str:
+        """Convert path to local format (Windows->WSL when in WSL). Raises if path not found."""
+        from modules import utils
+        path = (raw_path or "").strip()
+        if not path:
+            raise HTTPException(status_code=400, detail="Empty path")
+        local_path = utils.convert_path_to_local(path)
+        if platform.system() == "Linux" and (":" in path or "\\" in path) and hasattr(utils, "convert_path_to_wsl"):
+            wsl = utils.convert_path_to_wsl(path)
+            if wsl and wsl != path:
+                local_path = wsl
+        if not os.path.exists(local_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Path not found: {raw_path} (resolved to {local_path}). Ensure the path exists and is accessible from the backend (WSL uses /mnt/d/... for D:\\...).",
+            )
+        return local_path
+
+    def _scope_count_images_on_disk(local_path: str, recursive: bool) -> tuple[int, int]:
+        """Count images and folders on disk. Returns (image_count, folder_count)."""
+        if not os.path.isdir(local_path):
+            return (0, 0)
+        img_count = 0
+        folder_count = 0
+        if recursive:
+            for root, dirs, files in os.walk(local_path):
+                folder_count += 1
+                for f in files:
+                    if os.path.splitext(f)[1].lower() in _SCOPE_IMAGE_EXTENSIONS:
+                        img_count += 1
+        else:
+            folder_count = 1
+            for f in os.listdir(local_path):
+                fp = os.path.join(local_path, f)
+                if os.path.isfile(fp) and os.path.splitext(f)[1].lower() in _SCOPE_IMAGE_EXTENSIONS:
+                    img_count += 1
+        return (img_count, folder_count)
+
     @router.post("/scope/preview", summary="Preview scope before submitting a Run")
     async def scope_preview(request: ScopePreviewRequest):
-        """Returns image count and per-stage phase statuses for the given paths."""
+        """Returns image count and per-stage phase statuses for the given paths.
+        When a folder has no images in the DB (not yet indexed), scans the filesystem to show actual counts."""
         from modules import db
         from modules.phases import PhaseCode
         if not request.paths:
@@ -3745,23 +3906,31 @@ def create_api_router() -> APIRouter:
             stage_total: Dict[str, int] = {}
             phase_codes = [p.value for p in PhaseCode]
 
+            from modules import utils
             for path in request.paths:
-                if not os.path.exists(path):
-                    continue
+                local_path = _scope_resolve_path(path)
                 summary = db.get_folder_phase_summary(path, force_refresh=True)
-                if not summary:
-                    continue
-                folder_count += 1
-                # Use first phase's total as image count proxy
-                if summary:
+                db_img_count = (summary[0].get("total_count", 0) if summary else 0)
+                if summary and db_img_count > 0:
+                    folder_count += 1
                     img_count = summary[0].get("total_count", 0) if summary else 0
                     total_images += img_count
-                for row in summary:
-                    code = row.get("code", "")
-                    stage_total[code] = stage_total.get(code, 0) + row.get("total_count", 0)
-                    stage_done[code] = stage_done.get(code, 0) + row.get("done_count", 0)
-                    stage_failed[code] = stage_failed.get(code, 0) + row.get("failed_count", 0)
-                    stage_skipped[code] = stage_skipped.get(code, 0) + row.get("skipped_count", 0)
+                    for row in summary:
+                        code = row.get("code", "")
+                        stage_total[code] = stage_total.get(code, 0) + row.get("total_count", 0)
+                        stage_done[code] = stage_done.get(code, 0) + row.get("done_count", 0)
+                        stage_failed[code] = stage_failed.get(code, 0) + row.get("failed_count", 0)
+                        stage_skipped[code] = stage_skipped.get(code, 0) + row.get("skipped_count", 0)
+                else:
+                    img_count, n_folders = _scope_count_images_on_disk(local_path, request.recursive)
+                    if img_count > 0 or n_folders > 0:
+                        folder_count += n_folders
+                        total_images += img_count
+                        for code in phase_codes:
+                            stage_total[code] = stage_total.get(code, 0) + img_count
+                            stage_done[code] = stage_done.get(code, 0)
+                            stage_failed[code] = stage_failed.get(code, 0)
+                            stage_skipped[code] = stage_skipped.get(code, 0)
 
             stage_statuses = {}
             stage_counts = {}
@@ -3789,48 +3958,59 @@ def create_api_router() -> APIRouter:
                 "stage_statuses": stage_statuses,
                 "stage_counts": stage_counts,
             }
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
+    def _build_scope_tree_sync():
+        """Sync implementation run in thread pool to avoid blocking event loop."""
+        from modules import db, utils
+        from modules.ui_tree import build_tree_dict
+        raw_folders = db.get_all_folders()
+        folders = []
+        for p in raw_folders:
+            local_p = utils.convert_path_to_local(p) if hasattr(utils, 'convert_path_to_local') else p
+            if not local_p:
+                continue
+            norm = os.path.normpath(local_p)
+            basename = os.path.basename(norm).lower()
+            if basename in ['.tmp.drivedownload', '.tmp.driveupload', 'keywords_output', '.']:
+                continue
+            folders.append(local_p)
+        folders = list(set(folders))
+        tree_dict = build_tree_dict(folders)
+
+        def enrich(nodes: List[Dict]) -> List[Dict]:
+            result = []
+            for node in nodes:
+                path = node.get("path", "")
+                if path:
+                    try:
+                        summary = db.get_folder_phase_summary(path)
+                        if summary:
+                            node["phase_statuses"] = {
+                                row["code"]: row.get("status", "not_started") for row in summary
+                            }
+                    except Exception:
+                        pass
+                if "children" in node:
+                    node["children"] = enrich(node["children"])
+                result.append(node)
+            return result
+
+        return enrich(tree_dict)
 
     @router.get("/scope/tree", summary="Folder tree with phase status overlays")
     async def scope_tree():
         """Enhanced folder tree with per-folder phase status for the Scope Navigator sidebar."""
-        from modules import db, utils
-        from modules.ui_tree import build_tree_dict
         try:
-            raw_folders = db.get_all_folders()
-            folders = []
-            for p in raw_folders:
-                local_p = utils.convert_path_to_local(p) if hasattr(utils, 'convert_path_to_local') else p
-                if not local_p:
-                    continue
-                norm = os.path.normpath(local_p)
-                basename = os.path.basename(norm).lower()
-                if basename in ['.tmp.drivedownload', '.tmp.driveupload', 'keywords_output', '.']:
-                    continue
-                folders.append(local_p)
-            folders = list(set(folders))
-            tree_dict = build_tree_dict(folders)
-
-            def enrich(nodes: List[Dict]) -> List[Dict]:
-                result = []
-                for node in nodes:
-                    path = node.get("path", "")
-                    if path:
-                        try:
-                            summary = db.get_folder_phase_summary(path)
-                            if summary:
-                                node["phase_statuses"] = {
-                                    row["code"]: row.get("status", "not_started") for row in summary
-                                }
-                        except Exception:
-                            pass
-                    if "children" in node:
-                        node["children"] = enrich(node["children"])
-                    result.append(node)
-                return result
-
-            return enrich(tree_dict)
+            return await asyncio.wait_for(
+                asyncio.to_thread(_build_scope_tree_sync),
+                timeout=60.0,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Folder tree build timed out.")
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

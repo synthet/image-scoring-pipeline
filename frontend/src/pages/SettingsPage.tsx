@@ -45,7 +45,7 @@ export function SettingsPage() {
       <div className="rounded-md border border-[#474747] bg-[#252526] p-4 mb-5">
         <div className="text-xs font-semibold uppercase tracking-wider text-[#6d6d6d] mb-3">System Health</div>
         <div className="grid grid-cols-4 gap-3">
-          <HealthItem label="API" ok={health?.status === 'ok'} />
+          <HealthItem label="API" ok={health?.status === 'healthy'} />
           <HealthItem label="Quality Analysis" ok={health?.scoring_available} />
           <HealthItem label="Tagging" ok={health?.tagging_available} />
           <HealthItem label="Clustering" ok={health?.clustering_available} />

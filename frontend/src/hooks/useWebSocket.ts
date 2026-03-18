@@ -60,7 +60,8 @@ export function useWebSocket() {
           store.bumpRunsVersion()
           break
         case 'work_item_done':
-          store.bumpRunsVersion()
+          // Do not bump runsVersion — fires per item and causes infinite update loops.
+          // Live progress comes from run_progress; stage_transition/queue_update handle invalidation.
           break
       }
     }

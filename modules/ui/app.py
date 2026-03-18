@@ -389,12 +389,12 @@ from modules.ui.security import (          # noqa: F401
 )
 
 
-def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None):
+def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None, orchestrator=None):
     """Configures FastAPI endpoints for the Gradio app."""
 
     # Setup REST API endpoints
     from modules import api
-    api.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner)
+    api.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner, orchestrator)
     api_router = api.create_api_router()
     fastapi_app.include_router(api_router)
 
