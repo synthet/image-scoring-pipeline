@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.11.2] - 2026-03-17
+
+### Fixed
+- **LogPanel**: Use stable empty array in Zustand selector to avoid getSnapshot infinite loop (React error #185).
+
 ## [4.11.1] - 2026-03-16
 
 ### Changed

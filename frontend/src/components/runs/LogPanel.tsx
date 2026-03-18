@@ -3,6 +3,9 @@ import { clsx } from 'clsx'
 import { useWsStore } from '@/stores/wsStore'
 import type { WsLogLine } from '@/types/api'
 
+/** Stable empty array so selector returns same reference when run has no logs (avoids getSnapshot infinite loop). */
+const EMPTY_LOG_LINES: WsLogLine[] = []
+
 interface LogPanelProps {
   runId: number
 }
@@ -17,10 +20,11 @@ const LEVEL_COLORS: Record<string, string> = {
 }
 
 export function LogPanel({ runId }: LogPanelProps) {
-  const lines = useWsStore((s) => s.logLines[runId] ?? [])
+  const lines = useWsStore((s) => s.logLines[runId] ?? EMPTY_LOG_LINES)
   const [filter, setFilter] = useState<LogLevel>('INFO')
   const [autoScroll, setAutoScroll] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const isProgrammaticScrollRef = useRef(false)
 
   const filtered = lines.filter((l) => {
     if (filter === 'ALL') return true
@@ -30,8 +34,15 @@ export function LogPanel({ runId }: LogPanelProps) {
   }).filter((l) => filter === 'ALL' || l.level !== 'DEBUG')
 
   useEffect(() => {
-    if (autoScroll) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (!autoScroll) return
+    isProgrammaticScrollRef.current = true
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const t = setTimeout(() => {
+      isProgrammaticScrollRef.current = false
+    }, 300)
+    return () => {
+      clearTimeout(t)
+      isProgrammaticScrollRef.current = false
     }
   }, [filtered.length, autoScroll])
 
@@ -71,6 +82,7 @@ export function LogPanel({ runId }: LogPanelProps) {
       <div
         className="flex-1 overflow-y-auto font-mono text-[11px] px-4 py-2 min-h-[120px] max-h-[240px]"
         onScroll={(e) => {
+          if (isProgrammaticScrollRef.current) return
           const el = e.currentTarget
           const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30
           setAutoScroll(atBottom)
