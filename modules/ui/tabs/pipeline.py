@@ -1,11 +1,11 @@
 import datetime
 import html
-import gradio as gr
-import html
 import json
+import gradio as gr
 from modules import db
 from modules import ui_tree
 from modules.phases import PhaseRegistry
+from modules.pipeline_selector_composer import compose_selector_request, validate_and_preview, save_preset, load_presets
 
 # Cache for timer-based status updates to avoid unnecessary SSE pushes
 _last_status_cache = {"state": None}
@@ -85,7 +85,32 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                     elem_classes=["animate-in"],
                 )
 
-                # PANEL: Workflow Progress
+                # PANEL: Target Composer
+                with gr.Group(elem_classes=["panel"]):
+                    gr.HTML("<div class='panel-header'><h2 class='panel-title'>Target Composer</h2></div>")
+                    with gr.Column(elem_classes=["panel-body"]):
+                        components["composer_modes"] = gr.CheckboxGroup(
+                            choices=["image", "file", "folder", "subtree", "list"],
+                            value=["folder"],
+                            label="Selector chips",
+                        )
+                        components["composer_input_path"] = gr.Textbox(label="Path (image or folder)", value="")
+                        with gr.Row():
+                            components["composer_image_ids"] = gr.Textbox(label="Image IDs (csv)", value="")
+                            components["composer_folder_ids"] = gr.Textbox(label="Folder IDs (csv)", value="")
+                        components["composer_image_paths"] = gr.Textbox(label="Image paths (csv/newline)", lines=2, value="")
+                        components["composer_folder_paths"] = gr.Textbox(label="Folder paths (csv/newline)", lines=2, value="")
+                        components["composer_exclude_paths"] = gr.Textbox(label="Exclude image paths (csv/newline)", lines=2, value="")
+                        components["composer_recursive"] = gr.Checkbox(label="Include subfolders", value=True)
+                        with gr.Row():
+                            components["composer_preset_name"] = gr.Textbox(label="Save preset as", value="")
+                            components["composer_preset_select"] = gr.Dropdown(label="Saved presets", choices=sorted(load_presets().keys()), value=None)
+                        with gr.Row():
+                            components["composer_preview_btn"] = gr.Button("Validate + Preview", elem_classes=["secondary-btn"])
+                            components["composer_save_preset_btn"] = gr.Button("Save Preset", elem_classes=["secondary-btn"])
+                        components["composer_preview_html"] = gr.HTML("<p class='section-microcopy'>Compose selectors and preview count before submit.</p>")
+
+                # PANEL: Pipeline Progress
                 with gr.Group(elem_classes=["panel"]):
                     gr.HTML(
                         """
@@ -267,6 +292,9 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
                     components["telemetry_html"] = gr.HTML(_build_telemetry_html([], collapse_noisy=True, pin_critical=True))
                     components["telemetry_state"] = gr.State({"last_seq": 0, "last_runner_log": "", "last_running": False, "events": []})
 
+    def _sync_composer_path(path):
+        return path or ""
+
     # Wire up folder selection to update HTML rendering (force_refresh to avoid stale cache)
     components["selected_path"].change(
         fn=lambda p: _update_folder_selection(p, force_refresh=True)[:6],
@@ -279,6 +307,10 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
             components["keywords_card_html"],
             components["quick_start_html"],
         ]
+    ).then(
+        fn=_sync_composer_path,
+        inputs=[components["selected_path"]],
+        outputs=[components["composer_input_path"]],
     )
 
     def _on_refresh_click(selected_path):
@@ -309,6 +341,10 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
             components["keywords_card_html"],
             components["quick_start_html"],
         ],
+    ).then(
+        fn=_sync_composer_path,
+        inputs=[components["selected_path"]],
+        outputs=[components["composer_input_path"]],
     )
 
     components["refresh_btn"].click(
@@ -323,7 +359,53 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
             components["keywords_card_html"],
             components["quick_start_html"],
         ],
+    ).then(
+        fn=_sync_composer_path,
+        inputs=[components["selected_path"]],
+        outputs=[components["composer_input_path"]],
     )
+
+    def _compose_request(input_path, image_ids, image_paths, folder_ids, folder_paths, exclude_paths, recursive):
+        return compose_selector_request(
+            input_path=input_path,
+            image_ids_raw=image_ids,
+            image_paths_raw=image_paths,
+            folder_ids_raw=folder_ids,
+            folder_paths_raw=folder_paths,
+            exclude_image_paths_raw=exclude_paths,
+            recursive=recursive,
+        )
+
+    def _preview_composer(input_path, image_ids, image_paths, folder_ids, folder_paths, exclude_paths, recursive):
+        request = _compose_request(input_path, image_ids, image_paths, folder_ids, folder_paths, exclude_paths, recursive)
+        preview = validate_and_preview(request)
+        warning_items = ''.join(f"<li>{w}</li>" for w in (preview.get("warnings") or [])) or "<li>None</li>"
+        return (
+            "<div class='section-microcopy'>"
+            f"<p><strong>Preview count:</strong> {preview.get('preview_count', 0)}</p>"
+            "<p><strong>Conflict warnings</strong></p>"
+            f"<ul>{warning_items}</ul>"
+            "</div>"
+        )
+
+    def _save_composer_preset(name, input_path, image_ids, image_paths, folder_ids, folder_paths, exclude_paths, recursive):
+        request = _compose_request(input_path, image_ids, image_paths, folder_ids, folder_paths, exclude_paths, recursive)
+        presets = save_preset(name, request)
+        return gr.update(choices=sorted(presets.keys()), value=name.strip() if name else None)
+
+    def _load_composer_preset(name):
+        presets = load_presets()
+        request = presets.get(name or "", {})
+        return (
+            request.get("input_path") or "",
+            ",".join(str(v) for v in (request.get("image_ids") or [])),
+            "\n".join(request.get("image_paths") or []),
+            ",".join(str(v) for v in (request.get("folder_ids") or [])),
+            "\n".join(request.get("folder_paths") or []),
+            "\n".join(request.get("exclude_image_paths") or []),
+            bool(request.get("recursive", True)),
+        )
+
 
     # --- Run button handlers ---
     # All runners use start_batch(input_path, job_id, **kwargs)
@@ -681,6 +763,47 @@ def create_tab(app_config, scoring_runner, tagging_runner, selection_runner, orc
         fn=_rerun_step,
         inputs=[components["step_image_id"], components["step_phase_code"]],
         outputs=[components["action_snackbar"]],
+    )
+
+    components["composer_preview_btn"].click(
+        fn=_preview_composer,
+        inputs=[
+            components["composer_input_path"],
+            components["composer_image_ids"],
+            components["composer_image_paths"],
+            components["composer_folder_ids"],
+            components["composer_folder_paths"],
+            components["composer_exclude_paths"],
+            components["composer_recursive"],
+        ],
+        outputs=[components["composer_preview_html"]],
+    )
+    components["composer_save_preset_btn"].click(
+        fn=_save_composer_preset,
+        inputs=[
+            components["composer_preset_name"],
+            components["composer_input_path"],
+            components["composer_image_ids"],
+            components["composer_image_paths"],
+            components["composer_folder_ids"],
+            components["composer_folder_paths"],
+            components["composer_exclude_paths"],
+            components["composer_recursive"],
+        ],
+        outputs=[components["composer_preset_select"]],
+    )
+    components["composer_preset_select"].change(
+        fn=_load_composer_preset,
+        inputs=[components["composer_preset_select"]],
+        outputs=[
+            components["composer_input_path"],
+            components["composer_image_ids"],
+            components["composer_image_paths"],
+            components["composer_folder_ids"],
+            components["composer_folder_paths"],
+            components["composer_exclude_paths"],
+            components["composer_recursive"],
+        ],
     )
 
     return components

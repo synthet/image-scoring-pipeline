@@ -84,6 +84,11 @@ def test_jobs_queue_endpoint_refreshes_from_db_with_limit_zero(monkeypatch):
 def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
 
     captured = {}
 
@@ -98,9 +103,10 @@ def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
 
     created_phase_codes = {}
 
-    def fake_create_job_phases(job_id, phase_codes):
+    def fake_create_job_phases(job_id, phase_codes, first_phase_state=None):
         created_phase_codes["job_id"] = job_id
         created_phase_codes["phase_codes"] = list(phase_codes)
+        created_phase_codes["first_phase_state"] = first_phase_state
         return [
             {"phase_order": idx, "phase_code": code, "state": "running" if idx == 0 else "pending"}
             for idx, code in enumerate(phase_codes)
@@ -138,6 +144,11 @@ def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
 def test_pipeline_submit_metadata_enqueues_scoring_runner_with_target_phases(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
 
     captured = {}
 
@@ -152,7 +163,7 @@ def test_pipeline_submit_metadata_enqueues_scoring_runner_with_target_phases(mon
     monkeypatch.setattr(
         db,
         "create_job_phases",
-        lambda job_id, phase_codes: [
+        lambda job_id, phase_codes, first_phase_state=None: [
             {"phase_order": idx, "phase_code": code, "state": "running" if idx == 0 else "pending"}
             for idx, code in enumerate(phase_codes)
         ],
@@ -185,6 +196,11 @@ def test_pipeline_submit_metadata_enqueues_scoring_runner_with_target_phases(mon
 def test_pipeline_submit_mixed_operations_only_targets_scoring_side(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
 
     captured = {}
 
@@ -195,7 +211,7 @@ def test_pipeline_submit_mixed_operations_only_targets_scoring_side(monkeypatch,
         return 444, 2
 
     monkeypatch.setattr(db, "enqueue_job", fake_enqueue_job)
-    monkeypatch.setattr(db, "create_job_phases", lambda job_id, phase_codes: [])
+    monkeypatch.setattr(db, "create_job_phases", lambda job_id, phase_codes, first_phase_state=None: [])
 
     with _build_client() as client:
         response = client.post(
@@ -220,6 +236,11 @@ def test_pipeline_submit_mixed_operations_only_targets_scoring_side(monkeypatch,
 def test_pipeline_submit_metadata_requires_scoring_runner(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", None)
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
 
     with _build_client() as client:
         response = client.post(
@@ -409,6 +430,11 @@ def test_pipeline_phase_backfill_returns_400_for_missing_path(monkeypatch):
 def test_scoring_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "resolve_selectors",
+        lambda **kwargs: {"resolved_image_ids": [11], "missing_image_paths": [], "missing_folder_paths": []},
+    )
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
     with _build_client() as client:
@@ -421,6 +447,11 @@ def test_scoring_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 def test_tagging_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_tagging_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "resolve_selectors",
+        lambda **kwargs: {"resolved_image_ids": [11], "missing_image_paths": [], "missing_folder_paths": []},
+    )
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
     with _build_client() as client:
@@ -433,6 +464,11 @@ def test_tagging_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
 def test_clustering_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "resolve_selectors",
+        lambda **kwargs: {"resolved_image_ids": [11], "missing_image_paths": [], "missing_folder_paths": []},
+    )
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
     with _build_client() as client:
@@ -442,9 +478,42 @@ def test_clustering_start_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
     assert response.json()["detail"] == "Failed to enqueue clustering job"
 
 
+def test_clustering_start_creates_job_phases_with_queued_first_phase(monkeypatch, tmp_path):
+    monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
+    monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "resolve_selectors",
+        lambda **kwargs: {"resolved_image_ids": None, "missing_image_paths": [], "missing_folder_paths": []},
+    )
+    monkeypatch.setattr(db, "enqueue_job", lambda *a, **kw: (42, 1))
+    captured = {}
+
+    def fake_create_job_phases(job_id, phase_codes, first_phase_state=None):
+        captured["job_id"] = job_id
+        captured["phase_codes"] = list(phase_codes)
+        captured["first_phase_state"] = first_phase_state
+        return []
+
+    monkeypatch.setattr(db, "create_job_phases", fake_create_job_phases)
+
+    with _build_client() as client:
+        response = client.post("/api/clustering/start", json={"input_path": str(tmp_path)})
+
+    assert response.status_code == 200
+    assert captured.get("job_id") == 42
+    assert captured.get("phase_codes") == ["culling"]
+    assert captured.get("first_phase_state") == "queued"
+
+
 def test_pipeline_submit_returns_500_when_enqueue_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_clustering_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
     monkeypatch.setattr(db, "enqueue_job", lambda *args, **kwargs: (None, 0))
 
     body = {
@@ -466,7 +535,8 @@ def test_pipeline_submit_requires_input_path(monkeypatch):
     with _build_client() as client:
         response = client.post("/api/pipeline/submit", json={"operations": ["score"]})
 
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Provide input_path or at least one selector"
 
 
 def test_outliers_endpoint_returns_detector_payload(monkeypatch):
@@ -663,7 +733,7 @@ def test_ipc_bridge_routes_pipeline_submit(monkeypatch, tmp_path):
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
 
     monkeypatch.setattr(db, "enqueue_job", lambda *a, **kw: (900, 4))
-    monkeypatch.setattr(db, "create_job_phases", lambda job_id, phase_codes: [])
+    monkeypatch.setattr(db, "create_job_phases", lambda job_id, phase_codes, first_phase_state=None: [])
 
     with _build_client() as client:
         response = client.post(

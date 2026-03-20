@@ -58,6 +58,11 @@ import logging
 from pathlib import Path
 from modules.phases_policy import explain_phase_run_decision
 from modules.selector_resolver import resolve_selectors
+from modules.pipeline_selector_composer import (
+    compose_selector_request,
+    validate_and_preview,
+    serialize_queue_payload,
+)
 
 from modules.job_dispatcher import JobDispatcher
 from modules import db
@@ -515,7 +520,7 @@ class ImportRegisterRequest(BaseModel):
     })
 
 
-class PipelineSubmitRequest(BaseModel):
+class PipelineSubmitRequest(SelectorRequest):
     """Request model for submitting images/folders to the processing pipeline.
 
     Chains requested StageRuns sequentially (indexing/metadata/score/tag/cluster).
@@ -525,9 +530,9 @@ class PipelineSubmitRequest(BaseModel):
         stage_codes: Ordered stage run codes to execute (indexing|metadata|score|tag|cluster).
         workflow_template: Logical template name for the run (e.g., full_ingest, metadata_only, re_tag).
     """
-    workspace_target: str = Field(
-        ...,
-        description="WorkspaceTarget path to process (single file or folder).",
+    workspace_target: Optional[str] = Field(
+        None,
+        description="WorkspaceTarget path to process (single file or folder). Optional when using selector fields.",
         example="D:/Photos/2024",
         validation_alias=AliasChoices("workspace_target", "input_path"),
         serialization_alias="workspace_target",
@@ -569,6 +574,10 @@ class PipelineSubmitRequest(BaseModel):
     clustering_force_rescan: bool = Field(
         False,
         description="If True, force re-clustering even when folder was already clustered."
+    )
+    exclude_image_paths: Optional[List[str]] = Field(
+        None,
+        description="Optional image paths to exclude from resolved selector targets."
     )
 
 
@@ -2645,6 +2654,8 @@ def create_api_router() -> APIRouter:
         if job_id is None:
             raise HTTPException(status_code=500, detail="Failed to enqueue clustering job")
 
+        db.create_job_phases(job_id, ["culling"], first_phase_state="queued")
+
         return ApiResponse(
             success=True,
             message="Clustering job queued",
@@ -3106,10 +3117,36 @@ def create_api_router() -> APIRouter:
         from modules.ui.security import _check_rate_limit
         _check_rate_limit("pipeline_submit")
 
-        if not request.workspace_target or not request.workspace_target.strip():
-            raise HTTPException(status_code=400, detail="workspace_target is required")
-        if not os.path.exists(request.workspace_target):
-            raise HTTPException(status_code=400, detail=f"Path not found: {request.workspace_target}")
+        wt = (request.workspace_target or "").strip()
+        has_selector = any(
+            [
+                wt,
+                request.image_ids,
+                request.image_paths,
+                request.folder_ids,
+                request.folder_paths,
+            ]
+        )
+        if not has_selector:
+            raise HTTPException(status_code=400, detail="Provide workspace_target or at least one selector")
+
+        selector_request = compose_selector_request(
+            input_path=wt or None,
+            image_ids_raw=request.image_ids,
+            image_paths_raw=request.image_paths,
+            folder_ids_raw=request.folder_ids,
+            folder_paths_raw=request.folder_paths,
+            exclude_image_paths_raw=request.exclude_image_paths,
+            recursive=request.recursive,
+        )
+        preview = validate_and_preview(selector_request)
+        resolved_count = int(preview.get("preview_count") or 0)
+        if resolved_count <= 0:
+            raise HTTPException(status_code=400, detail="No images matched selectors")
+
+        if wt and not any([request.image_ids, request.image_paths, request.folder_ids, request.folder_paths]):
+            if not os.path.exists(wt):
+                raise HTTPException(status_code=400, detail=f"Path not found: {wt}")
 
         valid_ops = {"indexing", "metadata", "score", "tag", "cluster"}
         invalid_ops = [op for op in request.stage_codes if op not in valid_ops]
@@ -3118,9 +3155,13 @@ def create_api_router() -> APIRouter:
         if not request.stage_codes:
             raise HTTPException(status_code=400, detail="At least one stage_code is required")
 
-        is_file = os.path.isfile(request.workspace_target)
+        is_file = bool(wt and os.path.isfile(wt))
         if is_file and "cluster" in request.stage_codes:
             raise HTTPException(status_code=400, detail="Clustering requires a folder path, not a single file")
+        if "cluster" in request.stage_codes and not any([wt, request.folder_ids, request.folder_paths]):
+            raise HTTPException(status_code=400, detail="Clustering requires a folder selector")
+
+        queue_input_path = wt or "SELECTOR_PIPELINE"
 
         from modules import db
         first_op = request.stage_codes[0]
@@ -3145,14 +3186,14 @@ def create_api_router() -> APIRouter:
                     raise HTTPException(status_code=503, detail="Scoring runner not available")
                 if _scoring_runner.is_running:
                     return ApiResponse(success=False, message="Scoring runner is busy", data={"is_running": True})
-                success, message = _scoring_runner.run_single_image(request.workspace_target)
+                success, message = _scoring_runner.run_single_image(wt)
             elif first_op == "tag":
                 if _tagging_runner is None:
                     raise HTTPException(status_code=503, detail="Tagging runner not available")
                 if _tagging_runner.is_running:
                     return ApiResponse(success=False, message="Tagging runner is busy", data={"is_running": True})
                 success, message = _tagging_runner.run_single_image(
-                    request.workspace_target,
+                    wt,
                     request.custom_keywords,
                     request.generate_captions,
                 )
@@ -3168,8 +3209,8 @@ def create_api_router() -> APIRouter:
                 message=message,
                 data={
                     "workflow_run_id": None,
-                    "workspace_target": request.workspace_target,
-                    "input_path": request.workspace_target,
+                    "workspace_target": wt,
+                    "input_path": wt,
                     "workflow_template": request.workflow_template,
                     "active_stage_run": None,
                     "active_operation": None,
@@ -3207,51 +3248,60 @@ def create_api_router() -> APIRouter:
             target_phases = [op_to_phase_code.get(op) for op in request.stage_codes if op in ["indexing", "metadata", "score"]]
             
             job_id, queue_position = db.enqueue_job(
-                request.workspace_target,
+                queue_input_path,
                 phase_code=op_to_phase_code[first_op],
-                job_type="scoring", # Scoring runner handles indexing/metadata/scoring
-                queue_payload={
-                    "input_path": request.workspace_target,
-                    "workspace_target": request.workspace_target,
-                    "workflow_template": request.workflow_template,
-                    "stage_codes": request.stage_codes,
-                    "skip_existing": request.skip_existing,
-                    "target_phases": target_phases
-                },
+                job_type="scoring",  # Scoring runner handles indexing/metadata/scoring
+                queue_payload=serialize_queue_payload(
+                    {
+                        "input_path": wt or None,
+                        "workspace_target": wt or None,
+                        "workflow_template": request.workflow_template,
+                        "stage_codes": request.stage_codes,
+                        "skip_existing": request.skip_existing,
+                        "target_phases": target_phases,
+                    },
+                    preview,
+                ),
             )
         elif first_op == "tag":
             if _tagging_runner is None:
                 raise HTTPException(status_code=503, detail="Tagging runner not available")
             job_id, queue_position = db.enqueue_job(
-                request.workspace_target,
+                queue_input_path,
                 phase_code="keywords",
                 job_type="tagging",
-                queue_payload={
-                    "input_path": request.workspace_target,
-                    "workspace_target": request.workspace_target,
-                    "workflow_template": request.workflow_template,
-                    "stage_codes": request.stage_codes,
-                    "custom_keywords": request.custom_keywords,
-                    "overwrite": not request.skip_existing,
-                    "generate_captions": request.generate_captions,
-                },
+                queue_payload=serialize_queue_payload(
+                    {
+                        "input_path": wt or None,
+                        "workspace_target": wt or None,
+                        "workflow_template": request.workflow_template,
+                        "stage_codes": request.stage_codes,
+                        "custom_keywords": request.custom_keywords,
+                        "overwrite": not request.skip_existing,
+                        "generate_captions": request.generate_captions,
+                    },
+                    preview,
+                ),
             )
         else:
             if _clustering_runner is None:
                 raise HTTPException(status_code=503, detail="Clustering runner not available")
             job_id, queue_position = db.enqueue_job(
-                request.workspace_target,
+                queue_input_path,
                 phase_code="culling",
                 job_type="clustering",
-                queue_payload={
-                    "input_path": request.workspace_target,
-                    "workspace_target": request.workspace_target,
-                    "workflow_template": request.workflow_template,
-                    "stage_codes": request.stage_codes,
-                    "threshold": request.clustering_threshold,
-                    "time_gap": request.clustering_time_gap,
-                    "force_rescan": request.clustering_force_rescan,
-                },
+                queue_payload=serialize_queue_payload(
+                    {
+                        "input_path": wt or None,
+                        "workspace_target": wt or None,
+                        "workflow_template": request.workflow_template,
+                        "stage_codes": request.stage_codes,
+                        "threshold": request.clustering_threshold,
+                        "time_gap": request.clustering_time_gap,
+                        "force_rescan": request.clustering_force_rescan,
+                    },
+                    preview,
+                ),
             )
 
         if job_id is None:
@@ -3266,16 +3316,20 @@ def create_api_router() -> APIRouter:
             data={
                 "workflow_run_id": job_id,
                 "job_id": job_id,
-                "workspace_target": request.workspace_target,
-                "input_path": request.workspace_target,
+                "workspace_target": wt or queue_input_path,
+                "input_path": wt or queue_input_path,
+                "selector_source": queue_input_path,
                 "workflow_template": request.workflow_template,
                 "active_stage_run": first_op,
                 "active_operation": first_op,
+                "current_operation": first_op,
                 "queue_position": queue_position,
                 "stage_run_plan": stage_run_plan,
                 "phase_plan": stage_run_plan,
                 "remaining_stage_runs": request.stage_codes[1:],
                 "remaining_operations": request.stage_codes[1:],
+                "resolved_count": resolved_count,
+                "warnings": preview.get("warnings") or [],
             },
         )
 
