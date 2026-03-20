@@ -42,6 +42,9 @@ A **Gradio**-based web interface allows users to interact with the system.
 ### 7. API (`modules/api.py`)
 A **FastAPI** layer that exposes endpoints for the WebUI and potential external consumers, wrapping the underlying engine and runners.
 
+### 8. Runs queue (`jobs` table, `JobDispatcher`)
+Batch runs are queued in the database and drained by a background dispatcher after startup. **See [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md)** for persistence, dequeue ordering, and what happens to `running` jobs when the WebUI restarts.
+
 ## Data Flow
 
 1.  **Ingestion**: User selects a folder in the WebUI or triggers a job via MCP.

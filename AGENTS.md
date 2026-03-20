@@ -4,11 +4,7 @@ This document describes the AI agents and MCP (Model Context Protocol) server in
 
 ## Overview
 
-The Image Scoring project provides an MCP server that enables AI agents (like Cursor IDE's AI assistant) to interact with the application for debugging, monitoring, and analysis tasks.
-
-## MCP Server: `image-scoring`
-
-The MCP server exposes 22+ debugging and diagnostic tools that allow AI agents to:
+The Image Scoring project provides an MCP server that enables AI agents (like Cursor IDE's AI assistant) to interact with the application for debugging, monitoring, and analysis tasks:
 
 - **Query and analyze** the Firebird database
 - **Monitor** scoring and tagging jobs
@@ -17,29 +13,41 @@ The MCP server exposes 22+ debugging and diagnostic tools that allow AI agents t
 - **Validate** configuration and file paths
 - **Access** debug logs
 
+## MCP servers (Image Scoring)
+
+The same FastMCP app exposes **28** tools; Cursor can attach it in two ways (separate `mcpServers` entries).
+
+**Unique server names:** Each repo’s `.cursor/mcp.json` uses a workspace prefix so keys do not collide when Cursor merges configs: **`imgscore-py-*`** (Python / `image-scoring` workspace), **`imgscore-el-*`** (`electron-image-scoring` workspace). Shared tools such as Playwright or Firebird use the same prefix (`imgscore-py-playwright`, `imgscore-el-firebird`, …).
+
 ### Configuration
 
-Two MCP server configurations are available:
+Server key meanings:
 
-- **`image-scoring`** (stdio): Use when WebUI is not running. Diagnostics, DB queries, job monitoring.
-- **`image-scoring-webui`** (SSE): Use when WebUI is running. Same tools plus `execute_code` with full Gradio access.
+- **`imgscore-py-stdio`**: **Python** workspace — **stdio** with `cwd` / `PYTHONPATH` = `${workspaceFolder}`.
+- **`imgscore-el-stdio`**: **Electron** workspace — **stdio** with `cwd` / `PYTHONPATH` = sibling **image-scoring** (fixed path).
+- **`imgscore-py-sse`** / **`imgscore-el-sse`**: same WebUI **SSE** URL (`/mcp/sse`); use the key from the workspace you have open. Enables **`execute_code`** when `ENABLE_MCP_EXECUTE_CODE=1`.
+
+**Example — Python workspace** (`.cursor/mcp.json` in `image-scoring`):
 
 ```json
 {
   "mcpServers": {
-    "image-scoring": {
+    "imgscore-py-stdio": {
       "command": "python",
       "args": ["-m", "modules.mcp_server"],
-      "env": { "PYTHONPATH": "/path/to/image-scoring" }
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}" }
     },
-    "image-scoring-webui": {
-      "url": "http://localhost:7860/mcp/sse"
+    "imgscore-py-sse": {
+      "url": "http://127.0.0.1:7860/mcp/sse"
     }
   }
 }
 ```
 
-For `image-scoring-webui`, start the WebUI first (`run_webui.bat` or `python webui.py`), then Cursor connects via SSE.
+**Example — Electron workspace** (`.cursor/mcp.json` in `electron-image-scoring`): **`imgscore-el-stdio`** for stdio (same `command`/`args` as `imgscore-py-stdio`, but `cwd` / `PYTHONPATH` = absolute path to **image-scoring**), plus **`imgscore-el-sse`** for the same SSE URL when the WebUI is running.
+
+For SSE, start the WebUI first (`run_webui.bat` or `python webui.py`). Confirm the URL with **`GET /mcp-status`** → `expected_sse_url` if the port is not 7860. For **`execute_code`**, set **`ENABLE_MCP_EXECUTE_CODE=1`** on the WebUI process.
 
 ### Setup for Cursor IDE
 
@@ -84,64 +92,70 @@ ENABLE_MCP_SERVER=1 python webui.py
 
 ## Available Tools
 
-The MCP server provides 21 tools organized into categories:
+The MCP server registers **28** tools (see [`modules/mcp_server.py`](modules/mcp_server.py)). Summary:
 
-### 🔍 Diagnostic Tools (Start Here)
+### Diagnostic
 
-| Tool | Description | Use When |
-|------|-------------|----------|
-| `get_error_summary` | Quick overview of all errors | Initial investigation, health checks |
-| `check_database_health` | Data integrity validation | Before major operations, after migrations |
-| `get_model_status` | GPU/model loading status | Scoring failures, GPU issues |
+| Tool | Description |
+|------|-------------|
+| `get_error_summary` | Overview of failed jobs, missing scores, orphans |
+| `check_database_health` | Data integrity (orphans, duplicates, inconsistencies) |
+| `get_model_status` | GPU / PyTorch / TensorFlow / model load status |
+| `diagnose_phase_consistency` | Per-image vs folder phase status mismatches |
 
-### 📊 Data Query Tools
+### Data query
 
-| Tool | Description | Use When |
-|------|-------------|----------|
-| `get_database_stats` | Overall database statistics | Understanding collection state |
-| `query_images` | Flexible image queries with filters | Finding specific images, analyzing patterns |
-| `get_image_details` | Full image information | Investigating specific image issues |
-| `execute_sql` | Read-only SQL queries (SELECT only) | Complex queries not covered by other tools |
+| Tool | Description |
+|------|-------------|
+| `get_database_stats` | Counts, score distributions, averages |
+| `query_images` | Filtered listing (scores, rating, label, folder, etc.) |
+| `get_image_details` | Full row for a `file_path` |
+| `search_images_by_hash` | Lookup by `image_hash` (content hash) |
+| `execute_sql` | Read-only `SELECT` only |
 
-### ❌ Error Investigation Tools
+### Errors & paths
 
-| Tool | Description | Use When |
-|------|-------------|----------|
-| `get_failed_images` | Images with missing/failed scores | Finding images that need reprocessing |
-| `get_incomplete_images` | Images missing data | Data quality checks |
-| `validate_file_paths` | Check if files exist | Finding moved/deleted files |
+| Tool | Description |
+|------|-------------|
+| `get_failed_images` | Missing key scores (general, technical, spaq, koniq, …) |
+| `get_incomplete_images` | Broader “incomplete” rows (scores, rating, label) |
+| `validate_file_paths` | Spot-check files on disk |
 
-### ⚡ Performance & Monitoring
+### Performance & jobs
 
-| Tool | Description | Use When |
-|------|-------------|----------|
-| `get_performance_metrics` | Processing statistics | Performance analysis, bottleneck identification |
-| `get_runner_status` | Active job status | Monitoring active processing |
-| `get_recent_jobs` | Job history | Reviewing past operations |
-| `get_pipeline_stats` | Pipeline state | Understanding current processing state |
+| Tool | Description |
+|------|-------------|
+| `get_performance_metrics` | Job duration, throughput, success rate (recent window) |
+| `get_runner_status` | Scoring / tagging / clustering / selection runners |
+| `get_recent_jobs` | Job history |
+| `get_pipeline_stats` | Runner + dispatcher + queue config snapshot |
+| `run_processing_job` | Start scoring, tagging, or clustering job (requires runners; WebUI/SSE typical for scoring/tagging) |
 
-### 🔧 Configuration & System
+### Config & logs
 
-| Tool | Description | Use When |
-|------|-------------|----------|
-| `validate_config` | Configuration validation | Configuration issues, setup verification |
-| `get_config` | Read configuration | Checking current settings |
-| `set_config_value` | Update configuration | Adjusting settings (use carefully) |
-| `read_debug_log` | Read debug log entries | Investigating runtime issues |
+| Tool | Description |
+|------|-------------|
+| `validate_config` | Structural config checks + optional DB ping (`database_reachable`) |
+| `get_config` | Full `config.json` |
+| `set_config_value` | Persist a single key (dot paths supported) |
+| `read_debug_log` | Tail of debug log |
 
-### 📝 Analysis & Utilities
+### Folders, stacks, similarity
 
-| Tool | Description | Use When |
-|------|-------------|----------|
-| `get_stacks_summary` | Stack/cluster analysis | Analyzing image clusters |
-| `get_folder_tree` | Folder structure with counts | Understanding folder organization |
-| `search_images_by_hash` | Find by content hash (SHA256) | Finding duplicates, moved files |
+| Tool | Description |
+|------|-------------|
+| `get_folder_tree` | Folders with image counts |
+| `get_stacks_summary` | Stack/cluster summary |
+| `search_similar_images` | Embedding cosine similarity to an example image |
+| `find_near_duplicates` | Near-duplicate pairs in a folder |
+| `propagate_tags` | Propagate keywords to neighbors (supports `dry_run`) |
+| `find_outliers` | Atypical images via embedding stats |
 
-### 🐍 Execute Code (image-scoring-webui only)
+### Execute code (SSE + opt-in)
 
-| Tool | Description | Use When |
-|------|-------------|----------|
-| `execute_code` | Run Python in WebUI process with `gr`, `demo`, `components`, runners, `db`, `config` | Debugging Gradio UI, inspecting component state, prototyping |
+| Tool | Description |
+|------|-------------|
+| `execute_code` | `exec` in WebUI process (`gr`, `demo`, `components`, runners, `db`, `config`). Requires Cursor server **`imgscore-py-sse`** or **`imgscore-el-sse`** (same endpoint), WebUI running, and **`ENABLE_MCP_EXECUTE_CODE=1`**. Assign to `result` to return a value. |
 
 ## Common Workflows
 
@@ -205,18 +219,18 @@ The MCP server provides 21 tools organized into categories:
 ## Important Notes
 
 - **Database Tools**: Most tools require database access. If database is unavailable, they return a clear error message.
-- **Non-DB Tools**: `get_model_status`, `validate_config`, `get_pipeline_stats` work without database.
+- **Non-DB tools**: `get_model_status` does not require a DB connection. `get_pipeline_stats` mostly uses config + in-process runners (partial without DB). `validate_config` runs structural checks without DB; when the DB is initialized, the MCP tool adds `database_reachable`.
 - **Safety**: `execute_sql` only allows SELECT queries. Dangerous operations are blocked.
 - **Performance**: Some tools (like `validate_file_paths`) can be slow on large datasets. Use `limit` parameter.
 - **Real-time**: `get_runner_status` and `get_pipeline_stats` show current state, others query historical data.
-- **execute_code**: Only available when connected via `image-scoring-webui` (SSE). Assign to `result` in your code to return a value. Dev/debug use only.
+- **execute_code**: Only works when Cursor uses **`imgscore-py-sse`** or **`imgscore-el-sse`**, Gradio context is present, and **`ENABLE_MCP_EXECUTE_CODE=1`**. Assign to `result` in your code to return a value. Dev/debug use only.
 
 ## Tool Availability
 
 All tools are available when:
 - MCP server is running (via Cursor IDE or standalone)
 - Database is initialized (for DB-requiring tools)
-- Runners are set (for `get_runner_status`, `get_pipeline_stats`)
+- Runners are set (for `get_runner_status`, `get_pipeline_stats`, `run_processing_job`)
 
 ## Documentation References
 
@@ -274,10 +288,13 @@ Agent: "How fast is the system processing images?"
 3. Check Cursor IDE console for MCP server errors
 4. Ensure Python environment has MCP SDK installed
 
+### Duplicate MCP servers in Cursor (same name twice)
+
+If you still see two **`playwright`**, two **`image-scoring-mcp-sse`**, etc., your **user-level** MCP config is probably merging with **project** `.cursor/mcp.json` and reusing old keys. Open `%APPDATA%\Cursor\User\globalStorage\cursor.mcp\mcp.json` (or Cursor Settings → MCP) and **remove or rename** duplicates, or align them with the **`imgscore-py-*` / `imgscore-el-*`** keys from this repo.
+
 ## Future Enhancements
 
 Potential additions to the MCP server:
-- Image scoring tools (trigger scoring jobs)
 - Batch operations (bulk updates, exports)
 - Advanced analytics (trends, correlations)
 - Configuration templates and presets

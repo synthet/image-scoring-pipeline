@@ -9,10 +9,12 @@ from datetime import datetime
 from PIL import Image
 from sklearn.cluster import AgglomerativeClustering
 from modules import db, utils, config
-from modules.events import event_manager
+from modules.events import event_manager, broadcast_run_log_line
 from modules.phases import PhaseCode, PhaseStatus
 from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
+
+logger = logging.getLogger(__name__)
 
 CLUSTER_VERSION = "1.0.0"  # bump when clustering algorithm or model changes
 
@@ -826,8 +828,12 @@ class ClusteringRunner:
         return "Started"
         
     def _run_internal(self, input_path, threshold, time_gap, force_rescan, job_id=None, resolved_image_ids=None):
-        def log(msg):
+        def log(msg, level="INFO"):
             self.log_history.append(msg)
+            if job_id:
+                from modules.events import broadcast_run_log_line
+                broadcast_run_log_line(job_id, msg, level=level)
+            logger.info(f"[Job {job_id}] {msg}")
             
         log(f"Starting Clustering on {input_path or 'all unprocessed folders'}...")
         
@@ -865,6 +871,8 @@ class ClusteringRunner:
                     if job_id:
                          event_manager.broadcast_threadsafe("job_progress", {
                              "job_id": job_id,
+                             "job_type": "clustering",
+                             "phase_code": "culling",
                              "current": cur,
                              "total": tot,
                              "message": msg
@@ -873,17 +881,17 @@ class ClusteringRunner:
                     self.status_message = str(msg_tuple)
             
             if job_id:
-                db.update_job_status(job_id, "completed")
+                db.update_job_status(job_id, "completed", log="\n".join(self.log_history))
                 event_manager.broadcast_threadsafe("job_completed", {
                     "job_id": job_id, 
                     "status": "completed"
                 })
                 
         except Exception as e:
-            log(f"Error: {e}")
+            log(f"Error: {e}", level="ERROR")
             self.status_message = f"Error: {e}"
             if job_id:
-                db.update_job_status(job_id, "failed", str(e))
+                db.update_job_status(job_id, "failed", log="\n".join(self.log_history))
                 event_manager.broadcast_threadsafe("job_completed", {
                     "job_id": job_id, 
                     "status": "failed", 

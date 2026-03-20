@@ -60,17 +60,16 @@ This project includes an MCP server exposing debugging tools to Cursor and agent
 
 ### Quick Reference
 
-**Database & Stats:**
-- `get_database_stats`, `query_images`, `get_image_details`, `execute_sql`
+**Database & stats:** `get_database_stats`, `query_images`, `get_image_details`, `search_images_by_hash`, `execute_sql`
 
-**Error & Health Diagnostics:**
-- `get_failed_images`, `get_error_summary`, `check_database_health`, `validate_file_paths`
+**Error & health:** `get_failed_images`, `get_incomplete_images`, `get_error_summary`, `check_database_health`, `validate_file_paths`, `diagnose_phase_consistency`
 
-**Performance & Monitoring:**
-- `get_performance_metrics`, `get_runner_status`, `get_recent_jobs`, `get_pipeline_stats`
+**Performance & jobs:** `get_performance_metrics`, `get_runner_status`, `get_recent_jobs`, `get_pipeline_stats`, `run_processing_job`
 
-**System Diagnostics:**
-- `get_model_status`, `validate_config`, `read_debug_log`
+**System & config:** `get_model_status`, `validate_config`, `get_config`, `set_config_value`, `read_debug_log`
 
-**Analysis Tools:**
-- `get_incomplete_images`, `get_stacks_summary`, `get_folder_tree`, `search_images_by_hash`
+**Folders & stacks:** `get_stacks_summary`, `get_folder_tree`
+
+**Similarity & tagging:** `search_similar_images`, `find_near_duplicates`, `propagate_tags`, `find_outliers`
+
+**Gradio debug:** Cursor server `imgscore-py-sse` or `imgscore-el-sse` + `ENABLE_MCP_EXECUTE_CODE=1` → tool `execute_code`

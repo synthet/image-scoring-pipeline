@@ -6,7 +6,7 @@ from modules.engine import BatchImageProcessor
 import sys
 from pathlib import Path
 from modules import pipeline
-from modules.events import event_manager
+from modules.events import event_manager, broadcast_run_log_line
 from modules import score_normalization as snorm
 from modules.phases import normalize_phase_codes
 
@@ -100,9 +100,10 @@ class ScoringRunner:
         """
         db.update_job_status(job_id, "running")
         event_manager.broadcast_threadsafe("job_started", {"job_id": job_id, "job_type": "scoring", "input_path": input_path})
-        
+
         def log(msg):
             self.log_history.append(msg)
+            broadcast_run_log_line(job_id, msg)
             # print(msg, flush=True) # Optional debugging
             
         log(f"Starting batch processing...")
@@ -138,7 +139,10 @@ class ScoringRunner:
         def on_progress(cur, tot):
             self.current_count = cur
             self.total_count = tot
-            event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": cur, "total": tot})
+            event_manager.broadcast_threadsafe(
+                "job_progress",
+                {"job_id": job_id, "job_type": "scoring", "current": cur, "total": tot},
+            )
             
         # Initialize processor
         processor = BatchImageProcessor(
@@ -332,7 +336,10 @@ class ScoringRunner:
         def on_progress(cur, tot):
             self.current_count = cur
             self.total_count = tot
-            event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": cur, "total": tot})
+            event_manager.broadcast_threadsafe(
+                "job_progress",
+                {"job_id": job_id, "job_type": "fix_db", "current": cur, "total": tot},
+            )
 
         # Initialize processor
         processor = BatchImageProcessor(

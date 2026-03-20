@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import logging
 from typing import List, Any, Dict
@@ -83,5 +84,23 @@ class EventManager:
     def set_loop(self, loop):
         self.loop = loop
 
-# Global instance
+
+# Global instance (defined before broadcast_run_log_line so helpers can reference it)
 event_manager = EventManager()
+
+
+def broadcast_run_log_line(run_id: int, message: str, level: str = "INFO") -> None:
+    """Push one run-scoped log line to WebSocket clients (React /ui/runs detail)."""
+    try:
+        ts = (
+            datetime.datetime.now(datetime.timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        event_manager.broadcast_threadsafe(
+            "log_line",
+            {"run_id": int(run_id), "level": level, "message": str(message), "ts": ts},
+        )
+    except Exception:
+        pass

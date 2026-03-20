@@ -66,6 +66,17 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _sanitize_for_mcp(obj: Any) -> Any:
+    """Make dict/list values JSON-safe for MCP responses (e.g. strip BLOB bytes)."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_mcp(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_mcp(x) for x in obj]
+    if isinstance(obj, (bytes, memoryview)):
+        return f"<binary len={len(obj)}>"
+    return obj
+
+
 def _require_db(fn):
     """Decorator that returns an error dict if the database is not available."""
     import functools
@@ -312,6 +323,19 @@ def get_image_details(file_path: str) -> dict:
 
 @mcp.tool(annotations=_RO)
 @_require_db
+def search_images_by_hash(image_hash: str) -> dict:
+    """Find an image by content hash (image_hash column, typically SHA-256). Returns file_paths when found."""
+    h = (image_hash or "").strip()
+    if not h:
+        return {"error": "image_hash is required"}
+    row = db.get_image_by_hash(h)
+    if not row:
+        return {"found": False, "image": None}
+    return {"found": True, "image": _sanitize_for_mcp(row)}
+
+
+@mcp.tool(annotations=_RO)
+@_require_db
 def execute_sql(query: str, params: list = None) -> dict:
     """Execute a read-only SQL SELECT query against the database. Only SELECT queries are allowed for safety."""
     query = query.strip()
@@ -494,6 +518,17 @@ def get_failed_images(limit: int = 50) -> list:
             return results
         except Exception as e:
             return [{"error": str(e)}]
+
+
+@mcp.tool(annotations=_RO)
+@_require_db
+def get_incomplete_images(limit: int = 100) -> list:
+    """Images with missing composite scores, model scores, rating, or label (broader than get_failed_images)."""
+    try:
+        rows = db.get_incomplete_records(limit=limit)
+        return [_sanitize_for_mcp(dict(row)) for row in rows]
+    except Exception as e:
+        return [{"error": str(e)}]
 
 
 @mcp.tool(annotations=_RO)
@@ -1073,6 +1108,27 @@ def get_config() -> dict:
     return config.load_config()
 
 
+@mcp.tool(annotations=_RO)
+def validate_config() -> dict:
+    """Validate config.json structure and referenced paths; optionally ping the database when available."""
+    out = dict(config.validate_config())
+    out["config_path"] = str(config.CONFIG_FILE)
+    if _db_available:
+        try:
+            with db.connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT 1 FROM RDB$DATABASE")
+                c.fetchone()
+            out["database_reachable"] = True
+        except Exception as e:
+            out["database_reachable"] = False
+            out["database_error"] = str(e)
+    else:
+        out["database_reachable"] = None
+        out["database_note"] = "Database not initialized; structural checks only."
+    return out
+
+
 @mcp.tool(annotations=_RW)
 def set_config_value(key: str, value: Any) -> dict:
     """Set a configuration value in config.json."""
@@ -1200,7 +1256,7 @@ def find_outliers(
 
 @mcp.tool(annotations=_RW_DESTRUCTIVE if MCP_AVAILABLE else None)
 def execute_code(code: str) -> dict:
-    """Execute Python code in the WebUI process with access to gr, demo, and all Gradio components. Only available when connected via SSE (image-scoring-webui). Globals: gr, demo, components, runner, tagging_runner, orchestrator, db, config."""
+    """Execute Python code in the WebUI process with access to gr, demo, and all Gradio components. Only when Cursor uses SSE (server keys imgscore-py-sse or imgscore-el-sse). Globals: gr, demo, components, runner, tagging_runner, orchestrator, db, config."""
     global _gradio_context
     if not _env_flag("ENABLE_MCP_EXECUTE_CODE", default=False):
         return {
@@ -1208,7 +1264,7 @@ def execute_code(code: str) -> dict:
         }
     if _gradio_context is None:
         return {
-            "error": "Gradio context not available. Start the WebUI (run_webui.bat or python webui.py) and connect Cursor to image-scoring-webui via http://localhost:7860/mcp/sse"
+            "error": "Gradio context not available. Start the WebUI (run_webui.bat or python webui.py) and connect Cursor MCP (imgscore-py-sse or imgscore-el-sse) to http://127.0.0.1:<port>/mcp/sse (see GET /mcp-status → expected_sse_url)"
         }
     try:
         import gradio as gr

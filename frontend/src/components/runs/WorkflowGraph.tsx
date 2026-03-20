@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
 import {
-  CheckCircle2, XCircle, Loader2, Circle, MinusCircle, ChevronRight,
+  CheckCircle2, XCircle, Loader2, Circle, MinusCircle, ChevronRight, AlertTriangle,
 } from 'lucide-react'
 import { STAGE_DISPLAY } from '@/types/api'
 import type { Stage, StageState } from '@/types/api'
@@ -91,6 +91,9 @@ function StageNode({ stage, liveProgress, isSelected, onClick }: StageNodeProps)
         {stage.state === 'failed' && (
           <span className="text-[10px] text-[#f44747] truncate block">Failed</span>
         )}
+        {stage.state === 'interrupted' && (
+          <span className="text-[10px] text-[#cca700] truncate block">Interrupted</span>
+        )}
       </div>
 
       {liveProgress && liveProgress.throughput > 0 && (
@@ -110,6 +113,8 @@ function StateIcon({ state }: { state: StageState }) {
       return <Loader2 size={14} className="text-[#4fc1ff] shrink-0 animate-spin" />
     case 'failed':
       return <XCircle size={14} className="text-[#f44747] shrink-0" />
+    case 'interrupted':
+      return <AlertTriangle size={14} className="text-[#cca700] shrink-0" />
     case 'skipped':
       return <MinusCircle size={14} className="text-[#6d6d6d] shrink-0" />
     default:
@@ -124,6 +129,7 @@ function StageBadgeText({ state }: { state: StageState }) {
     completed: 'text-[#89d185]',
     failed: 'text-[#f44747]',
     skipped: 'text-[#6d6d6d]',
+    interrupted: 'text-[#cca700]',
   }
   const labels: Record<StageState, string> = {
     pending: 'Pending',
@@ -131,6 +137,7 @@ function StageBadgeText({ state }: { state: StageState }) {
     completed: 'Done',
     failed: 'Failed',
     skipped: 'Skipped',
+    interrupted: 'Interrupted',
   }
   return <span className={clsx('text-[10px]', colors[state])}>{labels[state]}</span>
 }

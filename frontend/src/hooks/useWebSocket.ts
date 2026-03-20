@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useWsStore } from '@/stores/wsStore'
+import { adaptBackendMessage } from '@/utils/adaptBackendMessage'
 import type { WsEvent } from '@/types/api'
 
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/updates`
@@ -25,8 +26,10 @@ export function useWebSocket() {
       ws.onmessage = (ev) => {
         if (cancelled) return
         try {
-          const event = JSON.parse(ev.data as string) as WsEvent
-          dispatch(event)
+          const raw = JSON.parse(ev.data as string) as Record<string, unknown>
+          const { events, bumpRuns } = adaptBackendMessage(raw)
+          if (bumpRuns) store.bumpRunsVersion()
+          for (const event of events) dispatch(event)
         } catch {
           // ignore non-JSON messages
         }

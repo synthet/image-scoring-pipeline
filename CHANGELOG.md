@@ -9,12 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.13.0] - 2026-03-19
+
 ### Added
 - **Pipeline queue board**: Enriched `get_queued_jobs`, job priority/pause/restart API actions, queue table UI (`#33`).
 - **Scoped pipeline controls**: REST endpoints under `/api/pipeline/run/*`, `/api/pipeline/phase/restart-from`, `/api/pipeline/step/rerun`, and Gradio Scoped Controls panel (`#35`).
 - **Pipeline graph view**: Phase dependency graph with StepRun breakdown (`#36`).
 - **Selector composer**: `modules/pipeline_selector_composer.py`, Target Composer panel, selector-aware submit payloads (`#37`).
 - **Gradio fallback Pipeline tab**: Optional `ui.use_gradio_fallback` / `GRADIO_FALLBACK_UI`, conditional asset loading (`#46`).
+- **Gradio status page**: `modules/ui/status_gradio.py` minimal operator status at `/app`.
+- **Docs**: `docs/technical/RUNS_QUEUE_AND_RESTART.md`; maintenance scripts under `scripts/maintenance/`.
+
+### Changed
+- **WebUI / FastAPI**: `webui.py`, `modules/ui/app.py` refactors; WebSocket and events wiring.
+- **API, DB, scoring, clustering, tagging**: Ongoing pipeline and queue integration updates.
+- **MCP & agent docs**: `modules/mcp_server.py`, `mcp_config.json`, `AGENTS.md`, MCP debugging references.
+- **Frontend (SPA)**: Runs UI (`StagePanel`, `WorkflowGraph`), `useWebSocket`, Vitest setup, `api` types.
 
 ### Notes
 - **PR #32** (`extend-lifecycle-enums-and-transitions-bjkbyh`) not merged: lifecycle + workflow run endpoints already landed via **#31**; branch conflicted with current `api.py` / IPC models.

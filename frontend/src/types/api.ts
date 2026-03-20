@@ -37,6 +37,7 @@ export type StageState =
   | 'completed'
   | 'failed'
   | 'skipped'
+  | 'interrupted'
 
 // UI-facing stage codes
 export type StageCode =

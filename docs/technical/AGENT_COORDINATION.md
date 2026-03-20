@@ -30,7 +30,7 @@ The integration relies on two primary shared components:
 
 ## 🔍 Troubleshooting with MCP
 
-Agents in both projects have access to the `image-scoring` MCP server. Use it to diagnose cross-project issues:
+Agents use **stdio** MCP against the Python backend: **`imgscore-py-stdio`** in the **image-scoring** workspace; **`imgscore-el-stdio`** in **electron-image-scoring** (same server, different `cwd`). For WebUI / **`execute_code`**, enable **`imgscore-py-sse`** or **`imgscore-el-sse`** (unique keys, same URL). Use these to diagnose cross-project issues:
 
 | Tool | Usage in Coordination |
 |------|------------------------|

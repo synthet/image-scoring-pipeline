@@ -1,177 +1,99 @@
 # MCP Tools Quick Reference for AI Agents
 
-This document provides a quick reference for AI agents using the Image Scoring MCP server debugging tools.
+This document tracks the tools registered in [`modules/mcp_server.py`](../modules/mcp_server.py) (28 tools).
 
-## Tool Categories
+## Connection modes
 
-### 🔍 Diagnostic Tools (Start Here)
-Use these first when investigating issues:
+- **`imgscore-py-stdio`**: **Python workspace** — stdio; `cwd` / `PYTHONPATH` = `${workspaceFolder}` (this repo).
+- **`imgscore-el-stdio`**: **Electron workspace** — stdio; `cwd` / `PYTHONPATH` = path to sibling **image-scoring** checkout.
+- **`imgscore-py-sse`** / **`imgscore-el-sse`**: SSE to WebUI (same URL; pick the key for your workspace). Default `http://127.0.0.1:7860/mcp/sse` (confirm with `GET /mcp-status` → `expected_sse_url`).
+- **`execute_code`**: requires SSE **and** `ENABLE_MCP_EXECUTE_CODE=1` on the WebUI process.
 
-1. **`get_error_summary`** - Quick overview of all errors
-   - Shows failed jobs, missing scores, orphaned records
-   - No parameters needed
-   - **Use when:** Initial investigation, health checks
+## Tool index
 
-2. **`check_database_health`** - Data integrity validation
-   - Finds orphaned records, duplicates, inconsistencies
-   - Returns status: "healthy", "unhealthy", or "error"
-   - **Use when:** Before major operations, after migrations
+### Diagnostic (4)
 
-3. **`get_model_status`** - System configuration check
-   - GPU availability, model loading, CUDA/PyTorch/TensorFlow status
-   - **Use when:** Scoring failures, GPU issues, model loading problems
+1. **`get_error_summary`** — Failed jobs, missing scores, orphans  
+2. **`check_database_health`** — Integrity issues (orphans, duplicates, …)  
+3. **`get_model_status`** — GPU / CUDA / model load  
+4. **`diagnose_phase_consistency`** — `image_id` (+ optional `folder_path`): folder vs image phase mismatch  
 
-### 📊 Data Query Tools
+### Data query (5)
 
-4. **`get_database_stats`** - Overall statistics
-   - Image counts, score distributions, averages
-   - **Use when:** Understanding collection state
+5. **`get_database_stats`** — Aggregate stats  
+6. **`query_images`** — Filters, sort, pagination  
+7. **`get_image_details`** — By `file_path`  
+8. **`search_images_by_hash`** — By `image_hash`  
+9. **`execute_sql`** — `SELECT` only  
 
-5. **`query_images`** - Flexible image queries
-   - Filter by: score range, rating, label, keyword, folder
-   - Sort and paginate results
-   - **Use when:** Finding specific images, analyzing patterns
+### Errors & paths (3)
 
-6. **`get_image_details`** - Full image information
-   - Requires: `file_path`
-   - **Use when:** Investigating specific image issues
+10. **`get_failed_images`** — Missing key scores (`limit` default 50)  
+11. **`get_incomplete_images`** — Broader incomplete rows (`limit` default 100)  
+12. **`validate_file_paths`** — Filesystem check (`limit` default 100)  
 
-### ❌ Error Investigation Tools
+### Performance & jobs (5)
 
-7. **`get_failed_images`** - Images with missing/failed scores
-   - Shows which scores are missing
-   - Optional: `limit` (default: 50)
-   - **Use when:** Finding images that need reprocessing
+13. **`get_performance_metrics`** — Recent job stats (`days` default 7)  
+14. **`get_runner_status`** — Runner progress/logs  
+15. **`get_recent_jobs`** — History (`limit` default 10)  
+16. **`get_pipeline_stats`** — Runners + dispatcher + queue sizes  
+17. **`run_processing_job`** — `job_type`: scoring | tagging | clustering; `input_path`; optional `args`  
 
-8. **`get_incomplete_images`** - Images missing data
-   - Similar to `get_failed_images` but broader scope
-   - **Use when:** Data quality checks
+### Config & logs (4)
 
-9. **`validate_file_paths`** - Check if files exist
-   - Optional: `limit` (default: 100)
-   - **Use when:** Finding moved/deleted files
+18. **`validate_config`** — Structural checks (`ok`, `issues`, `warnings`); adds `database_reachable` when DB init succeeded  
+19. **`get_config`** — Full config dict  
+20. **`set_config_value`** — Dot-key update  
+21. **`read_debug_log`** — `lines` default 100  
 
-### ⚡ Performance & Monitoring
+### Folders, stacks, similarity (6)
 
-10. **`get_performance_metrics`** - Processing statistics
-    - Images/hour, success rates, job durations
-    - **Use when:** Performance analysis, bottleneck identification
+22. **`get_folder_tree`** — Optional `root_path`  
+23. **`get_stacks_summary`** — Optional `folder_path`  
+24. **`search_similar_images`** — `example_path` or `example_image_id`  
+25. **`find_near_duplicates`** — Optional `threshold`, `folder_path`, `limit`  
+26. **`propagate_tags`** — Keyword propagation (`dry_run` default true)  
+27. **`find_outliers`** — Embedding outlier analysis  
 
-11. **`get_runner_status`** - Active job status
-    - Progress, logs, running state
-    - **Use when:** Monitoring active processing
+### Execute code (1)
 
-12. **`get_recent_jobs`** - Job history
-    - Optional: `limit` (default: 10)
-    - **Use when:** Reviewing past operations
+28. **`execute_code`** — Python in WebUI; SSE + `ENABLE_MCP_EXECUTE_CODE=1`; assign `result` to return  
 
-13. **`get_pipeline_stats`** - Pipeline state
-    - Queue sizes, processor state, progress
-    - **Use when:** Understanding current processing state
+## Common workflows
 
-### 🔧 Configuration & System
-
-14. **`validate_config`** - Configuration validation
-    - Checks paths, queue sizes, required sections
-    - **Use when:** Configuration issues, setup verification
-
-15. **`get_config`** - Read configuration
-    - Returns full config.json contents
-    - **Use when:** Checking current settings
-
-16. **`set_config_value`** - Update configuration
-    - Requires: `key`, `value`
-    - **Use when:** Adjusting settings (use carefully)
-
-### 📝 Analysis & Utilities
-
-17. **`get_stacks_summary`** - Stack/cluster analysis
-    - Optional: `folder_path` filter
-    - **Use when:** Analyzing image clusters
-
-18. **`get_folder_tree`** - Folder structure
-    - Optional: `root_path` filter
-    - **Use when:** Understanding folder organization
-
-19. **`search_images_by_hash`** - Find by content hash
-    - Requires: `image_hash` (SHA256)
-    - **Use when:** Finding duplicates, moved files
-
-20. **`read_debug_log`** - Read debug logs
-    - Optional: `lines` (default: 100)
-    - **Use when:** Investigating runtime issues
-
-21. **`execute_sql`** - Custom SQL queries
-    - Requires: `query` (SELECT only)
-    - Optional: `params` array
-    - **Use when:** Complex queries not covered by other tools
-
-## Common Debugging Workflows
-
-### Workflow 1: Investigate Scoring Failures
+### Scoring failures
 ```
-1. get_error_summary → Identify scope of failures
-2. get_failed_images → Get specific failed images
-3. get_model_status → Check if GPU/models are working
-4. get_runner_status → Check if job is still running
-5. read_debug_log → See detailed error messages
+get_error_summary → get_failed_images → get_model_status → read_debug_log
 ```
 
-### Workflow 2: System Health Check
+### System health
 ```
-1. check_database_health → Data integrity
-2. get_model_status → System configuration
-3. validate_config → Configuration validity
-4. get_performance_metrics → Performance baseline
-5. validate_file_paths → File system consistency
+check_database_health → get_model_status → validate_config → validate_file_paths
 ```
 
-### Workflow 3: Performance Investigation
+### Performance
 ```
-1. get_performance_metrics → Current performance stats
-2. get_recent_jobs → Recent job history
-3. get_pipeline_stats → Current pipeline state
-4. get_runner_status → Active job details
-5. execute_sql → Custom performance queries if needed
+get_performance_metrics → get_recent_jobs → get_pipeline_stats → get_runner_status
 ```
 
-### Workflow 4: Data Quality Audit
+### Data quality
 ```
-1. get_database_stats → Overall statistics
-2. check_database_health → Integrity issues
-3. get_incomplete_images → Missing data
-4. validate_file_paths → Missing files
-5. get_error_summary → Error patterns
+get_database_stats → check_database_health → get_incomplete_images → validate_file_paths
 ```
 
-## Important Notes
+## Important notes
 
-- **Database Tools**: Most tools require database access. If database is unavailable, they return a clear error message.
-- **Non-DB Tools**: `get_model_status`, `validate_config`, `get_pipeline_stats` work without database.
-- **Safety**: `execute_sql` only allows SELECT queries. Dangerous operations are blocked.
-- **Performance**: Some tools (like `validate_file_paths`) can be slow on large datasets. Use `limit` parameter.
-- **Real-time**: `get_runner_status` and `get_pipeline_stats` show current state, others query historical data.
+- Most tools need a working DB (`prepare_mcp_embedded` / `db.init_db`).  
+- **`get_model_status`** does not require DB.  
+- **`validate_config`** structural checks work without DB; MCP adds DB reachability when available.  
+- **`execute_sql`**: SELECT only; dangerous patterns blocked.  
+- **`validate_file_paths`** / **`get_incomplete_images`** can be heavy — use `limit`.  
 
-## Tool Availability
+## Quick decision tree
 
-All tools are available when:
-- MCP server is running (via Cursor IDE or standalone)
-- Database is initialized (for DB-requiring tools)
-- Runners are set (for `get_runner_status`, `get_pipeline_stats`)
-
-## Quick Decision Tree
-
-**"Why did scoring fail?"**
-→ `get_error_summary` → `get_failed_images` → `get_model_status` → `read_debug_log`
-
-**"Is the system healthy?"**
-→ `check_database_health` → `get_model_status` → `validate_config`
-
-**"How fast is processing?"**
-→ `get_performance_metrics` → `get_runner_status` → `get_pipeline_stats`
-
-**"Find images with X property"**
-→ `query_images` with filters → `get_image_details` for specifics
-
-**"What's in the database?"**
-→ `get_database_stats` → `get_folder_tree` → `get_stacks_summary`
+- **"Why did scoring fail?"** → `get_error_summary` → `get_failed_images` → `get_model_status` → `read_debug_log`  
+- **"Is the system healthy?"** → `check_database_health` → `get_model_status` → `validate_config`  
+- **"How fast is processing?"** → `get_performance_metrics` → `get_runner_status` → `get_pipeline_stats`  
+- **"Find images with X"** → `query_images` → `get_image_details`  
+- **"What's in the database?"** → `get_database_stats` → `get_folder_tree` → `get_stacks_summary`  

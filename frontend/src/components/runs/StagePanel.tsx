@@ -28,7 +28,7 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
   const { data: steps } = useQuery({
     queryKey: ['run-steps', runId, stage.phase_code],
     queryFn: () => runsApi.getSteps(runId, stage.phase_code),
-    enabled: stage.state === 'running' || stage.state === 'completed',
+    enabled: stage.state === 'running' || stage.state === 'completed' || stage.state === 'interrupted',
     refetchInterval: stage.state === 'running' ? 3000 : false,
   })
 
@@ -90,7 +90,7 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
               Stop
             </Button>
           )}
-          {(stage.state === 'failed' || stage.state === 'completed') && (
+          {(stage.state === 'failed' || stage.state === 'completed' || stage.state === 'interrupted') && (
             <Button
               size="xs"
               variant="secondary"
@@ -101,7 +101,7 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
               Re-run
             </Button>
           )}
-          {(stage.state === 'pending' || stage.state === 'failed') && (
+          {(stage.state === 'pending' || stage.state === 'failed' || stage.state === 'interrupted') && (
             <Button
               size="xs"
               variant="ghost"
@@ -155,6 +155,14 @@ export function StagePanel({ runId, stage }: StagePanelProps) {
             <pre className="whitespace-pre-wrap font-mono text-[11px] overflow-auto max-h-24">
               {stage.error_message}
             </pre>
+          </div>
+        </div>
+      )}
+      {stage.state === 'interrupted' && (
+        <div className="px-4 py-3 border-b border-[#3c3c3c]">
+          <div className="flex items-start gap-2 text-xs text-[#cca700]">
+            <AlertCircle size={13} className="shrink-0 mt-0.5" />
+            <span>This stage was in progress when the server stopped (e.g. restart or crash).</span>
           </div>
         </div>
       )}

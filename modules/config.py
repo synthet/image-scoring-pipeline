@@ -227,3 +227,52 @@ def get_default_allowed_paths():
     allowed.extend(drives)
     
     return allowed
+
+
+def validate_config() -> dict:
+    """
+    Structural validation of config.json (no DB connection).
+    Returns dict with ok (bool), issues (list of str), and optional warnings.
+    """
+    issues = []
+    warnings = []
+
+    if not CONFIG_FILE.exists():
+        return {
+            "ok": False,
+            "issues": [f"Configuration file not found: {CONFIG_FILE}"],
+            "warnings": warnings,
+        }
+
+    data = load_config()
+    if not data:
+        issues.append("config.json is missing, empty, or failed to parse")
+
+    proc = data.get("processing") or {}
+    for key in ("prep_queue_size", "scoring_queue_size", "result_queue_size"):
+        v = proc.get(key)
+        if v is not None and (not isinstance(v, int) or v <= 0):
+            issues.append(f"processing.{key} must be a positive integer (got {v!r})")
+
+    cb = proc.get("clustering_batch_size")
+    if cb is not None and (not isinstance(cb, int) or cb <= 0):
+        issues.append(f"processing.clustering_batch_size must be a positive integer (got {cb!r})")
+
+    db_sec = data.get("database") or {}
+    if not str(db_sec.get("filename") or "").strip():
+        issues.append("database.filename should be set to the Firebird database file name")
+
+    for path_key in ("scoring_input_path", "tagging_input_path", "stacks_input_path", "culling_input_path", "selection_input_path"):
+        p = data.get(path_key)
+        if isinstance(p, str) and p.strip() and not os.path.exists(p):
+            warnings.append(f"{path_key} path does not exist on this machine: {p}")
+
+    log_dir = (data.get("system") or {}).get("log_dir")
+    if log_dir and not os.path.isdir(os.path.abspath(log_dir)):
+        warnings.append(f"system.log_dir is not an existing directory: {log_dir}")
+
+    return {
+        "ok": len(issues) == 0,
+        "issues": issues,
+        "warnings": warnings,
+    }

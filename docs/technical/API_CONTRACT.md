@@ -14,7 +14,10 @@ REST API for the Image Scoring WebUI. Base path: `/api`.
 | **Import** | register |
 | **General** | status, health, schema |
 | **Jobs** | recent, {job_id} |
+| **Runs** | `/api/runs/*`, `/api/queue` (see [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md)) |
 | **Utilities** | raw-preview, similar, duplicates/find |
+
+**Runs queue & restart:** [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) describes how `GET /api/queue` and `JobDispatcher` relate to `jobs` rows and recovery on WebUI startup.
 
 ---
 

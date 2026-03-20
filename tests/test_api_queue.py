@@ -536,7 +536,7 @@ def test_pipeline_submit_requires_input_path(monkeypatch):
         response = client.post("/api/pipeline/submit", json={"operations": ["score"]})
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Provide input_path or at least one selector"
+    assert response.json()["detail"] == "Provide workspace_target or at least one selector"
 
 
 def test_outliers_endpoint_returns_detector_payload(monkeypatch):
@@ -731,6 +731,11 @@ class _FakeConn:
 def test_ipc_bridge_routes_pipeline_submit(monkeypatch, tmp_path):
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+    monkeypatch.setattr(
+        api,
+        "validate_and_preview",
+        lambda request: {"preview_count": 2, "resolved_image_ids": [11, 12], "missing_paths": [], "warnings": []},
+    )
 
     monkeypatch.setattr(db, "enqueue_job", lambda *a, **kw: (900, 4))
     monkeypatch.setattr(db, "create_job_phases", lambda job_id, phase_codes, first_phase_state=None: [])
@@ -741,7 +746,7 @@ def test_ipc_bridge_routes_pipeline_submit(monkeypatch, tmp_path):
             json={
                 "channel": "pipeline:submit",
                 "payload": {
-                    "input_path": str(tmp_path),
+                    "workspace_target": str(tmp_path),
                     "operations": ["score"],
                     "skip_existing": True,
                 },

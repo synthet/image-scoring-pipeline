@@ -7,7 +7,7 @@ Matches Scoring/Keywords runner contract for polling-based UI integration.
 import threading
 from modules.selection import SelectionService, SelectionConfig
 from modules import db
-from modules.events import event_manager
+from modules.events import event_manager, broadcast_run_log_line
 from modules.phases import PhaseCode, PhaseStatus
 from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
@@ -70,6 +70,8 @@ class SelectionRunner:
         def log(msg: str):
             with self._lock:
                 self._log_history.append(msg)
+            if job_id:
+                broadcast_run_log_line(job_id, msg)
 
         def progress_cb(pct: float, msg: str, cur: int | None = None, tot: int | None = None):
             with self._lock:
@@ -87,10 +89,13 @@ class SelectionRunner:
             if job_id:
                 event_manager.broadcast_threadsafe("job_progress", {
                     "job_id": job_id,
+                    "job_type": "selection",
+                    "phase_code": "culling",
                     "current": self._current_count,
                     "total": self._total_count,
                     "message": msg
                 })
+                broadcast_run_log_line(job_id, msg)
 
         log("Starting Selection workflow...")
         log(f"Input: {input_path}")

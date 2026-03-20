@@ -46,6 +46,7 @@ Phase status values: `not_started | running | done | skipped | failed`
 | `modules/clustering.py` | Image clustering (culling) |
 | `modules/mcp_server.py` | MCP server for AI agent integration (stdio) |
 | `modules/selection.py` | Image selection and filtering |
+| `modules/ui/status_gradio.py` | Minimal operator status page served at `/app` |
 
 ### ML Models
 
@@ -61,7 +62,7 @@ Phase status values: `not_started | running | done | skipped | failed`
 
 - **Hybrid:** Windows host + WSL 2 for GPU/ML workloads
 - **DB:** Firebird SQL (`SCORING_HISTORY.FDB`), accessed via TCP (port 3050) — never via direct file access between Windows and WSL
-- **WebUI:** Gradio + FastAPI on port 7860
+- **WebUI:** FastAPI on port 7860; `/ui/` serves the React SPA (primary product UI), `/app` is a minimal Gradio operator status page (threads, profiling, runners, log tail)
 
 ## Key Files
 

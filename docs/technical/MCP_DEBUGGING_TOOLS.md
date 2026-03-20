@@ -25,18 +25,25 @@ pip install mcp
 
 ## Configuration
 
+### SSE URL and port
+
+The WebUI serves MCP at **`/mcp/sse`**. Default URL is `http://127.0.0.1:7860/mcp/sse` if the app listens on port 7860. If your port differs, open **`GET /mcp-status`** on the WebUI and use **`expected_sse_url`**.
+
 ### Option 1: Cursor Settings (Recommended)
 
 Add the following to your Cursor MCP settings (Settings → MCP → Add Server):
 
 ```json
 {
-  "name": "image-scoring",
+  "name": "imgscore-py-stdio",
   "command": "python",
   "args": ["-m", "modules.mcp_server"],
-  "cwd": "/path/to/image-scoring"
+  "cwd": "${workspaceFolder}",
+  "env": { "PYTHONPATH": "${workspaceFolder}" }
 }
 ```
+
+When the Cursor workspace is **electron-image-scoring**, use the same `command` / `args` but name the server **`imgscore-el-stdio`** and set `cwd` / `PYTHONPATH` to your **image-scoring** checkout path. For WebUI / `execute_code`, register **`imgscore-el-sse`** (or **`imgscore-py-sse`** in the Python workspace) with the `url` from `GET /mcp-status`.
 
 ### Option 2: Project Config File
 
@@ -193,10 +200,10 @@ Get folder tree structure with image counts per folder.
 - `root_path` - Optional root path to filter
 
 #### `get_incomplete_images`
-Get images with missing or incomplete data (scores, ratings, labels).
+Get images with missing or incomplete data (composite scores, model scores, ratings, labels).
 
 **Parameters:**
-- `limit` - Max results (default: 50)
+- `limit` - Max results (default: 100)
 
 #### `get_stacks_summary`
 Get summary of image stacks/clusters including:
@@ -295,20 +302,42 @@ Get status of loaded models, GPU availability, and system configuration.
 **Use Case:** Diagnose GPU/model loading issues, verify system configuration, check if models are ready for scoring.
 
 #### `validate_config`
-Validate configuration values and check for issues.
+Validate `config.json` structure and optional input paths; MCP also attempts a DB ping when the database was initialized.
 
 **Returns:**
-- `valid` - Boolean indicating if config is valid
-- `issues` - List of critical problems
-- `warnings` - List of non-critical warnings
-- `config_keys` - List of available config sections
+- `ok` - Boolean (no critical `issues`)
+- `issues` - Critical problems (e.g. invalid queue sizes, missing `database.filename`)
+- `warnings` - Non-critical (e.g. configured folder path missing on this machine)
+- `config_path` - Resolved path to `config.json`
+- `database_reachable` - `true` / `false` / `null` (if DB never initialized in this process)
 
 **Checks:**
-- Image directories exist
-- Queue sizes are positive integers
-- Required config sections present
+- Processing queue sizes are positive integers when set
+- `database.filename` is non-empty
+- Optional warnings for missing `*_input_path` / `log_dir`
 
 **Use Case:** Verify configuration before starting jobs, catch misconfigurations early.
+
+#### `diagnose_phase_consistency`
+Diagnose mismatches between per-image phase status and folder-level aggregates (e.g. UI showing all phases done while an image is still pending).
+
+**Parameters:**
+- `image_id` - Image primary key
+- `folder_path` - Optional folder path for aggregate comparison
+
+#### `run_processing_job`
+Start a background scoring, tagging, or clustering job (requires the corresponding runner to be initialized — typically when the WebUI process has started runners).
+
+**Parameters:**
+- `job_type` - `scoring` | `tagging` | `clustering`
+- `input_path` - Folder or path (clustering may use empty string for default behavior per runner)
+- `args` - Optional dict (e.g. `rescore`, `overwrite`, clustering `threshold`, `time_gap`, `force_rescan`)
+
+#### `find_near_duplicates` / `propagate_tags` / `find_outliers`
+Embedding-assisted tools for duplicate pairs, keyword propagation, and outlier detection. See tool docstrings in `modules/mcp_server.py`.
+
+#### `execute_code`
+Execute Python in the **WebUI process** over SSE. Requires **`ENABLE_MCP_EXECUTE_CODE=1`** and a Cursor SSE server (**`imgscore-py-sse`** or **`imgscore-el-sse`**). Assign to `result` to return a value.
 
 #### `get_pipeline_stats`
 Get statistics about the processing pipeline and active jobs.
@@ -400,16 +429,11 @@ Once configured, you can ask Cursor to use these tools:
 
 ### Database Errors
 
-1. Ensure `scoring_history.db` exists in project root
-2. Check file permissions on the database
+1. Ensure Firebird is reachable per `config.json` → `database` and environment (see project docs)
+2. Check file permissions on the database file (when using local/embedded access)
 3. Verify no other process has an exclusive lock
 
 ## Development
 
-To add new tools:
-
-1. Add the tool implementation function in `modules/mcp_server.py`
-2. Add the Tool definition in `create_mcp_server()` → `list_tools()`
-3. Add the handler in `call_tool()`
-4. Update this documentation
+Tools are registered with **FastMCP** (`@mcp.tool`) in [`modules/mcp_server.py`](../../modules/mcp_server.py). After adding or changing a tool, update this document and [`.agent/mcp_tools_reference.md`](../../.agent/mcp_tools_reference.md).
 

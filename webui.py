@@ -220,7 +220,7 @@ def main():
         gallery_components,
         settings_components,
         main_tabs,
-    ) = app_module.create_ui()
+    ) = app_module.create_ui(clustering_runner=clustering_runner)
 
     # Setup MCP server if enabled
     mcp_sse_app = None
@@ -304,13 +304,25 @@ def main():
     if os.path.isdir(_spa_dir):
         from fastapi.responses import FileResponse
 
+        _spa_root = os.path.abspath(_spa_dir)
+        # Avoid stale index.html: without this, browsers may keep an old shell that references
+        # a removed hashed JS bundle after `npm run build`. Hashed assets stay long-cacheable.
+        _spa_html_headers = {"Cache-Control": "no-cache"}
+        _spa_asset_headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+
         @app.get("/ui/{full_path:path}")
         async def serve_spa(full_path: str):
             """Serve React SPA for all /ui/* paths (client-side routing)."""
-            file_path = os.path.join(_spa_dir, full_path)
-            if os.path.isfile(file_path):
-                return FileResponse(file_path)
-            return FileResponse(os.path.join(_spa_dir, "index.html"))
+            # Resolve under spa root only (block path traversal)
+            candidate = os.path.abspath(os.path.join(_spa_root, full_path))
+            if candidate != _spa_root and not candidate.startswith(_spa_root + os.sep):
+                return FileResponse(os.path.join(_spa_root, "index.html"), headers=_spa_html_headers)
+            if os.path.isfile(candidate):
+                rel = os.path.relpath(candidate, _spa_root).replace("\\", "/")
+                if rel.startswith("assets/"):
+                    return FileResponse(candidate, headers=_spa_asset_headers)
+                return FileResponse(candidate, headers=_spa_html_headers)
+            return FileResponse(os.path.join(_spa_root, "index.html"), headers=_spa_html_headers)
 
         @app.get("/")
         async def root_redirect():

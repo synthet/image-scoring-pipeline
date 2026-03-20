@@ -13,20 +13,15 @@ Image Scoring MCP Server
 This script starts the MCP (Model Context Protocol) server that provides
 debugging tools accessible from Cursor IDE.
 
-Available Tools:
-  - get_database_stats    : Database statistics and metrics
-  - query_images          : Query images with filters
-  - get_image_details     : Get details for specific image
-  - execute_sql           : Run read-only SQL queries
-  - get_recent_jobs       : Recent job history
-  - get_runner_status     : Scoring/tagging runner status
-  - get_config            : Read configuration
-  - set_config_value      : Update configuration
-  - get_folder_tree       : Folder structure with counts
-  - get_incomplete_images : Images with missing data
-  - read_debug_log        : Recent debug log entries
-  - search_images_by_hash : Find image by content hash
-  - get_stacks_summary    : Stack/cluster summary
+Available Tools (28 total — see modules/mcp_server.py):
+  - get_database_stats, query_images, get_image_details, search_images_by_hash, execute_sql
+  - get_failed_images, get_incomplete_images, get_error_summary, check_database_health
+  - validate_file_paths, diagnose_phase_consistency
+  - get_recent_jobs, get_runner_status, get_pipeline_stats, get_performance_metrics, run_processing_job
+  - get_model_status, validate_config, get_config, set_config_value, read_debug_log
+  - get_folder_tree, get_stacks_summary
+  - search_similar_images, find_near_duplicates, propagate_tags, find_outliers
+  - execute_code (SSE WebUI + ENABLE_MCP_EXECUTE_CODE=1)
 
 Usage:
   .\Run-MCPServer.ps1       # Start the server
@@ -35,10 +30,11 @@ Usage:
 Configuration:
   Add to Cursor's MCP settings:
   {
-    "name": "image-scoring",
+    "name": "imgscore-py-stdio",
     "command": "python",
     "args": ["-m", "modules.mcp_server"],
-    "cwd": "/path/to/image-scoring"  // Replace with your project path
+    "cwd": "${workspaceFolder}",
+    "env": { "PYTHONPATH": "${workspaceFolder}" }
   }
 "@
   exit 0

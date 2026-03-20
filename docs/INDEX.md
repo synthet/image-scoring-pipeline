@@ -113,6 +113,7 @@ Model specifications, scoring strategy, and fallback systems.
 |----------|-------------|
 | [API.md](reference/api/API.md) | REST API documentation |
 | [API_CONTRACT.md](technical/API_CONTRACT.md) | API contract summary (endpoints, response models) |
+| [RUNS_QUEUE_AND_RESTART.md](technical/RUNS_QUEUE_AND_RESTART.md) | Runs queue (`jobs`), dispatcher, WebUI restart recovery |
 | [API_SCHEMA_IMPLEMENTATION.md](reference/api/API_SCHEMA_IMPLEMENTATION.md) | API schema implementation summary |
 | [API_SCHEMA_LLM.md](reference/api/API_SCHEMA_LLM.md) | LLM-optimized API schema |
 | [openapi.yaml](reference/api/openapi.yaml) | OpenAPI specification |

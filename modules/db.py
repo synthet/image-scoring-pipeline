@@ -46,6 +46,127 @@ _PIPELINE_TELEMETRY_SEQ = 0
 _PIPELINE_TELEMETRY_EVENTS = deque(maxlen=3000)
 
 
+class RowWrapper:
+    """
+    Wraps a Firebird result row to provide both tuple-like (index) 
+    and dict-like (column name) access, mimicking sqlite3.Row.
+    """
+    def __init__(self, cols, values):
+        self._cols = cols
+        self._values = values
+        self._map = dict(zip(cols, values))
+    
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return self._map.get(key.lower())
+    
+    def get(self, key, default=None):
+        """Dict-like .get() for compatibility with code expecting dict access."""
+        if isinstance(key, int):
+            try:
+                return self._values[key]
+            except IndexError:
+                return default
+        return self._map.get(key.lower(), default)
+    
+    def keys(self):
+        return self._map.keys()
+        
+    def __iter__(self):
+        # Yield (key, value) pairs to support dict(row) correctly
+        return iter(self._map.items())
+
+    def to_dict(self, include_binary=False, exclude_keys=None):
+        """
+        Returns a JSON-serializable dictionary.
+        Safe for FastAPI/JSON serialization by handling bytes and datetimes.
+        """
+        import base64
+        d = {}
+        exclude = exclude_keys if exclude_keys else set()
+        for k, v in self._map.items():
+            if k in exclude:
+                continue
+            if isinstance(v, bytes):
+                if include_binary:
+                    d[k] = base64.b64encode(v).decode('utf-8')
+                else:
+                    # Skip raw binary data (like embeddings) that crash JSON serialization
+                    continue
+            elif isinstance(v, (datetime.datetime, datetime.date)):
+                d[k] = v.isoformat()
+            else:
+                d[k] = v
+        return d
+
+
+class FirebirdCursorProxy:
+    """Proxies a Firebird cursor to provide sqlite3-compatible fetch methods."""
+    def __init__(self, fb_cur):
+        self._cur = fb_cur
+    
+    def execute(self, query, params=None):
+        query = self._translate_query(query)
+        if params:
+            return self._cur.execute(query, params)
+        return self._cur.execute(query)
+    
+    def executemany(self, query, params):
+        query = self._translate_query(query)
+        return self._cur.executemany(query, params)
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        if row is None: return None
+        col_names = [d[0].lower() for d in self._cur.description]
+        return RowWrapper(col_names, row)
+
+    def fetchall(self):
+        rows = self._cur.fetchall()
+        if not rows: return []
+        col_names = [d[0].lower() for d in self._cur.description]
+        return [RowWrapper(col_names, r) for r in rows]
+        
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+    def _translate_query(self, query: str):
+        # Basic replacements for common SQLite patterns
+        query = query.replace('substr(', 'substring(')
+        query = query.replace('length(', 'char_length(')
+        return query
+
+
+class FirebirdConnectionProxy:
+    """Proxies a Firebird connection to provide sqlite3-compatible interface."""
+    def __init__(self, fb_conn):
+        self._conn = fb_conn
+        self.row_factory = sqlite3.Row # Emulation flag
+    
+    def cursor(self):
+        return FirebirdCursorProxy(self._conn.cursor())
+        
+    def commit(self):
+        try:
+            self._conn.commit()
+        except AttributeError:
+            pass
+        
+    def rollback(self):
+        try:
+            self._conn.rollback()
+        except AttributeError:
+            pass
+        
+    def close(self):
+        if self._conn:
+            self._conn.close()
+        
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
 def record_pipeline_event(event_type, message, *, workflow_run=None, stage_run=None,
                           step_run=None, category=None, severity="info",
                           metadata=None, critical=False, noisy=False, source="db"):
@@ -444,142 +565,6 @@ def get_db():
         
         # print(f"DEBUG: get_db dsn={dsn} conn={conn} type={type(conn)}")
         # print(f"DEBUG: get_db dsn={dsn} conn={conn}")
-        # Emulate sqlite3.Row behavior (Access by name)
-        # Firebird cursors return tuples. We can wrap.
-        # Actually firebird-driver can return rows as dictionaries if configured?
-        # Let's stick to standard cursor and wrap results or change consumption.
-        # BUT changing consumption everywhere is huge.
-        # Better: Implementation of Row Factory wrapper.
-        
-        def dict_factory(cursor, row):
-            d = {}
-            for idx, col in enumerate(cursor.description):
-                d[col[0].lower()] = row[idx] # keys to lower case to match sqlite behavior often?
-            return d
-
-        # firebird-driver doesn't have row_factory on connection object like sqlite3.
-        # We might need to wrap the connection or cursor.
-        # For now, let's keep it raw and fix call sites if possible, 
-        # OR add a helper: conn.row_factory = ... is pure python attribute assignment, won't affect driver.
-        
-        # Creating a Proxy to emulate sqlite3 connection behavior
-        class FirebirdConnectionProxy:
-            def __init__(self, fb_conn):
-                self._conn = fb_conn
-                self.row_factory = sqlite3.Row # Default to mimics
-            
-            def cursor(self):
-                return FirebirdCursorProxy(self._conn.cursor())
-                
-            def commit(self):
-                try:
-                    self._conn.commit()
-                except AttributeError as e:
-                    if "'NoneType' object has no attribute 'commit'" not in str(e):
-                        raise
-                
-            def rollback(self):
-                try:
-                    self._conn.rollback()
-                except AttributeError as e:
-                    if "'NoneType' object has no attribute 'rollback'" not in str(e):
-                        raise
-                
-            def close(self):
-                self._conn.close()
-                
-            def __getattr__(self, name):
-                return getattr(self._conn, name)
-
-        class FirebirdCursorProxy:
-            def __init__(self, fb_cur):
-                self._cur = fb_cur
-            
-            def execute(self, query, params=None):
-                # Dialect translation hook!
-                query = self._translate_query(query)
-                if params:
-                    return self._cur.execute(query, params)
-                return self._cur.execute(query)
-            
-            def executemany(self, query, params):
-                query = self._translate_query(query)
-                return self._cur.executemany(query, params)
-
-            def fetchone(self):
-                row = self._cur.fetchone()
-                if row is None: return None
-                # Convert to dict-like if possible?
-                # sqlite3.Row allows tuple access AND dict access.
-                # Just return a custom object?
-                col_names = [d[0].lower() for d in self._cur.description]
-                return RowWrapper(col_names, row)
-
-            def fetchall(self):
-                rows = self._cur.fetchall()
-                col_names = [d[0].lower() for d in self._cur.description]
-                return [RowWrapper(col_names, r) for r in rows]
-                
-            def __getattr__(self, name):
-                return getattr(self._cur, name)
-
-            def _translate_query(self, query: str):
-                # Basic replacements
-                # LIMIT X OFFSET Y -> OFFSET Y ROWS FETCH NEXT X ROWS ONLY
-                # This is a naive regex replacement strategy.
-                
-                # LIMIT/OFFSET
-                # Pattern: LIMIT ? OFFSET ? -> OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-                # Or LIMIT 50 OFFSET 0
-                
-                import re
-                
-                # Function substitutions
-                query = query.replace('substr(', 'substring(')
-                query = query.replace('length(', 'char_length(')
-                
-                # LIMIT with OFFSET
-                # "LIMIT ? OFFSET ?" -> "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
-                # Need to be careful with params order? 
-                # SQLite: LIMIT limit OFFSET offset
-                # FB: OFFSET offset ... FETCH ... limit
-                # If params are passed, we swap them? Can't easily swap params in 'params' list here.
-                # If they are literals, we can swap.
-                # Implementation detail: Most of our queries use LIMIT ? OFFSET ?
-                # The caller passes (limit, offset).
-                # We need to rewrite query to: "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
-                # AND SWAP the params in execute() method? 
-                
-                # This Proxy approach is getting complex.
-                # Maybe easier to change the SQL in the app logic layer directly.
-                return query
-
-        class RowWrapper:
-            def __init__(self, cols, values):
-                self._cols = cols
-                self._values = values
-                self._map = dict(zip(cols, values))
-            
-            def __getitem__(self, key):
-                if isinstance(key, int):
-                    return self._values[key]
-                return self._map[key.lower()]
-            
-            def get(self, key, default=None):
-                """Dict-like .get() for compatibility with code expecting dict access."""
-                if isinstance(key, int):
-                    try:
-                        return self._values[key]
-                    except IndexError:
-                        return default
-                return self._map.get(key.lower(), default)
-            
-            def keys(self):
-                return self._map.keys()
-                
-            def __iter__(self):
-                return iter(self._values)
-
         return FirebirdConnectionProxy(conn)
 
     except Exception as e:
@@ -3625,7 +3610,7 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
                 "failed": "failed",
                 "canceled": "canceled",
                 "cancelled": "canceled",
-                "interrupted": "failed",
+                "interrupted": "interrupted",
             }
             phase_state = phase_state_map.get(new_status, "running")
             set_job_phase_state(job_id, phase_code, phase_state, error_message=log if new_status in {"failed", "interrupted"} else None)
@@ -3992,8 +3977,13 @@ def request_cancel_job(job_id):
     return {"success": True, "reason": "cancelled", "status": status}
 
 
-def create_job_phases(job_id, phase_codes):
-    """Persist ordered phase plan for a job."""
+def create_job_phases(job_id, phase_codes, first_phase_state=None):
+    """Persist ordered phase plan for a job.
+
+    Args:
+        first_phase_state: If ``'queued'``, first phase is queued (job still in queue). If ``None``,
+            first phase is ``running`` with ``started_at`` set (immediate pipeline start).
+    """
     if not phase_codes:
         return []
 
@@ -4004,8 +3994,15 @@ def create_job_phases(job_id, phase_codes):
 
     rows = []
     for idx, phase_code in enumerate(phase_codes):
-        state = "pending" if idx > 0 else "running"
-        started_at = now if idx == 0 else None
+        if idx > 0:
+            state = "pending"
+            started_at = None
+        elif first_phase_state == "queued":
+            state = "queued"
+            started_at = None
+        else:
+            state = "running"
+            started_at = now
         c.execute(
             "INSERT INTO job_phases (job_id, phase_order, phase_code, state, started_at) VALUES (?, ?, ?, ?, ?)",
             (job_id, idx, phase_code, state, started_at),
@@ -4029,12 +4026,21 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
     allowed = {
         "pending": {"queued", "running", "skipped", "canceled"},
         "queued": {"running", "paused", "cancel_requested", "canceled"},
-        "running": {"paused", "completed", "failed", "cancel_requested", "restarting", "canceled"},
+        "running": {
+            "paused",
+            "completed",
+            "failed",
+            "interrupted",
+            "cancel_requested",
+            "restarting",
+            "canceled",
+        },
         "paused": {"running", "restarting", "cancel_requested", "canceled"},
         "cancel_requested": {"canceled", "failed"},
         "restarting": {"queued", "running", "failed"},
         "completed": set(),
         "failed": {"skipped", "pending"},
+        "interrupted": {"running", "failed", "skipped", "pending", "queued"},
         "skipped": set(),
         "canceled": set(),
     }
@@ -4064,7 +4070,7 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
         fields.append("started_at = COALESCE(started_at, ?)")
         params.append(now)
         fields.append("error_message = NULL")
-    if state in {"completed", "failed", "skipped"}:
+    if state in {"completed", "failed", "skipped", "interrupted"}:
         fields.append("completed_at = ?")
         params.append(now)
     if error_message is not None:
@@ -4244,16 +4250,24 @@ def get_next_running_job_phase(job_id):
 
 
 def recover_running_jobs(mark_as="interrupted"):
-    """Mark stale running jobs as interrupted (or another provided state)."""
+    """Mark stale running jobs (and their in-flight job_phases) as interrupted."""
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT id FROM jobs WHERE status = 'running'")
     rows = c.fetchall()
     recovered = [r[0] for r in rows]
     if recovered:
+        now = datetime.datetime.now()
         c.execute(
             "UPDATE jobs SET status = ?, completed_at = ?, runner_state = ? WHERE status = 'running'",
-            (mark_as, datetime.datetime.now(), mark_as),
+            (mark_as, now, mark_as),
+        )
+        # Reset orphaned job_phases that were mid-flight
+        placeholders = ",".join("?" * len(recovered))
+        c.execute(
+            f"UPDATE job_phases SET state = ?, completed_at = ? "
+            f"WHERE job_id IN ({placeholders}) AND state = 'running'",
+            [mark_as, now] + recovered,
         )
     conn.commit()
     conn.close()
@@ -5099,34 +5113,41 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
     finally:
         conn.close()
 
-def get_incomplete_records():
+def get_incomplete_records(limit: int | None = None):
     """
     Retrieves records that have missing scores or metadata.
     Criteria:
+    - Composite scores (score_general / score_technical) missing or non-positive
+    - Legacy score column missing or non-positive
     - Any model score <= 0 or NULL
     - Rating <= 0 or NULL
     - Label empty or NULL
     """
     conn = get_db()
     c = conn.cursor()
-    
-    # Check for missing individual scores
-    score_checks = []
+
+    score_checks = [
+        "score_general IS NULL OR score_general <= 0",
+        "score_technical IS NULL OR score_technical <= 0",
+    ]
     models = ['spaq', 'ava', 'koniq', 'paq2piq', 'liqe']
     for m in models:
         score_checks.append(f"score_{m} IS NULL OR score_{m} <= 0")
-        
+
     score_cond = " OR ".join(score_checks)
-    
+
     query = f"""
-        SELECT * FROM images 
-        WHERE 
-            (score <= 0 OR score IS NULL) OR
-            (rating <= 0 OR rating IS NULL) OR
-            (label IS NULL OR label = '') OR
+        SELECT * FROM images
+        WHERE
+            (score IS NULL OR score <= 0) OR
+            (rating IS NULL OR rating <= 0) OR
+            (label IS NULL OR TRIM(label) = '') OR
             ({score_cond})
+        ORDER BY created_at DESC NULLS LAST
     """
-    
+    if limit is not None and limit > 0:
+        query = query.strip() + f"\n        FETCH FIRST {int(limit)} ROWS ONLY"
+
     c.execute(query)
     rows = c.fetchall()
     conn.close()

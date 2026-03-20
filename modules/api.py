@@ -1228,6 +1228,7 @@ def create_api_router() -> APIRouter:
         )
         if job_id is None:
             raise HTTPException(status_code=500, detail="Failed to enqueue scoring job")
+        db.create_job_phases(job_id, ["indexing", "metadata", "scoring"], first_phase_state="queued")
 
         return ApiResponse(
             success=True,
@@ -1473,6 +1474,7 @@ def create_api_router() -> APIRouter:
         )
         if job_id is None:
             raise HTTPException(status_code=500, detail="Failed to enqueue tagging job")
+        db.create_job_phases(job_id, ["keywords"], first_phase_state="queued")
 
         return ApiResponse(
             success=True,
@@ -2758,7 +2760,7 @@ def create_api_router() -> APIRouter:
             )
 
             return {
-                "images": [dict(img) for img in images],
+                "images": [img.to_dict(exclude_keys={"image_embedding"}) for img in images],
                 "total": total_count,
                 "page": page,
                 "page_size": page_size,
@@ -2784,7 +2786,8 @@ def create_api_router() -> APIRouter:
             if not row:
                 raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
 
-            data = dict(row)
+            # Use to_dict to safely handle binary data (excludes large blobs by default)
+            data = row.to_dict()
             data['file_paths'] = db.get_all_paths(image_id)
             data['resolved_path'] = db.get_resolved_path(image_id, verified_only=False)
             # Phase statuses for gallery display (scoring, metadata, culling, keywords)
@@ -3440,11 +3443,12 @@ def create_api_router() -> APIRouter:
             result = culling_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported phase_code: {request.phase_code}")
+        db.create_job_phases(job_id, [phase])  # immediate start
 
         return ApiResponse(
             success=(result == "Started"),
             message=f"Retry {request.phase_code}: {result}",
-            data={"updated_images": updated, "phase_code": request.phase_code}
+            data={"updated_images": updated, "phase_code": request.phase_code, "job_id": job_id}
         )
 
     @router.post("/pipeline/run/pause", response_model=ApiResponse, summary="Pause current run")
@@ -3517,6 +3521,12 @@ def create_api_router() -> APIRouter:
             job_type="scoring",
             queue_payload={"input_path": input_path, "skip_existing": False},
         )
+        if job_id is not None:
+            db.create_job_phases(
+                job_id,
+                ["indexing", "metadata", "scoring"],
+                first_phase_state="queued",
+            )
         return ApiResponse(
             success=job_id is not None,
             message="Pipeline run restart queued" if job_id is not None else "Failed to queue restart",
@@ -3563,6 +3573,8 @@ def create_api_router() -> APIRouter:
                 raise HTTPException(status_code=503, detail="Tagging runner not available")
             job_id = db.create_job(request.input_path, phase_code="keywords")
             result = _tagging_runner.start_batch(request.input_path, job_id=job_id, overwrite=True, generate_captions=False)
+        restart_phases = ordered[start_idx:]  # e.g. ["scoring", "culling", "keywords"]
+        db.create_job_phases(job_id, restart_phases)  # immediate start
 
         return ApiResponse(
             success=(result == "Started"),
@@ -3964,6 +3976,20 @@ def create_api_router() -> APIRouter:
                     job_type = "selection"
                     break
 
+        # SPA workflow expects job_phases rows; clients may omit `stages` (or send []).
+        if not phase_values:
+            if job_type == "tagging":
+                phase_values = [PhaseCode.KEYWORDS.value]
+            elif job_type == "selection":
+                # For selection, we want clustering/selection logic + metadata (XMP writing)
+                phase_values = [PhaseCode.CULLING.value, PhaseCode.METADATA.value]
+            else:
+                phase_values = [
+                    PhaseCode.INDEXING.value,
+                    PhaseCode.METADATA.value,
+                    PhaseCode.SCORING.value,
+                ]
+
         payload = {
             "scope_type": request.scope_type,
             "scope_paths": request.scope_paths,
@@ -3985,8 +4011,9 @@ def create_api_router() -> APIRouter:
                 ),
                 timeout=30.0,
             )
-            if phase_values:
-                await asyncio.to_thread(db.create_job_phases, job_id, phase_values)
+            await asyncio.to_thread(
+                db.create_job_phases, job_id, phase_values, "queued",
+            )
             return {"run_id": job_id, "queue_position": position, "success": True}
         except asyncio.TimeoutError:
             raise HTTPException(
@@ -4030,11 +4057,24 @@ def create_api_router() -> APIRouter:
             except Exception:
                 payload = {}
             payload["skip_done"] = True
+            # Derive phase_code and job_type from original job
+            orig_job_type = job.get("job_type", "scoring")
+            _phase_code_map = {"scoring": "scoring", "tagging": "keywords", "clustering": "culling", "selection": "culling"}
+            phase_code = _phase_code_map.get(orig_job_type, "scoring")
             new_job_id, position = db.enqueue_job(
                 input_path=job.get("input_path", ""),
-                phase_code=None,
+                phase_code=phase_code,
+                job_type=orig_job_type,
                 queue_payload=json.dumps(payload),
             )
+            # Copy phases from original job, or default from job_type
+            orig_phases = db.get_job_phases(run_id)
+            if orig_phases:
+                phase_codes = [p["phase_code"] for p in orig_phases]
+            else:
+                _defaults = {"tagging": ["keywords"], "selection": ["culling", "metadata"], "clustering": ["culling"]}
+                phase_codes = _defaults.get(orig_job_type, ["indexing", "metadata", "scoring"])
+            db.create_job_phases(new_job_id, phase_codes, first_phase_state="queued")
             return {"success": True, "run_id": new_job_id, "queue_position": position}
         except HTTPException:
             raise
@@ -4089,11 +4129,24 @@ def create_api_router() -> APIRouter:
             except Exception:
                 payload = {}
             payload["skip_done"] = True
+            # Derive phase_code and job_type from original job
+            orig_job_type = job.get("job_type", "scoring")
+            _phase_code_map = {"scoring": "scoring", "tagging": "keywords", "clustering": "culling", "selection": "culling"}
+            phase_code = _phase_code_map.get(orig_job_type, "scoring")
             new_job_id, position = db.enqueue_job(
                 input_path=job.get("input_path", ""),
-                phase_code=None,
+                phase_code=phase_code,
+                job_type=orig_job_type,
                 queue_payload=json.dumps(payload),
             )
+            # Copy phases from original job, or default from job_type
+            orig_phases = db.get_job_phases(run_id)
+            if orig_phases:
+                phase_codes = [p["phase_code"] for p in orig_phases]
+            else:
+                _defaults = {"tagging": ["keywords"], "selection": ["culling", "metadata"], "clustering": ["culling"]}
+                phase_codes = _defaults.get(orig_job_type, ["indexing", "metadata", "scoring"])
+            db.create_job_phases(new_job_id, phase_codes, first_phase_state="queued")
             return {"success": True, "run_id": new_job_id, "queue_position": position}
         except HTTPException:
             raise

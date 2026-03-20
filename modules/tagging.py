@@ -344,10 +344,12 @@ class TaggingRunner:
         """
         Internal sync runner for tagging process.
         """
-        from modules.events import event_manager
-        
+        from modules.events import event_manager, broadcast_run_log_line
+
         def log(msg):
             self.log_history.append(msg)
+            if job_id:
+                broadcast_run_log_line(job_id, msg)
 
         # Convert Windows path to WSL path if running in WSL
         if input_path and ":" in input_path and len(input_path) > 1 and input_path[1] == ":":
@@ -552,7 +554,16 @@ class TaggingRunner:
 
             self.current_count += 1
             if self.current_count % 5 == 0:
-                event_manager.broadcast_threadsafe("job_progress", {"job_id": job_id, "current": self.current_count, "total": self.total_count})
+                event_manager.broadcast_threadsafe(
+                    "job_progress",
+                    {
+                        "job_id": job_id,
+                        "job_type": "tagging",
+                        "phase_code": "keywords",
+                        "current": self.current_count,
+                        "total": self.total_count,
+                    },
+                )
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")
 
