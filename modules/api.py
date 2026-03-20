@@ -610,6 +610,23 @@ class IpcBridgeResponse(BaseModel):
     data: Optional[Any] = Field(None, description="Handler result payload")
 
 
+class PipelineRunControlRequest(BaseModel):
+    """Request model for per-run pipeline controls."""
+    input_path: Optional[str] = Field(None, description="Folder path used for restart/cancel scoping.")
+
+
+class PipelineRestartFromStageRequest(BaseModel):
+    """Request model for restarting a pipeline from a specific stage."""
+    input_path: str = Field(..., description="Folder path.")
+    phase_code: str = Field(..., description="Stage code to restart from (scoring|culling|keywords).")
+
+
+class PipelineStepRerunRequest(BaseModel):
+    """Request model for rerunning a failed idempotent step."""
+    image_id: int = Field(..., description="Image ID for the step rerun target.")
+    phase_code: str = Field(..., description="Step phase code.")
+
+
 class ApiResponse(BaseModel):
     """Standard API response model for operation results.
     
@@ -723,6 +740,23 @@ _clustering_runner = None
 _selection_runner = None
 _orchestrator = None
 _job_dispatcher = JobDispatcher()
+
+
+def _stop_runner_for_phase(phase: str) -> bool:
+    phase_norm = (phase or "").strip().lower()
+    if phase_norm == "scoring" and _scoring_runner is not None:
+        _scoring_runner.stop()
+        return True
+    if phase_norm in ("keywords", "tagging") and _tagging_runner is not None:
+        _tagging_runner.stop()
+        return True
+    if phase_norm in ("culling", "selection") and _selection_runner is not None:
+        _selection_runner.stop()
+        return True
+    if phase_norm == "clustering" and _clustering_runner is not None:
+        _clustering_runner.stop()
+        return True
+    return False
 
 
 def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None):
@@ -1155,17 +1189,21 @@ def create_api_router() -> APIRouter:
                 )
             selector_folder_paths.append(request.input_path)
 
-        selector_result = resolve_selectors(
-            image_ids=request.image_ids,
-            image_paths=request.image_paths,
-            folder_ids=request.folder_ids,
-            folder_paths=selector_folder_paths,
-            recursive=request.recursive,
-            index_missing=True,
-        )
+        selector_result = {"resolved_image_ids": None}
+        has_explicit_selectors = any([request.image_ids, request.image_paths, request.folder_ids, request.folder_paths])
+        if has_explicit_selectors:
+            selector_result = resolve_selectors(
+                image_ids=request.image_ids,
+                image_paths=request.image_paths,
+                folder_ids=request.folder_ids,
+                folder_paths=selector_folder_paths,
+                recursive=request.recursive,
+                index_missing=True,
+            )
 
         from modules import db
-        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        resolved_ids = selector_result.get("resolved_image_ids")
+        resolved_count = len(resolved_ids or []) if resolved_ids is not None else None
         job_source = request.input_path or "SELECTOR_SCORING"
         skip_existing = not request.force_rescore if request.force_rescore else request.skip_existing
         queue_payload = {
@@ -1396,17 +1434,21 @@ def create_api_router() -> APIRouter:
                 )
             selector_folder_paths.append(request.input_path)
 
-        selector_result = resolve_selectors(
-            image_ids=request.image_ids,
-            image_paths=request.image_paths,
-            folder_ids=request.folder_ids,
-            folder_paths=selector_folder_paths,
-            recursive=request.recursive,
-            index_missing=True,
-        )
+        selector_result = {"resolved_image_ids": None}
+        has_explicit_selectors = any([request.image_ids, request.image_paths, request.folder_ids, request.folder_paths])
+        if has_explicit_selectors:
+            selector_result = resolve_selectors(
+                image_ids=request.image_ids,
+                image_paths=request.image_paths,
+                folder_ids=request.folder_ids,
+                folder_paths=selector_folder_paths,
+                recursive=request.recursive,
+                index_missing=True,
+            )
 
         from modules import db
-        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        resolved_ids = selector_result.get("resolved_image_ids")
+        resolved_count = len(resolved_ids or []) if resolved_ids is not None else None
         job_source = request.input_path or "SELECTOR_TAGGING"
         job_id, queue_position = db.enqueue_job(
             job_source,
@@ -2572,17 +2614,21 @@ def create_api_router() -> APIRouter:
                 )
             selector_folder_paths.append(request.input_path)
 
-        selector_result = resolve_selectors(
-            image_ids=request.image_ids,
-            image_paths=request.image_paths,
-            folder_ids=request.folder_ids,
-            folder_paths=selector_folder_paths,
-            recursive=request.recursive,
-            index_missing=True,
-        )
+        selector_result = {"resolved_image_ids": None}
+        has_explicit_selectors = any([request.image_ids, request.image_paths, request.folder_ids, request.folder_paths])
+        if has_explicit_selectors:
+            selector_result = resolve_selectors(
+                image_ids=request.image_ids,
+                image_paths=request.image_paths,
+                folder_ids=request.folder_ids,
+                folder_paths=selector_folder_paths,
+                recursive=request.recursive,
+                index_missing=True,
+            )
 
         from modules import db
-        resolved_count = len(selector_result.get("resolved_image_ids") or [])
+        resolved_ids = selector_result.get("resolved_image_ids")
+        resolved_count = len(resolved_ids or []) if resolved_ids is not None else None
         job_source = request.input_path or "SELECTOR_CLUSTERING"
         job_id, queue_position = db.enqueue_job(
             job_source,
@@ -3333,10 +3379,11 @@ def create_api_router() -> APIRouter:
             job_id = db.create_job(request.input_path, phase_code="keywords")
             result = _tagging_runner.start_batch(request.input_path, job_id=job_id, overwrite=False, generate_captions=False)
         elif phase == "culling":
-            if _clustering_runner is None:
-                raise HTTPException(status_code=503, detail="Clustering runner not available")
+            culling_runner = _selection_runner or _clustering_runner
+            if culling_runner is None:
+                raise HTTPException(status_code=503, detail="Selection runner not available")
             job_id = db.create_job(request.input_path, phase_code="culling")
-            result = _clustering_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
+            result = culling_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported phase_code: {request.phase_code}")
 
@@ -3344,6 +3391,175 @@ def create_api_router() -> APIRouter:
             success=(result == "Started"),
             message=f"Retry {request.phase_code}: {result}",
             data={"updated_images": updated, "phase_code": request.phase_code}
+        )
+
+    @router.post("/pipeline/run/pause", response_model=ApiResponse, summary="Pause current run")
+    async def pause_pipeline_run(request: PipelineRunControlRequest):
+        from modules.ui.security import _check_rate_limit
+        _check_rate_limit("pipeline_run_pause")
+        stopped = []
+        for phase in ("scoring", "culling", "keywords"):
+            if _stop_runner_for_phase(phase):
+                stopped.append(phase)
+        return ApiResponse(
+            success=True,
+            message="Pipeline run paused",
+            data={
+                "confirm_level": "soft",
+                "stopped_phases": stopped,
+                "rollback_guidance": "Resume with Run All Pending or retry a stage.",
+            },
+        )
+
+    @router.post("/pipeline/run/cancel", response_model=ApiResponse, summary="Cancel current run")
+    async def cancel_pipeline_run(request: PipelineRunControlRequest):
+        from modules.ui.security import _check_rate_limit
+        from modules import db
+        _check_rate_limit("pipeline_run_cancel")
+
+        stopped = []
+        for phase in ("scoring", "culling", "keywords"):
+            if _stop_runner_for_phase(phase):
+                stopped.append(phase)
+
+        cancelled_jobs = []
+        input_path = (request.input_path or "").strip()
+        for job in db.get_queued_jobs(limit=1000):
+            queued_path = str(job.get("input_path") or "")
+            if input_path and not queued_path.startswith(input_path):
+                continue
+            res = db.request_cancel_job(job.get("id"))
+            if res.get("success"):
+                cancelled_jobs.append(job.get("id"))
+
+        return ApiResponse(
+            success=True,
+            message="Pipeline run cancelled",
+            data={
+                "confirm_level": "strong",
+                "stopped_phases": stopped,
+                "cancelled_jobs": cancelled_jobs,
+                "rollback_guidance": "Restart from stage to resume processing.",
+            },
+        )
+
+    @router.post("/pipeline/run/restart", response_model=ApiResponse, summary="Restart run")
+    async def restart_pipeline_run(request: PipelineRunControlRequest):
+        from modules.ui.security import _check_rate_limit
+        from modules import db
+        _check_rate_limit("pipeline_run_restart")
+        input_path = (request.input_path or "").strip()
+        if not input_path:
+            raise HTTPException(status_code=400, detail="input_path is required")
+        if not os.path.exists(input_path):
+            raise HTTPException(status_code=400, detail=f"Path not found: {input_path}")
+
+        for phase in ("scoring", "culling", "keywords"):
+            _stop_runner_for_phase(phase)
+
+        job_id, queue_position = db.enqueue_job(
+            input_path,
+            phase_code="scoring",
+            job_type="scoring",
+            queue_payload={"input_path": input_path, "skip_existing": False},
+        )
+        return ApiResponse(
+            success=job_id is not None,
+            message="Pipeline run restart queued" if job_id is not None else "Failed to queue restart",
+            data={
+                "confirm_level": "strong",
+                "job_id": job_id,
+                "queue_position": queue_position,
+                "rollback_guidance": "Use cancel if queued incorrectly, then re-submit with stage controls.",
+            },
+        )
+
+    @router.post("/pipeline/phase/restart-from", response_model=ApiResponse, summary="Restart pipeline from stage")
+    async def restart_pipeline_from_stage(request: PipelineRestartFromStageRequest):
+        from modules.ui.security import _check_rate_limit
+        from modules import db
+        _check_rate_limit("pipeline_phase_restart")
+
+        if not os.path.exists(request.input_path):
+            raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
+
+        ordered = ["scoring", "culling", "keywords"]
+        phase = (request.phase_code or "").strip().lower()
+        if phase not in ordered:
+            raise HTTPException(status_code=400, detail=f"Unsupported phase_code: {request.phase_code}")
+
+        updated_total = 0
+        start_idx = ordered.index(phase)
+        for code in ordered[start_idx:]:
+            updated_total += int(db.set_folder_phase_status(request.input_path, code, "running") or 0)
+
+        if phase == "scoring":
+            if _scoring_runner is None:
+                raise HTTPException(status_code=503, detail="Scoring runner not available")
+            job_id = db.create_job(request.input_path, phase_code="scoring")
+            result = _scoring_runner.start_batch(request.input_path, job_id, True)
+        elif phase == "culling":
+            culling_runner = _selection_runner or _clustering_runner
+            if culling_runner is None:
+                raise HTTPException(status_code=503, detail="Selection runner not available")
+            job_id = db.create_job(request.input_path, phase_code="culling")
+            result = culling_runner.start_batch(request.input_path, job_id=job_id, force_rescan=True)
+        else:
+            if _tagging_runner is None:
+                raise HTTPException(status_code=503, detail="Tagging runner not available")
+            job_id = db.create_job(request.input_path, phase_code="keywords")
+            result = _tagging_runner.start_batch(request.input_path, job_id=job_id, overwrite=True, generate_captions=False)
+
+        return ApiResponse(
+            success=(result == "Started"),
+            message=f"Restart from stage '{phase}': {result}",
+            data={
+                "phase_code": phase,
+                "job_id": job_id,
+                "updated_images": updated_total,
+                "rollback_guidance": "Use skip with reason for non-actionable stage failures.",
+            },
+        )
+
+    @router.post("/pipeline/step/rerun", response_model=ApiResponse, summary="Rerun failed idempotent step")
+    async def rerun_pipeline_step(request: PipelineStepRerunRequest):
+        from modules.ui.security import _check_rate_limit
+        from modules import db
+        _check_rate_limit("pipeline_step_rerun")
+
+        phase = (request.phase_code or "").strip().lower()
+        idempotent_phases = {"metadata", "keywords", "culling"}
+        if phase not in idempotent_phases:
+            raise HTTPException(status_code=400, detail=f"Phase '{phase}' is not marked idempotent for step rerun")
+
+        conn = db.get_db()
+        try:
+            c = conn.cursor()
+            c.execute("SELECT id FROM images WHERE id = ?", (request.image_id,))
+            if c.fetchone() is None:
+                raise HTTPException(status_code=404, detail=f"Image not found: id={request.image_id}")
+        finally:
+            conn.close()
+
+        statuses = db.get_image_phase_statuses(request.image_id) or []
+        phase_row = next((row for row in statuses if str(row.get("phase_code") or "").lower() == phase), None)
+        current_status = str((phase_row or {}).get("status") or "not_started").lower()
+        if current_status != "failed":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Step rerun requires failed status. Current status for phase '{phase}' is '{current_status}'.",
+            )
+
+        db.set_image_phase_status(request.image_id, phase, "running")
+        return ApiResponse(
+            success=True,
+            message=f"Step rerun requested for image {request.image_id} phase '{phase}'",
+            data={
+                "image_id": request.image_id,
+                "phase_code": phase,
+                "previous_status": current_status,
+                "rollback_guidance": "If rerun fails again, skip stage with a reason and continue.",
+            },
         )
 
     # ========== Electron Migration — Additional Endpoints ==========
