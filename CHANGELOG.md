@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Pipeline queue board**: Enriched `get_queued_jobs`, job priority/pause/restart API actions, queue table UI (`#33`).
+- **Scoped pipeline controls**: REST endpoints under `/api/pipeline/run/*`, `/api/pipeline/phase/restart-from`, `/api/pipeline/step/rerun`, and Gradio Scoped Controls panel (`#35`).
+- **Pipeline graph view**: Phase dependency graph with StepRun breakdown (`#36`).
+- **Selector composer**: `modules/pipeline_selector_composer.py`, Target Composer panel, selector-aware submit payloads (`#37`).
+- **Gradio fallback Pipeline tab**: Optional `ui.use_gradio_fallback` / `GRADIO_FALLBACK_UI`, conditional asset loading (`#46`).
+
+### Notes
+- **PR #32** (`extend-lifecycle-enums-and-transitions-bjkbyh`) not merged: lifecycle + workflow run endpoints already landed via **#31**; branch conflicted with current `api.py` / IPC models.
+- **PR #40** superseded by **#46** (close manually on GitHub if still open).
+
 ## [4.12.0] - 2026-03-18
 
 ### Added
