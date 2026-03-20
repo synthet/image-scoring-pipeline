@@ -994,6 +994,40 @@ def _unified_monitor_status(scoring_runner, tagging_runner, selection_runner):
     return False, "", "", 0, 0, "", 0
 
 
+def get_runner_activity_snapshot(scoring_runner, tagging_runner, selection_runner, clustering_runner=None):
+    """Return a plain-dict snapshot of all runner states for operator status pages."""
+    is_running, name, msg, cur, tot, log, depth = _unified_monitor_status(
+        scoring_runner, tagging_runner, selection_runner
+    )
+    runners = []
+    for runner_obj, label in [
+        (scoring_runner, "Quality Analysis"),
+        (selection_runner, "Similarity Clustering"),
+        (tagging_runner, "Tagging"),
+        (clustering_runner, "Clustering"),
+    ]:
+        if runner_obj is None:
+            continue
+        result = runner_obj.get_status()
+        r_running, r_log, r_msg, r_cur, r_tot = result[:5]
+        runners.append({
+            "name": label,
+            "running": r_running,
+            "message": r_msg,
+            "current": r_cur,
+            "total": r_tot,
+            "log": r_log,
+        })
+    return {
+        "any_running": is_running,
+        "active_runner": name if is_running else None,
+        "active_message": msg if is_running else "",
+        "active_progress": f"{cur}/{tot}" if is_running and tot else "",
+        "active_log": log if is_running else "",
+        "runners": runners,
+    }
+
+
 def _build_quick_start_html(folder_path, summary_by_code=None, is_running=False):
     """Context-aware Quick Start guide: 1. Select scope → 2. Queue pending stages → 3. Review in Gallery."""
     summary_by_code = summary_by_code or {}
