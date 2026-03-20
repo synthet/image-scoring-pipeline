@@ -1,3 +1,5 @@
+import datetime
+import html
 import gradio as gr
 from modules import db
 from modules import ui_tree
@@ -574,7 +576,7 @@ def get_status_update(scoring_runner, tagging_runner, selection_runner, orchestr
         scoring_runner, tagging_runner, selection_runner
     )
 
-    queued_jobs = db.get_queued_jobs(limit=5)
+    queued_jobs = db.get_queued_jobs(limit=50, include_related=True)
 
     telemetry_state = telemetry_state or {}
     telemetry_events = list(telemetry_state.get("events", []))
@@ -779,18 +781,112 @@ def _build_folder_summary(path, count):
     """
 
 
+def _format_queue_time(raw):
+    if not raw:
+        return "-"
+    if isinstance(raw, datetime.datetime):
+        return raw.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        return datetime.datetime.fromisoformat(str(raw)).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return str(raw)
+
+
+def _status_chip(status):
+    norm = (status or "unknown").strip().lower()
+    label = norm.replace("_", " ").title()
+    return f"<span class='queue-chip queue-chip-{norm}'>{html.escape(label)}</span>"
+
+
 def _render_queue_html(queued_jobs):
     if not queued_jobs:
         return "<p class='phase-stats'>Pipeline queue: empty</p>"
 
-    lines = ["<div class='phase-stats'>Pipeline queue:</div>", "<ul class='phase-stats'>"]
+    rows = []
     for job in queued_jobs:
-        lines.append(
-            f"<li>#{job.get('id')} {job.get('job_type') or 'run'} "
-            f"(position {job.get('queue_position')})</li>"
+        status = (job.get("status") or "queued").strip().lower()
+        job_id = job.get("id")
+        rows.append(
+            "<tr>"
+            f"<td data-sort='{job.get('queue_position')}'>{html.escape(str(job.get('queue_position')))}</td>"
+            f"<td data-sort='{job.get('priority')}'>{html.escape(str(job.get('priority')))}</td>"
+            f"<td data-sort='{html.escape(str(job.get('enqueued_at') or ''))}'>{html.escape(_format_queue_time(job.get('enqueued_at')))}</td>"
+            f"<td>{html.escape(str(job.get('target_scope') or '-'))}</td>"
+            f"<td>{html.escape(str(job.get('selected_phases') or '-'))}</td>"
+            f"<td>{html.escape(str(job.get('dependency_blockers') or 'None'))}</td>"
+            f"<td data-sort='{html.escape(str(job.get('estimated_start') or ''))}'>{html.escape(_format_queue_time(job.get('estimated_start')))}</td>"
+            f"<td data-sort='{job.get('retry_count')}'>{html.escape(str(job.get('retry_count') or 0))}</td>"
+            f"<td>{_status_chip(status)}</td>"
+            "<td class='queue-actions'>"
+            f"<button class='queue-action-btn' data-job-id='{job_id}' data-action='bump_priority' {'disabled' if status not in ('queued', 'paused') else ''} title='Increase priority'>⬆ Priority</button>"
+            f"<button class='queue-action-btn' data-job-id='{job_id}' data-action='pause' {'disabled' if status != 'queued' else ''} title='Pause item'>⏸ Pause</button>"
+            f"<button class='queue-action-btn' data-job-id='{job_id}' data-action='cancel' {'disabled' if status not in ('queued','paused') else ''} title='Cancel item'>✖ Cancel</button>"
+            f"<button class='queue-action-btn' data-job-id='{job_id}' data-action='restart' {'disabled' if status != 'failed' else ''} title='Restart failed'>↻ Restart</button>"
+            "</td>"
+            "</tr>"
         )
-    lines.append("</ul>")
-    return "".join(lines)
+
+    return (
+        "<div class='queue-board'>"
+        "<div class='phase-stats'>Job queue board</div>"
+        "<div class='queue-board-help section-microcopy'>Sortable columns: Position, Priority, Enqueue Time, ETA, Retry.</div>"
+        "<div class='queue-table-wrap'>"
+        "<table class='queue-table'>"
+        "<thead><tr>"
+        "<th data-sort-col='0'>Position</th>"
+        "<th data-sort-col='1'>Priority</th>"
+        "<th data-sort-col='2'>Enqueue Time</th>"
+        "<th>Target Scope</th>"
+        "<th>Selected Phases</th>"
+        "<th>Dependency Blockers</th>"
+        "<th data-sort-col='6'>Estimated Start</th>"
+        "<th data-sort-col='7'>Retry</th>"
+        "<th>Status</th>"
+        "<th>Actions</th>"
+        "</tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody>"
+        "</table></div>"
+        "<script>(function(){"
+        "const root=document.currentScript.closest('.queue-board'); if(!root) return;"
+        "const table=root.querySelector('.queue-table'); if(!table || table.dataset.enhanced==='1') return; table.dataset.enhanced='1';"
+        "const headers=table.querySelectorAll('th[data-sort-col]');"
+        "headers.forEach((th)=>th.addEventListener('click',()=>{"
+        "const idx=parseInt(th.dataset.sortCol,10);"
+        "const tbody=table.querySelector('tbody');"
+        "const rows=Array.from(tbody.querySelectorAll('tr'));"
+        "const asc=th.dataset.asc!=='1';"
+        "headers.forEach((h)=>delete h.dataset.asc); th.dataset.asc=asc?'1':'0';"
+        "rows.sort((a,b)=>{"
+        "const va=(a.children[idx].dataset.sort||a.children[idx].innerText||'').trim();"
+        "const vb=(b.children[idx].dataset.sort||b.children[idx].innerText||'').trim();"
+        "const na=Number(va), nb=Number(vb);"
+        "const cmp=(!Number.isNaN(na)&&!Number.isNaN(nb))?(na-nb):va.localeCompare(vb);"
+        "return asc?cmp:-cmp;"
+        "}); rows.forEach((r)=>tbody.appendChild(r));"
+        "}));"
+        "const endpoint=(action,jobId)=>{"
+        "if(action==='cancel') return `/api/jobs/${jobId}/cancel`;"
+        "if(action==='pause') return `/api/jobs/${jobId}/pause`;"
+        "if(action==='restart') return `/api/jobs/${jobId}/restart`;"
+        "if(action==='bump_priority') return `/api/jobs/${jobId}/priority?delta=10`;"
+        "return null;"
+        "};"
+        "root.querySelectorAll('.queue-action-btn[data-action]').forEach((btn)=>{"
+        "btn.addEventListener('click',async()=>{"
+        "if(btn.disabled) return;"
+        "const action=btn.dataset.action; const jobId=btn.dataset.jobId;"
+        "const url=endpoint(action,jobId); if(!url) return;"
+        "btn.disabled=true;"
+        "try {"
+        "const res=await fetch(url,{method:'POST'});"
+        "if(!res.ok){ console.warn('Queue action failed', action, jobId); btn.disabled=false; return; }"
+        "btn.textContent='✓';"
+        "} catch(e){ console.warn('Queue action error', e); btn.disabled=false; }"
+        "});"
+        "});"
+        "})();</script>"
+        "</div>"
+    )
 
 
 def _build_idle_html(recovery_info=None, queued_jobs=None):
