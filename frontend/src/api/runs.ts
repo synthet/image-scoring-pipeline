@@ -30,6 +30,7 @@ export const runsApi = {
   resume: (id: number) => api.post<void>(`/runs/${id}/resume`),
   cancel: (id: number) => api.post<void>(`/runs/${id}/cancel`),
   retry: (id: number) => api.post<void>(`/runs/${id}/retry`),
+  force: (id: number) => api.post<{ success: boolean; run_id: number; actions: string[] }>(`/runs/${id}/force`, { confirm: true }),
 
   getStages: (id: number) => api.get<Stage[]>(`/runs/${id}/stages`),
   retryStage: (id: number, code: string) => api.post<void>(`/runs/${id}/stages/${code}/retry`),

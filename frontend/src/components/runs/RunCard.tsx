@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
-import { FolderOpen, XCircle, Pause, Play, RotateCcw } from 'lucide-react'
+import { FolderOpen, XCircle, Pause, Play, RotateCcw, Zap } from 'lucide-react'
 import { runsApi } from '@/api/runs'
 import { RunBadge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -28,6 +28,7 @@ export function RunCard({ run, compact = false }: RunCardProps) {
   const resumeMut = useMutation({ mutationFn: () => runsApi.resume(run.id), onSuccess: invalidate })
   const cancelMut = useMutation({ mutationFn: () => runsApi.cancel(run.id), onSuccess: invalidate })
   const retryMut = useMutation({ mutationFn: () => runsApi.retry(run.id), onSuccess: invalidate })
+  const forceMut = useMutation({ mutationFn: () => runsApi.force(run.id), onSuccess: invalidate })
 
   const scopePaths = Array.isArray(run.scope_paths) && run.scope_paths.length > 0
     ? run.scope_paths
@@ -126,6 +127,18 @@ export function RunCard({ run, compact = false }: RunCardProps) {
             >
               <RotateCcw size={11} />
               Retry
+            </Button>
+          )}
+          {(run.status === 'running' || run.status === 'queued') && (
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => forceMut.mutate()}
+              loading={forceMut.isPending}
+              className="text-[#cca700] hover:text-[#cca700]"
+              title="Force-unstick this run"
+            >
+              <Zap size={11} />
             </Button>
           )}
           {(run.status === 'pending' || run.status === 'running' || run.status === 'queued' || run.status === 'paused') && (

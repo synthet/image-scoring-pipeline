@@ -182,7 +182,7 @@ class ClusteringEngine:
             self.model = MobileNetV2(weights='imagenet', include_top=False, pooling='avg', input_shape=(224, 224, 3))
             logging.info("Clustering Model (MobileNetV2) loaded.")
 
-    def extract_features(self, image_paths, original_paths=None):
+    def extract_features(self, image_paths, original_paths=None, progress_log=None):
         """
         Extract features for a list of image paths.
         Uses persisted cache when available.
@@ -191,9 +191,8 @@ class ClusteringEngine:
         Args:
             image_paths: Paths to load images from (may be thumbnails).
             original_paths: Original file paths for DB hash lookup. If None, image_paths are used.
+            progress_log: Optional ``callable(message, level="INFO")`` for run-scoped UI logs.
         """
-        self.load_model()
-
         if original_paths is None:
             original_paths = image_paths
 
@@ -222,8 +221,17 @@ class ClusteringEngine:
                 uncached_paths.append(path)
                 uncached_indices.append(i)
         
-        # Process uncached images in batches
+        # Process uncached images in batches (model loaded only when needed)
         if uncached_paths:
+            if progress_log:
+                n_cached = len(features_list)
+                progress_log(
+                    f"Computing embeddings for {len(uncached_paths)} image(s) "
+                    f"({n_cached} from cache); loading MobileNetV2 if needed — "
+                    f"first load or large batches can take several minutes.",
+                    "INFO",
+                )
+            self.load_model()
             batch_images = []
             batch_paths = []
             batch_indices = []
@@ -343,7 +351,16 @@ class ClusteringEngine:
         burst_uuid = utils.read_burst_uuid(row['file_path'])
         return burst_uuid
 
-    def cluster_images(self, distance_threshold=None, time_gap_seconds=None, force_rescan=None, target_folder=None, job_id=None, target_image_ids=None):
+    def cluster_images(
+        self,
+        distance_threshold=None,
+        time_gap_seconds=None,
+        force_rescan=None,
+        target_folder=None,
+        job_id=None,
+        target_image_ids=None,
+        progress_log=None,
+    ):
         """
         Main function to load images from DB, cluster them, and update DB.
         Enforces: 1. Folder Isolation 2. Time Gap Splitting 3. Persistence
@@ -360,13 +377,30 @@ class ClusteringEngine:
         self.total = 0
         
         try:
-            yield from self._cluster_images_impl(distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id, target_image_ids=target_image_ids)
+            yield from self._cluster_images_impl(
+                distance_threshold,
+                time_gap_seconds,
+                force_rescan,
+                target_folder,
+                job_id,
+                target_image_ids=target_image_ids,
+                progress_log=progress_log,
+            )
         finally:
             # Always mark as not running when done
             self.is_running = False
             self.status_message = "Idle"
             
-    def _cluster_images_impl(self, distance_threshold, time_gap_seconds, force_rescan, target_folder, job_id=None, target_image_ids=None):
+    def _cluster_images_impl(
+        self,
+        distance_threshold,
+        time_gap_seconds,
+        force_rescan,
+        target_folder,
+        job_id=None,
+        target_image_ids=None,
+        progress_log=None,
+    ):
         """Internal implementation of cluster_images."""
         import datetime
         import json
@@ -379,6 +413,9 @@ class ClusteringEngine:
             self.current = cur
             self.total = tot
             return msg, cur, tot
+
+        if progress_log:
+            progress_log("Preparing clustering scope (database query)...")
         
         # Load defaults from config if not provided
         if distance_threshold is None:
@@ -655,7 +692,11 @@ class ClusteringEngine:
                 if len(batch_paths) < 2:
                     continue
 
-                features, valid_indices = self.extract_features(batch_paths, original_paths=batch_original_paths)
+                features, valid_indices = self.extract_features(
+                    batch_paths,
+                    original_paths=batch_original_paths,
+                    progress_log=progress_log,
+                )
 
                 # Persist embeddings to DB for similarity search
                 embedding_pairs = []
@@ -816,13 +857,18 @@ class ClusteringRunner:
         self.stop_event.clear()
         
         def target():
-            self._run_internal(input_path, threshold, time_gap, force_rescan, job_id, resolved_image_ids=resolved_image_ids)
-            self.is_running = False
+            try:
+                self._run_internal(input_path, threshold, time_gap, force_rescan, job_id, resolved_image_ids=resolved_image_ids)
+            except Exception:
+                logger.exception("ClusteringRunner thread crashed (job_id=%s)", job_id)
+                self.status_message = "Failed"
+            finally:
+                self.is_running = False
             if "Error" in self.status_message:
                 self.status_message = "Failed"
             elif not self.status_message.startswith("Done"):
                 self.status_message = "Done"
-            
+
         self._thread = threading.Thread(target=target)
         self._thread.start()
         return "Started"
@@ -854,7 +900,8 @@ class ClusteringRunner:
                 force_rescan=force_rescan,
                 target_folder=input_path,
                 job_id=job_id,
-                target_image_ids=resolved_image_ids
+                target_image_ids=resolved_image_ids,
+                progress_log=log,
             ):
                 if self.stop_event.is_set():
                     log("Stopped by user.")
@@ -867,6 +914,7 @@ class ClusteringRunner:
                     self.status_message = msg
                     self.current_count = cur
                     self.total_count = tot
+                    log(msg)
                     
                     if job_id:
                          event_manager.broadcast_threadsafe("job_progress", {
@@ -879,6 +927,7 @@ class ClusteringRunner:
                          })
                 else:
                     self.status_message = str(msg_tuple)
+                    log(str(msg_tuple))
             
             if job_id:
                 db.update_job_status(job_id, "completed", log="\n".join(self.log_history))

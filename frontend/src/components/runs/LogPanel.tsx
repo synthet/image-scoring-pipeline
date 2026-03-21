@@ -1,13 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { useWsStore } from '@/stores/wsStore'
-import type { WsLogLine } from '@/types/api'
+import type { RunStatus, WsLogLine } from '@/types/api'
+import { parsePersistedRunLog } from '@/utils/runLog'
 
 /** Stable empty array so selector returns same reference when run has no logs (avoids getSnapshot infinite loop). */
 const EMPTY_LOG_LINES: WsLogLine[] = []
 
 interface LogPanelProps {
   runId: number
+  /** Full job log from DB after completion (matches Python runner log_history). */
+  persistedLog?: string | null
+  runStatus?: RunStatus
+  startedAt?: string | null
 }
 
 type LogLevel = 'ALL' | 'INFO' | 'WARNING' | 'ERROR'
@@ -19,14 +24,24 @@ const LEVEL_COLORS: Record<string, string> = {
   ERROR: 'text-[#f44747]',
 }
 
-export function LogPanel({ runId }: LogPanelProps) {
+export function LogPanel({ runId, persistedLog, runStatus, startedAt }: LogPanelProps) {
   const lines = useWsStore((s) => s.logLines[runId] ?? EMPTY_LOG_LINES)
+  const terminal =
+    runStatus === 'completed' || runStatus === 'failed' || runStatus === 'interrupted'
+  const displayLines = useMemo(() => {
+    const persisted = persistedLog?.trim()
+      ? parsePersistedRunLog(persistedLog, runId, startedAt ?? null)
+      : []
+    if (terminal && persisted.length) return persisted
+    if (lines.length) return lines
+    return persisted
+  }, [persistedLog, terminal, runId, startedAt, lines])
   const [filter, setFilter] = useState<LogLevel>('INFO')
   const [autoScroll, setAutoScroll] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isProgrammaticScrollRef = useRef(false)
 
-  const filtered = lines.filter((l) => {
+  const filtered = displayLines.filter((l) => {
     if (filter === 'ALL') return true
     if (filter === 'ERROR') return l.level === 'ERROR'
     if (filter === 'WARNING') return l.level === 'WARNING' || l.level === 'ERROR'

@@ -199,11 +199,63 @@ class TaggingStartRequest(SelectorRequest):
     })
 
 
+class BirdSpeciesStartRequest(SelectorRequest):
+    """Request model for starting a bird species classification job.
+
+    Only images that already have the 'birds' keyword are processed — all others are
+    automatically skipped. Top predicted species are stored as 'species:Common Name'
+    keywords using BioCLIP 2 (zero-shot, MIT license).
+
+    Example:
+        {
+            "input_path": "D:/Photos/2024",
+            "threshold": 0.1,
+            "top_k": 3,
+            "overwrite": false
+        }
+    """
+    input_path: Optional[str] = Field(
+        None,
+        description="Directory path containing images to classify.",
+        example="D:/Photos/2024"
+    )
+    candidate_species: Optional[List[str]] = Field(
+        None,
+        description="List of common species names to classify against. "
+                    "If None, uses the bundled North American species list.",
+        example=["American Robin", "Northern Cardinal", "Mallard"]
+    )
+    threshold: float = Field(
+        0.1,
+        description="Minimum softmax probability to store a species prediction.",
+        example=0.1
+    )
+    top_k: int = Field(
+        3,
+        description="Maximum number of species to store per image.",
+        example=3
+    )
+    overwrite: bool = Field(
+        False,
+        description="If True, re-classify images that already have species: keywords.",
+        example=False
+    )
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "input_path": "D:/Photos/2024",
+            "threshold": 0.1,
+            "top_k": 3,
+            "overwrite": False
+        }
+    })
+
+
 class SingleImageRequest(BaseModel):
     """Request model for single image operations.
-    
+
     Used for scoring or fixing metadata for a single image file.
-    
+
     Attributes:
         file_path: Full path to the image file. Supports Windows and WSL paths.
     
@@ -747,6 +799,7 @@ _scoring_runner = None
 _tagging_runner = None
 _clustering_runner = None
 _selection_runner = None
+_bird_species_runner = None
 _orchestrator = None
 _job_dispatcher = JobDispatcher()
 
@@ -768,15 +821,16 @@ def _stop_runner_for_phase(phase: str) -> bool:
     return False
 
 
-def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None, bird_species_runner=None):
     """Set the runner instances for API access."""
-    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _job_dispatcher
+    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _job_dispatcher, _bird_species_runner
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
     _selection_runner = selection_runner
     _orchestrator = orchestrator
-    _job_dispatcher.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner)
+    _bird_species_runner = bird_species_runner
+    _job_dispatcher.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner, bird_species_runner=bird_species_runner)
     _job_dispatcher.start()
 
 
@@ -1606,8 +1660,130 @@ def create_api_router() -> APIRouter:
             logger.error(f"Tag propagation failed: {e}")
             raise HTTPException(status_code=500, detail=str(e))
     
+    # ========== Bird Species Endpoints ==========
+
+    @router.post(
+        "/bird-species/start",
+        response_model=ApiResponse,
+        summary="Start bird species classification",
+        description="""
+        Classify bird species for images that already have the 'birds' keyword.
+
+        Images **without** the 'birds' keyword are automatically skipped — no need to
+        pre-filter. Top predictions are stored as 'species:Common Name' keywords using
+        BioCLIP 2 (zero-shot, MIT license).
+
+        The job runs asynchronously via the job queue. Monitor progress with
+        GET /api/bird-species/status.
+
+        **Requires:** `open_clip_torch` installed (`pip install open_clip_torch`).
+        """
+    )
+    async def start_bird_species(request: BirdSpeciesStartRequest):
+        """Start a bird species classification job."""
+        if _bird_species_runner is None:
+            raise HTTPException(status_code=503, detail="Bird species runner not available")
+
+        if not any([request.input_path, request.image_ids, request.image_paths,
+                    request.folder_ids, request.folder_paths]):
+            raise HTTPException(
+                status_code=400,
+                detail="Provide input_path or at least one selector (image_ids, folder_paths, etc.)"
+            )
+
+        if request.input_path and not os.path.exists(request.input_path):
+            raise HTTPException(status_code=400, detail=f"Path not found: {request.input_path}")
+
+        selector_result = {"resolved_image_ids": None}
+        has_explicit_selectors = any([
+            request.image_ids, request.image_paths,
+            request.folder_ids, request.folder_paths,
+        ])
+        if has_explicit_selectors:
+            selector_result = resolve_selectors(
+                image_ids=request.image_ids,
+                image_paths=request.image_paths,
+                folder_ids=request.folder_ids,
+                folder_paths=request.folder_paths,
+                recursive=request.recursive,
+                index_missing=True,
+            )
+
+        resolved_ids = selector_result.get("resolved_image_ids")
+        resolved_count = len(resolved_ids) if resolved_ids is not None else None
+        job_source = request.input_path or "SELECTOR_BIRD_SPECIES"
+
+        job_id, queue_position = db.enqueue_job(
+            job_source,
+            phase_code=None,
+            job_type="bird_species",
+            queue_payload={
+                "input_path": request.input_path,
+                "candidate_species": request.candidate_species,
+                "threshold": request.threshold,
+                "top_k": request.top_k,
+                "overwrite": request.overwrite,
+                "resolved_image_ids": resolved_ids,
+            },
+        )
+        if job_id is None:
+            raise HTTPException(status_code=500, detail="Failed to enqueue bird species job")
+
+        return ApiResponse(
+            success=True,
+            message="Bird species classification job queued",
+            data={
+                "job_id": job_id,
+                "input_path": request.input_path,
+                "resolved_count": resolved_count,
+                "queue_position": queue_position,
+            }
+        )
+
+    @router.post(
+        "/bird-species/stop",
+        response_model=ApiResponse,
+        summary="Stop bird species job",
+        description="Send a stop signal to the running bird species classification job."
+    )
+    async def stop_bird_species():
+        """Stop the running bird species classification job."""
+        if _bird_species_runner is None:
+            raise HTTPException(status_code=503, detail="Bird species runner not available")
+        if not _bird_species_runner.is_running:
+            return ApiResponse(
+                success=False,
+                message="No bird species job is currently running",
+                data={"is_running": False}
+            )
+        _bird_species_runner.stop()
+        return ApiResponse(
+            success=True,
+            message="Stop signal sent to bird species runner",
+            data={"is_running": _bird_species_runner.is_running}
+        )
+
+    @router.get(
+        "/bird-species/status",
+        summary="Get bird species status",
+        description="Get the current status of the bird species classification runner."
+    )
+    async def get_bird_species_status():
+        """Get bird species runner status."""
+        if _bird_species_runner is None:
+            raise HTTPException(status_code=503, detail="Bird species runner not available")
+        is_running, log_text, status_message, current, total = _bird_species_runner.get_status()
+        return {
+            "is_running": is_running,
+            "status_message": status_message,
+            "current": current,
+            "total": total,
+            "log": log_text,
+            "job_type": "bird_species",
+        }
+
     # ========== General Endpoints ==========
-    
+
     @router.get(
         "/status",
         response_model=Dict[str, Any],
@@ -4042,7 +4218,11 @@ def create_api_router() -> APIRouter:
 
     @router.post("/runs/{run_id}/resume", summary="Resume a paused Run")
     async def resume_run(run_id: int):
-        """Re-enqueue a paused run. It will resume with skip_done=True."""
+        """Resume a paused/interrupted run in-place (same run_id).
+
+        Requeues the same job row. Completed/skipped phases are preserved;
+        incomplete phases are reset so the dispatcher picks them up.
+        """
         from modules import db
         try:
             job = db.get_job(run_id)
@@ -4050,32 +4230,25 @@ def create_api_router() -> APIRouter:
                 raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
             if job.get("status") not in ("paused", "interrupted"):
                 raise HTTPException(status_code=400, detail=f"Run {run_id} cannot be resumed (status={job.get('status')})")
-            # Re-enqueue with same payload + skip_done=True
+
+            # Update payload to skip_done=True
             payload_raw = job.get("queue_payload") or "{}"
             try:
                 payload = json.loads(payload_raw)
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
             except Exception:
                 payload = {}
             payload["skip_done"] = True
-            # Derive phase_code and job_type from original job
-            orig_job_type = job.get("job_type", "scoring")
-            _phase_code_map = {"scoring": "scoring", "tagging": "keywords", "clustering": "culling", "selection": "culling"}
-            phase_code = _phase_code_map.get(orig_job_type, "scoring")
-            new_job_id, position = db.enqueue_job(
-                input_path=job.get("input_path", ""),
-                phase_code=phase_code,
-                job_type=orig_job_type,
-                queue_payload=json.dumps(payload),
-            )
-            # Copy phases from original job, or default from job_type
-            orig_phases = db.get_job_phases(run_id)
-            if orig_phases:
-                phase_codes = [p["phase_code"] for p in orig_phases]
-            else:
-                _defaults = {"tagging": ["keywords"], "selection": ["culling", "metadata"], "clustering": ["culling"]}
-                phase_codes = _defaults.get(orig_job_type, ["indexing", "metadata", "scoring"])
-            db.create_job_phases(new_job_id, phase_codes, first_phase_state="queued")
-            return {"success": True, "run_id": new_job_id, "queue_position": position}
+            db.update_job_payload(run_id, json.dumps(payload))
+
+            # Requeue the same row
+            _, position = db.requeue_job(run_id)
+
+            # Preserve completed/skipped phases; reset incomplete ones
+            db.resume_job_phases(run_id)
+
+            return {"success": True, "run_id": run_id, "queue_position": position}
         except HTTPException:
             raise
         except Exception as e:
@@ -4115,6 +4288,181 @@ def create_api_router() -> APIRouter:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
+    class ForceRunRequest(BaseModel):
+        confirm: bool = Field(
+            ..., description="Must be true to acknowledge this is a destructive operation"
+        )
+
+    @router.post("/runs/{run_id}/force", summary="Force-start a stuck Run")
+    async def force_run(run_id: int, body: ForceRunRequest):
+        """Force-unstick a run that the normal Resume/Retry flow cannot handle.
+
+        Branches on current status:
+        - **running** (ghost — no live runner thread): marks interrupted, then re-enqueues.
+        - **queued**: resets the dispatcher's ghost is_running flag if no runner thread
+          is actually alive, so the dispatcher can dequeue again.
+        - **paused/interrupted**: delegates to the normal resume flow.
+        - Terminal states: delegates to the normal retry flow.
+
+        Requires ``confirm: true`` in the request body.
+        """
+        from modules import db
+
+        if not body.confirm:
+            raise HTTPException(status_code=400, detail="Set confirm=true to proceed")
+
+        try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+            status = (job.get("status") or "").strip().lower()
+            actions_taken = []
+
+            # --- Helper: reset ghost is_running on all runners ----------------
+            def _reset_ghost_runners() -> list:
+                """Reset is_running on runners whose thread is no longer alive."""
+                cleared = []
+                for name, runner in [
+                    ("scoring", _scoring_runner),
+                    ("tagging", _tagging_runner),
+                    ("clustering", _clustering_runner),
+                    ("selection", _selection_runner),
+                ]:
+                    if runner is None:
+                        continue
+                    thread = getattr(runner, "_thread", None)
+                    thread_alive = thread is not None and thread.is_alive()
+                    # Selection runner uses _is_running behind a lock
+                    if name == "selection":
+                        lock = getattr(runner, "_lock", None)
+                        if lock:
+                            with lock:
+                                if runner._is_running and not thread_alive:
+                                    runner._is_running = False
+                                    cleared.append(name)
+                    else:
+                        if getattr(runner, "is_running", False) and not thread_alive:
+                            runner.is_running = False
+                            cleared.append(name)
+                return cleared
+
+            # --- Branch on status --------------------------------------------
+            if status == "running":
+                # Check if there's actually a live runner thread for this job
+                state = _job_dispatcher.get_state()
+                active_runner_name = state.get("active_runner")
+                runner_map = {
+                    "scoring": _scoring_runner,
+                    "tagging": _tagging_runner,
+                    "clustering": _clustering_runner,
+                    "selection": _selection_runner,
+                }
+                runner = runner_map.get(active_runner_name) if active_runner_name else None
+                thread = getattr(runner, "_thread", None) if runner else None
+                thread_alive = thread is not None and thread.is_alive()
+
+                if thread_alive:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Run {run_id} has a live runner thread ({active_runner_name}). "
+                               "Use Cancel first, then Retry.",
+                    )
+
+                # Ghost running — mark interrupted, clear runners, resume in-place
+                db.update_job_status(run_id, "interrupted", log="Force-interrupted (ghost running)")
+                actions_taken.append(f"marked {run_id} interrupted")
+                cleared = _reset_ghost_runners()
+                if cleared:
+                    actions_taken.append(f"reset ghost is_running on: {', '.join(cleared)}")
+
+                # In-place resume: same job id back to queued
+                _, pos = _resume_job_inplace(job)
+                actions_taken.append(f"requeued run {run_id} (position {pos})")
+                return {"success": True, "run_id": run_id, "queue_position": pos, "actions": actions_taken}
+
+            elif status == "queued":
+                # The job is queued but nothing is being dispatched —
+                # likely ghost is_running on a runner is blocking the dispatcher.
+                cleared = _reset_ghost_runners()
+                if cleared:
+                    actions_taken.append(f"reset ghost is_running on: {', '.join(cleared)}")
+                else:
+                    actions_taken.append("no ghost runners found — dispatcher should dequeue normally")
+                return {"success": True, "run_id": run_id, "actions": actions_taken}
+
+            elif status in ("paused", "interrupted"):
+                # In-place resume: same job id
+                _, pos = _resume_job_inplace(job)
+                actions_taken.append(f"requeued run {run_id} (position {pos})")
+                return {"success": True, "run_id": run_id, "queue_position": pos, "actions": actions_taken}
+
+            elif status in ("completed", "failed", "canceled", "cancelled"):
+                # Terminal — must create a new job (Retry semantics)
+                new_id, pos = _reenqueue_job(job)
+                actions_taken.append(f"retried as new job {new_id} (position {pos})")
+                return {"success": True, "run_id": new_id, "queue_position": pos, "actions": actions_taken}
+
+            else:
+                raise HTTPException(status_code=400, detail=f"Unhandled status: {status}")
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception("force_run failed for run_id=%s", run_id)
+            raise HTTPException(status_code=500, detail=str(e))
+
+    def _resume_job_inplace(job: dict) -> tuple:
+        """Resume a job in-place: same id back to queued, phases preserved. Returns (job_id, position)."""
+        from modules import db
+
+        run_id = job["id"]
+        payload_raw = job.get("queue_payload") or "{}"
+        try:
+            payload = json.loads(payload_raw)
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+        except Exception:
+            payload = {}
+        payload["skip_done"] = True
+        db.update_job_payload(run_id, json.dumps(payload))
+
+        _, position = db.requeue_job(run_id)
+        db.resume_job_phases(run_id)
+        return run_id, position
+
+    def _reenqueue_job(job: dict) -> tuple:
+        """Re-enqueue a job with skip_done=True. Returns (new_job_id, position)."""
+        from modules import db
+
+        payload_raw = job.get("queue_payload") or "{}"
+        try:
+            payload = json.loads(payload_raw)
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+        except Exception:
+            payload = {}
+        payload["skip_done"] = True
+
+        orig_job_type = job.get("job_type", "scoring")
+        _phase_code_map = {"scoring": "scoring", "tagging": "keywords", "clustering": "culling", "selection": "culling"}
+        phase_code = _phase_code_map.get(orig_job_type, "scoring")
+
+        new_job_id, position = db.enqueue_job(
+            input_path=job.get("input_path", ""),
+            phase_code=phase_code,
+            job_type=orig_job_type,
+            queue_payload=json.dumps(payload),
+        )
+        orig_phases = db.get_job_phases(job["id"])
+        if orig_phases:
+            phase_codes = [p["phase_code"] for p in orig_phases]
+        else:
+            _defaults = {"tagging": ["keywords"], "selection": ["culling", "metadata"], "clustering": ["culling"]}
+            phase_codes = _defaults.get(orig_job_type, ["indexing", "metadata", "scoring"])
+        db.create_job_phases(new_job_id, phase_codes, first_phase_state="queued")
+        return new_job_id, position
 
     @router.post("/runs/{run_id}/retry", summary="Retry a failed/canceled Run")
     async def retry_run(run_id: int):

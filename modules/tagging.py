@@ -329,13 +329,18 @@ class TaggingRunner:
             job_id = db.create_job(input_path or "ALL_IMAGES_TAGGING")
             
         def target():
-            self._run_batch_internal(input_path, custom_keywords, overwrite, generate_captions, job_id=job_id, resolved_image_ids=resolved_image_ids)
-            self.is_running = False
+            try:
+                self._run_batch_internal(input_path, custom_keywords, overwrite, generate_captions, job_id=job_id, resolved_image_ids=resolved_image_ids)
+            except Exception:
+                logger.exception("TaggingRunner thread crashed (job_id=%s)", job_id)
+                self.status_message = "Failed"
+            finally:
+                self.is_running = False
             if "Error" in self.status_message:
                 self.status_message = "Failed"
             elif not self.status_message.startswith("Done"):
                 self.status_message = "Done"
-            
+
         self._thread = threading.Thread(target=target)
         self._thread.start()
         return "Started"

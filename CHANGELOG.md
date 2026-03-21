@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.14.0] - 2026-03-20
+
+### Added
+- **Bird species classification**: `modules/bird_species.py` — BioCLIP 2 zero-shot species keywords for images already tagged with "birds"; `BirdSpeciesRunner`; JobDispatcher phases `bird_species` / `bird-species`; default candidate list `data/bird_species_list.txt`.
+- **Docs**: `docs/technical/RUNS_WALKTHROUGH.md` — how batch runs, `JobDispatcher`, and runners connect end-to-end.
+- **Runs SPA**: `frontend/src/utils/runLog.ts` for structured run log lines.
+- **WSL utility**: `scripts/wsl/enqueue_untagged_folder_tagging.py` — enqueue per-folder tagging jobs for images missing keywords (aligned with API tagging payload).
+
+### Changed
+- **API** (`modules/api.py`): Runs, pipeline, and job endpoints expanded and refined.
+- **DB** (`modules/db.py`): Queries and schema support for jobs, phases, and queue behavior.
+- **Scoring** (`modules/scoring.py`): Refactor and integration updates for batch/queue workflows.
+- **Clustering, tagging, selection** (`modules/clustering.py`, `tagging.py`, `selection_runner.py`): Runner and job integration adjustments.
+- **Job dispatcher** (`modules/job_dispatcher.py`): Optional `bird_species_runner`; tolerate double-encoded JSON in `queue_payload`.
+- **Runs UI**: `LogPanel`, `RunCard`, `RunDetailPage`, `runs` API client, `WorkflowGraph` / `useWebSocket` / `api` types (line-ending normalized where needed).
+- **WebUI** (`modules/ui/app.py`): Minor wiring updates.
+- **Docs**: `docs/technical/INDEX.md` — link to runs walkthrough.
+- **Tests**: `tests/test_api_queue.py` updated for queue API behavior.
+
 ## [4.13.0] - 2026-03-19
 
 ### Added

@@ -30,7 +30,7 @@ JOB_ALLOWED_TRANSITIONS = {
     "pending": {"queued", "running", "canceled", "cancelled", "interrupted"},
     "queued": {"running", "paused", "cancel_requested", "canceled", "cancelled", "interrupted", "restarting"},
     "running": {"paused", "completed", "failed", "cancel_requested", "canceled", "cancelled", "interrupted", "restarting"},
-    "paused": {"queued", "running", "cancel_requested", "canceled", "cancelled", "interrupted", "restarting"},
+    "paused": {"queued", "running", "cancel_requested", "canceled", "cancelled", "interrupted", "restarting", "completed", "failed"},
     "cancel_requested": {"canceled", "cancelled", "failed", "interrupted"},
     "restarting": {"queued", "running", "failed", "interrupted", "canceled", "cancelled"},
     "interrupted": {"queued", "running", "canceled", "cancelled", "restarting"},
@@ -3458,6 +3458,49 @@ def get_images_by_folder(folder_path):
     _folder_images_cache[folder_path] = (now, result)
     return result
 
+
+def get_images_with_keyword(folder_path=None, keyword="birds", resolved_image_ids=None):
+    """Return image rows that have a specific keyword (via normalized keyword tables).
+
+    Scope priority: resolved_image_ids > folder_path > all DB images.
+    Used by BirdSpeciesRunner to restrict processing to images tagged with 'birds'.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    conditions = []
+    params = []
+
+    # Always filter by keyword using the normalized junction tables
+    conditions.append(
+        "EXISTS (SELECT 1 FROM image_keywords ik "
+        "JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id "
+        "WHERE ik.image_id = images.id AND kd.keyword_norm LIKE ?)"
+    )
+    params.append(f"%{keyword.strip().lower()}%")
+
+    if resolved_image_ids is not None:
+        if not resolved_image_ids:
+            conn.close()
+            return []
+        placeholders = ",".join("?" * len(resolved_image_ids))
+        conditions.append(f"images.id IN ({placeholders})")
+        params.extend(int(i) for i in resolved_image_ids)
+    elif folder_path:
+        norm_path = os.path.normpath(folder_path)
+        folder_id = get_or_create_folder(norm_path)
+        if not folder_id:
+            conn.close()
+            return []
+        conditions.append("images.folder_id = ?")
+        params.append(folder_id)
+
+    where = "WHERE " + " AND ".join(conditions)
+    c.execute(f"SELECT * FROM images {where} ORDER BY file_name", tuple(params))
+    rows = c.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def create_job(input_path, phase_code=None, job_type=None, status="pending", current_phase=None,
                next_phase_index=None, runner_state=None, queue_payload=None):
     """
@@ -3714,6 +3757,69 @@ def enqueue_job(input_path, phase_code, job_type=None, queue_payload=None):
     conn.commit()
     conn.close()
     return job_id, display_position
+
+
+def requeue_job(job_id):
+    """Reset an existing job row to queued status (in-place resume).
+
+    Resets started_at, finished_at, completed_at and bumps enqueued_at.
+    Updates queue_position so it sorts after any already-queued jobs.
+    Returns (job_id, display_position).
+    """
+    conn = get_db()
+    c = conn.cursor()
+    now = datetime.datetime.now()
+
+    # Use the transition guard in update_job_status for the status change
+    # but we need to reset more fields, so do it directly here after
+    # checking the transition is allowed.
+    c.execute("SELECT status FROM jobs WHERE id = ?", (job_id,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        raise ValueError(f"Job {job_id} not found")
+    old_status = (row[0] or "").strip().lower()
+    allowed = JOB_ALLOWED_TRANSITIONS.get(old_status, set())
+    if "queued" not in allowed:
+        conn.close()
+        raise ValueError(f"Cannot requeue job from status '{old_status}'")
+
+    c.execute(
+        """
+        UPDATE jobs
+        SET status = 'queued',
+            started_at = NULL,
+            finished_at = NULL,
+            completed_at = NULL,
+            enqueued_at = ?,
+            queue_position = ?,
+            runner_state = NULL,
+            current_phase = NULL,
+            cancel_requested = 0
+        WHERE id = ?
+        """,
+        (now, job_id, job_id),
+    )
+
+    c.execute(
+        "SELECT COUNT(*) FROM jobs WHERE status = 'queued' AND COALESCE(queue_position, id) <= ?",
+        (job_id,),
+    )
+    pos_row = c.fetchone()
+    display_position = int(pos_row[0] or 0) if pos_row else 0
+
+    conn.commit()
+    conn.close()
+    return job_id, display_position
+
+
+def update_job_payload(job_id, queue_payload):
+    """Update the queue_payload column on an existing job."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE jobs SET queue_payload = ? WHERE id = ?", (queue_payload, job_id))
+    conn.commit()
+    conn.close()
 
 
 def get_job_by_id(job_id):
@@ -4019,6 +4125,55 @@ def create_job_phases(job_id, phase_codes, first_phase_state=None):
     conn.commit()
     conn.close()
     return rows
+
+
+def resume_job_phases(job_id):
+    """Reset incomplete phases for resume. Completed/skipped stay; others → pending.
+
+    The first incomplete phase is set to 'queued' so the dispatcher picks it up.
+    Returns the updated phase list.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        "SELECT phase_order, phase_code, state FROM job_phases "
+        "WHERE job_id = ? ORDER BY phase_order",
+        (job_id,),
+    )
+    rows = c.fetchall()
+    if not rows:
+        conn.close()
+        return []
+
+    keep_states = {"completed", "skipped"}
+    first_incomplete_set = False
+    for r in rows:
+        phase_order, phase_code, state = r[0], r[1], (r[2] or "").strip().lower()
+        if state in keep_states:
+            continue
+        # First incomplete phase → queued; rest → pending
+        if not first_incomplete_set:
+            new_state = "queued"
+            first_incomplete_set = True
+        else:
+            new_state = "pending"
+        c.execute(
+            "UPDATE job_phases SET state = ?, started_at = NULL, completed_at = NULL, error_message = NULL "
+            "WHERE job_id = ? AND phase_code = ?",
+            (new_state, job_id, phase_code),
+        )
+
+    conn.commit()
+
+    # Return updated phases
+    c.execute(
+        "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
+        "FROM job_phases WHERE job_id = ? ORDER BY phase_order",
+        (job_id,),
+    )
+    result = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return result
 
 
 def set_job_phase_state(job_id, phase_code, state, error_message=None):
@@ -7081,6 +7236,50 @@ def get_images_for_tag_propagation(folder_path=None):
     except Exception as e:
         logging.error("Error loading images for tag propagation: %s", e)
         return [], []
+    finally:
+        conn.close()
+
+
+def list_folder_paths_with_missing_keywords(require_embedding: bool = False):
+    """
+    Folders (direct image parent) with at least one image lacking keywords.
+
+    Matches the untagged predicate in get_images_for_tag_propagation: no row in
+    image_keywords and legacy images.keywords is null or empty. When
+    require_embedding is True, also requires image_embedding IS NOT NULL
+    (same as propagation's untagged set).
+
+    Returns:
+        List of (folder_path, untagged_image_count) sorted by count desc, then path.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    embed_clause = ""
+    if require_embedding:
+        embed_clause = " AND i.image_embedding IS NOT NULL "
+    query = (
+        "SELECT f.path, COUNT(*) "
+        "FROM images i "
+        "JOIN folders f ON f.id = i.folder_id "
+        "WHERE NOT EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
+        "AND (i.keywords IS NULL OR i.keywords = '') "
+        f"{embed_clause}"
+        "GROUP BY f.path "
+        "HAVING COUNT(*) > 0 "
+        "ORDER BY COUNT(*) DESC, f.path"
+    )
+    try:
+        c.execute(query)
+        rows = []
+        for row in c.fetchall():
+            path = row[0]
+            cnt = int(row[1] or 0)
+            if path:
+                rows.append((str(path), cnt))
+        return rows
+    except Exception as e:
+        logging.error("list_folder_paths_with_missing_keywords: %s", e)
+        return []
     finally:
         conn.close()
 

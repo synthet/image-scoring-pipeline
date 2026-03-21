@@ -58,6 +58,7 @@ Existing features and implementation docs only. Plans and proposals → [plans/I
 |----------|-------------|
 | [API_CONTRACT.md](API_CONTRACT.md) | API contract summary (endpoints, response models) |
 | [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) | `jobs` queue persistence, `JobDispatcher`, and behavior on WebUI restart |
+| [RUNS_WALKTHROUGH.md](RUNS_WALKTHROUGH.md) | End-to-end walkthrough: submit → dispatcher → runners, pause/resume/retry/force, UI tabs |
 | [MCP_DEBUGGING_TOOLS.md](MCP_DEBUGGING_TOOLS.md) | MCP server tools for Cursor |
 
 **See also:** [Main docs index](../INDEX.md) · [reference/models/](../reference/models/INDEX.md) · [reference/api/](../reference/api/INDEX.md) · [plans/](../plans/INDEX.md)

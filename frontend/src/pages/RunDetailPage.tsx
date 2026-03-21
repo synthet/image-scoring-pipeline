@@ -174,7 +174,12 @@ export function RunDetailPage() {
         <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">
           Run Log
         </div>
-        <LogPanel runId={id} />
+        <LogPanel
+          runId={id}
+          persistedLog={run.log}
+          runStatus={run.status}
+          startedAt={run.started_at}
+        />
       </div>
     </div>
   )

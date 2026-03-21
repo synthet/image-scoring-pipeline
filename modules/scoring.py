@@ -80,11 +80,16 @@ class ScoringRunner:
             return "Path not found"
 
         def target():
-            run_kwargs = {"resolved_image_ids": resolved_image_ids}
-            if target_phases is not None:
-                run_kwargs["target_phases"] = target_phases
-            self._run_batch_internal(input_path, job_id, skip_existing, **run_kwargs)
-            self.is_running = False
+            try:
+                run_kwargs = {"resolved_image_ids": resolved_image_ids}
+                if target_phases is not None:
+                    run_kwargs["target_phases"] = target_phases
+                self._run_batch_internal(input_path, job_id, skip_existing, **run_kwargs)
+            except Exception:
+                logger.exception("ScoringRunner thread crashed (job_id=%s)", job_id)
+                self.status_message = "Failed"
+            finally:
+                self.is_running = False
             if "Error" in self.status_message:
                 self.status_message = "Failed"
             elif not self.status_message.startswith("Done"):
@@ -235,13 +240,18 @@ class ScoringRunner:
         self.status_message = "Starting Fix DB..."
         
         def target():
-            self._fix_db_internal(job_id)
-            self.is_running = False
+            try:
+                self._fix_db_internal(job_id)
+            except Exception:
+                logger.exception("ScoringRunner fix_db thread crashed (job_id=%s)", job_id)
+                self.status_message = "Failed"
+            finally:
+                self.is_running = False
             if "Error" in self.status_message:
                 self.status_message = "Failed"
             elif not self.status_message.startswith("Done"):
                 self.status_message = "Done"
-            
+
         self._thread = threading.Thread(target=target)
         self._thread.start()
         return "Started"

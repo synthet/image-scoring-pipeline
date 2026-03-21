@@ -21,15 +21,22 @@ from modules.ui import status_gradio
 # Cache platform check
 IS_WINDOWS = platform.system() == "Windows"
 
+# Module-level reference to BirdSpeciesRunner so setup_server_endpoints can access it
+_bird_species_runner = None
+
 
 def _init_webui_engines(clustering_runner=None):
     """Initialize DB, config, runners, and orchestrator. Returns (app_config, runner, tagging_runner, selection_runner, orchestrator)."""
+    global _bird_species_runner
     db.init_db()
     app_config = config.load_config()
 
     runner = scoring.ScoringRunner()
     tagging_runner = tagging.TaggingRunner()
     selection_runner = SelectionRunner()
+
+    from modules.bird_species import BirdSpeciesRunner
+    _bird_species_runner = BirdSpeciesRunner()
 
     orchestrator = pipeline_orchestrator.PipelineOrchestrator(
         scoring_runner=runner,
@@ -88,7 +95,7 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
     """Configures FastAPI endpoints for the Gradio app."""
 
     from modules import api
-    api.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner, orchestrator)
+    api.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner, orchestrator, bird_species_runner=_bird_species_runner)
     api_router = api.create_api_router()
     fastapi_app.include_router(api_router)
 
