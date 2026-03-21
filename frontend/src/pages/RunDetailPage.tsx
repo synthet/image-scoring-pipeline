@@ -45,7 +45,15 @@ export function RunDetailPage() {
   const pauseMut = useMutation({ mutationFn: () => runsApi.pause(id), onSuccess: invalidate })
   const resumeMut = useMutation({ mutationFn: () => runsApi.resume(id), onSuccess: invalidate })
   const cancelMut = useMutation({ mutationFn: () => runsApi.cancel(id), onSuccess: invalidate })
-  const retryMut = useMutation({ mutationFn: () => runsApi.retry(id), onSuccess: invalidate })
+  const retryMut = useMutation({
+    mutationFn: () => runsApi.retry(id),
+    onSuccess: (data) => {
+      invalidate()
+      if (data?.run_id != null && data.run_id !== id) {
+        navigate(`/runs/${data.run_id}`)
+      }
+    },
+  })
 
   const activeStage =
     selectedStage ??

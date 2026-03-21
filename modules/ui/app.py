@@ -98,6 +98,7 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
     api.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner, orchestrator, bird_species_runner=_bird_species_runner)
     api_router = api.create_api_router()
     fastapi_app.include_router(api_router)
+    fastapi_app.include_router(api.create_public_api_router())
 
     @fastapi_app.on_event("shutdown")
     async def _shutdown_dispatcher():

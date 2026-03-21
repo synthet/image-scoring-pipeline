@@ -26,7 +26,15 @@ Endpoints:
 
     Data Queries:
         GET /api/images - Query images with filters and pagination
+        GET /api/images/by-uuid/{image_uuid} - Get single image details by image_uuid
+        GET /api/images/by-hash/{image_hash} - Get single image details by content hash
         GET /api/images/{image_id} - Get single image details
+
+    Public (read-only image JSON, same payloads as above where applicable):
+        GET /public/api/images - Paginated list (page_size max 200)
+        GET /public/api/images/by-uuid/{image_uuid}
+        GET /public/api/images/by-hash/{image_hash}
+        GET /public/api/images/{image_id}
         PATCH /api/images/{image_id} - Update image metadata (rating/label/title/description/keywords)
         DELETE /api/images/{image_id} - Remove image record from database
         GET /api/folders - Get flat folder listing
@@ -46,9 +54,13 @@ Endpoints:
 """
 
 from fastapi import APIRouter, HTTPException, Body, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 import asyncio
 import json
+import math
+from datetime import date, datetime
+from decimal import Decimal
+from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import Optional, List, Dict, Any
@@ -68,6 +80,325 @@ from modules.job_dispatcher import JobDispatcher
 from modules import db
 
 logger = logging.getLogger(__name__)
+
+
+def _jobs_recent_json_default(o: Any) -> Any:
+    """json.dumps default=... for GET /api/jobs/recent (driver-native / odd nested values)."""
+    if o is None:
+        return None
+    if isinstance(o, (bytes, memoryview, bytearray)):
+        return bytes(o).decode("utf-8", errors="replace")
+    if isinstance(o, bool):
+        return o
+    if isinstance(o, int) and not isinstance(o, bool):
+        return o
+    if isinstance(o, float):
+        if math.isnan(o) or math.isinf(o):
+            return None
+        return o
+    if isinstance(o, str):
+        return o
+    if isinstance(o, Decimal):
+        f = float(o)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    if isinstance(o, UUID):
+        return str(o)
+    if isinstance(o, (datetime, date)):
+        try:
+            return o.isoformat()
+        except Exception:
+            pass
+    if hasattr(o, "isoformat") and callable(getattr(o, "isoformat", None)):
+        try:
+            return o.isoformat()
+        except Exception:
+            pass
+    try:
+        return str(o)
+    except Exception:
+        return "<non-stringifiable>"
+
+
+def _decode_db_row_blobs(d: dict) -> dict:
+    """Shallow decode of BLOB / buffer columns from Firebird rows."""
+    out = {}
+    for k, v in dict(d).items():
+        if isinstance(v, (bytes, memoryview, bytearray)):
+            out[k] = bytes(v).decode("utf-8", errors="replace")
+        else:
+            out[k] = v
+    return out
+
+
+def _normalize_jobs_table_row(d: dict) -> dict:
+    """jobs row: decode BLOBs, parse scope_paths / queue_payload JSON (API contract)."""
+    out = _decode_db_row_blobs(d)
+    if isinstance(out.get("scope_paths"), str):
+        try:
+            out["scope_paths"] = json.loads(out["scope_paths"]) if out["scope_paths"] else []
+        except (json.JSONDecodeError, TypeError):
+            out["scope_paths"] = []
+    if out.get("scope_paths") is None:
+        out["scope_paths"] = []
+    if out.get("scope_type") is None and out.get("input_path"):
+        out["scope_type"] = "folder_recursive"
+        out["scope_paths"] = out["scope_paths"] or [out["input_path"]]
+    qp = out.get("queue_payload")
+    if isinstance(qp, str) and qp.strip():
+        try:
+            out["queue_payload"] = json.loads(qp)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return out
+
+
+def _json_response_db(data: Any, log_label: str) -> Response:
+    """Encode DB-backed payloads without Pydantic Dict[str,Any] serialization (avoids pydantic_core URL bugs)."""
+    try:
+        body = json.dumps(
+            data,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            default=_jobs_recent_json_default,
+        )
+    except (TypeError, ValueError) as e:
+        logger.exception("%s: JSON serialization failed", log_label)
+        raise HTTPException(
+            status_code=500,
+            detail=f"JSON serialization failed: {e!r}",
+        ) from e
+    return Response(content=body.encode("utf-8"), media_type="application/json")
+
+
+def _synthetic_bird_species_job_phases(job: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """One job_phases row for bird_species jobs when DB rows are missing or wrong template."""
+    st = (job.get("status") or "queued").strip().lower()
+    if st in ("pending", "queued"):
+        pstate = "queued"
+    elif st == "running":
+        pstate = "running"
+    elif st == "completed":
+        pstate = "completed"
+    elif st in ("failed", "interrupted"):
+        pstate = st
+    elif st in ("canceled", "cancelled"):
+        pstate = "canceled"
+    elif st == "paused":
+        pstate = "paused"
+    else:
+        pstate = "pending"
+    return [
+        {
+            "phase_order": 0,
+            "phase_code": "bird_species",
+            "state": pstate,
+            "started_at": job.get("started_at"),
+            "completed_at": job.get("finished_at") or job.get("completed_at"),
+            "error_message": None,
+        }
+    ]
+
+
+def _job_phases_for_run_display(
+    job: Optional[Dict[str, Any]], phases: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Use real job_phases when they include bird_species; else synthesize for bird-only jobs."""
+    if not job:
+        return phases
+    jt = (job.get("job_type") or "").strip().lower()
+    if jt not in ("bird_species", "bird-species"):
+        return phases
+    codes = {(p.get("phase_code") or "").strip().lower() for p in (phases or [])}
+    if "bird_species" in codes:
+        return phases or []
+    return _synthetic_bird_species_job_phases(job)
+
+
+def _image_detail_payload(image_id: int) -> dict:
+    """Full JSON for GET /api/images/{id} and uuid/hash lookups."""
+    conn = db.get_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT * FROM images WHERE id = ?", (image_id,))
+        row = c.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
+
+        data = row.to_dict()
+        data["file_paths"] = db.get_all_paths(image_id)
+        data["resolved_path"] = db.get_resolved_path(image_id, verified_only=False)
+        data["phase_statuses"] = db.get_image_phase_statuses(image_id)
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+def _images_list_payload(
+    page: int,
+    page_size: int,
+    sort_by: str,
+    order: str,
+    rating: Optional[str],
+    label: Optional[str],
+    keyword: Optional[str],
+    min_score_general: float,
+    min_score_aesthetic: float,
+    min_score_technical: float,
+    folder_path: Optional[str],
+    stack_id: Optional[int],
+) -> dict:
+    """Paginated image rows as JSON (embeddings excluded). Used by /api/images and /public/api/images."""
+    rating_filter = [int(r) for r in rating.split(",")] if rating else None
+    label_filter = label.split(",") if label else None
+    try:
+        images, total_count = db.get_images_paginated_with_count(
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            order=order,
+            rating_filter=rating_filter,
+            label_filter=label_filter,
+            keyword_filter=keyword,
+            min_score_general=min_score_general,
+            min_score_aesthetic=min_score_aesthetic,
+            min_score_technical=min_score_technical,
+            folder_path=folder_path,
+            stack_id=stack_id,
+        )
+        return {
+            "images": [img.to_dict(exclude_keys={"image_embedding"}) for img in images],
+            "total": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size if page_size > 0 else 0,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _image_detail_for_uuid_str(image_uuid: str) -> dict:
+    import uuid as uuid_stdlib
+
+    key = (image_uuid or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="image_uuid is required")
+    try:
+        uuid_stdlib.UUID(key)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+    image_id = db.find_image_id_by_uuid(key)
+    if image_id is None:
+        raise HTTPException(status_code=404, detail=f"Image not found: uuid={key}")
+    return _image_detail_payload(image_id)
+
+
+def _image_detail_for_hash_str(image_hash: str) -> dict:
+    import re
+
+    key = (image_hash or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="image_hash is required")
+    if not re.fullmatch(r"[0-9a-fA-F]{32,128}", key):
+        raise HTTPException(
+            status_code=400,
+            detail="image_hash must be a hex string of length 32–128",
+        )
+    row = db.get_image_by_hash(key)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Image not found: hash={key}")
+    image_id = row.get("id")
+    if image_id is None:
+        raise HTTPException(status_code=404, detail=f"Image not found: hash={key}")
+    return _image_detail_payload(int(image_id))
+
+
+def create_public_api_router() -> APIRouter:
+    """Read-only JSON API for image records (no job control or mutations).
+
+    Mounted at ``/public/api``. Intended for integrations and scripts that only
+    need database-backed image metadata and scores.
+    """
+    router = APIRouter(
+        prefix="/public/api",
+        tags=["Public Image API"],
+        responses={
+            400: {"description": "Bad Request"},
+            404: {"description": "Not Found"},
+            500: {"description": "Internal Server Error"},
+        },
+    )
+
+    @router.get(
+        "/images",
+        summary="List images (public)",
+        description="Read-only paginated image rows from the database; same filters as /api/images. "
+        "page_size is capped at 200.",
+    )
+    async def public_list_images(
+        page: int = Query(1, ge=1),
+        page_size: int = Query(50, ge=1, le=200),
+        sort_by: str = Query(
+            "score",
+            description="score, date, name, rating, score_general, score_aesthetic, score_technical",
+        ),
+        order: str = Query("desc", description="asc or desc"),
+        rating: Optional[str] = Query(None, description="Comma-separated ratings"),
+        label: Optional[str] = Query(None, description="Comma-separated labels"),
+        keyword: Optional[str] = Query(None),
+        min_score_general: float = Query(0, ge=0, le=1),
+        min_score_aesthetic: float = Query(0, ge=0, le=1),
+        min_score_technical: float = Query(0, ge=0, le=1),
+        folder_path: Optional[str] = Query(None),
+        stack_id: Optional[int] = Query(None),
+    ):
+        return _images_list_payload(
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            order=order,
+            rating=rating,
+            label=label,
+            keyword=keyword,
+            min_score_general=min_score_general,
+            min_score_aesthetic=min_score_aesthetic,
+            min_score_technical=min_score_technical,
+            folder_path=folder_path,
+            stack_id=stack_id,
+        )
+
+    @router.get(
+        "/images/by-uuid/{image_uuid}",
+        summary="Image by UUID (public)",
+        description="Same JSON as GET /api/images/by-uuid/{image_uuid}.",
+    )
+    async def public_get_image_by_uuid(image_uuid: str):
+        return _image_detail_for_uuid_str(image_uuid)
+
+    @router.get(
+        "/images/by-hash/{image_hash}",
+        summary="Image by content hash (public)",
+        description="Same JSON as GET /api/images/by-hash/{image_hash}.",
+    )
+    async def public_get_image_by_hash(image_hash: str):
+        return _image_detail_for_hash_str(image_hash)
+
+    @router.get(
+        "/images/{image_id}",
+        summary="Image by numeric id (public)",
+        description="Same JSON as GET /api/images/{image_id}.",
+    )
+    async def public_get_image_by_id(image_id: int):
+        return _image_detail_payload(image_id)
+
+    return router
+
 
 # Request/Response Models with comprehensive descriptions for LLM agents
 
@@ -1729,6 +2060,8 @@ def create_api_router() -> APIRouter:
         if job_id is None:
             raise HTTPException(status_code=500, detail="Failed to enqueue bird species job")
 
+        await asyncio.to_thread(db.create_job_phases, job_id, ["bird_species"], "queued")
+
         return ApiResponse(
             success=True,
             message="Bird species classification job queued",
@@ -2266,7 +2599,6 @@ def create_api_router() -> APIRouter:
 
     @router.get(
         "/jobs/recent",
-        response_model=List[Dict[str, Any]],
         summary="Get recent jobs",
         description="""
         Returns a list of recent job history entries.
@@ -2292,22 +2624,8 @@ def create_api_router() -> APIRouter:
                 asyncio.to_thread(db.get_jobs, limit),
                 timeout=30.0,
             )
-            # Ensure JSON-serializable: parse scope_paths if stored as JSON string
-            result = []
-            for j in jobs:
-                d = dict(j)
-                if isinstance(d.get("scope_paths"), str):
-                    try:
-                        d["scope_paths"] = json.loads(d["scope_paths"]) if d["scope_paths"] else []
-                    except (json.JSONDecodeError, TypeError):
-                        d["scope_paths"] = []
-                if d.get("scope_paths") is None:
-                    d["scope_paths"] = []
-                if d.get("scope_type") is None and d.get("input_path"):
-                    d["scope_type"] = "folder_recursive"
-                    d["scope_paths"] = d["scope_paths"] or [d["input_path"]]
-                result.append(d)
-            return result
+            result = [_normalize_jobs_table_row(dict(j)) for j in jobs]
+            return _json_response_db(result, "GET /api/jobs/recent")
         except asyncio.TimeoutError:
             raise HTTPException(
                 status_code=504,
@@ -2318,7 +2636,6 @@ def create_api_router() -> APIRouter:
 
     @router.get(
         "/jobs/queue",
-        response_model=Dict[str, Any],
         summary="Get queue state",
         description="Returns dispatcher state and currently queued jobs."
     )
@@ -2326,15 +2643,17 @@ def create_api_router() -> APIRouter:
         from modules import db
         try:
             state = _job_dispatcher.get_state()
-            state["queue"] = db.get_queued_jobs(limit=limit)
+            raw_queue = db.get_queued_jobs(limit=limit)
+            state["queue"] = [_normalize_jobs_table_row(dict(x)) for x in raw_queue]
             state["queue_size"] = len(state["queue"])
-            return state
+            return _json_response_db(state, "GET /api/jobs/queue")
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.get(
         "/jobs/{job_id}",
-        response_model=Dict[str, Any],
         summary="Get job details",
         description="""
         Returns detailed information for a specific job by ID.
@@ -2354,8 +2673,11 @@ def create_api_router() -> APIRouter:
             job = db.get_job_by_id(job_id)
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
-            job["phases"] = db.get_job_phases(job_id)
-            return job
+            payload = _normalize_jobs_table_row(dict(job))
+            payload["phases"] = [
+                _decode_db_row_blobs(dict(p)) for p in db.get_job_phases(job_id)
+            ]
+            return _json_response_db(payload, f"GET /api/jobs/{job_id}")
         except HTTPException:
             raise
         except Exception as e:
@@ -2914,36 +3236,36 @@ def create_api_router() -> APIRouter:
         stack_id: Optional[int] = Query(None, description="Filter by stack ID"),
     ):
         """Query images with filtering, sorting, and pagination."""
-        from modules import db
+        return _images_list_payload(
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            order=order,
+            rating=rating,
+            label=label,
+            keyword=keyword,
+            min_score_general=min_score_general,
+            min_score_aesthetic=min_score_aesthetic,
+            min_score_technical=min_score_technical,
+            folder_path=folder_path,
+            stack_id=stack_id,
+        )
 
-        rating_filter = [int(r) for r in rating.split(",")] if rating else None
-        label_filter = label.split(",") if label else None
+    @router.get(
+        "/images/by-uuid/{image_uuid}",
+        summary="Get image details by image_uuid",
+        description="Resolves images.image_uuid to the same payload as GET /api/images/{image_id}.",
+    )
+    async def get_image_by_uuid(image_uuid: str):
+        return _image_detail_for_uuid_str(image_uuid)
 
-        try:
-            images, total_count = db.get_images_paginated_with_count(
-                page=page,
-                page_size=page_size,
-                sort_by=sort_by,
-                order=order,
-                rating_filter=rating_filter,
-                label_filter=label_filter,
-                keyword_filter=keyword,
-                min_score_general=min_score_general,
-                min_score_aesthetic=min_score_aesthetic,
-                min_score_technical=min_score_technical,
-                folder_path=folder_path,
-                stack_id=stack_id,
-            )
-
-            return {
-                "images": [img.to_dict(exclude_keys={"image_embedding"}) for img in images],
-                "total": total_count,
-                "page": page,
-                "page_size": page_size,
-                "total_pages": (total_count + page_size - 1) // page_size if page_size > 0 else 0,
-            }
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+    @router.get(
+        "/images/by-hash/{image_hash}",
+        summary="Get image details by content hash",
+        description="Looks up images.image_hash; returns the same payload as GET /api/images/{image_id}.",
+    )
+    async def get_image_by_hash_param(image_hash: str):
+        return _image_detail_for_hash_str(image_hash)
 
     @router.get(
         "/images/{image_id}",
@@ -2952,29 +3274,7 @@ def create_api_router() -> APIRouter:
     )
     async def get_image_by_id(image_id: int):
         """Get detailed information for a single image."""
-        from modules import db
-
-        conn = db.get_db()
-        try:
-            c = conn.cursor()
-            c.execute("SELECT * FROM images WHERE id = ?", (image_id,))
-            row = c.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
-
-            # Use to_dict to safely handle binary data (excludes large blobs by default)
-            data = row.to_dict()
-            data['file_paths'] = db.get_all_paths(image_id)
-            data['resolved_path'] = db.get_resolved_path(image_id, verified_only=False)
-            # Phase statuses for gallery display (scoring, metadata, culling, keywords)
-            data['phase_statuses'] = db.get_image_phase_statuses(image_id)
-            return data
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-        finally:
-            conn.close()
+        return _image_detail_payload(image_id)
 
     @router.get(
         "/folders",
@@ -4123,10 +4423,12 @@ def create_api_router() -> APIRouter:
     @router.post("/runs/submit", summary="Submit a new Run")
     async def submit_run(request: RunSubmitRequest):
         from modules import db
-        from modules.phases import PhaseCode, normalize_phase_codes
-        if not request.scope_paths:
+        from modules.phases import PhaseCode, normalize_phase_codes, sort_phase_value_strings
+        scope_paths = [_normalize_scope_path_input(p) for p in request.scope_paths]
+        scope_paths = [p for p in scope_paths if p]
+        if not scope_paths:
             raise HTTPException(status_code=400, detail="scope_paths must not be empty")
-        primary_path = request.scope_paths[0]
+        primary_path = scope_paths[0]
 
         # bird_species is not a pipeline PhaseCode — handle it before normalize_phase_codes.
         raw_stages = list(request.stages or [])
@@ -4177,9 +4479,14 @@ def create_api_router() -> APIRouter:
                     PhaseCode.SCORING.value,
                 ]
 
+        if want_bird_species and phase_values and "bird_species" not in phase_values:
+            phase_values = list(phase_values) + ["bird_species"]
+        if phase_values:
+            phase_values = sort_phase_value_strings(phase_values)
+
         payload = {
             "scope_type": request.scope_type,
-            "scope_paths": request.scope_paths,
+            "scope_paths": scope_paths,
             "input_path": primary_path,
             "skip_done": request.skip_done,
             "skip_existing": request.skip_done,
@@ -4466,12 +4773,14 @@ def create_api_router() -> APIRouter:
             job_type=orig_job_type,
             queue_payload=json.dumps(payload),
         )
+        from modules.phases import sort_phase_value_strings
+
         orig_phases = db.get_job_phases(job["id"])
         if orig_phases:
-            phase_codes = [p["phase_code"] for p in orig_phases]
+            phase_codes = sort_phase_value_strings([p["phase_code"] for p in orig_phases])
         else:
             _defaults = {"tagging": ["keywords"], "selection": ["culling", "metadata"], "clustering": ["culling"]}
-            phase_codes = _defaults.get(orig_job_type, ["indexing", "metadata", "scoring"])
+            phase_codes = sort_phase_value_strings(_defaults.get(orig_job_type, ["indexing", "metadata", "scoring"]))
         db.create_job_phases(new_job_id, phase_codes, first_phase_state="queued")
         return new_job_id, position
 
@@ -4499,12 +4808,14 @@ def create_api_router() -> APIRouter:
                 queue_payload=json.dumps(payload),
             )
             # Copy phases from original job, or default from job_type
+            from modules.phases import sort_phase_value_strings
+
             orig_phases = db.get_job_phases(run_id)
             if orig_phases:
-                phase_codes = [p["phase_code"] for p in orig_phases]
+                phase_codes = sort_phase_value_strings([p["phase_code"] for p in orig_phases])
             else:
                 _defaults = {"tagging": ["keywords"], "selection": ["culling", "metadata"], "clustering": ["culling"]}
-                phase_codes = _defaults.get(orig_job_type, ["indexing", "metadata", "scoring"])
+                phase_codes = sort_phase_value_strings(_defaults.get(orig_job_type, ["indexing", "metadata", "scoring"]))
             db.create_job_phases(new_job_id, phase_codes, first_phase_state="queued")
             return {"success": True, "run_id": new_job_id, "queue_position": position}
         except HTTPException:
@@ -4515,11 +4826,17 @@ def create_api_router() -> APIRouter:
     @router.get("/runs/{run_id}/stages", summary="Get all stages for a Run")
     async def get_run_stages(run_id: int):
         from modules import db
+        from modules.phases import sort_job_phase_rows_for_display
+
         try:
+            job = db.get_job(run_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
             phases = db.get_job_phases(run_id)
-            if phases is None:
-                raise HTTPException(status_code=404, detail=f"Run {run_id} not found or has no phases")
-            return phases
+            phases = _job_phases_for_run_display(job, phases)
+            if not phases:
+                return []
+            return sort_job_phase_rows_for_display(phases)
         except HTTPException:
             raise
         except Exception as e:
@@ -4580,10 +4897,20 @@ def create_api_router() -> APIRouter:
 
     _SCOPE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".nef", ".arw", ".cr2", ".dng", ".heic", ".webp", ".tiff", ".tif", ".raw", ".orf", ".rw2", ".nrw", ".cr3"}
 
+    def _normalize_scope_path_input(raw: str) -> str:
+        """Trim and strip trailing slashes; keep Windows drive roots (e.g. D:\\) as directory paths."""
+        s = (raw or "").strip()
+        while len(s) > 1 and s[-1] in "/\\":
+            prev = s[:-1]
+            if len(prev) == 2 and prev[1] == ":":
+                break
+            s = prev
+        return s
+
     def _scope_resolve_path(raw_path: str) -> str:
         """Convert path to local format (Windows->WSL when in WSL). Raises if path not found."""
         from modules import utils
-        path = (raw_path or "").strip()
+        path = _normalize_scope_path_input(raw_path)
         if not path:
             raise HTTPException(status_code=400, detail="Empty path")
         local_path = utils.convert_path_to_local(path)
@@ -4624,7 +4951,9 @@ def create_api_router() -> APIRouter:
         When a folder has no images in the DB (not yet indexed), scans the filesystem to show actual counts."""
         from modules import db
         from modules.phases import PhaseCode
-        if not request.paths:
+        preview_paths = [_normalize_scope_path_input(p) for p in request.paths]
+        preview_paths = [p for p in preview_paths if p]
+        if not preview_paths:
             raise HTTPException(status_code=400, detail="paths must not be empty")
         try:
             total_images = 0
@@ -4636,7 +4965,7 @@ def create_api_router() -> APIRouter:
             phase_codes = [p.value for p in PhaseCode]
 
             from modules import utils
-            for path in request.paths:
+            for path in preview_paths:
                 local_path = _scope_resolve_path(path)
                 summary = db.get_folder_phase_summary(path, force_refresh=True)
                 db_img_count = (summary[0].get("total_count", 0) if summary else 0)
@@ -4692,7 +5021,7 @@ def create_api_router() -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    def _build_scope_tree_sync():
+    def _build_scope_tree_sync(include_phase_status: bool = True):
         """Sync implementation run in thread pool to avoid blocking event loop."""
         from modules import db, utils
         from modules.ui_tree import build_tree_dict
@@ -4710,19 +5039,22 @@ def create_api_router() -> APIRouter:
         folders = list(set(folders))
         tree_dict = build_tree_dict(folders)
 
+        if not include_phase_status:
+            return tree_dict
+
+        # Single bulk query — replaces N individual get_folder_phase_summary() calls
+        bulk_cache = db.get_all_folder_phase_summaries_bulk()
+
         def enrich(nodes: List[Dict]) -> List[Dict]:
             result = []
             for node in nodes:
                 path = node.get("path", "")
                 if path:
-                    try:
-                        summary = db.get_folder_phase_summary(path)
-                        if summary:
-                            node["phase_statuses"] = {
-                                row["code"]: row.get("status", "not_started") for row in summary
-                            }
-                    except Exception:
-                        pass
+                    summary = bulk_cache.get(os.path.normpath(path))
+                    if summary:
+                        node["phase_statuses"] = {
+                            row["code"]: row.get("status", "not_started") for row in summary
+                        }
                 if "children" in node:
                     node["children"] = enrich(node["children"])
                 result.append(node)
@@ -4731,11 +5063,11 @@ def create_api_router() -> APIRouter:
         return enrich(tree_dict)
 
     @router.get("/scope/tree", summary="Folder tree with phase status overlays")
-    async def scope_tree():
+    async def scope_tree(include_phase_status: bool = True):
         """Enhanced folder tree with per-folder phase status for the Scope Navigator sidebar."""
         try:
             return await asyncio.wait_for(
-                asyncio.to_thread(_build_scope_tree_sync),
+                asyncio.to_thread(_build_scope_tree_sync, include_phase_status),
                 timeout=60.0,
             )
         except asyncio.TimeoutError:

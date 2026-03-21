@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { Star, Filter, X } from 'lucide-react'
@@ -13,8 +14,8 @@ const PER_PAGE = 100
 type BaseFilters = Omit<ImageFilters, 'page' | 'page_size'>
 
 export function GalleryPage() {
+  const navigate = useNavigate()
   const [baseFilters, setBaseFilters] = useState<BaseFilters>({})
-  const [selected, setSelected] = useState<Image | null>(null)
   const [filterOpen, setFilterOpen] = useState(false)
   const [loadedImages, setLoadedImages] = useState<Image[]>([])
   const [page, setPage] = useState(1)
@@ -180,8 +181,7 @@ export function GalleryPage() {
                 return (
                   <ImageTile
                     image={img}
-                    selected={selected?.id === img.id}
-                    onClick={() => setSelected(img)}
+                    onClick={() => navigate(`/gallery/${img.id}`)}
                   />
                 )
               }}
@@ -189,11 +189,6 @@ export function GalleryPage() {
           )}
         </div>
       </div>
-
-      {/* Detail panel */}
-      {selected && (
-        <ImageDetailPanel image={selected} onClose={() => setSelected(null)} />
-      )}
     </div>
   )
 }
@@ -208,10 +203,10 @@ function FilterSection({ label, children }: { label: string; children: React.Rea
 }
 
 function ImageTile({
-  image, selected, onClick,
+  image,
+  onClick,
 }: {
   image: Image
-  selected: boolean
   onClick: () => void
 }) {
   const src = image.thumbnail_path
@@ -225,7 +220,7 @@ function ImageTile({
       onClick={onClick}
       className={clsx(
         'relative aspect-square rounded overflow-hidden cursor-pointer border-2 transition-all',
-        selected ? 'border-[#4fc1ff]' : 'border-transparent hover:border-[#474747]',
+        'border-transparent hover:border-[#474747]',
       )}
     >
       {src ? (
@@ -256,109 +251,3 @@ function ImageTile({
   )
 }
 
-function ImageDetailPanel({ image, onClose }: { image: Image; onClose: () => void }) {
-  const keywords = image.keywords
-    ? image.keywords.split(',').map((k) => k.trim()).filter(Boolean)
-    : []
-
-  return (
-    <aside className="w-72 shrink-0 border-l border-[#3c3c3c] bg-[#252526] overflow-y-auto">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#3c3c3c]">
-        <span className="text-sm font-semibold text-[#cccccc] truncate">{image.file_name}</span>
-        <button onClick={onClose} className="text-[#6d6d6d] hover:text-[#cccccc] shrink-0">
-          <X size={14} />
-        </button>
-      </div>
-
-      <div className="p-4 space-y-4">
-        {/* Scores */}
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">
-            Quality Scores
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: 'General', value: image.score_general },
-              { label: 'Technical', value: image.score_technical },
-              { label: 'Aesthetic', value: image.score_aesthetic },
-              { label: 'LIQE', value: image.score_liqe },
-            ].map(({ label, value }) => (
-              <ScoreCell key={label} label={label} value={value} />
-            ))}
-          </div>
-          {/* New model scores if available */}
-          {(image.musiq_score != null || image.topiq_score != null || image.qalign_score != null) && (
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {[
-                { label: 'MUSIQ', value: image.musiq_score },
-                { label: 'TOPIQ', value: image.topiq_score },
-                { label: 'Q-Align', value: image.qalign_score },
-              ].filter(({ value }) => value != null).map(({ label, value }) => (
-                <ScoreCell key={label} label={label} value={value} />
-              ))}
-            </div>
-          )}
-          {image.composite_score != null && (
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-xs text-[#9d9d9d]">Composite</span>
-              <span className="text-sm font-bold text-[#4fc1ff]">
-                {(image.composite_score * 100).toFixed(1)}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Rating */}
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">Rating</div>
-          <div className="flex gap-1">
-            {[1, 2, 3, 4, 5].map((r) => (
-              <Star
-                key={r}
-                size={16}
-                className={clsx(
-                  'cursor-pointer transition-colors',
-                  r <= (image.rating ?? 0)
-                    ? 'text-[#cca700] fill-[#cca700]'
-                    : 'text-[#474747]',
-                )}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Keywords */}
-        {keywords.length > 0 && (
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6d6d6d] mb-2">Keywords</div>
-            <div className="flex flex-wrap gap-1">
-              {keywords.map((kw) => (
-                <span
-                  key={kw}
-                  className="bg-[#3c3c3c] text-[#9d9d9d] text-xs px-2 py-0.5 rounded border border-[#474747]"
-                >
-                  {kw}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* File info */}
-        {image.file_type && (
-          <div className="text-xs text-[#6d6d6d]">{image.file_type}</div>
-        )}
-      </div>
-    </aside>
-  )
-}
-
-function ScoreCell({ label, value }: { label: string; value: number | null | undefined }) {
-  const display = value != null ? (value > 1 ? value.toFixed(1) : (value * 100).toFixed(1) + '%') : '—'
-  return (
-    <div className="bg-[#1e1e1e] rounded p-2 border border-[#3c3c3c]">
-      <div className="text-[10px] text-[#6d6d6d]">{label}</div>
-      <div className="text-sm font-semibold text-[#cccccc]">{display}</div>
-    </div>
-  )
-}

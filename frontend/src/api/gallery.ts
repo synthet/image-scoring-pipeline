@@ -1,5 +1,9 @@
 import { api } from './client'
-import type { Image } from '@/types/api'
+import type { Image, ImageDetail } from '@/types/api'
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const HEX_HASH_RE = /^[0-9a-f]{32,128}$/i
 
 // Query params matching the legacy /images endpoint
 export interface ImageFilters {
@@ -42,7 +46,27 @@ export const galleryApi = {
     })
     return api.get<ImageListResponse>(`/images?${q.toString()}`)
   },
-  get: (id: number) => api.get<Image>(`/images/${id}`),
+  get: (id: number) => api.get<ImageDetail>(`/images/${id}`),
+  getByUuid: (uuid: string) =>
+    api.get<ImageDetail>(`/images/by-uuid/${encodeURIComponent(uuid.trim())}`),
+  getByHash: (hash: string) =>
+    api.get<ImageDetail>(`/images/by-hash/${encodeURIComponent(hash.trim())}`),
+  getByKey: (key: string): Promise<ImageDetail> => {
+    const k = key.trim()
+    if (!k) {
+      return Promise.reject(new Error('Empty image key'))
+    }
+    if (/^\d+$/.test(k)) {
+      return galleryApi.get(parseInt(k, 10))
+    }
+    if (UUID_RE.test(k)) {
+      return galleryApi.getByUuid(k)
+    }
+    if (HEX_HASH_RE.test(k)) {
+      return galleryApi.getByHash(k)
+    }
+    return Promise.reject(new Error(`Unrecognized image key: ${k}`))
+  },
   update: (id: number, data: ImageUpdateRequest) => api.patch<Image>(`/images/${id}`, data),
   delete: (id: number) => api.delete<void>(`/images/${id}`),
   similar: (id: number, limit = 12) => api.get<Image[]>(`/similar?image_id=${id}&limit=${limit}`),

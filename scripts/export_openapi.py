@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from fastapi import FastAPI
-from modules.api import create_api_router
+from modules.api import create_api_router, create_public_api_router
 
 
 def build_app() -> FastAPI:
@@ -31,11 +31,13 @@ def build_app() -> FastAPI:
         version="1.0.0",
         openapi_tags=[
             {"name": "Image Scoring API", "description": "Endpoints for image quality assessment and scoring operations."},
+            {"name": "Public Image API", "description": "Read-only JSON endpoints for image records (/public/api)."},
             {"name": "Tagging API", "description": "Endpoints for image tagging and keyword extraction."},
             {"name": "General API", "description": "General endpoints for health checks, status, and job management."},
         ],
     )
     app.include_router(create_api_router())
+    app.include_router(create_public_api_router())
     return app
 
 

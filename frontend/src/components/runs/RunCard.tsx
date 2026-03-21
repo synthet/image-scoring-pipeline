@@ -27,7 +27,15 @@ export function RunCard({ run, compact = false }: RunCardProps) {
   const pauseMut = useMutation({ mutationFn: () => runsApi.pause(run.id), onSuccess: invalidate })
   const resumeMut = useMutation({ mutationFn: () => runsApi.resume(run.id), onSuccess: invalidate })
   const cancelMut = useMutation({ mutationFn: () => runsApi.cancel(run.id), onSuccess: invalidate })
-  const retryMut = useMutation({ mutationFn: () => runsApi.retry(run.id), onSuccess: invalidate })
+  const retryMut = useMutation({
+    mutationFn: () => runsApi.retry(run.id),
+    onSuccess: (data) => {
+      invalidate()
+      if (data?.run_id != null && data.run_id !== run.id) {
+        navigate(`/runs/${data.run_id}`)
+      }
+    },
+  })
   const forceMut = useMutation({ mutationFn: () => runsApi.force(run.id), onSuccess: invalidate })
 
   const scopePaths = Array.isArray(run.scope_paths) && run.scope_paths.length > 0

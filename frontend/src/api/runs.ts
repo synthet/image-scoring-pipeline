@@ -29,7 +29,8 @@ export const runsApi = {
   pause: (id: number) => api.post<void>(`/runs/${id}/pause`),
   resume: (id: number) => api.post<void>(`/runs/${id}/resume`),
   cancel: (id: number) => api.post<void>(`/runs/${id}/cancel`),
-  retry: (id: number) => api.post<void>(`/runs/${id}/retry`),
+  retry: (id: number) =>
+    api.post<{ success: boolean; run_id: number; queue_position: number }>(`/runs/${id}/retry`),
   force: (id: number) => api.post<{ success: boolean; run_id: number; actions: string[] }>(`/runs/${id}/force`, { confirm: true }),
 
   getStages: (id: number) => api.get<Stage[]>(`/runs/${id}/stages`),

@@ -11,6 +11,17 @@ import type { StageCode, ScopePreviewResult } from '@/types/api'
 
 const ALL_STAGES: StageCode[] = ['indexing', 'metadata', 'scoring', 'culling', 'keywords', 'bird_species']
 
+/** Trim and strip trailing `/` or `\\`; keep Windows drive roots (e.g. `D:\\`). */
+function normalizeScopePathInput(p: string): string {
+  let s = p.trim()
+  while (s.length > 1 && (s.endsWith('/') || s.endsWith('\\'))) {
+    const prev = s.slice(0, -1)
+    if (prev.length === 2 && prev[1] === ':') break
+    s = prev
+  }
+  return s
+}
+
 export function ScopeSelector() {
   const { newRunModalOpen, setNewRunModalOpen, newRunInitialPath } = useUiStore()
   const qc = useQueryClient()
@@ -29,7 +40,10 @@ export function ScopeSelector() {
     }
   }, [newRunInitialPath])
 
-  const validPaths = paths.filter((p) => p.trim().length > 0)
+  const validPaths = paths
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+    .map(normalizeScopePathInput)
 
   async function loadPreview() {
     if (validPaths.length === 0) return
@@ -55,10 +69,12 @@ export function ScopeSelector() {
   })
 
   function submit() {
+    // Pipeline order (not Set iteration order — checkbox order would scramble stages).
+    const stagesOrdered = ALL_STAGES.filter((code) => stages.has(code))
     submitMut.mutate({
       scope_type: scopeType,
       scope_paths: validPaths,
-      stages: Array.from(stages),
+      stages: stagesOrdered,
       skip_done: skipDone,
       force_rerun: forceRerun,
     })

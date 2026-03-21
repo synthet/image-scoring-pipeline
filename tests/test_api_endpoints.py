@@ -47,6 +47,7 @@ class _RunnerStub:
 def _build_client():
     app = FastAPI()
     app.include_router(api.create_api_router())
+    app.include_router(api.create_public_api_router())
     return TestClient(app)
 
 
@@ -267,8 +268,16 @@ def test_clustering_start_returns_400_when_no_selector(monkeypatch):
 # Images endpoints
 # ---------------------------------------------------------------------------
 
+class _StubImageRow:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def to_dict(self, exclude_keys=None):
+        return dict(self._payload)
+
+
 def test_images_returns_paginated_list(monkeypatch):
-    stub_images = [{"id": 1, "file_path": "/photos/a.jpg", "score": 0.8}]
+    stub_images = [_StubImageRow({"id": 1, "file_path": "/photos/a.jpg", "score": 0.8})]
     monkeypatch.setattr(db, "get_images_paginated_with_count", lambda **kw: (stub_images, 1))
     with _build_client() as client:
         response = client.get("/api/images")
@@ -278,6 +287,17 @@ def test_images_returns_paginated_list(monkeypatch):
     assert data["total"] == 1
     assert data["page"] == 1
     assert "total_pages" in data
+
+
+def test_public_api_images_returns_same_shape(monkeypatch):
+    stub_images = [_StubImageRow({"id": 1, "file_path": "/photos/a.jpg", "score": 0.8})]
+    monkeypatch.setattr(db, "get_images_paginated_with_count", lambda **kw: (stub_images, 1))
+    with _build_client() as client:
+        response = client.get("/public/api/images")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["images"][0]["id"] == 1
 
 
 def test_images_returns_empty_list(monkeypatch):
@@ -306,7 +326,9 @@ def test_image_by_id_returns_404_for_missing(monkeypatch):
     monkeypatch.setattr(db, "get_db", lambda: _FakeConn())
     with _build_client() as client:
         response = client.get("/api/images/9999")
+        response_public = client.get("/public/api/images/9999")
     assert response.status_code == 404
+    assert response_public.status_code == 404
 
 
 # ---------------------------------------------------------------------------

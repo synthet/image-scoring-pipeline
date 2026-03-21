@@ -4,6 +4,7 @@ import { Shell } from '@/components/layout/Shell'
 import { RunsPage } from '@/pages/RunsPage'
 import { RunDetailPage } from '@/pages/RunDetailPage'
 import { GalleryPage } from '@/pages/GalleryPage'
+import { ImageDetailPage } from '@/pages/ImageDetailPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { ScopeSelector } from '@/components/scope/ScopeSelector'
 
@@ -26,6 +27,7 @@ export default function App() {
             <Route index element={<Navigate to="/runs" replace />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/runs/:runId" element={<RunDetailPage />} />
+            <Route path="/gallery/:imageKey" element={<ImageDetailPage />} />
             <Route path="/gallery" element={<GalleryPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

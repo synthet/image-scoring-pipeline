@@ -42,7 +42,7 @@ export function Shell() {
 
         <nav className="flex items-center gap-1">
           <NavItem to="/runs" icon={<Activity size={14} />} label="Runs" />
-          <NavItem to="/gallery" icon={<Image size={14} />} label="Gallery" />
+          <NavItem to="/gallery" end icon={<Image size={14} />} label="Gallery" />
           <NavItem to="/settings" icon={<Settings size={14} />} label="Settings" />
         </nav>
 
@@ -81,10 +81,21 @@ export function Shell() {
   )
 }
 
-function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
+function NavItem({
+  to,
+  icon,
+  label,
+  end,
+}: {
+  to: string
+  icon: React.ReactNode
+  label: string
+  end?: boolean
+}) {
   return (
     <NavLink
       to={to}
+      end={end}
       className={({ isActive }) =>
         clsx(
           'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors',

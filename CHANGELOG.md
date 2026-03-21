@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.16.0] - 2026-03-21
+
+### Added
+- **API** (`modules/api.py`): `GET /api/images/by-uuid/{image_uuid}` and `GET /api/images/by-hash/{image_hash}`; read-only **`/public/api`** router (paginated list plus detail by id/uuid/hash, same JSON shapes as authenticated routes where applicable); helpers for image list/detail payloads; `GET /api/jobs/recent` uses explicit JSON encoding for Firebird-native values (avoids fragile Pydantic serialization).
+- **Phases** (`modules/phases.py`): Canonical pipeline phase order (`PIPELINE_PHASE_ORDER`, sorting helpers); `normalize_phase_codes` returns phases in pipeline order; display ordering for `job_phases` rows including `bird_species` after core pipeline phases.
+- **DB** (`modules/db.py`): Multi-phase job status updates sync `job_phases` (including bulk-complete behavior); `get_or_create_folder` converts Windows paths to WSL before normalization so mixed host/DB path styles resolve consistently.
+- **Frontend (SPA)**: Image detail route and `ImageDetailPanel`; gallery client lookup by id/uuid/hash key; gallery layout refinements.
+- **Tests** (`tests/test_api_endpoints.py`): Public API router mounted in test app; pagination stub uses row `to_dict`; coverage for `/public/api/images` list and 404 parity.
+
+### Changed
+- **API**: Synthetic `bird_species` phases for run detail when stored `job_phases` rows omit that phase.
+- **Static bundle**: `static/app/` asset refresh.
+
 ## [4.15.0] - 2026-03-21
 
 ### Added

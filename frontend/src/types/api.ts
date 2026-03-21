@@ -185,10 +185,19 @@ export interface Image {
   file_type?: string | null
   file_size?: number | null
   image_hash?: string | null
+  /** Stable identifier from metadata / indexing (DB: image_uuid) */
+  image_uuid?: string | null
   stack_id?: number | null
   burst_uuid?: string | null
   scores_json?: string | null
   model_version?: string | null
+}
+
+/** Payload from GET /api/images/{id}, by-uuid, or by-hash */
+export interface ImageDetail extends Image {
+  file_paths?: string[] | null
+  resolved_path?: string | null
+  phase_statuses?: Record<string, string> | null
 }
 
 // ─── WebSocket events ────────────────────────────────────────────────────

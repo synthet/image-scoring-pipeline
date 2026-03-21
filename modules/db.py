@@ -3016,6 +3016,20 @@ def get_or_create_folder(folder_path, _depth=0):
 
     folder_path = os.path.normpath(folder_path)
     
+    # Auto-convert Windows paths to WSL if we are on Windows but DB has WSL paths
+    # This is critical because scoring runs in WSL (saving /mnt/d/...) 
+    # but UI runs in Windows (sending D:\...)
+    # This MUST happen before os.path.abspath to prevent Linux from prepending cwd to Windows paths
+    try:
+        from modules import utils
+        if ":" in folder_path or "\\" in folder_path:
+             wsl_path = utils.convert_path_to_wsl(folder_path)
+             if wsl_path != folder_path:
+                 logging.debug(f"Converted {folder_path} to {wsl_path}")
+                 folder_path = wsl_path
+    except ImportError:
+        pass
+
     import posixpath
     
     # Check if this is a WSL path (starts with /mnt/)
@@ -3038,26 +3052,6 @@ def get_or_create_folder(folder_path, _depth=0):
     # Check depth
     if folder_path.count('/') > 15:
          logging.warning(f"Deep folder path detected: {folder_path} (Depth: {folder_path.count('/')})")
-    
-    # Auto-convert Windows paths to WSL if we are on Windows but DB has WSL paths
-    # This is critical because scoring runs in WSL (saving /mnt/d/...) 
-    # but UI runs in Windows (sending D:\...)
-    try:
-        from modules import utils
-        # Check if it looks like a Windows path (e.g. D:\...)
-        if ":" in folder_path or "\\" in folder_path:
-             wsl_path = utils.convert_path_to_wsl(folder_path)
-             # Use WSL path if basic heuristic matches or if we want to be consistent
-             # But wait, checking if it exists in DB?
-             # For now, let's trust the util to give us the canonical form for this app (WSL-ish if mixed)
-             # Actually, if we are on Windows, we might want to store Windows paths?
-             # The app seems to favor WSL paths in DB ('WSL' type default in file_paths).
-             # Let's keep existing logic but ensure abspath first.
-             if wsl_path != folder_path:
-                 logging.debug(f"Converted {folder_path} to {wsl_path}")
-                 folder_path = wsl_path
-    except ImportError:
-        pass
     
     # Base case for recursion / root check
     # On Windows, os.path.dirname("D:\\") is "D:\\". 
@@ -3710,6 +3704,9 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
 
     # Keep job_phases state in sync for phase-bound jobs
     try:
+        c.execute("SELECT COUNT(*) FROM job_phases WHERE job_id = ?", (job_id,))
+        n_phases = c.fetchone()[0]
+
         c.execute("SELECT phase_id, job_type FROM jobs WHERE id = ?", (job_id,))
         job_row = c.fetchone()
         phase_code = None
@@ -3724,21 +3721,41 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
             if not phase_code and job_row[1] == "pipeline":
                 phase_code = get_next_running_job_phase(job_id)
 
-        if phase_code:
-            phase_state_map = {
-                "queued": "queued",
-                "running": "running",
-                "paused": "paused",
-                "cancel_requested": "cancel_requested",
-                "restarting": "restarting",
-                "completed": "completed",
-                "failed": "failed",
-                "canceled": "canceled",
-                "cancelled": "canceled",
-                "interrupted": "interrupted",
-            }
-            phase_state = phase_state_map.get(new_status, "running")
-            set_job_phase_state(job_id, phase_code, phase_state, error_message=log if new_status in {"failed", "interrupted"} else None)
+        phase_state_map = {
+            "queued": "queued",
+            "running": "running",
+            "paused": "paused",
+            "cancel_requested": "cancel_requested",
+            "restarting": "restarting",
+            "completed": "completed",
+            "failed": "failed",
+            "canceled": "canceled",
+            "cancelled": "canceled",
+            "interrupted": "interrupted",
+        }
+        phase_state = phase_state_map.get(new_status, "running")
+
+        if n_phases > 1:
+            multi = _resolve_multi_phase_job_phases_sync_code(job_id, new_status)
+            if multi == "__bulk_completed__":
+                c.execute(
+                    "UPDATE job_phases SET state = 'completed', completed_at = ?, error_message = NULL WHERE job_id = ?",
+                    (now, job_id),
+                )
+            elif multi:
+                set_job_phase_state(
+                    job_id,
+                    multi,
+                    phase_state,
+                    error_message=log if new_status in {"failed", "interrupted"} else None,
+                )
+        elif phase_code:
+            set_job_phase_state(
+                job_id,
+                phase_code,
+                phase_state,
+                error_message=log if new_status in {"failed", "interrupted"} else None,
+            )
     except Exception as e:
         logger.debug("update_job_status: failed to sync job_phases for job %s: %s", job_id, e)
 
@@ -4299,8 +4316,10 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
     if old_state != new_state and new_state not in allowed.get(old_state, set()):
         # Allow failed->skipped and failed->pending (user recovery)
         if not (old_state == "failed" and new_state in ("skipped", "pending")):
+            msg = f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})"
+            logger.warning(msg)
             conn.close()
-            raise ValueError(f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})")
+            raise ValueError(msg)
     fields = ["state = ?"]
     params = [state]
     if state == "running":
@@ -4346,6 +4365,40 @@ def get_job_phases(job_id):
     rows = c.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def _resolve_multi_phase_job_phases_sync_code(job_id, new_status):
+    """For jobs with multiple job_phases rows, pick which phase row mirrors ``jobs.status``.
+
+    Single-phase jobs return None so callers keep using ``job_type`` as the phase code.
+
+    Returns:
+        None — use legacy single-phase sync (job_type / pipeline_phases).
+        "__bulk_completed__" — mark every phase row completed (job finished successfully).
+        str — a ``phase_code`` to pass to ``set_job_phase_state``.
+    """
+    phases = get_job_phases(job_id)
+    if not phases or len(phases) <= 1:
+        return None
+    st = (new_status or "").strip().lower()
+    if st == "running":
+        for p in phases:
+            row_state = (p.get("state") or "").strip().lower()
+            if row_state in ("queued", "pending"):
+                return p.get("phase_code")
+        for p in phases:
+            if (p.get("state") or "").strip().lower() == "running":
+                return p.get("phase_code")
+        return phases[0].get("phase_code")
+    if st == "completed":
+        return "__bulk_completed__"
+    if st in ("failed", "interrupted", "canceled", "cancelled"):
+        for p in phases:
+            if (p.get("state") or "").strip().lower() == "running":
+                return p.get("phase_code")
+        return phases[-1].get("phase_code")
+    # queued / paused / restarting — do not map whole-job status onto one stage row
+    return None
 
 
 def get_job_steps(job_id, phase_code):
@@ -5786,6 +5839,15 @@ def update_image_fields_batch(updates):
                     continue
                 c.execute(f"UPDATE images SET {fname} = ? WHERE id = ?", (val, image_id))
         conn.commit()
+
+        # Keyword Sync (Dual Writing)
+        for image_id, fields in updates:
+            if isinstance(fields, dict) and 'keywords' in fields:
+                try:
+                    _sync_image_keywords(image_id, fields['keywords'])
+                except Exception as e:
+                    logging.warning(f"Batch keyword sync failed for image {image_id}: {e}")
+
         invalidate_folder_images_cache()
         for image_id, fields in updates:
             if isinstance(fields, dict):
@@ -7843,6 +7905,34 @@ def get_folder_phase_summary(folder_path, force_refresh=False):
     except Exception as e:
         logger.error("get_folder_phase_summary failed for '%s': %s", folder_path, e)
         return []
+    finally:
+        conn.close()
+
+
+def get_all_folder_phase_summaries_bulk():
+    """Single-query bulk load of phase summary cache for all folders.
+
+    Returns dict mapping normalized local path -> list of phase summary dicts.
+    Includes all folders that have a cached phase_agg_json (clean or dirty).
+    Dirty/stale data is acceptable here — callers use this for sidebar display
+    where slightly stale is far better than N individual expensive queries.
+    """
+    from modules import utils
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT path, phase_agg_json FROM folders WHERE phase_agg_json IS NOT NULL")
+        result = {}
+        for row in c.fetchall():
+            wsl_path = row[0]
+            local_path = utils.convert_path_to_local(wsl_path) if hasattr(utils, 'convert_path_to_local') else wsl_path
+            if not local_path:
+                continue
+            try:
+                result[os.path.normpath(local_path)] = json.loads(row[1])
+            except Exception:
+                pass
+        return result
     finally:
         conn.close()
 

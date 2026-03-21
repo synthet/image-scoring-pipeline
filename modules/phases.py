@@ -13,7 +13,7 @@ Folder-level summaries are computed live (no stored table).
 
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Optional, List, Callable, Any
+from typing import Optional, List, Callable, Any, Tuple, Dict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,54 @@ class PhaseCode(str, Enum):
     SCORING   = "scoring"
     CULLING   = "culling"
     KEYWORDS  = "keywords"
+
+
+# Same execution order as PipelineOrchestrator.PHASE_ORDER — UI and job_phases must follow this.
+PIPELINE_PHASE_ORDER: Tuple[PhaseCode, ...] = (
+    PhaseCode.INDEXING,
+    PhaseCode.METADATA,
+    PhaseCode.SCORING,
+    PhaseCode.CULLING,
+    PhaseCode.KEYWORDS,
+)
+
+_PHASE_ORDER_INDEX = {p: i for i, p in enumerate(PIPELINE_PHASE_ORDER)}
+
+
+def sort_phase_codes_canonical(phases: List[PhaseCode]) -> List[PhaseCode]:
+    """Order phase codes in pipeline sequence (not insertion order)."""
+    return sorted(phases, key=lambda ph: _PHASE_ORDER_INDEX.get(ph, 999))
+
+
+def phase_string_sort_key(code: str) -> int:
+    """Sort key for persisted phase_code strings; bird_species runs after keywords."""
+    c = (code or "").strip()
+    if c == "bird_species":
+        return len(PIPELINE_PHASE_ORDER)
+    try:
+        return _PHASE_ORDER_INDEX[PhaseCode(c)]
+    except ValueError:
+        return 999
+
+
+def sort_phase_value_strings(codes: List[str]) -> List[str]:
+    """Sort phase_code strings in canonical pipeline order (bird_species after keywords)."""
+    if not codes:
+        return []
+    return sorted(codes, key=lambda s: phase_string_sort_key(s))
+
+
+def sort_job_phase_rows_for_display(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sort job_phases rows for API/UI; renumbers phase_order to match display order."""
+    if not rows:
+        return []
+    sorted_rows = sorted(rows, key=lambda r: phase_string_sort_key(str(r.get("phase_code") or "")))
+    out: List[Dict[str, Any]] = []
+    for i, r in enumerate(sorted_rows):
+        d = dict(r)
+        d["phase_order"] = i
+        out.append(d)
+    return out
 
 
 PHASE_CODE_ALIASES = {
@@ -63,7 +111,7 @@ def normalize_phase_codes(phase_codes: Optional[List[Any]]) -> List[PhaseCode]:
                 continue
         if candidate not in normalized:
             normalized.append(candidate)
-    return normalized
+    return sort_phase_codes_canonical(normalized)
 
 
 # ---------------------------------------------------------------------------
