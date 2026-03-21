@@ -225,7 +225,7 @@ def main():
     # Setup MCP server if enabled
     mcp_sse_app = None
     if mcp_available and mcp_enabled:
-        mcp_server.set_runners(runner, tagging_runner, clustering_runner, selection_runner, orchestrator)
+        mcp_server.set_runners(runner, tagging_runner, clustering_runner, selection_runner, orchestrator, bird_species_runner=app_module._bird_species_runner)
         mcp_server.set_gradio_context(
             demo=demo,
             pipeline_components=pipeline_components,

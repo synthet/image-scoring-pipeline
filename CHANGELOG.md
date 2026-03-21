@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.15.0] - 2026-03-21
+
+### Added
+- **PostgreSQL (optional)**: `modules/db_postgres.py` and Firebird→Postgres **dual-write** queue in `modules/db.py` when `database.dual_write` is enabled; `validate_config()` supports `database.engine` `firebird` vs `postgres` with `database.postgres.*` checks.
+- **MCP** (`modules/mcp_server.py`): `get_runner_status` reports `bird_species`; `run_processing_job` accepts `job_type: "bird_species"` (threshold, top_k, overwrite, candidate_species).
+- **Tests**: `tests/test_bird_species.py` — unit tests for bird species loader and runner (no GPU by default).
+- **Scripts**: `scripts/list_bird_folders.py`, `scripts/powershell/Setup-PostgresDocker.ps1`.
+
+### Changed
+- **API** (`modules/api.py`): Scoped pipeline requests can use `bird_species` as the only stage (handled before `normalize_phase_codes`, with correct `job_type` / `phase_code`).
+- **WebUI** (`webui.py`): Passes `bird_species_runner` into MCP `set_runners`.
+- **Docs**: `docs/technical/BIRD_SPECIES_WALKTHROUGH.md` expanded.
+- **Frontend (SPA)**: `ScopeSelector`, `api` types; static bundle refresh under `static/app/`.
+- **Config**: `mcp_config.json` updates.
+
+### Fixed
+- **DB** (`modules/db.py`): `get_images_with_keyword` avoids Firebird `IN (...)` parameter limits when `resolved_image_ids` is very large by post-filtering in Python.
+- **Config** (`modules/config.py`): Input-path existence warnings run after engine-specific `database` checks.
+
 ## [4.14.1] - 2026-03-21
 
 ### Fixed

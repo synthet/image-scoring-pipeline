@@ -12,6 +12,9 @@ def pytest_sessionstart(session):
     Called before performing collection and entering the test loop.
     Ensures the test database (scoring_history_test.fdb only — never SCORING_HISTORY.FDB) is ready.
     """
+    if os.environ.get("SKIP_TEST_DB_SETUP", "").strip().lower() in ("1", "true", "yes"):
+        print("\n[conftest] SKIP_TEST_DB_SETUP set — skipping scripts/setup_test_db.py (CI / no Firebird).\n")
+        return
     script_path = os.path.join(project_root, "scripts", "setup_test_db.py")
     print("\n[conftest] Setting up test database (scoring_history_test.fdb only)...")
     

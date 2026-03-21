@@ -259,8 +259,17 @@ def validate_config() -> dict:
         issues.append(f"processing.clustering_batch_size must be a positive integer (got {cb!r})")
 
     db_sec = data.get("database") or {}
-    if not str(db_sec.get("filename") or "").strip():
-        issues.append("database.filename should be set to the Firebird database file name")
+    engine = db_sec.get("engine", "firebird")
+    
+    if engine == "firebird":
+        if not str(db_sec.get("filename") or "").strip():
+            issues.append("database.filename should be set to the Firebird database file name")
+    elif engine == "postgres":
+        for k in ["host", "port", "dbname", "user"]:
+            if not db_sec.get("postgres", {}).get(k):
+                issues.append(f"database.postgres.{k} is required when engine is postgres")
+    else:
+        issues.append(f"database.engine must be 'firebird' or 'postgres' (got {engine!r})")
 
     for path_key in ("scoring_input_path", "tagging_input_path", "stacks_input_path", "culling_input_path", "selection_input_path"):
         p = data.get(path_key)

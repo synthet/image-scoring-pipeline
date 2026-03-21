@@ -8,8 +8,14 @@ import threading
 from collections import deque
 from pathlib import Path
 import traceback
+import queue
 
-# Firebird Import
+from modules import config
+from modules.events import event_manager
+try:
+    from modules import db_postgres
+except ImportError:
+    db_postgres = None
 try:
     from firebird.driver import connect, driver_config, create_database
 except ImportError:
@@ -102,18 +108,20 @@ class RowWrapper:
 
 
 class FirebirdCursorProxy:
-    """Proxies a Firebird cursor to provide sqlite3-compatible fetch methods."""
+    """Proxies a Firebird cursor to provide sqlite3-compatible fetch methods and dual-write."""
     def __init__(self, fb_cur):
         self._cur = fb_cur
     
     def execute(self, query, params=None):
         query = self._translate_query(query)
+        _enqueue_dual_write(query, params, executemany=False)
         if params:
             return self._cur.execute(query, params)
         return self._cur.execute(query)
     
     def executemany(self, query, params):
         query = self._translate_query(query)
+        _enqueue_dual_write(query, params, executemany=True)
         return self._cur.executemany(query, params)
 
     def fetchone(self):
@@ -137,6 +145,71 @@ class FirebirdCursorProxy:
         query = query.replace('length(', 'char_length(')
         return query
 
+
+# --- Dual Write Queue ---
+_DUAL_WRITE_QUEUE = queue.Queue()
+_DUAL_WRITE_ENABLED = False  # Updated during module load
+_DUAL_WRITE_THREAD = None
+
+def _translate_fb_to_pg(query: str) -> str:
+    """Naive translation from Firebird ? placeholders to Postgres %s placeholders."""
+    # In a real scenario, this regex or parser must handle strings containing '?',
+    # but for typical parameterized queries in this app, this works 90% of the time.
+    # We replace '?' with '%s'.
+    parts = query.split("'")
+    for i in range(0, len(parts), 2):
+        parts[i] = parts[i].replace("?", "%s")
+    return "'".join(parts)
+
+def _dual_write_worker():
+    if not db_postgres:
+        return
+    while True:
+        try:
+            item = _DUAL_WRITE_QUEUE.get()
+            if item is None:
+                break
+            query, params, is_many = item
+            
+            pg_query = _translate_fb_to_pg(query)
+            
+            with db_postgres.PGConnectionManager(commit=True) as pg_conn:
+                with pg_conn.cursor() as cur:
+                    try:
+                        if is_many:
+                            cur.executemany(pg_query, params)
+                        else:
+                            if params:
+                                cur.execute(pg_query, params)
+                            else:
+                                cur.execute(pg_query)
+                    except Exception as e:
+                        logger.warning("Dual-write query failed on Postgres: %s | Query: %s", e, pg_query)
+                        # Could implement a dead-letter queue here
+            _DUAL_WRITE_QUEUE.task_done()
+        except Exception as e:
+            logger.error("Error in dual-write worker loop: %s", e)
+
+def _enqueue_dual_write(query: str, params=None, executemany=False):
+    global _DUAL_WRITE_ENABLED
+    if not _DUAL_WRITE_ENABLED:
+        return
+    q_upper = query.lstrip().upper()
+    if q_upper.startswith("INSERT") or q_upper.startswith("UPDATE") or q_upper.startswith("DELETE"):
+        _DUAL_WRITE_QUEUE.put((query, params, executemany))
+
+def init_dual_write():
+    global _DUAL_WRITE_ENABLED, _DUAL_WRITE_THREAD
+    db_cfg = config.get_config_section("database")
+    _DUAL_WRITE_ENABLED = db_cfg.get("dual_write", False)
+    
+    if _DUAL_WRITE_ENABLED and _DUAL_WRITE_THREAD is None and db_postgres:
+        logger.info("Starting dual-write worker thread for PostgreSQL")
+        _DUAL_WRITE_THREAD = threading.Thread(target=_dual_write_worker, daemon=True, name="DualWriteWorker")
+        _DUAL_WRITE_THREAD.start()
+
+# Initialize the dual write thread on module load
+init_dual_write()
 
 class FirebirdConnectionProxy:
     """Proxies a Firebird connection to provide sqlite3-compatible interface."""
@@ -3478,13 +3551,19 @@ def get_images_with_keyword(folder_path=None, keyword="birds", resolved_image_id
     )
     params.append(f"%{keyword.strip().lower()}%")
 
+    # When resolved_image_ids is large, skip the IN clause (Firebird ~900 param limit)
+    # and post-filter in Python instead.
+    resolved_ids_set = None
     if resolved_image_ids is not None:
         if not resolved_image_ids:
             conn.close()
             return []
-        placeholders = ",".join("?" * len(resolved_image_ids))
-        conditions.append(f"images.id IN ({placeholders})")
-        params.extend(int(i) for i in resolved_image_ids)
+        if len(resolved_image_ids) <= 900:
+            placeholders = ",".join("?" * len(resolved_image_ids))
+            conditions.append(f"images.id IN ({placeholders})")
+            params.extend(int(i) for i in resolved_image_ids)
+        else:
+            resolved_ids_set = set(int(i) for i in resolved_image_ids)
     elif folder_path:
         norm_path = os.path.normpath(folder_path)
         folder_id = get_or_create_folder(norm_path)
@@ -3498,7 +3577,10 @@ def get_images_with_keyword(folder_path=None, keyword="birds", resolved_image_id
     c.execute(f"SELECT * FROM images {where} ORDER BY file_name", tuple(params))
     rows = c.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    result = [dict(row) for row in rows]
+    if resolved_ids_set is not None:
+        result = [r for r in result if r["id"] in resolved_ids_set]
+    return result
 
 
 def create_job(input_path, phase_code=None, job_type=None, status="pending", current_phase=None,

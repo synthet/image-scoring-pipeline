@@ -9,7 +9,7 @@ import { useUiStore } from '@/stores/uiStore'
 import { STAGE_DISPLAY } from '@/types/api'
 import type { StageCode, ScopePreviewResult } from '@/types/api'
 
-const ALL_STAGES: StageCode[] = ['indexing', 'metadata', 'scoring', 'culling', 'keywords']
+const ALL_STAGES: StageCode[] = ['indexing', 'metadata', 'scoring', 'culling', 'keywords', 'bird_species']
 
 export function ScopeSelector() {
   const { newRunModalOpen, setNewRunModalOpen, newRunInitialPath } = useUiStore()

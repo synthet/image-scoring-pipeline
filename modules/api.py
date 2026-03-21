@@ -4127,7 +4127,13 @@ def create_api_router() -> APIRouter:
         if not request.scope_paths:
             raise HTTPException(status_code=400, detail="scope_paths must not be empty")
         primary_path = request.scope_paths[0]
-        phases = normalize_phase_codes(request.stages) if request.stages else None
+
+        # bird_species is not a pipeline PhaseCode — handle it before normalize_phase_codes.
+        raw_stages = list(request.stages or [])
+        want_bird_species = "bird_species" in raw_stages
+        pipeline_stages = [s for s in raw_stages if s != "bird_species"]
+
+        phases = normalize_phase_codes(pipeline_stages) if pipeline_stages else None
         phase_values = [p.value for p in phases] if phases else None
 
         # Derive job_type and phase_code from stages so JobDispatcher can route the job.
@@ -4151,6 +4157,11 @@ def create_api_router() -> APIRouter:
                     phase_code = "culling"
                     job_type = "selection"
                     break
+        elif want_bird_species:
+            # bird_species is the only requested stage
+            phase_code = "bird_species"
+            job_type = "bird_species"
+            phase_values = ["bird_species"]
 
         # SPA workflow expects job_phases rows; clients may omit `stages` (or send []).
         if not phase_values:

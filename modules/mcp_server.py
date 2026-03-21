@@ -46,6 +46,7 @@ _tagging_runner = None
 _clustering_runner = None
 _selection_runner = None
 _orchestrator = None
+_bird_species_runner = None
 
 # Gradio context (set by webui when MCP runs in integrated/SSE mode)
 _gradio_context: dict | None = None
@@ -88,14 +89,15 @@ def _require_db(fn):
     return wrapper
 
 
-def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None, bird_species_runner=None):
     """Set references to the runner instances from webui."""
-    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator
+    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _bird_species_runner
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
     _selection_runner = selection_runner
     _orchestrator = orchestrator
+    _bird_species_runner = bird_species_runner
 
 
 def set_gradio_context(
@@ -858,6 +860,22 @@ def get_runner_status() -> dict:
         except Exception as e:
             status["selection"]["error"] = str(e)
 
+    if _bird_species_runner:
+        try:
+            result = _bird_species_runner.get_status()
+            is_running, log, status_msg, current, total = result[:5]
+            status["bird_species"] = {
+                "available": True,
+                "is_running": is_running,
+                "status_message": status_msg,
+                "progress": {"current": current, "total": total},
+                "recent_log": log[-2000:] if log else ""
+            }
+        except Exception as e:
+            status["bird_species"] = {"available": True, "error": str(e)}
+    else:
+        status["bird_species"] = {"available": False}
+
     return status
 
 
@@ -1044,7 +1062,7 @@ def get_model_status() -> dict:
 @mcp.tool(annotations=_RW)
 @_require_db
 def run_processing_job(job_type: str, input_path: str, args: dict = None) -> dict:
-    """Trigger a background processing job (scoring, tagging, or clustering/stacks)."""
+    """Trigger a background processing job (scoring, tagging, clustering/stacks, or bird_species)."""
     import uuid
 
     if args is None:
@@ -1091,6 +1109,20 @@ def run_processing_job(job_type: str, input_path: str, args: dict = None) -> dic
             threshold=args.get("threshold"),
             time_gap=args.get("time_gap"),
             force_rescan=args.get("force_rescan", False)
+        )
+        return {"status": res, "job_id": job_id}
+
+    elif job_type == "bird_species":
+        if not _bird_species_runner:
+            return {"error": "Bird species runner not available"}
+        if _bird_species_runner.is_running:
+            return {"error": "Bird species job already running"}
+        res = _bird_species_runner.start_batch(
+            input_path,
+            threshold=args.get("threshold", 0.1),
+            top_k=args.get("top_k", 3),
+            overwrite=args.get("overwrite", False),
+            candidate_species=args.get("candidate_species"),
         )
         return {"status": res, "job_id": job_id}
 

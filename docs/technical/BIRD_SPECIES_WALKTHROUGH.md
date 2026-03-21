@@ -18,8 +18,16 @@ This is a standalone, asynchronous job — it does not require images to be re-s
 
 ## 2. Architecture overview
 
+Two entry points converge at the job queue:
+
 ```
-POST /api/bird-species/start
+[React UI — New Run modal]
+  Bird Species ID ☑ → POST /runs/submit  {"stages": ["bird_species"]}
+                              │
+POST /api/bird-species/start  │
+        │                     │
+        ▼─────────────────────▼
+  api.py: request validated, selectors resolved
         │
         ▼
   api.py: BirdSpeciesStartRequest
@@ -121,6 +129,8 @@ Images in the same folder that do not carry the `birds` keyword are **never fetc
 
 Implementation detail: the match is `keyword_norm LIKE '%birds%'` (substring). In practice this is the intended `birds` tag; a hypothetical keyword whose normalized form merely **contained** `birds` as a substring would also match (uncommon).
 
+**Large selector lists (>900 IDs):** Firebird limits `IN (?)` clauses to ~900 parameters. When `resolved_image_ids` exceeds this threshold, `get_images_with_keyword()` omits the `IN` clause, fetches all bird-keyword images from the scope, and post-filters by ID in Python. The second-pass query (`_get_image_ids_with_species_keyword`) uses chunked batches of ≤900 IDs directly.
+
 If `overwrite=False` (default), a second pass removes any images that already have a `species:*` keyword:
 
 ```sql
@@ -221,6 +231,31 @@ Comments (`#`) and blank lines are ignored. The file path is resolved relative t
 
 ---
 
+## 5a. Starting via the New Run UI
+
+The "New Run" modal in the React frontend (`/ui/`) provides a point-and-click entry point for bird species classification without writing a cURL command.
+
+**Steps:**
+
+1. Click **New Run** in the sidebar or on the Runs page.
+2. Set the scope type (Folder recursive / Folder flat / Single file) and enter the path.
+3. Click **Refresh** to preview the matched images.
+4. Under **Workflow Stages**, check **Bird Species ID** (last item in the list — opt-in, not checked by default).
+   - Uncheck all other stages if this is a follow-up run after Tagging has already completed.
+   - Checking both "Tagging" and "Bird Species ID" submits a tagging job only; the bird_species stage is queued separately as a second pass after tags exist.
+5. Click **Queue Run →**.
+
+**What happens on submit:**
+
+The frontend posts:
+```json
+{ "scope_type": "folder_recursive", "scope_paths": ["D:/Photos/2024"], "stages": ["bird_species"] }
+```
+
+The `POST /runs/submit` handler strips `bird_species` from the pipeline phase list (it is not a `PhaseCode`), detects it as the sole requested stage, and enqueues a `job_type="bird_species"` job with default `threshold=0.1`, `top_k=3`. The new run appears immediately in the Runs list with status `queued`.
+
+---
+
 ## 6. API reference
 
 ### `POST /api/bird-species/start`
@@ -317,6 +352,48 @@ query_images(keyword="species:Mallard", min_score=0.6)
 
 ---
 
+## 7a. MCP tool usage
+
+The MCP server (`modules/mcp_server.py`) exposes bird species classification directly as a tool call — useful for AI agent workflows.
+
+### Trigger a job
+
+```python
+run_processing_job(
+    job_type="bird_species",
+    input_path="D:/Photos/2024",
+    args={
+        "threshold": 0.15,   # optional — default 0.1
+        "top_k": 2,          # optional — default 3
+        "overwrite": False,  # optional — default False
+        # "candidate_species": ["Bald Eagle", "Osprey"]  # optional
+    }
+)
+# → {"status": "Started", "job_id": "mcp_bird_species_a1b2c3d4"}
+```
+
+If the runner is already busy the tool returns `{"error": "Bird species job already running"}` without queuing a second job.
+
+### Poll runner status
+
+`get_runner_status()` includes a `bird_species` key alongside `scoring`, `tagging`, `clustering`, and `selection`:
+
+```python
+status = get_runner_status()
+bs = status["bird_species"]
+# {
+#   "available": true,
+#   "is_running": true,
+#   "status_message": "Running...",
+#   "progress": {"current": 47, "total": 120},
+#   "recent_log": "Starting bird species classification...\nLoading BioCLIP 2 model..."
+# }
+```
+
+`available: false` means the runner was not wired into the MCP server at startup (check that `ENABLE_MCP_SERVER=1` is set and the server started alongside the WebUI).
+
+---
+
 ## 8. Installation
 
 BioCLIP 2 requires `open_clip_torch`. It is **not** in the default requirements (optional ML dependency):
@@ -393,7 +470,22 @@ curl -X POST http://127.0.0.1:7860/api/bird-species/start \
 |------|------|
 | [`modules/bird_species.py`](../../modules/bird_species.py) | `BioCLIPClassifier` + `BirdSpeciesRunner` + module helpers |
 | [`data/bird_species_list.txt`](../../data/bird_species_list.txt) | Default bundled (~360) North American species list |
-| [`modules/db.py`](../../modules/db.py) | `get_images_with_keyword()` — SQL filter for images with a given keyword |
+| [`modules/db.py`](../../modules/db.py) | `get_images_with_keyword()` — SQL filter; post-filters large ID lists in Python |
 | [`modules/job_dispatcher.py`](../../modules/job_dispatcher.py) | Routes `job_type="bird_species"` to `BirdSpeciesRunner` |
-| [`modules/api.py`](../../modules/api.py) | `BirdSpeciesStartRequest` model; `/bird-species/start`, `/stop`, `/status` endpoints |
-| [`modules/ui/app.py`](../../modules/ui/app.py) | Instantiates `BirdSpeciesRunner` and wires it through `setup_server_endpoints` |
+| [`modules/api.py`](../../modules/api.py) | `BirdSpeciesStartRequest`; `/bird-species/start`, `/stop`, `/status`; `submit_run` routing |
+| [`modules/mcp_server.py`](../../modules/mcp_server.py) | `run_processing_job("bird_species")` + `get_runner_status()["bird_species"]` |
+| [`modules/ui/app.py`](../../modules/ui/app.py) | Instantiates `BirdSpeciesRunner`; wires it into API and MCP server |
+| [`webui.py`](../../webui.py) | Forwards `BirdSpeciesRunner` to `mcp_server.set_runners()` at startup |
+| [`frontend/src/types/api.ts`](../../frontend/src/types/api.ts) | `StageCode` union + `STAGE_DISPLAY` entry for `bird_species` |
+| [`frontend/src/components/scope/ScopeSelector.tsx`](../../frontend/src/components/scope/ScopeSelector.tsx) | `ALL_STAGES` list — `"bird_species"` appears after `"keywords"` |
+| [`tests/test_bird_species.py`](../../tests/test_bird_species.py) | 14 unit tests (12 non-ML): state machine, chunking, dispatcher routing, cache behavior |
+
+---
+
+## 12. Automated tests (local)
+
+Quick run (skips `@pytest.mark.ml`; set `SKIP_TEST_DB_SETUP=1` if you do not want `scripts/setup_test_db.py` to run — e.g. no Firebird test DB):
+
+```bash
+SKIP_TEST_DB_SETUP=1 pytest tests/test_bird_species.py -v -m "not ml"
+```
