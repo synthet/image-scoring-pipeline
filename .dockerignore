@@ -24,7 +24,7 @@ temp_test*/
 .cursor/
 .vscode/
 .obsidian/
-image-scoring.code-workspace
+image-scoring-backend.code-workspace
 secrets.json
 webui.lock
 

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.14.1] - 2026-03-21
+
+### Fixed
+- **Profiling middleware** (`modules/profiling.py`): Replaced Starlette `BaseHTTPMiddleware` with pure ASGI wrapping of `send`, fixing `AssertionError: Unexpected message: http.response.start` on streaming/SSE routes (e.g. MCP `/mcp/sse`).
+- **Bird species** (`modules/bird_species.py`): Chunk `image_id IN (...)` queries (~900 IDs per batch) to stay within Firebird parameter limits on large batches.
+
+### Added
+- **Docs**: `docs/technical/BIRD_SPECIES_WALKTHROUGH.md`, `docs/technical/FIREBIRD_WINDOWS_TEMPDIR.md`.
+- **Scripts**: MCP/FastAPI debug probes under `scripts/debug/`; `scripts/maintenance/migrate_thumbnail_paths_project_rename.py`.
+
+### Changed
+- **Workspace / naming**: `image-scoring-backend.code-workspace`; `docs/technical/INDEX.md`, `mcp_config.json`, and related paths aligned with the backend repo name.
+- **Tooling**: `run_firebird.bat`, `scripts/maintenance/cleanup_test_artifacts.py`, `.dockerignore`; `.gitignore` patterns for debug logs and test output artifacts.
+
+### Removed
+- Obsolete root-level debug helpers (`debug_*.py`, `debug_*.txt`, `debug_*.html`), ad-hoc `tmp_check_db*.py`, stray root `test_*.py` / `test_output.txt`, and `verification.sql` (use `tests/` and maintained scripts instead).
+
 ## [4.14.0] - 2026-03-20
 
 ### Added

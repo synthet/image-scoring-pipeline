@@ -57,19 +57,26 @@ def _get_image_ids_with_species_keyword(image_ids: List[int]) -> set:
     from modules import db as _db
     conn = _db.get_db()
     c = conn.cursor()
+    
+    found_ids = set()
     try:
-        placeholders = ",".join("?" * len(image_ids))
-        c.execute(
-            f"SELECT DISTINCT ik.image_id FROM image_keywords ik "
-            f"JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id "
-            f"WHERE ik.image_id IN ({placeholders}) "
-            f"AND kd.keyword_norm LIKE 'species:%'",
-            tuple(int(i) for i in image_ids),
-        )
-        return {row[0] for row in c.fetchall()}
+        # Firebird's parameter limit is ~1500 in v3, higher in v4. Chunk at 900 for safety.
+        chunk_size = 900
+        for i in range(0, len(image_ids), chunk_size):
+            chunk = image_ids[i:i + chunk_size]
+            placeholders = ",".join("?" * len(chunk))
+            c.execute(
+                f"SELECT DISTINCT ik.image_id FROM image_keywords ik "
+                f"JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id "
+                f"WHERE ik.image_id IN ({placeholders}) "
+                f"AND kd.keyword_norm LIKE 'species:%'",
+                tuple(int(x) for x in chunk),
+            )
+            found_ids.update(row[0] for row in c.fetchall())
+        return found_ids
     except Exception as exc:
         logger.warning("_get_image_ids_with_species_keyword failed: %s", exc)
-        return set()
+        return found_ids
     finally:
         conn.close()
 

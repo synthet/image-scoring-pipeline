@@ -18,6 +18,8 @@ Existing features and implementation docs only. Plans and proposals → [plans/I
 |----------|-------------|
 | [DB_SCHEMA.md](DB_SCHEMA.md) | Firebird database schema (tables, columns, relationships) |
 | [DB_RECOVERY_FROM_CORRUPTION.md](DB_RECOVERY_FROM_CORRUPTION.md) | Recovery procedures for database corruption |
+| [FIREBIRD_WINDOWS_TEMPDIR.md](FIREBIRD_WINDOWS_TEMPDIR.md) | Windows `TempDirectories` / `fb_sort_*` sort errors (335544675) |
+| [migrate_thumbnail_paths_project_rename.py](../../scripts/maintenance/migrate_thumbnail_paths_project_rename.py) | After renaming the repo folder: fix `THUMBNAIL_PATH`, `THUMBNAIL_PATH_WIN`, `SCORES_JSON` in `IMAGES` |
 
 *Plans:* [DB refactor](../plans/database/) · [Firebird→Postgres](../plans/database/FIREBIRD_POSTGRES_MIGRATION.md)
 
@@ -45,6 +47,7 @@ Existing features and implementation docs only. Plans and proposals → [plans/I
 
 | Document | Description |
 |----------|-------------|
+| [BIRD_SPECIES_WALKTHROUGH.md](BIRD_SPECIES_WALKTHROUGH.md) | Bird species classification via BioCLIP 2 — end-to-end walkthrough |
 | [KEYWORD_EXTRACTION_GUIDE.md](KEYWORD_EXTRACTION_GUIDE.md) | BLIP + CLIP keyword extraction tool |
 | [RAW_PROCESSING_GUIDE.md](RAW_PROCESSING_GUIDE.md) | RAW file processing pipeline |
 | [INBROWSER_RAW_PREVIEW.md](INBROWSER_RAW_PREVIEW.md) | In-browser NEF preview (LibRaw/JS) |

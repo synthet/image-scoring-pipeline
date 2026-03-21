@@ -29,12 +29,17 @@ TEST_DIRS = [
 
 # Log/artifact file patterns (root only)
 LOG_PATTERNS = [
+    "test_output.txt",
+    "test_results.txt",
     "test_output*.log",
+    "webui_out*.txt",
+    "webui_error*.txt",
     "debug_output*.txt",
     "verify_result*.txt",
     "verify_stacks*.txt",
     "test_run.log",
     "test_verification*.log",
+    "verification.sql",
 ]
 
 

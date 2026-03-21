@@ -17,9 +17,6 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-
 logger = logging.getLogger("image_scoring.performance")
 
 # ---------------------------------------------------------------------------
@@ -254,23 +251,33 @@ _SKIP_PREFIXES = (
 )
 
 
-class ProfilingMiddleware(BaseHTTPMiddleware):
+class ProfilingMiddleware:
+    """Pure ASGI middleware — does not wrap the response body.
+
+    Starlette's ``BaseHTTPMiddleware`` buffers ASGI ``http.response.*`` messages and
+    breaks streaming/SSE and some mounted apps (e.g. MCP over SSE), causing
+    ``AssertionError: Unexpected message: http.response.start``.
+    """
 
     def __init__(self, app, tracker: RequestTracker, loop_monitor: EventLoopMonitor):
-        super().__init__(app)
+        self.app = app
         self.tracker = tracker
         self.loop_monitor = loop_monitor
 
-    async def dispatch(self, request: Request, call_next):
-        path = request.scope.get("path", "?")
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
+        path = scope.get("path", "?")
         if any(path.startswith(p) for p in _SKIP_PREFIXES):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         request_id = uuid.uuid4().hex[:12]
         record = RequestRecord(
             request_id=request_id,
-            method=request.method,
+            method=scope.get("method", "GET"),
             path=path,
             start_time=time.perf_counter(),
             start_wall=time.time(),
@@ -278,12 +285,19 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
         )
         self.tracker.start_request(record)
 
+        status_code: Optional[int] = None
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message.get("status")
+            await send(message)
+
         try:
-            response = await call_next(request)
-            self.tracker.finish_request(request_id, response.status_code)
-            return response
+            await self.app(scope, receive, send_wrapper)
+            self.tracker.finish_request(request_id, status_code or 200)
         except Exception as exc:
-            self.tracker.finish_request(request_id, 500, error=str(exc))
+            self.tracker.finish_request(request_id, status_code or 500, error=str(exc))
             raise
 
 

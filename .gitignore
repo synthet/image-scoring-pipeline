@@ -84,6 +84,8 @@ logs/
 debug_*.py
 debug_*.txt
 debug_*.html
+debug.log
+debug-*.log
 test_tree_*.py
 tmp/verify_*.py
 
@@ -141,6 +143,8 @@ TEST_*.fdb
 *.fbk
 # Added cleanup patterns
 debug_output*.txt
+test_output.txt
+test_results.txt
 test_output*.log
 verify_result*.txt
 verify_stacks*.txt
