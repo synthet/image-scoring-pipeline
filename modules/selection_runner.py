@@ -4,6 +4,7 @@ SelectionRunner - Run/stop/status interface for the Selection tab.
 Matches Scoring/Keywords runner contract for polling-based UI integration.
 """
 
+import logging
 import threading
 from modules.selection import SelectionService, SelectionConfig
 from modules import db
@@ -11,6 +12,8 @@ from modules.events import event_manager, broadcast_run_log_line
 from modules.phases import PhaseCode, PhaseStatus
 from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
+
+logger = logging.getLogger(__name__)
 
 
 class SelectionRunner:
@@ -189,11 +192,7 @@ class SelectionRunner:
             self._total_count = 100
             
         if job_id:
-            db.update_job_status(job_id, "completed")
-            event_manager.broadcast_threadsafe("job_completed", {
-                "job_id": job_id, 
-                "status": "completed"
-            })
+            self._complete_phase_and_advance(job_id, input_path, log)
 
         log(f"Total images: {summary.total_images}")
         log(f"Total stacks: {summary.total_stacks}")
@@ -207,6 +206,57 @@ class SelectionRunner:
         log(f"Neutral: {summary.neutral}")
         log(f"Sidecar written: {summary.sidecar_written}, errors: {summary.sidecar_errors}")
         log(f"Status: {summary.status}")
+
+    def _complete_phase_and_advance(self, job_id: int, input_path: str, log):
+        """Mark culling phase done and advance to next phase or complete the job."""
+        try:
+            # Mark our own phase as completed
+            db.set_job_phase_state(job_id, PhaseCode.CULLING.value, "completed")
+        except Exception as e:
+            logger.warning("Failed to set culling phase completed for job %s: %s", job_id, e)
+
+        # Check for remaining pending/queued phases
+        remaining = []
+        try:
+            phases = db.get_job_phases(job_id) or []
+            remaining = [
+                p for p in phases
+                if (p.get("state") or "").strip().lower() in ("pending", "queued", "running")
+                and p.get("phase_code") != PhaseCode.CULLING.value
+            ]
+        except Exception as e:
+            logger.warning("Failed to check remaining phases for job %s: %s", job_id, e)
+
+        if remaining:
+            # Enqueue a follow-up job for the next phase (e.g. bird_species)
+            next_phase = remaining[0]
+            next_code = next_phase.get("phase_code")
+            log(f"Advancing to next phase: {next_code}")
+            try:
+                follow_job_id, _ = db.enqueue_job(
+                    input_path,
+                    phase_code=next_code,
+                    job_type=next_code,
+                    queue_payload={
+                        "input_path": input_path,
+                        "parent_job_id": job_id,
+                    },
+                )
+                if follow_job_id:
+                    db.create_job_phases(follow_job_id, [next_code], first_phase_state="queued")
+                    logger.info("Enqueued follow-up %s job %s for parent job %s", next_code, follow_job_id, job_id)
+                # Mark the remaining phase as completed in the parent job
+                # so the parent shows as fully done in the UI
+                db.set_job_phase_state(job_id, next_code, "completed")
+            except Exception as e:
+                logger.error("Failed to enqueue follow-up %s job for job %s: %s", next_code, job_id, e)
+
+        # Now complete the parent job
+        db.update_job_status(job_id, "completed")
+        event_manager.broadcast_threadsafe("job_completed", {
+            "job_id": job_id,
+            "status": "completed"
+        })
 
     def stop(self) -> None:
         """Request stop. Checked between stages."""

@@ -15,6 +15,8 @@ from pathlib import Path
 
 from modules import scoring, db, tagging, config, thumbnails, utils, pipeline_orchestrator
 from modules.selection_runner import SelectionRunner
+from modules.indexing_runner import IndexingRunner
+from modules.metadata_runner import MetadataRunner
 from modules import phase_executors
 from modules.ui import status_gradio
 
@@ -34,6 +36,8 @@ def _init_webui_engines(clustering_runner=None):
     runner = scoring.ScoringRunner()
     tagging_runner = tagging.TaggingRunner()
     selection_runner = SelectionRunner()
+    indexing_runner = IndexingRunner()
+    metadata_runner = MetadataRunner()
 
     from modules.bird_species import BirdSpeciesRunner
     _bird_species_runner = BirdSpeciesRunner()
@@ -42,6 +46,8 @@ def _init_webui_engines(clustering_runner=None):
         scoring_runner=runner,
         tagging_runner=tagging_runner,
         selection_runner=selection_runner,
+        indexing_runner=indexing_runner,
+        metadata_runner=metadata_runner,
     )
     recovery_info = orchestrator.recover_interrupted_jobs()
     app_config["job_recovery"] = recovery_info
@@ -50,14 +56,16 @@ def _init_webui_engines(clustering_runner=None):
         scoring_runner=runner,
         tagging_runner=tagging_runner,
         selection_runner=selection_runner,
+        indexing_runner=indexing_runner,
+        metadata_runner=metadata_runner,
     )
 
-    return app_config, runner, tagging_runner, selection_runner, orchestrator
+    return app_config, runner, tagging_runner, selection_runner, orchestrator, indexing_runner, metadata_runner
 
 
 def create_ui(clustering_runner=None):
     """Build the operator status WebUI. Returns a 9-tuple compatible with webui.py."""
-    app_config, runner, tagging_runner, selection_runner, orchestrator = _init_webui_engines(
+    app_config, runner, tagging_runner, selection_runner, orchestrator, indexing_runner, metadata_runner = _init_webui_engines(
         clustering_runner=clustering_runner
     )
 
@@ -75,10 +83,12 @@ def create_ui(clustering_runner=None):
         tagging_runner,
         selection_runner,
         orchestrator,
-        {},   # pipeline_components — no Gradio pipeline UI
+        {},   # pipeline_components
         {},   # gallery_components
         {},   # settings_components
         None, # main_tabs
+        indexing_runner,
+        metadata_runner,
     )
 
 
@@ -91,11 +101,15 @@ from modules.ui.security import (          # noqa: F401
 )
 
 
-def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None, orchestrator=None):
+def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None, orchestrator=None, indexing_runner=None, metadata_runner=None):
     """Configures FastAPI endpoints for the Gradio app."""
 
     from modules import api
-    api.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner, orchestrator, bird_species_runner=_bird_species_runner)
+    api.set_runners(
+        scoring_runner, tagging_runner, clustering_runner, selection_runner, 
+        orchestrator, bird_species_runner=_bird_species_runner,
+        indexing_runner=indexing_runner, metadata_runner=metadata_runner
+    )
     api_router = api.create_api_router()
     fastapi_app.include_router(api_router)
     fastapi_app.include_router(api.create_public_api_router())

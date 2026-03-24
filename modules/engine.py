@@ -53,7 +53,7 @@ class BatchImageProcessor:
                     pass
         return total
 
-    def process_directory(self, input_dir, output_dir_unused, callback=None):
+    def process_directory(self, input_dir, output_dir_unused, callback=None, job_id=None):
         """
         Main entry point for batch processing.
         """
@@ -171,7 +171,7 @@ class BatchImageProcessor:
         # I can update `scoring.py` to inject job_id into the processor instance OR pass it.
         # I will inject it into the processor instance before calling process_directory.
         
-        current_job_id = getattr(self, "current_job_id", 0) 
+        current_job_id = job_id or getattr(self, "current_job_id", 0) 
         
         for i, f in enumerate(files):
             if self.stop_event.is_set():

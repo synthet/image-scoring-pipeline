@@ -18,6 +18,8 @@ class JobDispatcher:
         clustering_runner=None,
         selection_runner=None,
         bird_species_runner=None,
+        indexing_runner=None,
+        metadata_runner=None,
         poll_interval: float = 1.0,
     ):
         self.scoring_runner = scoring_runner
@@ -25,17 +27,21 @@ class JobDispatcher:
         self.clustering_runner = clustering_runner
         self.selection_runner = selection_runner
         self.bird_species_runner = bird_species_runner
+        self.indexing_runner = indexing_runner
+        self.metadata_runner = metadata_runner
         self.poll_interval = max(0.2, float(poll_interval or 1.0))
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._dispatch_lock = threading.Lock()
 
-    def set_runners(self, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None, bird_species_runner=None):
+    def set_runners(self, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None, bird_species_runner=None, indexing_runner=None, metadata_runner=None):
         self.scoring_runner = scoring_runner
         self.tagging_runner = tagging_runner
         self.clustering_runner = clustering_runner
         self.selection_runner = selection_runner
         self.bird_species_runner = bird_species_runner
+        self.indexing_runner = indexing_runner
+        self.metadata_runner = metadata_runner
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -92,66 +98,109 @@ class JobDispatcher:
                 except Exception:
                     logger.warning("Invalid queue payload for job %s", job.get("id"))
 
-            started = self._start_job(job, payload)
+            started, err = self._start_job(job, payload)
             if not started:
-                db.update_job_status(job["id"], "failed", "Dispatcher failed to start job")
+                reason = err or "Dispatcher failed to start job (unknown reason)"
+                logger.warning("Dispatcher: job %s failed to start: %s", job.get("id"), reason)
+                db.update_job_status(job["id"], "failed", reason)
 
-    def _start_job(self, job: Dict[str, Any], payload: Dict[str, Any]) -> bool:
+    def _start_job(self, job: Dict[str, Any], payload: Dict[str, Any]) -> tuple:
+        """Try to start the job. Returns (success: bool, error_msg: str|None)."""
         phase = (job.get("job_type") or "").lower()
         job_id = int(job["id"])
         input_path = job.get("input_path")
 
+        runner_map = {
+            "indexing": ("indexing_runner", self.indexing_runner),
+            "metadata": ("metadata_runner", self.metadata_runner),
+            "score": ("scoring_runner", self.scoring_runner),
+            "scoring": ("scoring_runner", self.scoring_runner),
+            "tag": ("tagging_runner", self.tagging_runner),
+            "tagging": ("tagging_runner", self.tagging_runner),
+            "keywords": ("tagging_runner", self.tagging_runner),
+            "cluster": ("clustering_runner", self.clustering_runner),
+            "clustering": ("clustering_runner", self.clustering_runner),
+            "selection": ("selection_runner", self.selection_runner),
+            "culling": ("selection_runner", self.selection_runner),
+            "bird_species": ("bird_species_runner", self.bird_species_runner),
+            "bird-species": ("bird_species_runner", self.bird_species_runner),
+        }
+
+        entry = runner_map.get(phase)
+        if entry is None:
+            logger.warning("Unknown queued job_type=%s for job_id=%s", phase, job_id)
+            return False, f"Unknown job type: {phase}"
+
+        runner_name, runner = entry
+        if not runner:
+            return False, f"No runner available for '{phase}' (runner '{runner_name}' is not initialized)"
+
+        try:
+            result = self._dispatch_to_runner(phase, runner, job_id, input_path, payload)
+        except Exception as exc:
+            logger.exception("Runner %s raised during start for job %s", runner_name, job_id)
+            return False, f"Runner '{runner_name}' raised: {exc}"
+
+        if result == "Started":
+            return True, None
+        return False, f"Runner '{runner_name}' returned: {result}"
+
+    def _dispatch_to_runner(self, phase: str, runner, job_id: int, input_path: str, payload: Dict[str, Any]) -> str:
+        """Call the appropriate start_batch method on the runner. Returns the result string."""
+        if phase == "indexing":
+            return runner.start_batch(
+                payload.get("input_path", input_path),
+                job_id=job_id,
+                skip_existing=bool(payload.get("skip_existing", True)),
+                resolved_image_ids=payload.get("resolved_image_ids"),
+            )
+
+        if phase == "metadata":
+            return runner.start_batch(
+                payload.get("input_path", input_path),
+                job_id=job_id,
+                skip_existing=bool(payload.get("skip_existing", True)),
+                resolved_image_ids=payload.get("resolved_image_ids"),
+            )
+
         if phase in ("score", "scoring"):
-            if not self.scoring_runner:
-                return False
-            skip_existing = bool(payload.get("skip_existing", True))
-            resolved_image_ids = payload.get("resolved_image_ids")
-            target_phases = payload.get("target_phases")
-            return self.scoring_runner.start_batch(
+            return runner.start_batch(
                 payload.get("input_path", input_path),
                 job_id,
-                skip_existing,
-                resolved_image_ids=resolved_image_ids,
-                target_phases=target_phases,
-            ) == "Started"
+                bool(payload.get("skip_existing", True)),
+                resolved_image_ids=payload.get("resolved_image_ids"),
+                target_phases=payload.get("target_phases"),
+            )
 
         if phase in ("tag", "tagging", "keywords"):
-            if not self.tagging_runner:
-                return False
-            return self.tagging_runner.start_batch(
+            return runner.start_batch(
                 payload.get("input_path", input_path),
                 job_id=job_id,
                 custom_keywords=payload.get("custom_keywords"),
                 overwrite=bool(payload.get("overwrite", False)),
                 generate_captions=bool(payload.get("generate_captions", False)),
                 resolved_image_ids=payload.get("resolved_image_ids"),
-            ) == "Started"
+            )
 
         if phase in ("cluster", "clustering"):
-            if not self.clustering_runner:
-                return False
-            return self.clustering_runner.start_batch(
+            return runner.start_batch(
                 payload.get("input_path", input_path),
                 threshold=payload.get("threshold"),
                 time_gap=payload.get("time_gap"),
                 force_rescan=bool(payload.get("force_rescan", False)),
                 job_id=job_id,
                 resolved_image_ids=payload.get("resolved_image_ids"),
-            ) == "Started"
+            )
 
         if phase in ("selection", "culling"):
-            if not self.selection_runner:
-                return False
-            return self.selection_runner.start_batch(
+            return runner.start_batch(
                 payload.get("input_path", input_path),
                 job_id=job_id,
                 force_rescan=bool(payload.get("force_rescan", False)),
-            ) == "Started"
+            )
 
         if phase in ("bird_species", "bird-species"):
-            if not self.bird_species_runner:
-                return False
-            return self.bird_species_runner.start_batch(
+            return runner.start_batch(
                 payload.get("input_path", input_path),
                 job_id=job_id,
                 candidate_species=payload.get("candidate_species"),
@@ -159,16 +208,17 @@ class JobDispatcher:
                 top_k=int(payload.get("top_k", 3)),
                 overwrite=bool(payload.get("overwrite", False)),
                 resolved_image_ids=payload.get("resolved_image_ids"),
-            ) == "Started"
+            )
 
-        logger.warning("Unknown queued job_type=%s for job_id=%s", phase, job_id)
-        return False
+        return f"No dispatch handler for phase '{phase}'"
 
     def _runner_busy(self, runner) -> bool:
         return bool(runner and getattr(runner, "is_running", False))
 
     def _any_runner_busy(self) -> bool:
         return any([
+            self._runner_busy(self.indexing_runner),
+            self._runner_busy(self.metadata_runner),
             self._runner_busy(self.scoring_runner),
             self._runner_busy(self.tagging_runner),
             self._runner_busy(self.clustering_runner),
@@ -177,6 +227,10 @@ class JobDispatcher:
         ])
 
     def _get_active_runner(self) -> Optional[str]:
+        if self._runner_busy(self.indexing_runner):
+            return "indexing"
+        if self._runner_busy(self.metadata_runner):
+            return "metadata"
         if self._runner_busy(self.scoring_runner):
             return "scoring"
         if self._runner_busy(self.tagging_runner):

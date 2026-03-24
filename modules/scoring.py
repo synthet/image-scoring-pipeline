@@ -115,6 +115,8 @@ class ScoringRunner:
         log(f"Input: {input_path}")
         log("-" * 20)
         self.status_message = "Running..."
+        if not target_phases:
+             target_phases = [PhaseCode.SCORING]
         normalized_target_phases = normalize_phase_codes(target_phases)
         
         # Checking/Loading Models
@@ -204,7 +206,7 @@ class ScoringRunner:
                 log(f"Selector mode: resolved {len(jobs)} images for scoring.")
                 processor.process_list(jobs, job_id_override=job_id)
             else:
-                processor.process_directory(input_path, input_path)
+                processor.process_directory(input_dir=input_path, output_dir_unused=input_path, job_id=job_id)
             
             # Cleanup
             self.current_processor = None

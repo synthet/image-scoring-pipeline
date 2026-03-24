@@ -47,6 +47,8 @@ _clustering_runner = None
 _selection_runner = None
 _orchestrator = None
 _bird_species_runner = None
+_indexing_runner = None
+_metadata_runner = None
 
 # Gradio context (set by webui when MCP runs in integrated/SSE mode)
 _gradio_context: dict | None = None
@@ -89,15 +91,17 @@ def _require_db(fn):
     return wrapper
 
 
-def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None, bird_species_runner=None):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None, bird_species_runner=None, indexing_runner=None, metadata_runner=None):
     """Set references to the runner instances from webui."""
-    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _bird_species_runner
+    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _bird_species_runner, _indexing_runner, _metadata_runner
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
     _selection_runner = selection_runner
     _orchestrator = orchestrator
     _bird_species_runner = bird_species_runner
+    _indexing_runner = indexing_runner
+    _metadata_runner = metadata_runner
 
 
 def set_gradio_context(
@@ -801,7 +805,9 @@ def get_runner_status() -> dict:
         "scoring": {"available": False},
         "tagging": {"available": False},
         "clustering": {"available": False},
-        "selection": {"available": False}
+        "selection": {"available": False},
+        "indexing": {"available": False},
+        "metadata": {"available": False}
     }
 
     if _scoring_runner:
@@ -859,6 +865,34 @@ def get_runner_status() -> dict:
             }
         except Exception as e:
             status["selection"]["error"] = str(e)
+
+    if _indexing_runner:
+        try:
+            result = _indexing_runner.get_status()
+            is_running, log, status_msg, current, total = result[:5]
+            status["indexing"] = {
+                "available": True,
+                "is_running": is_running,
+                "status_message": status_msg,
+                "progress": {"current": current, "total": total},
+                "recent_log": log[-2000:] if log else ""
+            }
+        except Exception as e:
+            status["indexing"]["error"] = str(e)
+
+    if _metadata_runner:
+        try:
+            result = _metadata_runner.get_status()
+            is_running, log, status_msg, current, total = result[:5]
+            status["metadata"] = {
+                "available": True,
+                "is_running": is_running,
+                "status_message": status_msg,
+                "progress": {"current": current, "total": total},
+                "recent_log": log[-2000:] if log else ""
+            }
+        except Exception as e:
+            status["metadata"]["error"] = str(e)
 
     if _bird_species_runner:
         try:
@@ -1315,6 +1349,8 @@ def execute_code(code: str) -> dict:
         "runner": _gradio_context.get("runner"),
         "tagging_runner": _gradio_context.get("tagging_runner"),
         "orchestrator": _gradio_context.get("orchestrator"),
+        "indexing_runner": _gradio_context.get("indexing_runner"),
+        "metadata_runner": _gradio_context.get("metadata_runner"),
         "db": db,
         "config": config,
     }

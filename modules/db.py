@@ -4278,7 +4278,7 @@ def resume_job_phases(job_id):
 def set_job_phase_state(job_id, phase_code, state, error_message=None):
     """Update state metadata for one phase of a job and auto-advance next pending phase."""
     allowed = {
-        "pending": {"queued", "running", "skipped", "canceled"},
+        "pending": {"queued", "running", "skipped", "canceled", "failed"},
         "queued": {"running", "paused", "cancel_requested", "canceled"},
         "running": {
             "paused",
@@ -4391,6 +4391,24 @@ def _resolve_multi_phase_job_phases_sync_code(job_id, new_status):
                 return p.get("phase_code")
         return phases[0].get("phase_code")
     if st == "completed":
+        # Safety: only bulk-complete if every phase has actually been started.
+        # If any phase was never started (started_at is None and state is not
+        # completed/skipped), return it so set_job_phase_state handles one
+        # phase at a time with proper auto-advance.
+        unstarted = [
+            p for p in phases
+            if p.get("started_at") is None
+            and (p.get("state") or "").strip().lower() not in ("completed", "skipped", "canceled")
+        ]
+        if unstarted:
+            # Find the currently running phase to mark completed
+            for p in phases:
+                if (p.get("state") or "").strip().lower() == "running":
+                    return p.get("phase_code")
+            # Fallback: last phase that isn't completed
+            for p in reversed(phases):
+                if (p.get("state") or "").strip().lower() not in ("completed", "skipped"):
+                    return p.get("phase_code")
         return "__bulk_completed__"
     if st in ("failed", "interrupted", "canceled", "cancelled"):
         for p in phases:
@@ -8061,6 +8079,321 @@ def backfill_index_meta_for_folder(folder_path):
     return len(image_ids)
 
 
+def backfill_index_meta_global(limit=None, dry_run=False):
+    """
+    Same semantics as backfill_index_meta_for_folder, but for all images in the DB.
+
+    Sets INDEXING=DONE and METADATA=DONE when SCORING is DONE but either earlier
+    phase is missing or not done (repairs GAP-D / WORKFLOW_STAGES_ANALYSIS gaps).
+
+    Args:
+        limit: Optional max number of images to update (for staged rollouts).
+        dry_run: If True, only return the count of images that would be updated.
+
+    Returns:
+        int: number of images that would be or were updated.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute(
+            """
+            SELECT i.id
+            FROM images i
+            WHERE EXISTS (
+                SELECT 1 FROM image_phase_status ips
+                JOIN pipeline_phases pp ON pp.id = ips.phase_id
+                WHERE ips.image_id = i.id
+                  AND LOWER(TRIM(pp.code)) = 'scoring'
+                  AND LOWER(TRIM(ips.status)) = 'done'
+            )
+            AND (
+                NOT EXISTS (
+                    SELECT 1 FROM image_phase_status ips2
+                    JOIN pipeline_phases pp2 ON pp2.id = ips2.phase_id
+                    WHERE ips2.image_id = i.id
+                      AND LOWER(TRIM(pp2.code)) = 'indexing'
+                      AND LOWER(TRIM(ips2.status)) = 'done'
+                )
+                OR NOT EXISTS (
+                    SELECT 1 FROM image_phase_status ips3
+                    JOIN pipeline_phases pp3 ON pp3.id = ips3.phase_id
+                    WHERE ips3.image_id = i.id
+                      AND LOWER(TRIM(pp3.code)) = 'metadata'
+                      AND LOWER(TRIM(ips3.status)) = 'done'
+                )
+            )
+            """
+        )
+        image_ids = [row[0] for row in c.fetchall()]
+    finally:
+        conn.close()
+
+    if isinstance(limit, int) and limit > 0:
+        image_ids = image_ids[:limit]
+
+    if dry_run:
+        return len(image_ids)
+
+    for image_id in image_ids:
+        set_image_phase_status(image_id, "indexing", "done")
+        set_image_phase_status(image_id, "metadata", "done")
+
+    if image_ids:
+        conn = get_db()
+        c = conn.cursor()
+        try:
+            c.execute("UPDATE folders SET phase_agg_dirty = 1")
+            conn.commit()
+        finally:
+            conn.close()
+
+    return len(image_ids)
+
+
+def repair_stuck_running_ips(hours=2, phase_code=None, dry_run=False):
+    """
+    Mark IMAGE_PHASE_STATUS rows stuck in running/queued (older than ``hours``)
+    as failed so the UI and policy layer can retry.
+
+    Uses a direct UPDATE to avoid invalid FSM transitions (e.g. queued→failed).
+
+    Args:
+        hours: Minimum age of updated_at or started_at before repair.
+        phase_code: If set, only rows for this pipeline_phases.code (e.g. 'culling').
+        dry_run: If True, only count matching rows.
+
+    Returns:
+        dict with keys matched, updated.
+    """
+    import datetime as _dt
+
+    threshold = _dt.datetime.now() - _dt.timedelta(hours=hours)
+    msg = (
+        "repair_stuck_running_ips: stuck running/queued beyond threshold; "
+        "likely lost job_id in worker queue. Re-run this phase if needed."
+    )
+
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        sql = """
+            SELECT ips.id
+            FROM image_phase_status ips
+            JOIN pipeline_phases pp ON pp.id = ips.phase_id
+            WHERE LOWER(TRIM(ips.status)) IN ('running', 'queued')
+              AND (
+                  (ips.updated_at IS NOT NULL AND ips.updated_at < ?)
+                  OR (ips.updated_at IS NULL AND ips.started_at IS NOT NULL AND ips.started_at < ?)
+              )
+        """
+        params = [threshold, threshold]
+        if phase_code:
+            sql += " AND LOWER(TRIM(pp.code)) = ?"
+            params.append(str(phase_code).strip().lower())
+
+        c.execute(sql, tuple(params))
+        ids = [row[0] for row in c.fetchall()]
+
+        if dry_run:
+            return {"matched": len(ids), "updated": 0}
+
+        now = _dt.datetime.now()
+        for ips_id in ids:
+            c.execute(
+                """
+                UPDATE image_phase_status
+                SET status = 'failed',
+                    last_error = ?,
+                    finished_at = ?,
+                    updated_at = ?,
+                    job_id = NULL
+                WHERE id = ?
+                """,
+                (msg, now, now, ips_id),
+            )
+
+        if ids:
+            c.execute("UPDATE folders SET phase_agg_dirty = 1")
+        conn.commit()
+
+        return {"matched": len(ids), "updated": len(ids)}
+    finally:
+        conn.close()
+
+
+def repair_legacy_keywords_junction(limit=None, dry_run=False):
+    """
+    Dual-write repair: images.keywords is non-empty but image_keywords has no rows.
+
+    Calls _sync_image_keywords for each matching image (GAP-E / bird keyword queries).
+
+    Args:
+        limit: Optional max images to process.
+        dry_run: If True, return counts only.
+
+    Returns:
+        dict: matched, synced
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Select images with keywords IS NOT NULL but no junction rows.
+        # This includes images with an empty-string BLOB (keywords='') which should be
+        # normalized to NULL. Eagerly convert BLOB to str while connection is open.
+        c.execute(
+            """
+            SELECT i.id, i.keywords
+            FROM images i
+            WHERE i.keywords IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id
+            )
+            """
+        )
+        pairs = [(row[0], str(row[1]) if row[1] is not None else None) for row in c.fetchall()]
+    finally:
+        conn.close()
+
+    if isinstance(limit, int) and limit > 0:
+        pairs = pairs[:limit]
+
+    if dry_run:
+        return {"matched": len(pairs), "synced": 0}
+
+    synced = 0
+    nulled = 0
+    for image_id, keywords_str in pairs:
+        if not keywords_str or not keywords_str.strip():
+            # Empty BLOB — normalize to NULL (no keywords to sync)
+            try:
+                c2 = None
+                conn2 = get_db()
+                c2 = conn2.cursor()
+                c2.execute("UPDATE images SET keywords = NULL WHERE id = ?", (image_id,))
+                conn2.commit()
+                nulled += 1
+            except Exception as e:
+                logger.warning("repair_legacy_keywords_junction: null-cleanup image %s: %s", image_id, e)
+                try:
+                    conn2.rollback()
+                except Exception:
+                    pass
+            finally:
+                try:
+                    conn2.close()
+                except Exception:
+                    pass
+        else:
+            try:
+                _sync_image_keywords(image_id, keywords_str, source="repair_legacy_keywords_junction")
+                synced += 1
+            except Exception as e:
+                logger.warning("repair_legacy_keywords_junction: image %s: %s", image_id, e)
+
+    return {"matched": len(pairs), "synced": synced, "nulled": nulled}
+
+
+def repair_culling_ips_failed_has_data(dry_run=False):
+    """
+    Repair GAP-C: culling IPS is 'failed' but the image has a stack_id / embedding.
+    This happens when a job was force-failed by the repair script but the work 
+    actually completed. Since data is present, the accurate state is 'done'.
+
+    Returns:
+        dict: matched, repaired
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute(
+            """
+            SELECT ips.id
+            FROM image_phase_status ips
+            JOIN pipeline_phases pp ON pp.id = ips.phase_id
+            JOIN images i ON i.id = ips.image_id
+            WHERE LOWER(TRIM(pp.code)) = 'culling'
+              AND LOWER(TRIM(ips.status)) = 'failed'
+              AND (i.stack_id IS NOT NULL OR i.image_embedding IS NOT NULL)
+            """
+        )
+        ids = [row[0] for row in c.fetchall()]
+        
+        if dry_run:
+            return {"matched": len(ids), "repaired": 0}
+
+        now = datetime.datetime.now()
+        for ips_id in ids:
+            c.execute(
+                """
+                UPDATE image_phase_status
+                SET status = 'done',
+                    last_error = NULL,
+                    finished_at = COALESCE(finished_at, ?),
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (now, now, ips_id),
+            )
+        
+        if ids:
+            c.execute("UPDATE folders SET phase_agg_dirty = 1")
+        conn.commit()
+        return {"matched": len(ids), "repaired": len(ids)}
+    finally:
+        conn.close()
+
+
+def backfill_keywords_ips_done(dry_run=False):
+    """
+    Repair GAP-B: image has image_keywords rows but no 'keywords' IPS record.
+    Often happens when images are tagged via legacy batch-update paths.
+
+    Returns:
+        dict: matched, created
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        # Find images that have junction rows but no IPS row for 'keywords'
+        c.execute(
+            """
+            SELECT DISTINCT ik.image_id
+            FROM image_keywords ik
+            WHERE NOT EXISTS (
+                SELECT 1 FROM image_phase_status ips
+                JOIN pipeline_phases pp ON pp.id = ips.phase_id
+                WHERE ips.image_id = ik.image_id
+                  AND LOWER(TRIM(pp.code)) = 'keywords'
+            )
+            """
+        )
+        ids = [row[0] for row in c.fetchall()]
+
+        if dry_run:
+            return {"matched": len(ids), "created": 0}
+
+    finally:
+        conn.close()
+
+    # Reuse set_image_phase_status for convenience (handles phase lookup/upsert)
+    count = 0
+    for image_id in ids:
+        set_image_phase_status(image_id, "keywords", "done")
+        count += 1
+    
+    if ids:
+        conn = get_db()
+        c = conn.cursor()
+        try:
+            c.execute("UPDATE folders SET phase_agg_dirty = 1")
+            conn.commit()
+        finally:
+            conn.close()
+
+    return {"matched": len(ids), "created": count}
+
+
 def _is_firebird_running(host_ip, port=3050):
     import socket
     try:
@@ -8182,7 +8515,10 @@ def _backfill_image_xmp():
 
         count = 0
         for row in rows:
-            image_id, rating, label, keywords, title, description = row
+            # RowWrapper.__iter__ yields (key, value) pairs — do not tuple-unpack as columns.
+            image_id, rating, label, keywords, title, description = (
+                row[0], row[1], row[2], row[3], row[4], row[5]
+            )
             c.execute("""
                 UPDATE OR INSERT INTO image_xmp
                     (image_id, rating, label, keywords, title, description, extracted_at)

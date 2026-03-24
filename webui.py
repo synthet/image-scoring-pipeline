@@ -220,12 +220,18 @@ def main():
         gallery_components,
         settings_components,
         main_tabs,
+        indexing_runner,
+        metadata_runner,
     ) = app_module.create_ui(clustering_runner=clustering_runner)
 
     # Setup MCP server if enabled
     mcp_sse_app = None
     if mcp_available and mcp_enabled:
-        mcp_server.set_runners(runner, tagging_runner, clustering_runner, selection_runner, orchestrator, bird_species_runner=app_module._bird_species_runner)
+        mcp_server.set_runners(
+            runner, tagging_runner, clustering_runner, selection_runner, 
+            orchestrator, bird_species_runner=app_module._bird_species_runner,
+            indexing_runner=indexing_runner, metadata_runner=metadata_runner
+        )
         mcp_server.set_gradio_context(
             demo=demo,
             pipeline_components=pipeline_components,
@@ -265,7 +271,10 @@ def main():
     print(f"Starting WebUI on {platform.system()}...")
     
     # Configure server endpoints using the FastAPI app directly
-    app_module.setup_server_endpoints(app, runner, tagging_runner, clustering_runner, selection_runner, orchestrator)
+    app_module.setup_server_endpoints(
+        app, runner, tagging_runner, clustering_runner, selection_runner, 
+        orchestrator, indexing_runner=indexing_runner, metadata_runner=metadata_runner
+    )
     
     # Mount MCP SSE endpoints (if enabled) onto the final app instance.
     # MUST be mounted BEFORE Gradio to avoid being shadowed by Gradio's catch-all route at /

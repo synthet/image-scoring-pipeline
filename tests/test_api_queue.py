@@ -142,8 +142,9 @@ def test_pipeline_submit_cluster_enqueues_full_payload(monkeypatch, tmp_path):
 
 
 def test_pipeline_submit_metadata_enqueues_scoring_runner_with_target_phases(monkeypatch, tmp_path):
+    # indexing/metadata now route to dedicated runners; first_op="indexing" uses _indexing_runner
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
-    monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
+    monkeypatch.setattr(api, "_indexing_runner", _RunnerStub())
     monkeypatch.setattr(
         api,
         "validate_and_preview",
@@ -186,11 +187,11 @@ def test_pipeline_submit_metadata_enqueues_scoring_runner_with_target_phases(mon
     assert payload["data"]["remaining_operations"] == ["metadata"]
     assert captured["input_path"] == str(tmp_path)
     assert captured["phase_code"] == "indexing"
-    assert captured["job_type"] == "scoring"
+    assert captured["job_type"] == "indexing"
     qp = captured["queue_payload"]
     assert qp["input_path"] == str(tmp_path)
     assert qp["skip_existing"] is False
-    assert qp["target_phases"] == ["indexing", "metadata"]
+    assert qp["stage_codes"] == ["indexing", "metadata"]
 
 
 def test_pipeline_submit_mixed_operations_only_targets_scoring_side(monkeypatch, tmp_path):
@@ -234,8 +235,9 @@ def test_pipeline_submit_mixed_operations_only_targets_scoring_side(monkeypatch,
 
 
 def test_pipeline_submit_metadata_requires_scoring_runner(monkeypatch, tmp_path):
+    # metadata now routes to _metadata_runner; absence → "Metadata runner not available"
     monkeypatch.setattr(ui_security, "_check_rate_limit", lambda endpoint: None)
-    monkeypatch.setattr(api, "_scoring_runner", None)
+    monkeypatch.setattr(api, "_metadata_runner", None)
     monkeypatch.setattr(
         api,
         "validate_and_preview",
@@ -249,7 +251,7 @@ def test_pipeline_submit_metadata_requires_scoring_runner(monkeypatch, tmp_path)
         )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Scoring runner not available"
+    assert response.json()["detail"] == "Metadata runner not available"
 
 
 def test_pipeline_phase_skip_calls_db_with_defaults(monkeypatch, tmp_path):
@@ -308,6 +310,7 @@ def test_pipeline_phase_retry_scoring_starts_runner(monkeypatch, tmp_path):
         lambda **kwargs: status_updates.append(kwargs) or 8,
     )
     monkeypatch.setattr(db, "create_job", lambda input_path, phase_code=None: 901)
+    monkeypatch.setattr(db, "create_job_phases", lambda job_id, phase_codes, first_phase_state=None: [])
 
     with _build_client() as client:
         response = client.post(
@@ -319,7 +322,7 @@ def test_pipeline_phase_retry_scoring_starts_runner(monkeypatch, tmp_path):
     assert response.json() == {
         "success": True,
         "message": "Retry scoring: Started",
-        "data": {"updated_images": 8, "phase_code": "scoring"},
+        "data": {"updated_images": 8, "phase_code": "scoring", "job_id": 901},
     }
     assert status_updates == [
         {"folder_path": str(tmp_path), "phase_code": "scoring", "status": "running"}
@@ -333,6 +336,7 @@ def test_pipeline_phase_retry_keywords_starts_runner(monkeypatch, tmp_path):
     monkeypatch.setattr(api, "_tagging_runner", runner)
     monkeypatch.setattr(db, "set_folder_phase_status", lambda **kwargs: 4)
     monkeypatch.setattr(db, "create_job", lambda input_path, phase_code=None: 902)
+    monkeypatch.setattr(db, "create_job_phases", lambda job_id, phase_codes, first_phase_state=None: [])
 
     with _build_client() as client:
         response = client.post(
@@ -353,6 +357,7 @@ def test_pipeline_phase_retry_culling_starts_runner(monkeypatch, tmp_path):
     monkeypatch.setattr(api, "_clustering_runner", runner)
     monkeypatch.setattr(db, "set_folder_phase_status", lambda **kwargs: 6)
     monkeypatch.setattr(db, "create_job", lambda input_path, phase_code=None: 903)
+    monkeypatch.setattr(db, "create_job_phases", lambda job_id, phase_codes, first_phase_state=None: [])
 
     with _build_client() as client:
         response = client.post(

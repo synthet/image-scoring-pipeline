@@ -1131,6 +1131,8 @@ _tagging_runner = None
 _clustering_runner = None
 _selection_runner = None
 _bird_species_runner = None
+_indexing_runner = None
+_metadata_runner = None
 _orchestrator = None
 _job_dispatcher = JobDispatcher()
 
@@ -1149,19 +1151,35 @@ def _stop_runner_for_phase(phase: str) -> bool:
     if phase_norm == "clustering" and _clustering_runner is not None:
         _clustering_runner.stop()
         return True
+    if phase_norm == "indexing" and _indexing_runner is not None:
+        _indexing_runner.stop()
+        return True
+    if phase_norm == "metadata" and _metadata_runner is not None:
+        _metadata_runner.stop()
+        return True
     return False
 
 
-def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None, bird_species_runner=None):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None, bird_species_runner=None, indexing_runner=None, metadata_runner=None):
     """Set the runner instances for API access."""
-    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _job_dispatcher, _bird_species_runner
+    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _job_dispatcher, _bird_species_runner, _indexing_runner, _metadata_runner
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
     _selection_runner = selection_runner
     _orchestrator = orchestrator
     _bird_species_runner = bird_species_runner
-    _job_dispatcher.set_runners(scoring_runner, tagging_runner, clustering_runner, selection_runner, bird_species_runner=bird_species_runner)
+    _indexing_runner = indexing_runner
+    _metadata_runner = metadata_runner
+    _job_dispatcher.set_runners(
+        scoring_runner, 
+        tagging_runner, 
+        clustering_runner, 
+        selection_runner, 
+        bird_species_runner=bird_species_runner,
+        indexing_runner=indexing_runner,
+        metadata_runner=metadata_runner,
+    )
     _job_dispatcher.start()
 
 
@@ -3719,7 +3737,43 @@ def create_api_router() -> APIRouter:
         }
         phase_plan_codes = [op_to_phase_code.get(op, op) for op in request.stage_codes]
 
-        if first_op in ["indexing", "metadata", "score"]:
+        if first_op == "indexing":
+            if _indexing_runner is None:
+                raise HTTPException(status_code=503, detail="Indexing runner not available")
+            job_id, queue_position = db.enqueue_job(
+                queue_input_path,
+                phase_code="indexing",
+                job_type="indexing",
+                queue_payload=serialize_queue_payload(
+                    {
+                        "input_path": wt or None,
+                        "workspace_target": wt or None,
+                        "workflow_template": request.workflow_template,
+                        "stage_codes": request.stage_codes,
+                        "skip_existing": request.skip_existing,
+                    },
+                    preview,
+                ),
+            )
+        elif first_op == "metadata":
+            if _metadata_runner is None:
+                raise HTTPException(status_code=503, detail="Metadata runner not available")
+            job_id, queue_position = db.enqueue_job(
+                queue_input_path,
+                phase_code="metadata",
+                job_type="metadata",
+                queue_payload=serialize_queue_payload(
+                    {
+                        "input_path": wt or None,
+                        "workspace_target": wt or None,
+                        "workflow_template": request.workflow_template,
+                        "stage_codes": request.stage_codes,
+                        "skip_existing": request.skip_existing,
+                    },
+                    preview,
+                ),
+            )
+        elif first_op == "score":
             if _scoring_runner is None:
                 raise HTTPException(status_code=503, detail="Scoring runner not available")
             
@@ -3728,8 +3782,8 @@ def create_api_router() -> APIRouter:
             
             job_id, queue_position = db.enqueue_job(
                 queue_input_path,
-                phase_code=op_to_phase_code[first_op],
-                job_type="scoring",  # Scoring runner handles indexing/metadata/scoring
+                phase_code="scoring",
+                job_type="scoring",
                 queue_payload=serialize_queue_payload(
                     {
                         "input_path": wt or None,
@@ -3932,7 +3986,7 @@ def create_api_router() -> APIRouter:
         from modules.ui.security import _check_rate_limit
         _check_rate_limit("pipeline_run_pause")
         stopped = []
-        for phase in ("scoring", "culling", "keywords"):
+        for phase in ("indexing", "metadata", "scoring", "culling", "keywords"):
             if _stop_runner_for_phase(phase):
                 stopped.append(phase)
         return ApiResponse(
@@ -3952,7 +4006,7 @@ def create_api_router() -> APIRouter:
         _check_rate_limit("pipeline_run_cancel")
 
         stopped = []
-        for phase in ("scoring", "culling", "keywords"):
+        for phase in ("indexing", "metadata", "scoring", "culling", "keywords"):
             if _stop_runner_for_phase(phase):
                 stopped.append(phase)
 
@@ -3988,13 +4042,13 @@ def create_api_router() -> APIRouter:
         if not os.path.exists(input_path):
             raise HTTPException(status_code=400, detail=f"Path not found: {input_path}")
 
-        for phase in ("scoring", "culling", "keywords"):
+        for phase in ("indexing", "metadata", "scoring", "culling", "keywords"):
             _stop_runner_for_phase(phase)
 
         job_id, queue_position = db.enqueue_job(
             input_path,
-            phase_code="scoring",
-            job_type="scoring",
+            phase_code="indexing",
+            job_type="indexing",
             queue_payload={"input_path": input_path, "skip_existing": False},
         )
         if job_id is not None:
@@ -4439,26 +4493,34 @@ def create_api_router() -> APIRouter:
         phase_values = [p.value for p in phases] if phases else None
 
         # Derive job_type and phase_code from stages so JobDispatcher can route the job.
-        # Scoring runner handles indexing, metadata, scoring; tagging handles keywords; selection handles culling.
-        _SCORING_PHASES = {PhaseCode.INDEXING, PhaseCode.METADATA, PhaseCode.SCORING}
-        _TAGGING_PHASES = {PhaseCode.KEYWORDS}
-        _CULLING_PHASES = {PhaseCode.CULLING}
+        # Routing:
+        # - indexing -> IndexingRunner
+        # - metadata -> MetadataRunner
+        # - score    -> ScoringRunner
+        # - keywords -> TaggingRunner
+        # - culling  -> SelectionRunner
+        
         phase_code = "scoring"
         job_type = "scoring"
         if phases:
-            for p in phases:
-                if p in _SCORING_PHASES:
-                    phase_code = "scoring"
-                    job_type = "scoring"
-                    break
-                if p in _TAGGING_PHASES:
-                    phase_code = "keywords"
-                    job_type = "tagging"
-                    break
-                if p in _CULLING_PHASES:
-                    phase_code = "culling"
-                    job_type = "selection"
-                    break
+            # We use the first phase in the requested set to determine the entry runner
+            # (Subsequent phases are handled by the PipelineOrchestrator)
+            first_p = phases[0]
+            if first_p == PhaseCode.INDEXING:
+                phase_code = "indexing"
+                job_type = "indexing"
+            elif first_p == PhaseCode.METADATA:
+                phase_code = "metadata"
+                job_type = "metadata"
+            elif first_p == PhaseCode.SCORING:
+                phase_code = "scoring"
+                job_type = "scoring"
+            elif first_p == PhaseCode.KEYWORDS:
+                phase_code = "keywords"
+                job_type = "tagging"
+            elif first_p == PhaseCode.CULLING:
+                phase_code = "culling"
+                job_type = "selection"
         elif want_bird_species:
             # bird_species is the only requested stage
             phase_code = "bird_species"
@@ -4763,9 +4825,16 @@ def create_api_router() -> APIRouter:
             payload = {}
         payload["skip_done"] = True
 
-        orig_job_type = job.get("job_type", "scoring")
-        _phase_code_map = {"scoring": "scoring", "tagging": "keywords", "clustering": "culling", "selection": "culling"}
-        phase_code = _phase_code_map.get(orig_job_type, "scoring")
+        orig_job_type = job.get("job_type", "indexing") # Safest default is indexing for new workflow
+        _phase_code_map = {
+            "indexing": "indexing",
+            "metadata": "metadata",
+            "scoring": "scoring",
+            "tagging": "keywords",
+            "clustering": "culling",
+            "selection": "culling"
+        }
+        phase_code = _phase_code_map.get(orig_job_type, "indexing")
 
         new_job_id, position = db.enqueue_job(
             input_path=job.get("input_path", ""),
@@ -4779,7 +4848,13 @@ def create_api_router() -> APIRouter:
         if orig_phases:
             phase_codes = sort_phase_value_strings([p["phase_code"] for p in orig_phases])
         else:
-            _defaults = {"tagging": ["keywords"], "selection": ["culling", "metadata"], "clustering": ["culling"]}
+            _defaults = {
+                "indexing": ["indexing"],
+                "metadata": ["metadata"],
+                "tagging": ["keywords"], 
+                "selection": ["culling", "metadata"], 
+                "clustering": ["culling"]
+            }
             phase_codes = sort_phase_value_strings(_defaults.get(orig_job_type, ["indexing", "metadata", "scoring"]))
         db.create_job_phases(new_job_id, phase_codes, first_phase_state="queued")
         return new_job_id, position
@@ -4799,7 +4874,14 @@ def create_api_router() -> APIRouter:
             payload["skip_done"] = True
             # Derive phase_code and job_type from original job
             orig_job_type = job.get("job_type", "scoring")
-            _phase_code_map = {"scoring": "scoring", "tagging": "keywords", "clustering": "culling", "selection": "culling"}
+            _phase_code_map = {
+                "indexing": "indexing",
+                "metadata": "metadata",
+                "scoring": "scoring",
+                "tagging": "keywords",
+                "clustering": "culling",
+                "selection": "culling",
+            }
             phase_code = _phase_code_map.get(orig_job_type, "scoring")
             new_job_id, position = db.enqueue_job(
                 input_path=job.get("input_path", ""),

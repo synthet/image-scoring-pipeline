@@ -18,8 +18,10 @@ class PipelineOrchestrator:
         PhaseCode.KEYWORDS
     ]
 
-    def __init__(self, scoring_runner, tagging_runner, selection_runner):
+    def __init__(self, scoring_runner, tagging_runner, selection_runner, indexing_runner=None, metadata_runner=None):
         self._runners = {
+            PhaseCode.INDEXING.value: indexing_runner,
+            PhaseCode.METADATA.value: metadata_runner,
             PhaseCode.SCORING.value: scoring_runner,
             PhaseCode.KEYWORDS.value: tagging_runner,
             PhaseCode.CULLING.value: selection_runner,
@@ -131,11 +133,11 @@ class PipelineOrchestrator:
             self.folder_path = None
             return "Pipeline run finished."
 
-        # Auto-skip phases with no runner (indexing, metadata run inside scoring)
+        # Check for runner
         runner = self._runners.get(next_phase)
         if not runner:
-            logger.info("Pipeline: skipping phase '%s' (no runner); advancing to next", next_phase)
-            db.set_job_phase_state(self.root_job_id, next_phase, "completed")
+            logger.warning("Pipeline: phase '%s' has no runner registered; skipping", next_phase)
+            db.set_job_phase_state(self.root_job_id, next_phase, "skipped")
             return self._start_next_phase()
 
         self.current_phase = next_phase

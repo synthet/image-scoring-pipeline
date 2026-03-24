@@ -123,93 +123,31 @@ class PrepWorker(PipelineWorker):
         
     def process(self, job: ImageJob):
         try:
-            image_hash = None
-            
-            # Optimization: Check DB by Path first to avoid File I/O (Hash calculation)
-            if job.skip_existing:
-                try:
-                    # If we trust the path (User Request), reusing the hash from the DB is safe
-                    # This makes skipping near-instantaneous
-                    path_record = db.get_image_details(job.image_path)
-                    if path_record and path_record.get('image_hash'):
-                         image_hash = path_record.get('image_hash')
-                         job.external_scores["image_hash"] = image_hash
-                         if path_record.get('id'):
-                             job.image_id = path_record['id']
-                except Exception as e:
-                    logger.error(f"Path lookup failed for {job.image_path}: {e}")
-
-            # --- PHASE A: INDEXING ---
-            if _is_phase_targeted(job.target_phases, PhaseCode.INDEXING):
-                # computed hash and registered path handled above in optimization block
-                if not job.image_id and image_hash:
-                     # If we didn't find it in the optimization block, do it now
-                     existing = db.get_image_by_hash(image_hash)
-                     if existing:
-                         job.image_id = existing.get('id')
-                         db.register_image_path(job.image_id, job.image_path)
-                     else:
-                         # Create new record (placeholder)
-                         # Note: db.upsert_image handles creation, but for indexing phase 
-                         # we might want a lighter way. However, upsert is currently the path.
-                         # We'll rely on the result worker if we want to bundle, 
-                         # but for INDEXING DONE status we need an ID.
-                         pass
-
-                if job.image_id:
-                    db.set_image_phase_status(job.image_id, PhaseCode.INDEXING, PhaseStatus.DONE,
-                                              app_version=APP_VERSION, job_id=job.job_id)
-
-            # --- PHASE B: METADATA (Thumbs + EXIF/XMP) ---
-            if _is_phase_targeted(job.target_phases, PhaseCode.METADATA):
-                # 1. Image Identity (UUID)
-                # Ensure we have a UUID for this image. If not in job, generate it.
-                if not job.external_scores.get("image_uuid"):
-                    # Extract minimal EXIF to help with deterministic UUID generation
-                    from modules import exif_extractor
-                    temp_exif = exif_extractor.extract_exif(job.image_path)
-                    job.external_scores["image_uuid"] = db.generate_image_uuid(temp_exif)
-                
-                image_uuid = job.external_scores["image_uuid"]
-
-                # 2. Physical Metadata Sync (EXIF + XMP)
-                # Write UUID to original file's EXIF and to XMP sidecar if missing
-                try:
-                    from modules import exif_extractor
-                    # Write to EXIF (Embedded) - This is required per user request
-                    exif_extractor.ensure_image_unique_id(job.image_path, image_uuid)
-                    
-                    # Write to XMP (Sidecar) - Create if doesn't exist, and write UUID
-                    # This fulfills "metadata step should create xmp (if doesn't exist)"
-                    xmp.write_image_unique_id(job.image_path, image_uuid)
-                    
-                    # 3. Database Sync (IMAGE_EXIF + IMAGE_XMP)
-                    if job.image_id:
-                        exif_extractor.extract_and_upsert_exif(job.image_path, job.image_id)
-                        xmp.extract_and_upsert_xmp(job.image_path, job.image_id)
-                        
-                        # Also update the main image record with the UUID if it wasn't there
-                        db.update_image_uuid(job.image_id, image_uuid)
-                except Exception as ex_meta:
-                    logger.error("Physical metadata sync failed for %s: %s", job.image_path, ex_meta)
-
-                # 4. Thumbnails creation (Final prep for scoring)
-                thumb = thumbnails.get_thumb_path(job.image_path)
-                if not os.path.exists(thumb):
-                    generated = thumbnails.generate_thumbnail(job.image_path)
-                    if generated:
-                        thumb = generated
-                job.thumbnail_path = thumb
-
-                # 5. Update Status
-                if job.image_id:
-                    db.set_image_phase_status(job.image_id, PhaseCode.METADATA, PhaseStatus.DONE,
-                                              app_version=APP_VERSION, job_id=job.job_id)
+            # 1. Image Record Check
+            # We need an image_id for phase tracking. If it's not set in the job,
+            # we should look it up by path. This replaces the old Indexing/Metadata logic.
+            if not job.image_id:
+                path_record = db.get_image_details(job.image_path)
+                if path_record:
+                    job.image_id = path_record.get('id')
+                    if not job.external_scores.get("image_hash"):
+                        job.external_scores["image_hash"] = path_record.get('image_hash')
 
             # --- PHASE C: SCORING (Preparation) ---
             if _is_phase_targeted(job.target_phases, PhaseCode.SCORING):
+                # Ensure we have a thumbnail for scoring if needed
+                if not job.thumbnail_path:
+                    # MetadataRunner should have created this, but we'll check just in case
+                    thumb = thumbnails.get_thumb_path(job.image_path)
+                    if not os.path.exists(thumb):
+                        generated = thumbnails.generate_thumbnail(job.image_path)
+                        if generated:
+                            thumb = generated
+                    job.thumbnail_path = thumb
+
                 # Per-image rerun gate (symmetric with tagging/culling runners)
                 if job.image_id:
+                    from modules.phases_policy import explain_phase_run_decision
                     decision = explain_phase_run_decision(
                         job.image_id,
                         PhaseCode.SCORING,
@@ -477,15 +415,6 @@ class ResultWorker(PipelineWorker):
                                               app_version=APP_VERSION,
                                               executor_version=self.scorer.VERSION if self.scorer else None,
                                               job_id=job.job_id)
-
-                    # Backfill INDEXING for newly created images (PrepWorker had no image_id)
-                    if had_no_image_id:
-                        db.set_image_phase_status(job.image_id, PhaseCode.INDEXING, PhaseStatus.DONE,
-                                                  app_version=APP_VERSION, job_id=job.job_id)
-
-                    # Set METADATA DONE for every successful image — metadata sync/check is complete for this image
-                    db.set_image_phase_status(job.image_id, PhaseCode.METADATA, PhaseStatus.DONE,
-                                              app_version=APP_VERSION, job_id=job.job_id)
 
                 score = job.result.get("summary", {}).get("weighted_scores", {}).get("general", 0)
                 if self.progress_callback:

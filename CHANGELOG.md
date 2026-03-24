@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.17.0] - 2026-03-23
+
+### Added
+- **IndexingRunner** (`modules/indexing_runner.py`): Dedicated independent runner for the Indexing (discovery) phase; walks directories, computes image hashes, and inserts rows into the `images` table — decoupled from the ScoringRunner.
+- **MetadataRunner** (`modules/metadata_runner.py`): Dedicated independent runner for the Metadata (inspection) phase; extracts EXIF/XMP, writes UUID sidecars, generates thumbnails — decoupled from the ScoringRunner.
+- **DB** (`modules/db.py`): `backfill_index_meta_global()` — global repair for images with scoring done but indexing/metadata phases missing (GAP-D); `repair_stuck_running_ips()` — reset image phase status rows stuck in `running`/`queued` beyond a configurable age threshold; `repair_legacy_keywords_junction()` — sync `image_keywords` junction for images whose `keywords` column is populated but junction rows are absent.
+- **SelectionRunner** (`modules/selection_runner.py`): `_complete_phase_and_advance()` — after culling completes, enqueues a follow-up job for any remaining pending phases (e.g. `bird_species`) and properly marks the parent job done.
+- **MCP** (`modules/mcp_server.py`): `get_runner_status` now reports `indexing` and `metadata` runner availability, progress, and log tail; `execute_code` context includes `indexing_runner` and `metadata_runner`.
+- **Scripts**: `scripts/analysis/analyze_phase_status.py`, `scripts/maintenance/repair_analyzer_gaps.py`, `scripts/schedule_bird_species_bird_folders.py`.
+- **Docs**: `docs/technical/WORKFLOW_STAGES_ANALYSIS.md`.
+- **Tests**: `tests/test_selection_runner_phases.py`.
+
+### Changed
+- **JobDispatcher** (`modules/job_dispatcher.py`): Refactored `_start_job` into a `runner_map` lookup + `_dispatch_to_runner` helper; `indexing` and `metadata` job types now route to their own runners; returns structured `(success, error_msg)` tuples for better failure reporting.
+- **API** (`modules/api.py`): `set_runners` / `_stop_runner_for_phase` accept `indexing_runner` and `metadata_runner`; `/pipeline/run` dispatches `indexing` and `metadata` as first-class job types; pause/cancel/restart endpoints now include `indexing` and `metadata` phases.
+- **WebUI** (`webui.py`): Passes `indexing_runner` and `metadata_runner` to `set_runners` and `setup_server_endpoints`.
+- **Pipeline** (`modules/pipeline.py`): `PrepWorker.process()` simplified — inline indexing/metadata logic removed (now handled by dedicated runners).
+
+### Fixed
+- **DB** (`modules/db.py`): `set_job_phase_state` now allows `failed` as a valid transition from `pending`; multi-phase `__bulk_completed__` guard skips bulk completion when any phase was never started, preventing phases from being incorrectly marked done in bulk.
+
 ## [4.16.0] - 2026-03-21
 
 ### Added

@@ -672,10 +672,8 @@ class ClusteringEngine:
                 folder_progress = processed_count + (len(rows) * (b_idx / len(time_batches)))
                 yield update_status(f"Processing folder: {folder} - Batch {b_idx+1}/{len(time_batches)}", folder_progress, len(images_rows))
 
-                if len(batch) < 2:
-                    continue
-                    
-                # Extract features for this batch
+                # Extract features for this batch (including single-image batches — embeddings
+                # are always persisted; clustering is skipped below when len(features) < 2)
                 batch_paths = []
                 batch_original_paths = []
                 batch_ids = []
@@ -689,7 +687,7 @@ class ClusteringEngine:
                         batch_original_paths.append(r['file_path'])
                         batch_ids.append(r['id'])
 
-                if len(batch_paths) < 2:
+                if not batch_paths:
                     continue
 
                 features, valid_indices = self.extract_features(

@@ -20,6 +20,8 @@ def register_all(
     tagging_runner=None,
     clustering_runner=None,
     selection_runner=None,
+    indexing_runner=None,
+    metadata_runner=None,
 ):
     """
     Register all known phase executors.
@@ -28,21 +30,37 @@ def register_all(
     UI (from the DB) but its button will be disabled (no executor registered).
     """
 
-    # Phase A — Indexing (happens implicitly inside scoring pipeline)
-    PhaseRegistry.register(PhaseExecutor(
-        code=PhaseCode.INDEXING,
-        executor_version="1.0.0",
-        run_folder=None,  # implicitly handled by scoring pipeline
-        depends_on=[],
-    ))
+    # Phase A — Indexing
+    if indexing_runner:
+        PhaseRegistry.register(PhaseExecutor(
+            code=PhaseCode.INDEXING,
+            executor_version="1.0.0",
+            run_folder=indexing_runner.start_batch,
+            depends_on=[],
+        ))
+    else:
+        PhaseRegistry.register(PhaseExecutor(
+            code=PhaseCode.INDEXING,
+            executor_version="1.0.0",
+            run_folder=None,
+            depends_on=[],
+        ))
 
-    # Phase B — Metadata Prep (implicit inside scoring pipeline)
-    PhaseRegistry.register(PhaseExecutor(
-        code=PhaseCode.METADATA,
-        executor_version="1.0.0",
-        run_folder=None,  # implicitly handled by scoring pipeline
-        depends_on=[PhaseCode.INDEXING],
-    ))
+    # Phase B — Metadata Prep
+    if metadata_runner:
+        PhaseRegistry.register(PhaseExecutor(
+            code=PhaseCode.METADATA,
+            executor_version="1.0.0",
+            run_folder=metadata_runner.start_batch,
+            depends_on=[PhaseCode.INDEXING],
+        ))
+    else:
+        PhaseRegistry.register(PhaseExecutor(
+            code=PhaseCode.METADATA,
+            executor_version="1.0.0",
+            run_folder=None,
+            depends_on=[PhaseCode.INDEXING],
+        ))
 
     # Phase C — Scoring
     if scoring_runner:
