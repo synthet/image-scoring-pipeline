@@ -147,6 +147,53 @@ class FirebirdCursorProxy:
         return query
 
 
+class PostgresCursorProxy:
+    """Proxies a PostgreSQL cursor to provide sqlite/Firebird-style compatibility."""
+    def __init__(self, pg_cur):
+        self._cur = pg_cur
+
+    def execute(self, query, params=None):
+        query = self._translate_query(query)
+        if params:
+            return self._cur.execute(query, params)
+        return self._cur.execute(query)
+
+    def executemany(self, query, params):
+        query = self._translate_query(query)
+        return self._cur.executemany(query, params)
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        if row is None:
+            return None
+        col_names = self._column_names()
+        return RowWrapper(col_names, row)
+
+    def fetchall(self):
+        rows = self._cur.fetchall()
+        if not rows:
+            return []
+        col_names = self._column_names()
+        return [RowWrapper(col_names, r) for r in rows]
+
+    def _column_names(self):
+        names = []
+        for d in self._cur.description or []:
+            if hasattr(d, "name"):
+                names.append(str(d.name).lower())
+            else:
+                names.append(str(d[0]).lower())
+        return names
+
+    def _translate_query(self, query: str) -> str:
+        query = query.replace('substr(', 'substring(')
+        query = query.replace('length(', 'char_length(')
+        return _translate_fb_to_pg(query)
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+
 # --- Dual Write Queue ---
 _DUAL_WRITE_QUEUE = queue.Queue()
 _DUAL_WRITE_ENABLED = False  # Updated during module load
@@ -287,8 +334,13 @@ def get_dual_write_stats() -> dict:
 def init_dual_write():
     global _DUAL_WRITE_ENABLED, _DUAL_WRITE_THREAD
     db_cfg = config.get_config_section("database")
-    _DUAL_WRITE_ENABLED = db_cfg.get("dual_write", False)
-    
+    engine = str(db_cfg.get("engine", "firebird") or "firebird").strip().lower()
+    dual_write_requested = bool(db_cfg.get("dual_write", False))
+    _DUAL_WRITE_ENABLED = (engine == "firebird") and dual_write_requested
+
+    if engine == "postgres" and dual_write_requested:
+        logger.info("database.engine=postgres: dual_write flag ignored (single primary write mode)")
+
     if _DUAL_WRITE_ENABLED and _DUAL_WRITE_THREAD is None and db_postgres:
         logger.info("Starting dual-write worker thread for PostgreSQL")
         _DUAL_WRITE_THREAD = threading.Thread(target=_dual_write_worker, daemon=True, name="DualWriteWorker")
@@ -322,6 +374,32 @@ class FirebirdConnectionProxy:
         if self._conn:
             self._conn.close()
         
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+class PostgresConnectionProxy:
+    """Proxies a PostgreSQL connection to provide sqlite3-compatible interface."""
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+        self.row_factory = sqlite3.Row
+
+    def cursor(self):
+        return PostgresCursorProxy(self._conn.cursor())
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        if self._conn:
+            if db_postgres and hasattr(db_postgres, "release_pg_connection"):
+                db_postgres.release_pg_connection(self._conn)
+            else:
+                self._conn.close()
+
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
@@ -545,6 +623,20 @@ def get_db():
     import time
     t0 = time.perf_counter()
     try:
+        db_cfg = config.get_config_section("database")
+        engine = str(db_cfg.get("engine", "firebird") or "firebird").strip().lower()
+
+        if engine == "postgres":
+            if not db_postgres:
+                raise RuntimeError("database.engine=postgres but modules.db_postgres is unavailable")
+            conn = db_postgres.get_pg_connection()
+            if DEBUG_DB_CONNECTION:
+                logger.debug("get_db using Postgres primary connection")
+            return PostgresConnectionProxy(conn)
+
+        if engine not in ("firebird", "postgres"):
+            logger.warning("Unknown database.engine=%r; defaulting to Firebird path", engine)
+
         # Check if Firebird driver is available
         if connect is None:
              raise ImportError("firebird-driver not installed")
