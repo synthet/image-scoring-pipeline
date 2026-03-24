@@ -41,15 +41,41 @@ Scope: image-scoring + electron-image-scoring coordinated migration
 ## Public API / Interface Changes
 
 - `image-scoring` config:
-- `database.backend` (`firebird|postgres`)
-- `database.dual_write_enabled`
-- `database.postgres.{host,port,db,user,password,sslmode,pool}`
+- `database.engine` (`firebird|postgres`)
+- `database.filename` (used by Firebird mode)
+- optional `database.dual_write` (Firebird primary write + Postgres secondary write)
+- `database.postgres.{host,port,dbname,user,password}`
 - Electron config:
 - `database.engine` (`firebird|postgres`)
 - `database.postgres.*` connection block
 - MCP config:
 - add `postgres-admin`, phase out `firebird-admin` after rollback window
 - Keep existing REST/MCP payload contracts stable during migration.
+
+### Migration mode config examples
+
+Use the same key names as `modules/config.py` validation and `modules/db_postgres.py` connection loading.
+
+```json
+{
+  "database": {
+    "engine": "firebird",
+    "filename": "scoring_history.fdb",
+    "dual_write": true,
+    "postgres": {
+      "host": "127.0.0.1",
+      "port": 5432,
+      "dbname": "musiq",
+      "user": "musiq",
+      "password": "musiq"
+    }
+  }
+}
+```
+
+- **Firebird only**: set `database.engine` to `firebird`; `database.filename` is required.
+- **Postgres only**: set `database.engine` to `postgres`; `database.postgres.host|port|dbname|user` are required.
+- **Migration/dual-write mode**: keep `engine=firebird` and set `database.dual_write=true` so Firebird remains the primary store while writes are mirrored to Postgres.
 
 ## Test Plan
 

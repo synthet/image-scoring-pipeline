@@ -38,13 +38,18 @@
   },
   "culling_input_path": "/path/to/your/photos",
   "database": {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "musiq",
-    "user": "musiq",
-    "password": "musiq",
-    "pool_min": 1,
-    "pool_max": 10
+    "engine": "firebird",
+    "filename": "scoring_history.fdb",
+    "user": "sysdba",
+    "password": "masterkey",
+    "dual_write": false,
+    "postgres": {
+      "host": "127.0.0.1",
+      "port": 5432,
+      "dbname": "musiq",
+      "user": "musiq",
+      "password": "musiq"
+    }
   },
   "system": {
     "allowed_paths": [

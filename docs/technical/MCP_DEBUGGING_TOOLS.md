@@ -306,14 +306,16 @@ Validate `config.json` structure and optional input paths; MCP also attempts a D
 
 **Returns:**
 - `ok` - Boolean (no critical `issues`)
-- `issues` - Critical problems (e.g. invalid queue sizes, missing `database.filename`)
+- `issues` - Critical problems (e.g. invalid queue sizes, missing engine-specific DB keys)
 - `warnings` - Non-critical (e.g. configured folder path missing on this machine)
 - `config_path` - Resolved path to `config.json`
 - `database_reachable` - `true` / `false` / `null` (if DB never initialized in this process)
 
 **Checks:**
 - Processing queue sizes are positive integers when set
-- `database.filename` is non-empty
+- `database.engine` is `firebird` or `postgres`
+- For `firebird`: `database.filename` is non-empty
+- For `postgres`: `database.postgres.host|port|dbname|user` are present
 - Optional warnings for missing `*_input_path` / `log_dir`
 
 **Use Case:** Verify configuration before starting jobs, catch misconfigurations early.
