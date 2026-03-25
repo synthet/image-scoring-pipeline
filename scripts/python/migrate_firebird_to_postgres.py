@@ -36,13 +36,15 @@ from pgvector.psycopg2 import register_vector
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Tables to migrate, in dependency order (parents before children)
+# Tables to migrate, in FK dependency order (parents before children)
 TABLES_ORDER = [
     "jobs",
     "folders",
     "stacks",
     "images",
     "file_paths",
+    "job_phases",       # depends on jobs
+    "job_steps",        # depends on jobs
     "image_exif",
     "image_xmp",
     "cluster_progress",
@@ -50,6 +52,7 @@ TABLES_ORDER = [
     "culling_picks",
     "pipeline_phases",
     "image_phase_status",
+    "stack_cache",      # depends on stacks + images + folders
 ]
 
 
@@ -207,7 +210,9 @@ def reset_sequences(pg_conn):
     pg_cur = pg_conn.cursor()
     tables_with_id = [
         "jobs", "folders", "stacks", "images",
-        "culling_sessions", "pipeline_phases",
+        "job_phases", "job_steps",
+        "culling_sessions", "culling_picks",
+        "pipeline_phases", "image_phase_status",
     ]
     for table in tables_with_id:
         try:
