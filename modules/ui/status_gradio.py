@@ -82,7 +82,7 @@ _POLL_HEAD = """
 (function () {
   var INTERVAL = 2000;
   var ENDPOINT = '/api/status/data';
-  var SECTIONS = ['runners', 'threads', 'profiling', 'jobs', 'log'];
+  var SECTIONS = ['runners', 'threads', 'profiling', 'jobs', 'diagnostics', 'log'];
 
   // Save open/closed state of all <details> inside el, keyed by summary text.
   function saveDetails(el) {
@@ -154,7 +154,7 @@ def _skeleton_html() -> str:
     loading = f"<div style='color:{_TEXT_FAINT};font-style:italic;font-size:0.85em;padding:6px 0'>Loading…</div>"
     sections = "".join(
         f"<div id='s-{k}' style='margin-bottom:10px'>{loading}</div>"
-        for k in ["runners", "threads", "profiling", "jobs", "log"]
+        for k in ["runners", "threads", "profiling", "jobs", "diagnostics", "log"]
     )
     content = (
         f"<div style='padding:14px;overflow-y:auto;height:calc(100vh - 40px);box-sizing:border-box'>"
@@ -384,6 +384,54 @@ def _render_recent_jobs() -> str:
     return _section("Recent jobs (last 10)", _table(["ID", "Type", "Status", "Enqueued"], rows), open=False)
 
 
+def _render_diagnostics() -> str:
+    from modules.diagnostics import get_diagnostics
+    try:
+        diag = get_diagnostics()
+        
+        # System
+        sys_rows = [
+            ["OS", f"{diag['system']['os']} {diag['system']['os_release']}"],
+            ["Python", diag['system']['python_version'].split('\n')[0]],
+            ["CPU", str(diag['system']['cpu_count'])],
+        ]
+        if "memory_total_gb" in diag["system"]:
+            sys_rows.append(["Memory", f"{diag['system']['memory_available_gb']} / {diag['system']['memory_total_gb']} GB ({diag['system']['memory_percent']}%)"])
+            
+        # Database
+        db_rows = [
+            ["Type", diag['database']['type']],
+            ["Path", html.escape(diag['database']['path'])],
+            ["Reachable", "✓" if diag['database']['reachable'] else "✗"],
+            ["Size", f"{diag['database']['size_mb']} MB"],
+        ]
+        
+        # Models
+        model_rows = [
+            ["GPU", "✓" if diag['models']['gpu_available'] else "✗"],
+            ["Frameworks", ", ".join(diag['models']['frameworks'])],
+        ]
+        if "torch_gpu_name" in diag["models"]:
+            model_rows.append(["Device", diag['models']['torch_gpu_name']])
+            
+        # Filesystem
+        fs_rows = [
+            ["Free Space", f"{diag['filesystem']['free_space_gb']} GB"],
+        ]
+        
+        body = (
+            "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:15px'>"
+            f"<div><div style='font-size:0.75em;font-weight:600;color:{_TEXT_MID};margin-bottom:5px'>SYSTEM</div>{_table(['Key', 'Value'], sys_rows)}</div>"
+            f"<div><div style='font-size:0.75em;font-weight:600;color:{_TEXT_MID};margin-bottom:5px'>DATABASE</div>{_table(['Key', 'Value'], db_rows)}</div>"
+            f"<div><div style='font-size:0.75em;font-weight:600;color:{_TEXT_MID};margin-bottom:5px'>MODELS</div>{_table(['Key', 'Value'], model_rows)}</div>"
+            f"<div><div style='font-size:0.75em;font-weight:600;color:{_TEXT_MID};margin-bottom:5px'>FILESYSTEM</div>{_table(['Key', 'Value'], fs_rows)}</div>"
+            "</div>"
+        )
+        return _section("Diagnostics", body, open=False)
+    except Exception as exc:
+        return _section("Diagnostics", f"<em style='color:{_ERROR}'>Error: {html.escape(str(exc))}</em>")
+
+
 _LOG_MAX_LINES = 80
 
 
@@ -449,6 +497,7 @@ def render_status_data(
         "threads": _render_threads(),
         "profiling": _render_profiling(),
         "jobs": _render_recent_jobs(),
+        "diagnostics": _render_diagnostics(),
         "log": _render_log(),
     }
 

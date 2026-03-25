@@ -55,10 +55,10 @@ def main():
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM images")
         count = c.fetchone()[0]
-        print(f"  ✓ Connected. Images table has {count} rows.")
+        print(f"  [OK] Connected. Images table has {count} rows.")
         conn.close()
     except Exception as e:
-        print(f"  ✗ Connection failed: {e}")
+        print(f"  [FAIL] Connection failed: {e}")
         print()
         print("Make sure:")
         print("  - Firebird server is running")
@@ -71,9 +71,9 @@ def main():
         print("[2/3] Creating backup...")
         try:
             db._backup_db()
-            print("  ✓ Backup created.")
+            print("  [OK] Backup created.")
         except Exception as e:
-            print(f"  ⚠ Backup failed: {e} (continuing anyway)")
+            print(f"  [WARN] Backup failed: {e} (continuing anyway)")
     else:
         print("[2/3] Skipping backup (--skip-backup)")
 
@@ -88,11 +88,11 @@ def main():
         db.init_db()
         elapsed = time.time() - start
         print()
-        print(f"  ✓ Migration completed in {elapsed:.1f}s")
+        print(f"  [OK] Migration completed in {elapsed:.1f}s")
     except Exception as e:
         elapsed = time.time() - start
         print()
-        print(f"  ✗ Migration failed after {elapsed:.1f}s: {e}")
+        print(f"  [FAIL] Migration failed after {elapsed:.1f}s: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -111,25 +111,25 @@ def main():
         # Check orphans
         c.execute("SELECT COUNT(*) FROM stacks WHERE best_image_id IS NOT NULL AND best_image_id NOT IN (SELECT id FROM images)")
         orphans = c.fetchone()[0]
-        status = "✓" if orphans == 0 else "✗"
+        status = "[OK]" if orphans == 0 else "[FAIL]"
         print(f"  {status} Orphan STACKS.BEST_IMAGE_ID: {orphans}")
 
         # Check new indexes
         for idx in ('UQ_IMAGES_FILE_PATH', 'IDX_IMAGES_FOLDER_SCORE', 'IDX_IMAGES_STACK_SCORE', 'UQ_FOLDERS_PATH'):
             exists = db._index_exists(c, idx)
-            status = "✓" if exists else "✗"
+            status = "[OK]" if exists else "[FAIL]"
             print(f"  {status} Index {idx}: {'exists' if exists else 'MISSING'}")
 
         # Check new FKs
         for fk in ('FK_STACKS_BEST_IMAGE', 'FK_IMAGES_JOB', 'FK_IMAGES_STACK', 'FK_IPS_JOB'):
             exists = db._constraint_exists(c, fk)
-            status = "✓" if exists else "✗"
+            status = "[OK]" if exists else "[FAIL]"
             print(f"  {status} FK {fk}: {'exists' if exists else 'MISSING'}")
 
         # Check CHECKs
         for chk in ('CHK_IMAGES_LABEL', 'CHK_IMAGES_CULL_DECISION', 'CHK_IPS_STATUS'):
             exists = db._constraint_exists(c, chk)
-            status = "✓" if exists else "✗"
+            status = "[OK]" if exists else "[FAIL]"
             print(f"  {status} CHECK {chk}: {'exists' if exists else 'MISSING'}")
 
         # Check legacy artifacts removed
@@ -140,12 +140,12 @@ def main():
               AND rdb$constraint_name NOT STARTING WITH 'FK_'
         """)
         legacy = c.fetchone()[0]
-        status = "✓" if legacy == 0 else "✗"
+        status = "[OK]" if legacy == 0 else "[FAIL]"
         print(f"  {status} Legacy CULLING_PICKS FK artifacts: {legacy}")
 
         conn.close()
     except Exception as e:
-        print(f"  ⚠ Verification query failed: {e}")
+        print(f"  [WARN] Verification query failed: {e}")
 
     print()
     print("Done.")

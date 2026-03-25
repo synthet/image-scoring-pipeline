@@ -11,8 +11,12 @@ import uvicorn
 from modules.ui import app as app_module
 from modules.events import event_manager
 
-# Suppress TensorFlow logging
+# Suppress TensorFlow logging (C++ level)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# Suppress TensorFlow Python-level deprecation warnings (e.g. tf.losses.* → tf.compat.v1.losses.*)
+os.environ.setdefault('TF_ENABLE_DEPRECATION_WARNINGS', '0')
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"tensorflow|keras")
+warnings.filterwarnings("ignore", message=r".*tf\.losses\..*is deprecated.*")
 
 # Suppress Gradio 6.0 deprecation warnings
 warnings.filterwarnings("ignore", message="The 'css' parameter in the Blocks constructor")
@@ -52,7 +56,7 @@ def main():
         )
         
         if debug_mode:
-            print("🐞 Debug mode enabled. Performance metrics will be logged to webui.log")
+            print("[DEBUG] Debug mode enabled. Performance metrics will be logged to webui.log")
             logging.getLogger("image_scoring.performance").setLevel(logging.DEBUG)
     except Exception as e:
         print(f"Error configuring logging: {e}")

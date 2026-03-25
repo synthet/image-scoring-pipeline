@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import re
 import datetime
 import logging
 import time
@@ -150,15 +151,88 @@ class FirebirdCursorProxy:
 _DUAL_WRITE_QUEUE = queue.Queue()
 _DUAL_WRITE_ENABLED = False  # Updated during module load
 _DUAL_WRITE_THREAD = None
+_DUAL_WRITE_STATS = {"queued": 0, "success": 0, "fail": 0}
+
+# ---------------------------------------------------------------------------
+# Firebird → PostgreSQL SQL translation helpers
+# ---------------------------------------------------------------------------
+
+# UPDATE OR INSERT INTO t (cols) VALUES (?) MATCHING (col) [RETURNING col]
+_FB_UPSERT_RE = re.compile(
+    r'UPDATE\s+OR\s+INSERT\s+INTO\s+(\w+)\s*'   # table name
+    r'\(([^)]+)\)\s*'                            # (col_list)
+    r'VALUES\s*\(([^)]+)\)\s*'                  # VALUES (val_list)
+    r'MATCHING\s*\(([^)]+)\)'                   # MATCHING (match_cols)
+    r'((?:\s+RETURNING\s+\w+)?)',               # optional RETURNING
+    re.IGNORECASE,
+)
+
+# SELECT FIRST n  (top-level; subquery form handled in Phase 3 read routing)
+_FB_FIRST_RE = re.compile(r'\bSELECT\s+FIRST\s+(\d+)\b', re.IGNORECASE)
+
+# DATEDIFF(SECOND FROM col1 TO col2)
+_FB_DATEDIFF_RE = re.compile(
+    r'DATEDIFF\s*\(\s*SECOND\s+FROM\s+([\w.]+)\s+TO\s+([\w.]+)\s*\)',
+    re.IGNORECASE,
+)
+
 
 def _translate_fb_to_pg(query: str) -> str:
-    """Naive translation from Firebird ? placeholders to Postgres %s placeholders."""
-    # In a real scenario, this regex or parser must handle strings containing '?',
-    # but for typical parameterized queries in this app, this works 90% of the time.
-    # We replace '?' with '%s'.
+    """Translate Firebird-specific SQL to PostgreSQL for dual-write and read routing.
+
+    Transforms:
+    1. ``UPDATE OR INSERT INTO t (cols) VALUES (?) MATCHING (col) [RETURNING c]``
+       → ``INSERT INTO t (cols) VALUES (%s) ON CONFLICT (col) DO UPDATE SET … [RETURNING c]``
+    2. ``SELECT FIRST n …``
+       → ``SELECT … LIMIT n``  (top-level queries only; subquery variant deferred to Phase 3)
+    3. ``DATEDIFF(SECOND FROM a TO b)``
+       → ``EXTRACT(EPOCH FROM (b - a))::INTEGER``
+    4. ``?`` → ``%s``  (placeholder style, outside string literals)
+    """
+    # 1 – Firebird upsert → PostgreSQL ON CONFLICT
+    def _upsert_replace(m: re.Match) -> str:
+        table     = m.group(1).strip()
+        cols_raw  = m.group(2)
+        vals_raw  = m.group(3).strip()
+        match_raw = m.group(4)
+        returning = (m.group(5) or '').strip()
+
+        cols      = [c.strip() for c in cols_raw.split(',')]
+        match_set = {c.strip().lower() for c in match_raw.split(',')}
+        set_parts = [f"{c} = EXCLUDED.{c}" for c in cols if c.strip().lower() not in match_set]
+
+        pg = (
+            f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({vals_raw})"
+            f" ON CONFLICT ({match_raw.strip()}) DO UPDATE SET {', '.join(set_parts)}"
+        )
+        return f"{pg} {returning}".rstrip() if returning else pg
+
+    query = _FB_UPSERT_RE.sub(_upsert_replace, query)
+
+    # 2 – SELECT FIRST n (top-level only)
+    m = _FB_FIRST_RE.search(query)
+    if m:
+        n = m.group(1)
+        query = _FB_FIRST_RE.sub('SELECT ', query, count=1)
+        query = query.rstrip().rstrip(';') + f' LIMIT {n}'
+
+    # 3 – DATEDIFF
+    query = _FB_DATEDIFF_RE.sub(
+        lambda m2: f'EXTRACT(EPOCH FROM ({m2.group(2)} - {m2.group(1)}))::INTEGER',
+        query,
+    )
+
+    # 3b – Firebird "ROWS ?" row-limit → PostgreSQL "LIMIT ?"
+    query = re.sub(r'\bROWS\s+\?', 'LIMIT ?', query, flags=re.IGNORECASE)
+
+    # 3c – Firebird "FETCH FIRST n ROWS ONLY" → PostgreSQL "LIMIT n"
+    #      Handles both ? param and inlined numeric literals (e.g. FETCH FIRST 100 ROWS ONLY)
+    query = re.sub(r'\bFETCH\s+FIRST\s+(\S+)\s+ROWS\s+ONLY\b', r'LIMIT \1', query, flags=re.IGNORECASE)
+
+    # 4 – ? → %s (skip content inside single-quoted string literals)
     parts = query.split("'")
     for i in range(0, len(parts), 2):
-        parts[i] = parts[i].replace("?", "%s")
+        parts[i] = parts[i].replace('?', '%s')
     return "'".join(parts)
 
 def _dual_write_worker():
@@ -170,9 +244,9 @@ def _dual_write_worker():
             if item is None:
                 break
             query, params, is_many = item
-            
+
             pg_query = _translate_fb_to_pg(query)
-            
+
             with db_postgres.PGConnectionManager(commit=True) as pg_conn:
                 with pg_conn.cursor() as cur:
                     try:
@@ -183,12 +257,14 @@ def _dual_write_worker():
                                 cur.execute(pg_query, params)
                             else:
                                 cur.execute(pg_query)
+                        _DUAL_WRITE_STATS["success"] += 1
                     except Exception as e:
+                        _DUAL_WRITE_STATS["fail"] += 1
                         logger.warning("Dual-write query failed on Postgres: %s | Query: %s", e, pg_query)
-                        # Could implement a dead-letter queue here
             _DUAL_WRITE_QUEUE.task_done()
         except Exception as e:
             logger.error("Error in dual-write worker loop: %s", e)
+
 
 def _enqueue_dual_write(query: str, params=None, executemany=False):
     global _DUAL_WRITE_ENABLED
@@ -196,7 +272,17 @@ def _enqueue_dual_write(query: str, params=None, executemany=False):
         return
     q_upper = query.lstrip().upper()
     if q_upper.startswith("INSERT") or q_upper.startswith("UPDATE") or q_upper.startswith("DELETE"):
+        _DUAL_WRITE_STATS["queued"] += 1
         _DUAL_WRITE_QUEUE.put((query, params, executemany))
+
+
+def get_dual_write_stats() -> dict:
+    """Return dual-write queue statistics: queued, success, fail counts and current queue depth."""
+    return {
+        **_DUAL_WRITE_STATS,
+        "queue_depth": _DUAL_WRITE_QUEUE.qsize(),
+        "enabled": _DUAL_WRITE_ENABLED,
+    }
 
 def init_dual_write():
     global _DUAL_WRITE_ENABLED, _DUAL_WRITE_THREAD
@@ -658,6 +744,11 @@ def connection():
         conn.close()
 
 
+def _get_db_engine() -> str:
+    """Return the configured DB engine: 'firebird' (default) or 'postgres'."""
+    return config.get_config_section("database").get("engine", "firebird")
+
+
 def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     conn = get_db()
     c = conn.cursor()
@@ -728,7 +819,13 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
-        
+
+    if _get_db_engine() == "postgres":
+        pg_sql = _translate_fb_to_pg(query)
+        row = db_postgres.execute_select_one(pg_sql, tuple(params) if params else None)
+        conn.close()
+        return row["count"] if row else 0
+
     try:
         c.execute(query, tuple(params))
         count = c.fetchone()[0]
@@ -981,10 +1078,22 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         # This reduces DB round trips by 50%
         
         query = f"SELECT images.*, COUNT(*) OVER() as total_count FROM{from_clause}{where_clause} ORDER BY {order_by} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
-        
+
         # Add pagination params
         params.extend([offset, page_size])
-        
+
+        if _get_db_engine() == "postgres":
+            # Postgres uses LIMIT n OFFSET n (params order: page_size before offset)
+            pg_params = params[:-2] + [page_size, offset]
+            pg_query = _translate_fb_to_pg(
+                f"SELECT images.*, COUNT(*) OVER() as total_count FROM{from_clause}{where_clause}"
+                f" ORDER BY {order_by} LIMIT ? OFFSET ?"
+            )
+            pg_rows = db_postgres.execute_select(pg_query, tuple(pg_params))
+            total_count = int(pg_rows[0]["total_count"]) if pg_rows else 0
+            conn.close()
+            return pg_rows, total_count
+
         c.execute(query, tuple(params))
         rows = c.fetchall()
         
@@ -2425,7 +2534,7 @@ def _init_db_impl():
                 except Exception: pass
                 c = conn.cursor()
 
-        print("[Phase 1] ✓ Complete (integrity + index hardening).")
+        print("[Phase 1] OK - Complete (integrity + index hardening).")
         logger.info("Phase 1 migration complete (integrity + index hardening).")
     except Exception as e:
         logger.error("Phase 1 migration error: %s", e)
@@ -2540,6 +2649,14 @@ def _init_db_impl():
             pass
 
 def get_image_by_hash(image_hash):
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one(
+            "SELECT * FROM images WHERE image_hash = %s", (image_hash,))
+        if not row:
+            return None
+        data = dict(row)
+        data['file_paths'] = get_all_paths(data['id'])
+        return data
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT * FROM images WHERE image_hash = ?", (image_hash,))
@@ -2713,6 +2830,10 @@ def register_image_path(image_id, path):
 
 
 def get_all_paths(image_id):
+    if _get_db_engine() == "postgres":
+        rows = db_postgres.execute_select(
+            "SELECT path FROM file_paths WHERE image_id = %s", (image_id,))
+        return [r["path"] for r in rows]
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT path FROM file_paths WHERE image_id = ?", (image_id,))
@@ -2800,6 +2921,12 @@ def get_resolved_path(image_id, verified_only=True):
     """
     Returns the Windows path for an image from file_paths (type='WIN').
     """
+    if _get_db_engine() == "postgres":
+        sql = "SELECT path FROM file_paths WHERE image_id = %s AND path_type = 'WIN'"
+        if verified_only:
+            sql += " AND is_verified = 1"
+        row = db_postgres.execute_select_one(sql, (image_id,))
+        return row["path"] if row else None
     conn = get_db()
     c = conn.cursor()
     
@@ -2891,6 +3018,9 @@ def get_folder_by_id(folder_id):
 
 def find_image_id_by_path(file_path):
     """Returns image id if exists by file_path, else None."""
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one("SELECT id FROM images WHERE file_path = %s", (file_path,))
+        return row["id"] if row else None
     conn = get_db()
     c = conn.cursor()
     try:
@@ -2905,6 +3035,9 @@ def find_image_id_by_uuid(image_uuid):
     """Returns image id if exists by image_uuid, else None."""
     if not image_uuid or not isinstance(image_uuid, str) or not image_uuid.strip():
         return None
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one("SELECT id FROM images WHERE image_uuid = %s", (image_uuid.strip(),))
+        return row["id"] if row else None
     conn = get_db()
     c = conn.cursor()
     try:
@@ -3298,12 +3431,15 @@ def get_all_folders():
     Returns a sorted list of all unique folder paths from the folders table.
     Does NOT auto-rebuild to avoid blocking the UI - use rebuild_folder_cache() explicitly.
     """
+    if _get_db_engine() == "postgres":
+        rows = db_postgres.execute_select("SELECT path FROM folders ORDER BY path")
+        return [r["path"] for r in rows]
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT path FROM folders ORDER BY path")
     rows = c.fetchall()
     conn.close()
-    
+
     return [row['path'] for row in rows]
 
 
@@ -3627,6 +3763,9 @@ def create_job(input_path, phase_code=None, job_type=None, status="pending", cur
 
 
 def get_job(job_id):
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one("SELECT * FROM jobs WHERE id = %s", (job_id,))
+        return dict(row) if row else None
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
@@ -3971,6 +4110,70 @@ def get_queued_jobs(limit=200, include_related=False):
     if limit <= 0:
         return []
     limit = min(limit, 1000)
+
+    if _get_db_engine() == "postgres":
+        rows = db_postgres.execute_select(
+            """
+            SELECT
+                j.*,
+                p.name AS phase_name,
+                ph.selected_phases,
+                ph.dependency_blockers
+            FROM jobs j
+            LEFT JOIN pipeline_phases p ON p.id = j.phase_id
+            LEFT JOIN (
+                SELECT
+                    jp.job_id,
+                    STRING_AGG(jp.phase_code, ', ') AS selected_phases,
+                    STRING_AGG(
+                        CASE WHEN jp.state IN ('blocked', 'waiting', 'pending_dependency')
+                             THEN jp.phase_code ELSE NULL END,
+                        ', '
+                    ) AS dependency_blockers
+                FROM job_phases jp
+                GROUP BY jp.job_id
+            ) ph ON ph.job_id = j.id
+            WHERE j.status IN ('queued', 'paused', 'failed')
+              AND (%s = 1 OR j.status = 'queued')
+            ORDER BY
+                CASE j.status WHEN 'queued' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,
+                COALESCE(j.priority, 100) DESC,
+                COALESCE(j.queue_position, j.id) ASC,
+                j.enqueued_at ASC,
+                j.id ASC
+            LIMIT %s
+            """,
+            (1 if include_related else 0, limit)
+        )
+        avg_seconds = 120
+        try:
+            avg_row = db_postgres.execute_select_one(
+                "SELECT AVG(EXTRACT(EPOCH FROM (completed_at - started_at))::INTEGER) AS avg_sec "
+                "FROM jobs "
+                "WHERE status = 'completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL"
+            )
+            if avg_row and avg_row["avg_sec"]:
+                avg_seconds = max(15, int(avg_row["avg_sec"]))
+        except Exception:
+            pass
+        rows = [dict(r) for r in rows]
+        queue_idx = 0
+        now = datetime.datetime.now()
+        for row in rows:
+            if row.get("status") in ("queued", "paused"):
+                queue_idx += 1
+                row["queue_position"] = queue_idx
+                eta = now + datetime.timedelta(seconds=(queue_idx - 1) * avg_seconds)
+                row["estimated_start"] = eta.isoformat(sep=" ", timespec="seconds")
+            else:
+                row["queue_position"] = "-"
+                row["estimated_start"] = "-"
+            row["target_scope"] = row.get("target_scope") or row.get("input_path") or "-"
+            row["selected_phases"] = row.get("selected_phases") or row.get("phase_name") or row.get("job_type") or "-"
+            row["dependency_blockers"] = row.get("dependency_blockers") or "None"
+            row["retry_count"] = int(row.get("retry_count") or 0)
+            row["priority"] = int(row.get("priority") or 100)
+        return rows
 
     conn = get_db()
     c = conn.cursor()
@@ -4355,6 +4558,12 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
 
 def get_job_phases(job_id):
     """Get ordered phase plan/status rows for a job."""
+    if _get_db_engine() == "postgres":
+        rows = db_postgres.execute_select(
+            "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
+            "FROM job_phases WHERE job_id = %s ORDER BY phase_order",
+            (job_id,))
+        return [dict(r) for r in rows]
     conn = get_db()
     c = conn.cursor()
     c.execute(
@@ -4607,12 +4816,16 @@ def get_interrupted_jobs(job_type=None, limit=100):
 
 
 def get_jobs(limit=50):
-    conn = get_db()
-    c = conn.cursor()
     try: limit = int(limit)
     except (ValueError, TypeError): limit = 50
     if limit < 0: limit = 50
     limit = min(limit, 1000)
+    if _get_db_engine() == "postgres":
+        pg_sql = _translate_fb_to_pg(
+            "SELECT * FROM jobs ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY")
+        return [dict(r) for r in db_postgres.execute_select(pg_sql, (limit,))]
+    conn = get_db()
+    c = conn.cursor()
     c.execute("SELECT * FROM jobs ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY", (limit,))
     rows = [dict(zip(r.keys(), [r[k] for k in r.keys()])) for r in c.fetchall()]
     conn.close()
@@ -4620,13 +4833,19 @@ def get_jobs(limit=50):
 
 
 def get_all_images(sort_by="score", order="desc", limit=100):
-    conn = get_db()
-    c = conn.cursor()
     # Ensure limit is int
     try: limit = int(limit)
     except (ValueError, TypeError): limit = 100
     sort_by, order = _validate_sort(sort_by, order)
-
+    if _get_db_engine() == "postgres":
+        if limit > 0:
+            pg_sql = _translate_fb_to_pg(
+                f"SELECT * FROM images ORDER BY {sort_by} {order} FETCH FIRST ? ROWS ONLY")
+            return list(db_postgres.execute_select(pg_sql, (limit,)))
+        return list(db_postgres.execute_select(
+            f"SELECT * FROM images ORDER BY {sort_by} {order}"))
+    conn = get_db()
+    c = conn.cursor()
     if limit > 0:
         query = f"SELECT * FROM images ORDER BY {sort_by} {order} FETCH FIRST ? ROWS ONLY"
         c.execute(query, (limit,))
@@ -5042,6 +5261,15 @@ def upsert_image(job_id, result):
 
 
 def get_image_details(file_path):
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one(
+            "SELECT * FROM images WHERE file_path = %s", (file_path,))
+        if not row:
+            return {}
+        data = dict(row)
+        data['file_paths'] = get_all_paths(data['id'])
+        data['resolved_path'] = get_resolved_path(data['id'], verified_only=False)
+        return data
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT * FROM images WHERE file_path = ?", (file_path,))
@@ -5431,9 +5659,6 @@ def get_incomplete_records(limit: int | None = None):
     - Rating <= 0 or NULL
     - Label empty or NULL
     """
-    conn = get_db()
-    c = conn.cursor()
-
     score_checks = [
         "score_general IS NULL OR score_general <= 0",
         "score_technical IS NULL OR score_technical <= 0",
@@ -5456,6 +5681,11 @@ def get_incomplete_records(limit: int | None = None):
     if limit is not None and limit > 0:
         query = query.strip() + f"\n        FETCH FIRST {int(limit)} ROWS ONLY"
 
+    if _get_db_engine() == "postgres":
+        return list(db_postgres.execute_select(_translate_fb_to_pg(query)))
+
+    conn = get_db()
+    c = conn.cursor()
     c.execute(query)
     rows = c.fetchall()
     conn.close()
@@ -7201,6 +7431,21 @@ def get_embeddings_for_search(folder_path=None, limit=None):
     Return (image_id, file_path, embedding_bytes) for images with stored embeddings.
     Optionally filter by folder_path and cap results with limit.
     """
+    if _get_db_engine() == "postgres":
+        if folder_path:
+            norm = os.path.normpath(folder_path)
+            sql = ("SELECT i.id, i.file_path, i.image_embedding FROM images i "
+                   "JOIN folders f ON f.id = i.folder_id "
+                   "WHERE i.image_embedding IS NOT NULL AND f.path = %s")
+            params: list = [norm]
+        else:
+            sql = "SELECT i.id, i.file_path, i.image_embedding FROM images i WHERE i.image_embedding IS NOT NULL"
+            params = []
+        if limit:
+            sql += " LIMIT %s"
+            params.append(limit)
+        rows = db_postgres.execute_select(sql, tuple(params) if params else None)
+        return [(r["id"], r["file_path"], bytes(r["image_embedding"])) for r in rows]
     conn = get_db()
     c = conn.cursor()
     try:
@@ -7250,6 +7495,32 @@ def get_embeddings_with_metadata(folder_path=None, limit=None):
         label, rating, score_general
     Optionally filter by folder_path and cap results with limit.
     """
+    if _get_db_engine() == "postgres":
+        if folder_path:
+            norm = os.path.normpath(folder_path)
+            sql = ("SELECT i.id, i.file_path, i.image_embedding, i.thumbnail_path, "
+                   "       i.label, i.rating, i.score_general FROM images i "
+                   "JOIN folders f ON f.id = i.folder_id "
+                   "WHERE i.image_embedding IS NOT NULL AND f.path = %s")
+            params: list = [norm]
+        else:
+            sql = ("SELECT i.id, i.file_path, i.image_embedding, i.thumbnail_path, "
+                   "       i.label, i.rating, i.score_general FROM images i "
+                   "WHERE i.image_embedding IS NOT NULL")
+            params = []
+        if limit:
+            sql += " LIMIT %s"
+            params.append(limit)
+        rows = db_postgres.execute_select(sql, tuple(params) if params else None)
+        return [{
+            "image_id": r["id"],
+            "file_path": r["file_path"],
+            "embedding": bytes(r["image_embedding"]),
+            "thumbnail_path": r["thumbnail_path"],
+            "label": r["label"],
+            "rating": r["rating"],
+            "score_general": float(r["score_general"]) if r["score_general"] is not None else None,
+        } for r in rows]
     conn = get_db()
     c = conn.cursor()
     try:
@@ -7696,6 +7967,28 @@ def get_image_phase_statuses(image_id):
     Returns:
         dict: {phase_code: {status, executor_version, app_version, updated_at, attempt_count, last_error}}
     """
+    if _get_db_engine() == "postgres":
+        rows = db_postgres.execute_select(
+            "SELECT pp.code, ips.status, ips.executor_version, ips.app_version, "
+            "       ips.updated_at, ips.attempt_count, ips.last_error, ips.skip_reason, ips.skipped_by "
+            "FROM image_phase_status ips "
+            "JOIN pipeline_phases pp ON pp.id = ips.phase_id "
+            "WHERE ips.image_id = %s ORDER BY pp.sort_order",
+            (image_id,))
+        result = {}
+        for r in rows:
+            code = (r["code"] or "").strip()
+            result[code] = {
+                "status": (r["status"] or "not_started").strip(),
+                "executor_version": r["executor_version"],
+                "app_version": r["app_version"],
+                "updated_at": r["updated_at"],
+                "attempt_count": r["attempt_count"],
+                "last_error": r["last_error"],
+                "skip_reason": r["skip_reason"],
+                "skipped_by": r["skipped_by"],
+            }
+        return result
     conn = get_db()
     c = conn.cursor()
     try:
@@ -7733,6 +8026,23 @@ def get_all_phases(enabled_only=True):
     Returns:
         list[dict]: [{id, code, name, description, sort_order, enabled}, ...]
     """
+    if _get_db_engine() == "postgres":
+        sql = ("SELECT id, code, name, description, sort_order, enabled, optional, default_skip "
+               "FROM pipeline_phases")
+        if enabled_only:
+            sql += " WHERE enabled = 1"
+        sql += " ORDER BY sort_order"
+        rows = db_postgres.execute_select(sql)
+        return [{
+            "id": r["id"],
+            "code": (r["code"] or "").strip(),
+            "name": (r["name"] or "").strip(),
+            "description": r["description"],
+            "sort_order": r["sort_order"],
+            "enabled": r["enabled"],
+            "optional": bool(r["optional"]),
+            "default_skip": bool(r["default_skip"]),
+        } for r in rows]
     conn = get_db()
     c = conn.cursor()
     try:

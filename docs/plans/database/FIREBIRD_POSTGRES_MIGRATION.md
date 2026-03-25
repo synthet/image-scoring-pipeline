@@ -77,6 +77,110 @@ Scope: image-scoring + electron-image-scoring coordinated migration
 - Electron IPC workflows pass after provider switch.
 - Only then allow Firebird retirement.
 
+## Current Implementation Status (2026-03-23)
+
+### Phase 0 — Schema baseline ✅
+- Migration plan: this document
+- Alembic configured: `alembic.ini` + `migrations/env.py` + `migrations/versions/0001_initial_schema.py`
+- `modules/db_postgres.py` `init_db()` covers all tables
+
+### Phase 1 — Postgres Foundation ✅
+- `docker-compose.postgres.yml` — Postgres + pgvector Docker stack
+- `scripts/powershell/Setup-PostgresDocker.ps1` — helper to start the container
+- `modules/db_postgres.py` — connection pool + full schema init (15 tables, all indexes, HNSW)
+- `scripts/python/migrate_firebird_to_postgres.py` — bulk one-time migration
+
+### Phase 2 — Dual-Write (infrastructure ready; not yet activated)
+
+The dual-write plumbing lives in `modules/db.py`:
+- `FirebirdCursorProxy` calls `_enqueue_dual_write()` on every `execute` / `executemany`
+- A background worker thread drains the queue into Postgres via `db_postgres.PGConnectionManager`
+
+**To activate dual-write** (set `dual_write: true` in `config.json` and start Postgres Docker):
+
+```json
+"database": {
+    "engine": "firebird",
+    "filename": "scoring_history.FDB",
+    "user": "sysdba",
+    "password": "masterkey",
+    "dual_write": true,
+    "postgres": {
+        "host": "127.0.0.1",
+        "port": 5432,
+        "dbname": "image_scoring",
+        "user": "postgres",
+        "password": "postgres"
+    }
+}
+```
+
+Start Postgres:
+
+```powershell
+docker compose -f docker-compose.postgres.yml up -d
+```
+
+Init the Postgres schema (one-time):
+
+```bash
+# In WSL with ~/.venvs/tf activated:
+python -c "from modules.db_postgres import init_db; init_db()"
+# Or via Alembic (creates tables + marks revision as current):
+alembic upgrade head
+```
+
+Bulk-migrate existing Firebird data:
+
+```bash
+python scripts/python/migrate_firebird_to_postgres.py
+```
+
+Verify parity:
+
+```bash
+python scripts/python/migrate_firebird_to_postgres.py --dry-run
+```
+
+### Phase 3 — Python + MCP Cutover (in progress)
+
+`_get_db_engine()` reads `database.engine` from config (default: `"firebird"`). Setting it to
+`"postgres"` routes the following read functions to PostgreSQL:
+
+| Function | Module |
+|---|---|
+| `find_image_id_by_path` | `db.py` |
+| `find_image_id_by_uuid` | `db.py` |
+| `get_all_folders` | `db.py` |
+| `get_job` | `db.py` |
+| `get_image_phase_statuses` | `db.py` |
+| `get_all_phases` | `db.py` |
+| `get_embeddings_for_search` | `db.py` |
+| `get_embeddings_with_metadata` | `db.py` |
+| `get_image_count` | `db.py` |
+| `get_images_paginated_with_count` | `db.py` |
+| `get_all_paths` | `db.py` |
+| `get_resolved_path` | `db.py` |
+| `get_image_details` | `db.py` |
+| `get_image_by_hash` | `db.py` |
+| `get_job_phases` | `db.py` |
+| `get_jobs` | `db.py` |
+| `get_all_images` | `db.py` |
+| `get_incomplete_records` | `db.py` |
+| `get_queued_jobs` | `db.py` (hardcoded Postgres query; uses `STRING_AGG` instead of Firebird `LIST()`) |
+
+**SQL translation additions:**
+- `FETCH FIRST n ROWS ONLY` → `LIMIT n` added to `_translate_fb_to_pg()` (step 3c)
+
+**To activate:** set `"engine": "postgres"` in `config.json` under `database`.
+
+### Phase 4 — Electron Alignment (not started)
+
+Requires Phase 3 cutover to be stable. Then migrate `electron/db.ts` from `node-firebird`
+to a Postgres client (e.g. `pg` or `postgres`).
+
+---
+
 ## Assumptions and Defaults
 
 - The exact file path you gave ([migration-plan.md](https://github.com/synthet/electron-image-scoring/blob/master/docs/technical/migrations/firebird-to-postgresql-pgvector-migration-plan.md)) was not found locally; refinement is based on nearby Electron docs:

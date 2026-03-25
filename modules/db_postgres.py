@@ -18,16 +18,15 @@ def get_pg_config():
     return {
         "host": db_config.get("postgres", {}).get("host", "127.0.0.1"),
         "port": db_config.get("postgres", {}).get("port", 5432),
-        "dbname": db_config.get("postgres", {}).get("dbname", "musiq"),
-        "user": db_config.get("postgres", {}).get("user", "musiq"),
-        "password": db_config.get("postgres", {}).get("password", "musiq"),
+        "dbname": db_config.get("postgres", {}).get("dbname", "image_scoring"),
+        "user": db_config.get("postgres", {}).get("user", "postgres"),
+        "password": db_config.get("postgres", {}).get("password", "postgres"),
     }
 
 def init_pool():
     global _pool
     if _pool is None:
         cfg = get_pg_config()
-        # Create a connection pool (min 1, max 20 connections)
         try:
             _pool = ThreadedConnectionPool(
                 1, 20,
@@ -77,101 +76,382 @@ class PGConnectionManager:
                 self.conn.rollback()
             release_pg_connection(self.conn)
 
+def execute_select(sql: str, params=None) -> list[dict]:
+    """Execute a (pre-translated) SELECT on PostgreSQL and return a list of dicts."""
+    with PGConnectionManager() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            return [dict(r) for r in cur.fetchall()]
+
+
+def execute_select_one(sql: str, params=None) -> "dict | None":
+    """Execute a SELECT and return the first row as a dict, or None."""
+    rows = execute_select(sql, params)
+    return rows[0] if rows else None
+
+
 def init_db():
-    """Initialize PostgreSQL database schema (Phase 1 Foundation)."""
+    """Initialize PostgreSQL database schema (full parity with Firebird schema)."""
     with PGConnectionManager(commit=True) as conn:
         with conn.cursor() as cur:
             # Enable pgvector
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-            
+
+            # ------------------------------------------------------------------
             # FOLDERS
+            # ------------------------------------------------------------------
             cur.execute("""
             CREATE TABLE IF NOT EXISTS folders (
-                id SERIAL PRIMARY KEY,
-                path VARCHAR(4000),
-                parent_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
-                is_fully_scored SMALLINT DEFAULT 0,
+                id                  SERIAL PRIMARY KEY,
+                path                VARCHAR(4000),
+                parent_id           INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+                is_fully_scored     SMALLINT DEFAULT 0,
                 is_keywords_processed SMALLINT DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                phase_agg_dirty     INTEGER DEFAULT 1,
+                phase_agg_updated_at TIMESTAMP,
+                phase_agg_json      TEXT,
+                created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_folders_path ON folders(path);")
 
+            # ------------------------------------------------------------------
             # STACKS
+            # ------------------------------------------------------------------
             cur.execute("""
             CREATE TABLE IF NOT EXISTS stacks (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(255),
-                best_image_id INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                id              SERIAL PRIMARY KEY,
+                name            VARCHAR(255),
+                best_image_id   INTEGER,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
 
-            # JOBS
+            # ------------------------------------------------------------------
+            # JOBS  (full column set matching Firebird schema)
+            # ------------------------------------------------------------------
             cur.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
-                id SERIAL PRIMARY KEY,
-                input_path VARCHAR(4000),
-                status VARCHAR(50),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP,
-                log TEXT
+                id                  SERIAL PRIMARY KEY,
+                input_path          VARCHAR(4000),
+                phase_id            INTEGER,
+                job_type            VARCHAR(50),
+                status              VARCHAR(50),
+                priority            SMALLINT DEFAULT 100,
+                retry_count         INTEGER DEFAULT 0,
+                target_scope        VARCHAR(255),
+                paused_at           TIMESTAMP,
+                queue_position      INTEGER,
+                cancel_requested    SMALLINT DEFAULT 0,
+                queue_payload       TEXT,
+                scope_type          VARCHAR(30),
+                scope_paths         TEXT,
+                created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                enqueued_at         TIMESTAMP,
+                started_at          TIMESTAMP,
+                finished_at         TIMESTAMP,
+                completed_at        TIMESTAMP,
+                log                 TEXT,
+                current_phase       VARCHAR(50),
+                next_phase_index    INTEGER,
+                runner_state        VARCHAR(50)
             );
             """)
 
-            # IMAGES
+            # ------------------------------------------------------------------
+            # JOB_PHASES — persisted multi-step pipeline plans
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS job_phases (
+                id              SERIAL PRIMARY KEY,
+                job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                phase_order     INTEGER NOT NULL,
+                phase_code      VARCHAR(50) NOT NULL,
+                state           VARCHAR(20) NOT NULL,
+                started_at      TIMESTAMP,
+                completed_at    TIMESTAMP,
+                error_message   TEXT
+            );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_job_phases_job_id ON job_phases(job_id);")
+
+            # ------------------------------------------------------------------
+            # JOB_STEPS — sub-phase telemetry
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS job_steps (
+                id              SERIAL PRIMARY KEY,
+                job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                phase_code      VARCHAR(50) NOT NULL,
+                step_code       VARCHAR(50) NOT NULL,
+                step_name       VARCHAR(100) NOT NULL,
+                status          VARCHAR(20) DEFAULT 'pending',
+                started_at      TIMESTAMP,
+                completed_at    TIMESTAMP,
+                items_total     INTEGER DEFAULT 0,
+                items_done      INTEGER DEFAULT 0,
+                throughput_rps  DOUBLE PRECISION,
+                error_message   TEXT
+            );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_job_steps_job_id ON job_steps(job_id);")
+
+            # ------------------------------------------------------------------
+            # IMAGES  (full column set)
+            # ------------------------------------------------------------------
             cur.execute("""
             CREATE TABLE IF NOT EXISTS images (
-                id SERIAL PRIMARY KEY,
-                job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
-                file_path VARCHAR(4000),
-                file_name VARCHAR(255),
-                file_type VARCHAR(20),
-                score DOUBLE PRECISION,
-                score_general DOUBLE PRECISION,
-                score_technical DOUBLE PRECISION,
-                score_aesthetic DOUBLE PRECISION,
-                score_spaq DOUBLE PRECISION,
-                score_ava DOUBLE PRECISION,
-                score_koniq DOUBLE PRECISION,
-                score_paq2piq DOUBLE PRECISION,
-                score_liqe DOUBLE PRECISION,
-                keywords TEXT,
-                title VARCHAR(500),
-                description TEXT,
-                metadata TEXT,
-                thumbnail_path VARCHAR(4000),
-                scores_json TEXT,
-                model_version VARCHAR(50),
-                rating SMALLINT,
-                label VARCHAR(50),
-                image_hash VARCHAR(64),
-                folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
-                stack_id INTEGER REFERENCES stacks(id) ON DELETE SET NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                burst_uuid VARCHAR(64),
-                image_embedding vector(1280)
+                id                  SERIAL PRIMARY KEY,
+                job_id              INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+                file_path           VARCHAR(4000),
+                file_name           VARCHAR(255),
+                file_type           VARCHAR(20),
+                score               DOUBLE PRECISION,
+                score_general       DOUBLE PRECISION,
+                score_technical     DOUBLE PRECISION,
+                score_aesthetic     DOUBLE PRECISION,
+                score_spaq          DOUBLE PRECISION,
+                score_ava           DOUBLE PRECISION,
+                score_koniq         DOUBLE PRECISION,
+                score_paq2piq       DOUBLE PRECISION,
+                score_liqe          DOUBLE PRECISION,
+                keywords            TEXT,
+                title               VARCHAR(500),
+                description         TEXT,
+                metadata            TEXT,
+                thumbnail_path      VARCHAR(4000),
+                thumbnail_path_win  VARCHAR(4000),
+                scores_json         TEXT,
+                model_version       VARCHAR(50),
+                rating              SMALLINT,
+                label               VARCHAR(50),
+                image_hash          VARCHAR(64),
+                folder_id           INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+                stack_id            INTEGER REFERENCES stacks(id) ON DELETE SET NULL,
+                burst_uuid          VARCHAR(64),
+                cull_decision       VARCHAR(20),
+                cull_policy_version VARCHAR(50),
+                image_uuid          VARCHAR(36),
+                created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                image_embedding     vector(1280)
             );
             """)
-
-            # Indexes for IMAGES
             cur.execute("CREATE INDEX IF NOT EXISTS idx_images_folder_id ON images(folder_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_images_stack_id ON images(stack_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_images_hash ON images(image_hash);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_images_burst_uuid ON images(burst_uuid);")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_images_image_uuid ON images(image_uuid) WHERE image_uuid IS NOT NULL;")
+            # HNSW cosine index for fast similarity search
+            cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_images_embedding_hnsw
+              ON images USING hnsw (image_embedding vector_cosine_ops);
+            """)
 
+            # Back-fill FK on stacks.best_image_id now that images exists
+            # (Firebird adds this as a separate alter; we declare it inline above for stacks
+            #  but stacks was created before images — add it as a constraint now)
+            cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints
+                    WHERE constraint_name = 'fk_stacks_best_image'
+                ) THEN
+                    ALTER TABLE stacks
+                      ADD CONSTRAINT fk_stacks_best_image
+                      FOREIGN KEY (best_image_id) REFERENCES images(id) ON DELETE SET NULL;
+                END IF;
+            END$$;
+            """)
+
+            # ------------------------------------------------------------------
             # FILE_PATHS
+            # ------------------------------------------------------------------
             cur.execute("""
             CREATE TABLE IF NOT EXISTS file_paths (
-                id SERIAL PRIMARY KEY,
-                image_id INTEGER REFERENCES images(id) ON DELETE CASCADE,
-                path VARCHAR(4000),
-                last_seen TIMESTAMP,
-                path_type VARCHAR(10),
-                is_verified SMALLINT,
-                verification_date TIMESTAMP
+                id                  SERIAL PRIMARY KEY,
+                image_id            INTEGER REFERENCES images(id) ON DELETE CASCADE,
+                path                VARCHAR(4000),
+                last_seen           TIMESTAMP,
+                path_type           VARCHAR(10),
+                is_verified         SMALLINT DEFAULT 0,
+                verification_date   TIMESTAMP
             );
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_file_paths_img_type ON file_paths(image_id, path_type);")
 
-            logger.info("PostgreSQL schema initialization completed.")
+            # ------------------------------------------------------------------
+            # CLUSTER_PROGRESS
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS cluster_progress (
+                folder_path VARCHAR(512) NOT NULL PRIMARY KEY,
+                last_run    TIMESTAMP
+            );
+            """)
 
+            # ------------------------------------------------------------------
+            # CULLING_SESSIONS
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS culling_sessions (
+                id                  SERIAL PRIMARY KEY,
+                folder_path         VARCHAR(4000),
+                mode                VARCHAR(50),
+                status              VARCHAR(50) DEFAULT 'active',
+                total_images        INTEGER DEFAULT 0,
+                total_groups        INTEGER DEFAULT 0,
+                reviewed_groups     INTEGER DEFAULT 0,
+                picked_count        INTEGER DEFAULT 0,
+                rejected_count      INTEGER DEFAULT 0,
+                created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at        TIMESTAMP
+            );
+            """)
+
+            # ------------------------------------------------------------------
+            # CULLING_PICKS
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS culling_picks (
+                id                  SERIAL PRIMARY KEY,
+                session_id          INTEGER REFERENCES culling_sessions(id) ON DELETE CASCADE,
+                image_id            INTEGER REFERENCES images(id) ON DELETE CASCADE,
+                group_id            INTEGER,
+                decision            VARCHAR(50),
+                auto_suggested      SMALLINT DEFAULT 0,
+                is_best_in_group    SMALLINT DEFAULT 0,
+                created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_culling_picks_session ON culling_picks(session_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_culling_picks_image ON culling_picks(image_id);")
+
+            # ------------------------------------------------------------------
+            # IMAGE_EXIF — cached EXIF metadata (one row per image)
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS image_exif (
+                image_id                INTEGER NOT NULL PRIMARY KEY REFERENCES images(id) ON DELETE CASCADE,
+                make                    VARCHAR(100),
+                model                   VARCHAR(200),
+                lens_model              VARCHAR(255),
+                focal_length            VARCHAR(50),
+                focal_length_35mm       SMALLINT,
+                date_time_original      TIMESTAMP,
+                create_date             TIMESTAMP,
+                exposure_time           VARCHAR(30),
+                f_number                VARCHAR(20),
+                iso                     INTEGER,
+                exposure_compensation   VARCHAR(20),
+                image_width             INTEGER,
+                image_height            INTEGER,
+                orientation             SMALLINT,
+                flash                   SMALLINT,
+                image_unique_id         VARCHAR(64),
+                shutter_count           INTEGER,
+                sub_sec_time_original   VARCHAR(10),
+                extracted_at            TIMESTAMP
+            );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_image_exif_date ON image_exif(date_time_original);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_image_exif_make ON image_exif(make);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_image_exif_model ON image_exif(model);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_image_exif_lens ON image_exif(lens_model);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_image_exif_iso ON image_exif(iso);")
+
+            # ------------------------------------------------------------------
+            # IMAGE_XMP — cached XMP sidecar metadata (one row per image)
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS image_xmp (
+                image_id        INTEGER NOT NULL PRIMARY KEY REFERENCES images(id) ON DELETE CASCADE,
+                rating          SMALLINT,
+                label           VARCHAR(50),
+                pick_status     SMALLINT,
+                burst_uuid      VARCHAR(64),
+                stack_id        VARCHAR(64),
+                keywords        TEXT,
+                title           VARCHAR(500),
+                description     TEXT,
+                create_date     TIMESTAMP,
+                modify_date     TIMESTAMP,
+                extracted_at    TIMESTAMP
+            );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_image_xmp_burst ON image_xmp(burst_uuid);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_image_xmp_pick ON image_xmp(pick_status);")
+
+            # ------------------------------------------------------------------
+            # PIPELINE_PHASES — phase registry
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS pipeline_phases (
+                id              SERIAL PRIMARY KEY,
+                code            VARCHAR(50) NOT NULL,
+                name            VARCHAR(100) NOT NULL,
+                description     TEXT,
+                sort_order      INTEGER DEFAULT 0 NOT NULL,
+                enabled         SMALLINT DEFAULT 1 NOT NULL,
+                optional        SMALLINT DEFAULT 0 NOT NULL,
+                default_skip    SMALLINT DEFAULT 0 NOT NULL
+            );
+            """)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_pipeline_phases_code ON pipeline_phases(code);")
+
+            # ------------------------------------------------------------------
+            # IMAGE_PHASE_STATUS — per-image per-phase tracking
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS image_phase_status (
+                id                  SERIAL PRIMARY KEY,
+                image_id            INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+                phase_id            INTEGER NOT NULL REFERENCES pipeline_phases(id),
+                status              VARCHAR(20) DEFAULT 'not_started' NOT NULL,
+                executor_version    VARCHAR(50),
+                app_version         VARCHAR(50),
+                job_id              INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+                attempt_count       SMALLINT DEFAULT 0 NOT NULL,
+                last_error          TEXT,
+                started_at          TIMESTAMP,
+                finished_at         TIMESTAMP,
+                updated_at          TIMESTAMP,
+                skip_reason         TEXT,
+                skipped_by          VARCHAR(255)
+            );
+            """)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_image_phase ON image_phase_status(image_id, phase_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_ips_image_id ON image_phase_status(image_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_ips_phase_id ON image_phase_status(phase_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_ips_status ON image_phase_status(status);")
+
+            # ------------------------------------------------------------------
+            # STACK_CACHE — pre-computed score aggregates per stack
+            # (created by Electron but defined here for Postgres parity)
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS stack_cache (
+                stack_id                INTEGER NOT NULL PRIMARY KEY REFERENCES stacks(id) ON DELETE CASCADE,
+                image_count             INTEGER DEFAULT 0,
+                rep_image_id            INTEGER REFERENCES images(id) ON DELETE SET NULL,
+                min_score_general       DOUBLE PRECISION,
+                max_score_general       DOUBLE PRECISION,
+                min_score_technical     DOUBLE PRECISION,
+                max_score_technical     DOUBLE PRECISION,
+                min_score_aesthetic     DOUBLE PRECISION,
+                max_score_aesthetic     DOUBLE PRECISION,
+                min_score_spaq          DOUBLE PRECISION,
+                max_score_spaq          DOUBLE PRECISION,
+                min_score_ava           DOUBLE PRECISION,
+                max_score_ava           DOUBLE PRECISION,
+                min_score_liqe          DOUBLE PRECISION,
+                max_score_liqe          DOUBLE PRECISION,
+                min_rating              INTEGER,
+                max_rating              INTEGER,
+                min_created_at          TIMESTAMP,
+                max_created_at          TIMESTAMP,
+                folder_id               INTEGER REFERENCES folders(id) ON DELETE SET NULL
+            );
+            """)
+
+            logger.info("PostgreSQL schema initialization completed.")

@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.18.0] - 2026-03-24
+
+### Added
+- **Diagnostics module** (`modules/diagnostics.py`): New `get_diagnostics()` collector — OS info, Python version, CPU/memory (via `psutil`), DB path/reachability/size, GPU/framework detection, free disk space, and masked config summary.
+- **API** (`modules/api.py`): `GET /api/diagnostics` endpoint returning `DiagnosticsResponse` with system, database, models, filesystem, config, and runner availability fields.
+- **Gradio status page** (`modules/ui/status_gradio.py`): New **Diagnostics** section in the `/app` operator dashboard — four panels (System, Database, Models, Filesystem) rendered as inline tables; updates on the existing poll cycle.
+- **Frontend** (`frontend/src/pages/DiagnosticsPage.tsx`, `frontend/src/App.tsx`, `frontend/src/components/layout/Shell.tsx`): New `/diagnostics` React page wired into routing and the top nav bar.
+- **DB** (`modules/db.py`): PostgreSQL read-routing for 12+ major query functions — `get_all_folders`, `get_job`, `get_queued_jobs`, `get_job_phases`, `get_jobs`, `get_all_images`, `get_image_details`, `get_incomplete_records`, `get_embeddings_for_search`, `get_embeddings_with_metadata`, `get_image_phase_statuses`, `get_all_phases`; `_DUAL_WRITE_STATS` counter dict for queue telemetry.
+- **DB Postgres** (`modules/db_postgres.py`): Full Firebird schema parity — all tables (`folders`, `stacks`, `jobs`, `job_phases`, `job_steps`, `images`, `file_paths`, `image_exif`, `image_xmp`, `pipeline_phases`, `image_phase_status`, `culling_sessions`, `culling_picks`, `keywords`, `image_keywords`, `stack_cache`), complete column sets, unique indexes, and FK constraints; `execute_select` / `execute_select_one` convenience helpers; corrected default connection config (`image_scoring` / `postgres`).
+- **SQL Translation** (`modules/db.py` `_translate_fb_to_pg`): Handles `UPDATE OR INSERT … MATCHING` → `ON CONFLICT DO UPDATE`, `SELECT FIRST n` → `LIMIT n`, `DATEDIFF(SECOND FROM … TO …)` → `EXTRACT(EPOCH …)`, `ROWS ?` → `LIMIT ?`, `FETCH FIRST n ROWS ONLY` → `LIMIT n`.
+- **Alembic migrations**: `alembic.ini` and `migrations/` folder with initial schema migration (`0001_initial_schema.py`) for managing Postgres schema via Alembic.
+- **Scripts**: `scripts/powershell/Backup-Postgres.ps1` — automated PostgreSQL backup via `pg_dump`; `scripts/python/verify_postgres_parity.py` — row-count and spot-check parity verification between Firebird and Postgres.
+- **Migration** (`scripts/python/migrate_firebird_to_postgres.py`): `--clear-target` flag to wipe the target Postgres DB before migration (with `TRUNCATE CASCADE`); added `job_phases`, `job_steps`, and `stack_cache` to migration order; expanded `reset_sequences` to cover `job_phases`, `job_steps`, `culling_picks`, `pipeline_phases`, `image_phase_status`.
+- **MCP config** (`mcp_config.json`): `imgscore-py-postgres` server entry for direct Postgres MCP access (disabled by default).
+
+### Fixed
+- **Migration runner** (`scripts/run_migration.py`): Replaced broken Unicode emoji characters with ASCII `[OK]` / `[FAIL]` / `[WARN]` status indicators.
+- **WebUI** (`webui.py`): Suppress TensorFlow Python-level deprecation warnings (`TF_ENABLE_DEPRECATION_WARNINGS`, `DeprecationWarning` filters); replace debug emoji with `[DEBUG]` ASCII prefix.
+- **Tests**: `tests/test_api_endpoints.py` — new `test_diagnostics_returns_full_payload` covering the `/api/diagnostics` endpoint; `tests/test_selection_runner_phases.py` — added assertion that `set_job_phase_state` marks `bird_species` completed on the parent job; `tests/test_migrate_firebird_to_postgres.py` — comprehensive new test suite for the Firebird→Postgres migration script.
+
 ## [4.17.0] - 2026-03-23
 
 ### Added

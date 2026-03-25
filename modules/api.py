@@ -834,6 +834,17 @@ class HealthResponse(BaseModel):
     })
 
 
+class DiagnosticsResponse(BaseModel):
+    """Response model for diagnostics check endpoint."""
+    timestamp: str = Field(..., description="ISO 8601 timestamp.")
+    system: Dict[str, Any] = Field(..., description="System-level diagnostics (OS, Python, CPU, Memory).")
+    database: Dict[str, Any] = Field(..., description="Database diagnostics (Path, Reachable, Size).")
+    models: Dict[str, Any] = Field(..., description="Model and GPU diagnostics.")
+    filesystem: Dict[str, Any] = Field(..., description="FileSystem diagnostics.")
+    config: Dict[str, Any] = Field(..., description="Masked configuration summary.")
+    runners: Dict[str, Any] = Field(..., description="Status of all runners.")
+
+
 class FindDuplicatesRequest(BaseModel):
     """Request model for finding near-duplicate images."""
     threshold: Optional[float] = Field(
@@ -1478,6 +1489,11 @@ def create_api_router() -> APIRouter:
                         "method": "GET",
                         "path": "/api/health",
                         "description": "Health check endpoint"
+                    },
+                    "diagnostics": {
+                        "method": "GET",
+                        "path": "/api/diagnostics",
+                        "description": "Comprehensive system diagnostics"
                     },
                     "jobs_recent": {
                         "method": "GET",
@@ -5287,4 +5303,34 @@ def create_api_router() -> APIRouter:
                 ],
             },
         )
+    
+    @router.get(
+        "/diagnostics",
+        response_model=DiagnosticsResponse,
+        summary="Get comprehensive system diagnostics",
+        description="""
+        Returns detailed diagnostic information about the system, database, models, and runners.
+        
+        **Note:** Some fields may be omitted if dependencies (like psutil) are not installed.
+        """,
+        tags=["General API"]
+    )
+    async def get_diagnostics_endpoint():
+        from modules.diagnostics import get_diagnostics
+        diag = get_diagnostics()
+        
+        # Add runner status to the diagnostics payload
+        diag["runners"] = {
+            "scoring": "available" if _scoring_runner is not None else "unavailable",
+            "tagging": "available" if _tagging_runner is not None else "unavailable",
+            "clustering": "available" if _clustering_runner is not None else "unavailable",
+            "selection": "available" if _selection_runner is not None else "unavailable",
+            "bird_species": "available" if _bird_species_runner is not None else "unavailable",
+            "indexing": "available" if _indexing_runner is not None else "unavailable",
+            "metadata": "available" if _metadata_runner is not None else "unavailable",
+            "orchestrator": "active" if _orchestrator and _orchestrator.get_status().get("active") else "idle"
+        }
+        
+        return diag
+
     return router
