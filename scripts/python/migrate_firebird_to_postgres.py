@@ -19,6 +19,7 @@ Options:
   --fdb-password PASS   Firebird password (default: masterkey)
   --batch-size N        Rows per batch (default: 500)
   --skip-table TABLE    Skip a specific table (can be repeated)
+  --clear-target        Clear selected target tables before migration
   --dry-run             Print counts without inserting
 """
 
@@ -140,7 +141,7 @@ def migrate_table(fb_conn, pg_conn, table_name, batch_size=500, dry_run=False):
     pg_cur.execute(f"SELECT COUNT(*) FROM {table_name}")
     existing_count = pg_cur.fetchone()[0]
     if existing_count > 0:
-        logger.info("  PostgreSQL %s already has %d rows — skipping (use --clear-target to overwrite)", table_name, existing_count)
+        logger.info("  PostgreSQL %s already has %d rows — skipping (pass --clear-target to clear before migration)", table_name, existing_count)
         return 0
 
     # Fetch all rows from Firebird
@@ -229,6 +230,15 @@ def reset_sequences(pg_conn):
     pg_conn.commit()
 
 
+def clear_target_tables(pg_conn, tables):
+    """Truncate all target tables in one statement, resetting sequences."""
+    pg_cur = pg_conn.cursor()
+    table_list = ", ".join(tables)
+    logger.info("Truncating target tables: %s", table_list)
+    pg_cur.execute(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE")
+    pg_conn.commit()
+
+
 def validate_migration(fb_conn, pg_conn, tables):
     """Compare row counts between Firebird and PostgreSQL."""
     fb_cur = fb_conn.cursor()
@@ -297,7 +307,7 @@ def _resolve_postgres_config(db_cfg, env, args):
     return pg_host, pg_port, pg_db, pg_user, pg_password
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description="Migrate Firebird DB to PostgreSQL")
     parser.add_argument("--fdb-path", default=None, help="Path to Firebird .fdb file")
     parser.add_argument("--fdb-user", default="sysdba", help="Firebird username")
@@ -309,7 +319,17 @@ def main():
     parser.add_argument("--pg-password", default=None, help="PostgreSQL password")
     parser.add_argument("--batch-size", default=500, type=int, help="Rows per batch")
     parser.add_argument("--skip-table", action="append", default=[], help="Skip a table")
+    parser.add_argument(
+        "--clear-target",
+        action="store_true",
+        help="Clear selected target tables before migration",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Count rows without inserting")
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     # Resolve paths from project root
@@ -352,9 +372,17 @@ def main():
     tables = [t for t in TABLES_ORDER if t not in args.skip_table]
 
     if args.dry_run:
+        if args.clear_target:
+            logger.info("DRY RUN — --clear-target ignored, no data will be modified")
         logger.info("DRY RUN — no data will be inserted")
         validate_migration(fb_conn, pg_conn, tables)
         return
+
+    if args.clear_target:
+        logger.info("--clear-target enabled: clearing target tables before migration")
+        clear_target_tables(pg_conn, tables)
+    else:
+        logger.info("--clear-target not provided: existing target data will be preserved; non-empty tables are skipped")
 
     # Migrate each table
     total = 0
