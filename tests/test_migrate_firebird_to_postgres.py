@@ -6,22 +6,24 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Lightweight stubs so script import works in minimal test environments.
+# Lightweight stubs so the migration script can be imported without real
+# database drivers.  Only injected when the real packages are absent;
+# if psycopg2/pgvector are installed the real modules are used instead.
 if "psycopg2" not in sys.modules:
-    psycopg2_stub = types.ModuleType("psycopg2")
-    extras_stub = types.ModuleType("psycopg2.extras")
-    extras_stub.RealDictCursor = object
-    psycopg2_stub.extras = extras_stub
-    sys.modules["psycopg2"] = psycopg2_stub
-    sys.modules["psycopg2.extras"] = extras_stub
+    _psycopg2_stub = types.ModuleType("psycopg2")
+    _extras_stub = types.ModuleType("psycopg2.extras")
+    _extras_stub.RealDictCursor = object
+    _psycopg2_stub.extras = _extras_stub
+    sys.modules["psycopg2"] = _psycopg2_stub
+    sys.modules["psycopg2.extras"] = _extras_stub
 
 if "pgvector.psycopg2" not in sys.modules:
-    pgvector_stub = types.ModuleType("pgvector")
-    pgvector_psycopg2_stub = types.ModuleType("pgvector.psycopg2")
-    pgvector_psycopg2_stub.register_vector = lambda *_args, **_kwargs: None
-    pgvector_stub.psycopg2 = pgvector_psycopg2_stub
-    sys.modules["pgvector"] = pgvector_stub
-    sys.modules["pgvector.psycopg2"] = pgvector_psycopg2_stub
+    _pgvector_stub = types.ModuleType("pgvector")
+    _pgvector_psycopg2_stub = types.ModuleType("pgvector.psycopg2")
+    _pgvector_psycopg2_stub.register_vector = lambda *_a, **_kw: None
+    _pgvector_stub.psycopg2 = _pgvector_psycopg2_stub
+    sys.modules["pgvector"] = _pgvector_stub
+    sys.modules["pgvector.psycopg2"] = _pgvector_psycopg2_stub
 
 from scripts.python import migrate_firebird_to_postgres as migration
 
@@ -74,17 +76,15 @@ def test_parser_has_clear_target_flag():
     assert args.clear_target is True
 
 
-def test_clear_target_tables_uses_reverse_dependency_order():
+def test_clear_target_tables_truncates_with_cascade():
     conn = _RecordingConn()
     tables = ["jobs", "images", "image_phase_status"]
 
     migration.clear_target_tables(conn, tables)
 
-    assert [sql for sql, _ in conn._cursor.executed] == [
-        "DELETE FROM image_phase_status",
-        "DELETE FROM images",
-        "DELETE FROM jobs",
-    ]
+    assert len(conn._cursor.executed) == 1
+    sql, _ = conn._cursor.executed[0]
+    assert sql == "TRUNCATE jobs, images, image_phase_status RESTART IDENTITY CASCADE"
     assert conn.commits == 1
 
 

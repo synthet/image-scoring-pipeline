@@ -226,11 +226,11 @@ def reset_sequences(pg_conn):
 
 
 def clear_target_tables(pg_conn, tables):
-    """Clear target tables in reverse dependency order to respect foreign keys."""
+    """Truncate all target tables in one statement, resetting sequences."""
     pg_cur = pg_conn.cursor()
-    for table in reversed(tables):
-        logger.info("Clearing target table: %s", table)
-        pg_cur.execute(f"DELETE FROM {table}")
+    table_list = ", ".join(tables)
+    logger.info("Truncating target tables: %s", table_list)
+    pg_cur.execute(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE")
     pg_conn.commit()
 
 
@@ -327,6 +327,8 @@ def main():
     tables = [t for t in TABLES_ORDER if t not in args.skip_table]
 
     if args.dry_run:
+        if args.clear_target:
+            logger.info("DRY RUN — --clear-target ignored, no data will be modified")
         logger.info("DRY RUN — no data will be inserted")
         validate_migration(fb_conn, pg_conn, tables)
         return
