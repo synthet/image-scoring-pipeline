@@ -53,6 +53,15 @@ TABLES_ORDER = [
 ]
 
 
+def get_tables_for_validation():
+    """
+    Validate against the complete active pipeline table set.
+    This intentionally ignores --skip-table so a partial migration cannot
+    incorrectly report success.
+    """
+    return TABLES_ORDER
+
+
 def get_pg_conn(host, port, dbname, user, password):
     conn = psycopg2.connect(
         host=host, port=port, dbname=dbname, user=user, password=password,
@@ -305,10 +314,11 @@ def main():
     pg_conn = get_pg_conn(pg_host, pg_port, pg_db, pg_user, pg_password)
 
     tables = [t for t in TABLES_ORDER if t not in args.skip_table]
+    validation_tables = get_tables_for_validation()
 
     if args.dry_run:
         logger.info("DRY RUN — no data will be inserted")
-        validate_migration(fb_conn, pg_conn, tables)
+        validate_migration(fb_conn, pg_conn, validation_tables)
         return
 
     # Migrate each table
@@ -326,7 +336,7 @@ def main():
     reset_sequences(pg_conn)
 
     # Validate
-    all_ok = validate_migration(fb_conn, pg_conn, tables)
+    all_ok = validate_migration(fb_conn, pg_conn, validation_tables)
     if all_ok:
         logger.info("\nMigration complete — all row counts match!")
     else:
