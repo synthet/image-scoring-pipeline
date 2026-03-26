@@ -13,14 +13,14 @@ logger = logging.getLogger(__name__)
 _pool = None
 
 def get_pg_config():
-    db_config = config.get_config_section("database")
-    # Provide defaults
+    db_config = config.get_config_section("database") or {}
+    pg = db_config.get("postgres", {})
     return {
-        "host": db_config.get("postgres", {}).get("host", "127.0.0.1"),
-        "port": db_config.get("postgres", {}).get("port", 5432),
-        "dbname": db_config.get("postgres", {}).get("dbname", "image_scoring"),
-        "user": db_config.get("postgres", {}).get("user", "postgres"),
-        "password": db_config.get("postgres", {}).get("password", "postgres"),
+        "host": os.environ.get("POSTGRES_HOST", pg.get("host", "127.0.0.1")),
+        "port": int(os.environ.get("POSTGRES_PORT", pg.get("port", 5432))),
+        "dbname": os.environ.get("POSTGRES_DB", pg.get("dbname", "image_scoring")),
+        "user": os.environ.get("POSTGRES_USER", pg.get("user", "postgres")),
+        "password": os.environ.get("POSTGRES_PASSWORD", pg.get("password", "postgres")),
     }
 
 def init_pool():

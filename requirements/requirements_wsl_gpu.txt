@@ -105,6 +105,8 @@ rpds-py==0.30.0
 # Database
 firebird-driver==2.0.2
 firebird-base==2.0.2
+psycopg2-binary
+pgvector
 
 # MCP server
 mcp==1.26.0

@@ -1,24 +1,4 @@
-version: '3.8'
-
 services:
-  postgres:
-    image: pgvector/pgvector:pg17
-    container_name: musiq-postgres
-    environment:
-      POSTGRES_USER: musiq
-      POSTGRES_PASSWORD: musiq
-      POSTGRES_DB: musiq
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U musiq -d musiq"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
   webui:
     build:
       context: .
@@ -28,19 +8,14 @@ services:
     ports:
       - "7860:7860"
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=musiq
-      - POSTGRES_USER=musiq
-      - POSTGRES_PASSWORD=musiq
       - DOCKER_CONTAINER=1
+      - WEBUI_HOST=0.0.0.0
+      - FIREBIRD_WIN_DB_PATH=D:/Projects/image-scoring-backend/SCORING_HISTORY.FDB
+      - FIREBIRD_CLIENT_LIBRARY=/app/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib/libfbclient.so
     volumes:
       - .:/app
-      # Mount Windows drives (adjust as needed)
-      # Note: when running `docker compose` from Windows (e.g. via .bat), prefer Windows paths.
+      # Mount Windows drives for image file access (add more as needed)
       - "D:/:/mnt/d"
-      - "E:/:/mnt/e"
-      - "F:/:/mnt/f"
     # Make GPU usage work with non-Swarm `docker compose`
     gpus: all
     deploy:
@@ -50,10 +25,4 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
-
-volumes:
-  postgres_data:

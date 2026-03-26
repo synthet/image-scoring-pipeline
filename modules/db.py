@@ -746,15 +746,25 @@ def get_db():
              
              try:
                  win_path = _to_win_path(_PROJECT_ROOT) + "\\" + DB_FILE
-                 # Mapping for Docker /app/... (Assuming it's mounted from Windows project root)
-                 if is_docker and os.getcwd() == "/app":
-                     # In docker, we can't easily guess the host path, so we use the fallback 
-                     # or expect it to be passed via env?
-                     # Let's keep the fallback but add a log message.
-                     pass
+                 # In Docker, _PROJECT_ROOT is /app so _to_win_path produces \app\... (wrong).
+                 # Allow the caller to pass the real Windows path via FIREBIRD_WIN_DB_PATH.
+                 env_win_path = os.environ.get("FIREBIRD_WIN_DB_PATH")
+                 if env_win_path:
+                     win_path = env_win_path
+                     if DEBUG_DB_CONNECTION:
+                         logger.debug("Docker: Using FIREBIRD_WIN_DB_PATH: %s", win_path)
              except (TypeError, ValueError) as e:
                  logger.debug("Could not build win_path for DSN: %s", e)
-                 
+
+             if is_docker and not os.environ.get("FIREBIRD_WIN_DB_PATH"):
+                 logger.warning(
+                     "Docker: FIREBIRD_WIN_DB_PATH is not set. "
+                     "DSN will use computed path '%s' which is likely wrong. "
+                     "Set FIREBIRD_WIN_DB_PATH to the Windows path of the FDB file "
+                     "(e.g. D:/Projects/image-scoring-backend/SCORING_HISTORY.FDB).",
+                     win_path,
+                 )
+
              global _logged_dsn
              # FIREBIRD_USE_LOCAL_PATH=1: use WSL path (embedded) instead of inet - workaround for "file in use" on Windows server
              use_local = os.environ.get("FIREBIRD_USE_LOCAL_PATH", "").strip() in ("1", "true", "yes")

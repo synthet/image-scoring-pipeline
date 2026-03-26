@@ -9,6 +9,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DOCKER_CONTAINER=1
 
+# Firebird Linux client library path (bundled in repo under FirebirdLinux/)
+ENV LD_LIBRARY_PATH=/app/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib:$LD_LIBRARY_PATH
+
 # Install system dependencies (incl. Python 3.11)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \

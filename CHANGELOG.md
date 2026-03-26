@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.19.0] - 2026-03-25
+
+### Added
+- **Docker / Firebird** (`modules/db.py`): `FIREBIRD_WIN_DB_PATH` environment variable so the container uses the real Windows path to `SCORING_HISTORY.FDB` instead of a bogus `\app\...` mapping; logs a warning when running in Docker without it.
+- **PostgreSQL** (`modules/db_postgres.py`): `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` environment overrides (still defaults to `config.json` when unset).
+- **Docker image** (`Dockerfile`): `LD_LIBRARY_PATH` includes the bundled Linux Firebird client under `FirebirdLinux/`.
+- **Dependencies** (`requirements/requirements_wsl_gpu.txt`): `psycopg2-binary` and `pgvector` for optional Postgres / dual-write stacks.
+
+### Changed
+- **Docker Compose** (`docker-compose.yml`): Default stack is WebUI-only; bundled PostgreSQL service and `depends_on` removed — use an external Postgres (or host install) with env/config when needed. Sets `WEBUI_HOST`, `FIREBIRD_WIN_DB_PATH`, and `FIREBIRD_CLIENT_LIBRARY`; trims extra drive mounts to `D:/` by default (documented for customization).
+- **Docker entrypoint** (`scripts/docker_entrypoint.sh`): Always waits for Firebird on `FIREBIRD_HOST` (default `host.docker.internal`) port 3050 before starting the app; portable retry loop without `timeout`.
+- **Launcher** (`launch.py`): Skips Windows Firebird process detection and auto-start when `DOCKER_CONTAINER` is set.
+
+### Fixed
+- **Docs** (`docs/setup/DOCKER_SETUP.md`): Rewritten for the Windows Firebird + volume-mount architecture, FDB path customization, env reference, and troubleshooting.
+
 ## [4.18.0] - 2026-03-24
 
 ### Added
