@@ -13,6 +13,7 @@ from modules.events import event_manager, broadcast_run_log_line
 from modules.phases import PhaseCode, PhaseStatus
 from modules.phases_policy import explain_phase_run_decision
 from modules.version import APP_VERSION
+from modules.engines.base import IClusteringEngine
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'thumbnails', 'feature_cache')
 
 
-class ClusteringEngine:
+class ClusteringEngine(IClusteringEngine):
     def __init__(self, cache_dir=None):
         self.model = None
         self.feature_cache = {}  # In-memory cache (hash -> feature vector)
@@ -825,9 +826,11 @@ class ClusteringRunner:
     """
     Runs clustering in a local thread, providing status updates.
     Matches the runner contract: start_batch, stop, get_status.
+
+    clustering_engine: optional IClusteringEngine (default ClusteringEngine).
     """
-    def __init__(self):
-        self.engine = ClusteringEngine()
+    def __init__(self, clustering_engine=None):
+        self.engine = clustering_engine if clustering_engine is not None else ClusteringEngine()
         self.stop_event = threading.Event()
         self._thread = None
         

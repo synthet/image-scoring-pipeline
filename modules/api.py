@@ -51,6 +51,9 @@ Endpoints:
     General:
         GET /api/status - Get status of all runners
         GET /api/health - Health check endpoint
+
+    Electron HTTP DB (optional, gated by config):
+        POST /api/db/query - Parameterized SQL for local gallery ``engine: api`` mode (SELECT/WITH or writes)
 """
 
 from fastapi import APIRouter, HTTPException, Body, Query
@@ -2266,7 +2269,72 @@ def create_api_router() -> APIRouter:
             tagging_available=_tagging_runner is not None,
             clustering_available=_clustering_runner is not None
         )
-    
+
+    class DbQueryRequest(BaseModel):
+        """Body for POST /api/db/query (Electron ApiConnector)."""
+
+        sql: str = Field(
+            ...,
+            description="SELECT/WITH (read) or INSERT/UPDATE/DELETE; Firebird-style ? placeholders",
+        )
+        params: List[Any] = Field(default_factory=list, description="Bound values for each ? in order")
+
+    class DbQueryResponse(BaseModel):
+        data: List[Dict[str, Any]]
+
+    @router.post(
+        "/db/query",
+        response_model=DbQueryResponse,
+        summary="SQL bridge for Electron API DB mode",
+        description="""
+        Executes parameterized SQL against the configured database engine (Firebird or PostgreSQL).
+        Intended for the Electron gallery when ``database.engine`` is ``api`` and the app talks to this
+        WebUI over HTTP. **Treat like direct DB access** — disable on untrusted networks via config.
+
+        **Reads:** SQL must start with ``SELECT`` or ``WITH`` (``WITH``…``SELECT``). Row cap:
+        ``database.api_db_query_max_rows`` (default 5000, max 50000).
+
+        **Writes:** ``INSERT`` / ``UPDATE`` / ``DELETE`` (including Firebird ``UPDATE OR INSERT``) when
+        ``database.api_db_allow_write_queries`` is true (default). DDL and ``DROP``/``TRUNCATE``/etc. are rejected.
+
+        Uses Firebird-style ``?`` placeholders; translated when ``database.engine`` is ``postgres``.
+        """,
+    )
+    async def api_db_query(request: DbQueryRequest):
+        from modules import config as _cfg
+
+        if not _cfg.get_config_value("database.enable_api_db_query", True):
+            raise HTTPException(
+                status_code=403,
+                detail="POST /api/db/query is disabled (database.enable_api_db_query)",
+            )
+        max_rows = int(_cfg.get_config_value("database.api_db_query_max_rows", 5000))
+        sql_text = (request.sql or "").strip()
+        upper = sql_text.upper()
+        is_read = upper.startswith("SELECT") or upper.startswith("WITH")
+        try:
+            if is_read:
+                rows = db.execute_readonly_sql_for_api(
+                    request.sql,
+                    request.params,
+                    max_rows=max_rows,
+                )
+            elif _cfg.get_config_value("database.api_db_allow_write_queries", True):
+                rows = db.execute_write_sql_for_api(request.sql, request.params)
+            else:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Write SQL is disabled (database.api_db_allow_write_queries)",
+                )
+        except HTTPException:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("api_db_query failed")
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return DbQueryResponse(data=rows)
+
     # ========== Debug / Profiling Endpoints ==========
 
     @router.get(

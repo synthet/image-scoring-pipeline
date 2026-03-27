@@ -77,24 +77,28 @@ Scope: image-scoring + electron-image-scoring coordinated migration
 - Electron IPC workflows pass after provider switch.
 - Only then allow Firebird retirement.
 
-## Current Implementation Status (2026-03-23)
+## Current Implementation Status (2026-03-26)
 
 ### Phase 0 — Schema baseline ✅
 - Migration plan: this document
 - Alembic configured: `alembic.ini` + `migrations/env.py` + `migrations/versions/0001_initial_schema.py`
-- `modules/db_postgres.py` `init_db()` covers all tables
+- `modules/db_postgres.py` `init_db()` covers all 17 tables
 
 ### Phase 1 — Postgres Foundation ✅
-- `docker-compose.postgres.yml` — Postgres + pgvector Docker stack
+- `docker-compose.yml` — Postgres + pgvector Docker stack (`pgvector/pgvector:pg17`)
+- `modules/db_postgres.py` — connection pool (ThreadedConnectionPool 1–20) + full schema init (17 tables, all indexes, HNSW cosine on `image_embedding`)
+- `scripts/python/migrate_firebird_to_postgres.py` — chunked, resumable bulk migration with `--dry-run` and `--batch-size` flags
 - `scripts/powershell/Setup-PostgresDocker.ps1` — helper to start the container
-- `modules/db_postgres.py` — connection pool + full schema init (15 tables, all indexes, HNSW)
-- `scripts/python/migrate_firebird_to_postgres.py` — bulk one-time migration
 
-### Phase 2 — Dual-Write (infrastructure ready; not yet activated)
+### Phase 2 — Dual-Write ⚠️ (infrastructure complete; not yet activated)
 
 The dual-write plumbing lives in `modules/db.py`:
 - `FirebirdCursorProxy` calls `_enqueue_dual_write()` on every `execute` / `executemany`
-- A background worker thread drains the queue into Postgres via `db_postgres.PGConnectionManager`
+- A background worker thread (`_dual_write_worker`) drains the queue into Postgres via `db_postgres.PGConnectionManager`
+- `init_dual_write()` starts the worker when `engine="firebird"` AND `dual_write=true`
+- `get_dual_write_stats()` returns `{queued, success, fail, queue_depth, enabled}` for monitoring
+
+> **Known limitation:** worker failures are logged and discarded — no retry queue, no dead-letter. Silent data divergence is possible under Postgres errors.
 
 **To activate dual-write** (set `dual_write: true` in `config.json` and start Postgres Docker):
 
@@ -118,7 +122,7 @@ The dual-write plumbing lives in `modules/db.py`:
 Start Postgres:
 
 ```powershell
-docker compose -f docker-compose.postgres.yml up -d
+docker compose -f docker-compose.yml up -d
 ```
 
 Init the Postgres schema (one-time):
@@ -142,10 +146,26 @@ Verify parity:
 python scripts/python/migrate_firebird_to_postgres.py --dry-run
 ```
 
-### Phase 3 — Python + MCP Cutover (in progress)
+### Phase 3 — Python + MCP Cutover 🟡 (~85% complete; 2 critical bugs block activation)
 
-`_get_db_engine()` reads `database.engine` from config (default: `"firebird"`). Setting it to
-`"postgres"` routes the following read functions to PostgreSQL:
+#### Transport-layer abstraction (`modules/db_connector/`) ✅
+
+A new connector layer was added to decouple SQL execution from engine selection.
+See [`docs/architecture/DB_CONNECTOR.md`](../../architecture/DB_CONNECTOR.md) for full design.
+
+| `database.engine` | Connector | Notes |
+|---|---|---|
+| `"firebird"` (default) | `FirebirdConnector` | wraps `db.get_db()`; dual-write passthrough |
+| `"postgres"` | `PostgresConnector` | wraps psycopg2 pool; auto-translates via `_translate_fb_to_pg()` |
+| `"api"` | `ApiConnector` | HTTP proxy to `/api/db/query`; for remote workers |
+
+Five functions were migrated to the connector as proof-of-concept: `get_image_by_hash`,
+`get_image_details`, `update_image_field`, `create_job`, `enqueue_job`.
+Full migration of remaining functions in `db.py` is a follow-on task.
+
+#### Read/write routing via `_get_db_engine()` (~60 functions)
+
+Setting `"engine": "postgres"` in `config.json` routes the following to PostgreSQL:
 
 | Function | Module |
 |---|---|
@@ -167,7 +187,7 @@ python scripts/python/migrate_firebird_to_postgres.py --dry-run
 | `get_jobs` | `db.py` |
 | `get_all_images` | `db.py` |
 | `get_incomplete_records` | `db.py` |
-| `get_queued_jobs` | `db.py` (hardcoded Postgres query; uses `STRING_AGG` instead of Firebird `LIST()`) |
+| `get_queued_jobs` | `db.py` (uses `STRING_AGG` instead of Firebird `LIST()`) |
 | `get_folder_by_id` | `db.py` |
 | `get_image_exif` | `db.py` |
 | `get_image_xmp` | `db.py` |
@@ -183,18 +203,41 @@ python scripts/python/migrate_firebird_to_postgres.py --dry-run
 | `get_nef_paths_for_research` | `db.py` |
 | `get_image_ids_by_paths` | `db.py` |
 
-**SQL translation additions:**
-- `FETCH FIRST n ROWS ONLY` → `LIMIT n` added to `_translate_fb_to_pg()` (step 3c)
-- `RAND()` → `RANDOM()` (step 3d)
-- `LIST(expr, sep)` → `STRING_AGG(expr, sep)` (step 3e)
+#### SQL translation (`_translate_fb_to_pg()`)
 
-**PostgreSQL schema additions:**
+Rules implemented in `modules/db.py` (line ~231):
+- `UPDATE OR INSERT … MATCHING` → `INSERT … ON CONFLICT DO UPDATE`
+- `SELECT FIRST n` / `FETCH FIRST n ROWS ONLY` → `LIMIT n`
+- `DATEDIFF(UNIT FROM a TO b)` → `EXTRACT(…)` ⚠️ **BUG — see below**
+- `?` → `%s` (outside string literals)
+- `RAND()` → `RANDOM()`, `LIST(col, sep)` → `STRING_AGG(col, sep)`
+- `substr()` → `substring()`, `length()` → `char_length()`
+
+#### PostgreSQL schema additions
 - `keywords_dim` and `image_keywords` tables added to `db_postgres.init_db()`
-- `execute_write()` and `execute_write_returning()` helpers added to `db_postgres.py`
+- `execute_write()` and `execute_write_returning()` helpers in `db_postgres.py`
 
-**To activate:** set `"engine": "postgres"` in `config.json` under `database`.
+#### ⚠️ Known bugs blocking activation
 
-### Phase 4 — Electron Alignment (not started)
+**BUG 1 — DATEDIFF division operator** (`modules/db.py` ~line 278–280):
+```python
+# WRONG (backslash instead of forward-slash):
+f'(EXTRACT(EPOCH FROM ({end} - {start})) \ 60)::INTEGER'   # MINUTE
+f'(EXTRACT(EPOCH FROM ({end} - {start})) \ 3600)::INTEGER' # HOUR
+# Fix: replace \ with /
+```
+Affects `DATEDIFF(MINUTE …)` and `DATEDIFF(HOUR …)` translations — silently returns wrong values.
+
+**BUG 2 — `FirebirdCursorProxy._translate_query()` is incomplete** (`modules/db.py` ~line 145):
+The proxy's internal `_translate_query()` only handles `substr`→`substring` and
+`length`→`char_length`. It does **not** call `_translate_fb_to_pg()`, so dual-write
+enqueues partially-translated SQL (missing UPSERT, DATEDIFF, FETCH FIRST). The worker
+re-translates on dequeue, partially masking the issue, but the pre-enqueue pass is
+inconsistent.
+
+**To activate Phase 3:** fix both bugs, then set `"engine": "postgres"` in `config.json`.
+
+### Phase 4 — Electron Alignment ❌ (not started)
 
 Requires Phase 3 cutover to be stable. Then migrate `electron/db.ts` from `node-firebird`
 to a Postgres client (e.g. `pg` or `postgres`).

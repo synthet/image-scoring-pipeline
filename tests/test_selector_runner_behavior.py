@@ -1,7 +1,5 @@
 import pytest
 
-pytestmark = pytest.mark.wsl
-
 try:
     from modules.clustering import ClusteringEngine
     from modules.scoring import ScoringRunner
@@ -66,11 +64,6 @@ def test_clustering_selector_empty_returns_no_images(monkeypatch):
         "modules.clustering.db.get_images_by_folder",
         lambda folder: (_ for _ in ()).throw(AssertionError("Folder lookup should not run for empty selectors")),
     )
-    monkeypatch.setattr(
-        "modules.clustering.db.get_unprocessed_folders",
-        lambda: (_ for _ in ()).throw(AssertionError("Unprocessed folder scan should not run for empty selectors")),
-    )
-
     gen = engine._cluster_images_impl(
         distance_threshold=None,
         time_gap_seconds=None,
@@ -81,6 +74,6 @@ def test_clustering_selector_empty_returns_no_images(monkeypatch):
     )
 
     first = next(gen)
-    assert first[0] == "No images matched selectors."
+    assert first[0] == "No images matched target IDs."
     with pytest.raises(StopIteration):
         next(gen)

@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.22.0] - 2026-03-26
+
+### Added
+- **DB connector** (`modules/db_connector/`): `IConnector` / `ITransaction` with Firebird, PostgreSQL, and HTTP (`ApiConnector`) backends; `database.engine` selects implementation; Firebird-dialect SQL with per-backend translation.
+- **DB client** (`modules/db_client/`): `DbClientProtocol` with local (delegates to `modules.db`) and HTTP (`DbClientHttp`) implementations for decoupling pipeline code from monolith imports.
+- **Database API** (`modules/api_db.py`, `modules/ui/app.py`): FastAPI router `/api/db` — `GET /ping`, `POST /query` (reads + optional writes via `X-DB-Write-Token` / `database.query_token`), `POST /transaction`; mounted with the WebUI app.
+- **Engines** (`modules/engines/`): `IScoringEngine`, `ILiqeScorer`, `ITaggingEngine`, `IClusteringEngine` protocols plus mock implementations for unit tests.
+- **Scripts** (`scripts/python/`): NEF testing samples manifest, download, verify, and URL/readme helpers for sample RAW workflows.
+- **Docs** (`docs/architecture/DB_CONNECTOR.md`, `docs/architecture/microservices_proposal.md`): Connector design and microservices notes.
+- **Docker refresh** (`docker_refresh_webui.bat`): Convenience script for rebuilding/refreshing the WebUI container stack.
+- **Tests**: `tests/support/` fakes, `tests/test_db_connector.py`, `tests/test_db_leaks.py`, `tests/test_job_dispatcher_fakes.py`, `tests/test_mock_pipeline.py`, `tests/test_pipeline_orchestrator_fakes.py`, `tests/test_postgres_integration.py`, `tests/test_runner_early_fail_terminal_job_status.py`, `tests/test_scoring_runner_mock_engine.py`, `tests/test_testing_samples_integration.py`, `tests/test_testing_samples_smoke.py`, plus broader updates to existing suites.
+
+### Changed
+- **DB** (`modules/db.py`): Widespread integration with the connector layer and related query/exec paths; continued Firebird/Postgres/dual-write behavior aligned with `get_connector()`.
+- **API** (`modules/api.py`): Wiring and guarded SQL query endpoint behavior documented alongside DB API controls (`database.enable_api_db_query`, row limits, write policy).
+- **Pipeline / runners** (`modules/engine.py`, `modules/scoring.py`, `modules/tagging.py`, `modules/clustering.py`, `modules/similar_search.py`, `modules/indexing_runner.py`, `modules/metadata_runner.py`, `modules/pipeline.py`, `modules/pipeline_orchestrator.py`, `modules/job_dispatcher.py`): Use injectable engines and connector-aware DB access where applicable.
+- **Postgres** (`modules/db_postgres.py`): Extensions for connector-aligned usage.
+- **Docker** (`Dockerfile`, `.dockerignore`): Image and ignore rules updated for current build layout.
+- **Frontend / static** (`frontend/`, `static/app/`, `scripts/python/generate_favicon.py`): Favicon and SPA asset refresh; `frontend/vite.config.ts` tweaks.
+- **Docs** (`docs/INDEX.md`, `docs/plans/database/*`, `docs/testing/TEST_STATUS.md`): Index and migration/test planning updates.
+- **Misc** (`cli.py`, `pytest.ini`, `requirements/requirements_exif.txt`, `modules/mcp_server_firebird.py`, `modules/ui/app.py`, `docker_rebuild.bat`, `RunWebUI.exe`, `TODO.md`): Small tooling and dependency adjustments.
+
+### Fixed
+- **Tests** (`tests/conftest.py`, `tests/test_resolved_paths.py`, `tests/test_stacks.py`, `tests/test_mcp_firebird.py`, and related): Stability and path/DB fixes for CI and local runs.
+
 ## [4.21.0] - 2026-03-26
 
 ### Added

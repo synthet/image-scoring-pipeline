@@ -41,32 +41,35 @@ def test_db():
     
     unique_id = uuid.uuid4().hex[:8]
     test_db_path = os.path.abspath(f"TEST_stacks_{unique_id}.fdb")
-    db.DB_PATH = test_db_path
-    
-    # Create valid empty Firebird DB using isql
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    fb_dir = os.path.join(project_root, "Firebird")
-    isql_exe = os.path.join(fb_dir, "isql.exe")
-    
-    if os.path.exists(isql_exe):
-        import subprocess
-        # Use full path for DB to avoid ambiguity
-        db_path_arg = test_db_path
-        cmd = f"CREATE DATABASE '{db_path_arg}' user 'SYSDBA' password 'masterkey'; EXIT;"
-        
-        env = os.environ.copy()
-        env["FIREBIRD"] = fb_dir
-        
-        try:
-            subprocess.run([isql_exe, '-q'], input=cmd.encode(), stderr=subprocess.PIPE, env=env, check=True)
-        except subprocess.CalledProcessError as e:
-            pytest.fail(f"Failed to create test database: {e.stderr.decode()}")
-    else:
-        pytest.fail(f"Firebird isql.exe not found at {isql_exe}")
+    seed = os.path.join(project_root, "scoring_history_test.fdb")
+    if not os.path.exists(seed):
+        pytest.skip(
+            "scoring_history_test.fdb missing — run pytest once so conftest runs scripts/setup_test_db.py"
+        )
 
-    # Initialize Schema
+    shutil.copy2(seed, test_db_path)
+    db.DB_PATH = test_db_path
+    db.reset_init_db_state_for_tests()
+
     try:
         db.init_db()
+        conn = db.get_db()
+        c = conn.cursor()
+        for table in (
+            "culling_picks",
+            "culling_sessions",
+            "file_paths",
+            "images",
+            "stacks",
+            "folders",
+        ):
+            try:
+                c.execute(f"DELETE FROM {table}")
+            except Exception:
+                pass
+        conn.commit()
+        conn.close()
         _create_test_images()
     except Exception as e:
         # Cleanup if init fails
@@ -79,13 +82,9 @@ def test_db():
         pytest.fail(f"Failed to initialize DB schema: {e}")
          
     yield
-    
-    # Teardown
+
     db.DB_PATH = original_db_path
-    
-    # Teardown
-    db.DB_PATH = original_db_path
-    
+
     # Force close any connections
     try:
         # If db module has a global connection cache, clear it

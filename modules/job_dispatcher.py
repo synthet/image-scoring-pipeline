@@ -75,6 +75,10 @@ class JobDispatcher:
                 logger.exception("JobDispatcher tick failed: %s", exc)
             self._stop_event.wait(self.poll_interval)
 
+    def tick_for_tests(self) -> None:
+        """Single dispatch iteration for unit tests (does not require start())."""
+        self._tick()
+
     def _tick(self):
         if self._any_runner_busy():
             return

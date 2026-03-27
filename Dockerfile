@@ -1,4 +1,5 @@
-# Use NVIDIA CUDA 12.6 runtime as base for GPU support
+# syntax=docker/dockerfile:1
+# BuildKit cache mounts reuse downloaded .debs and pip wheels across builds (no --no-cache).
 FROM nvidia/cuda:12.6.0-cudnn-runtime-ubuntu22.04
 
 # Set non-interactive mode for apt-get
@@ -13,7 +14,8 @@ ENV DOCKER_CONTAINER=1
 ENV LD_LIBRARY_PATH=/app/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib:$LD_LIBRARY_PATH
 
 # Install system dependencies (incl. Python 3.11)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     gnupg \
@@ -26,7 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python 3.11 from deadsnakes PPA (Ubuntu 22.04 default is 3.10)
-RUN add-apt-repository ppa:deadsnakes/ppa && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     python3.11-venv \
@@ -41,12 +44,12 @@ RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && \
 # Set working directory
 WORKDIR /app
 
-# Upgrade pip
-RUN python3 -m pip install --no-cache-dir --upgrade pip
-
-# Copy requirements first to leverage Docker cache
+# Copy requirements first to leverage Docker layer cache (only reruns pip when this file changes)
 COPY requirements/requirements_wsl_gpu.txt /tmp/requirements.txt
-RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt
+# Pip uses BuildKit cache mount so wheels stay on the daemon between builds even if this step reruns
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m pip install --upgrade pip \
+    && python3 -m pip install -r /tmp/requirements.txt
 
 # Copy source code
 COPY . .

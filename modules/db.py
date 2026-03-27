@@ -25,8 +25,6 @@ except ImportError:
     create_database = None 
 
 import shutil
-from modules import config
-from modules.events import event_manager
 
 logger = logging.getLogger(__name__)
 DEBUG_DB_CONNECTION = os.environ.get("DEBUG_DB_CONNECTION", "").lower() in ("1", "true", "yes")
@@ -205,21 +203,27 @@ _DUAL_WRITE_STATS = {"queued": 0, "success": 0, "fail": 0}
 # ---------------------------------------------------------------------------
 
 # UPDATE OR INSERT INTO t (cols) VALUES (?) MATCHING (col) [RETURNING col]
+# UPDATE OR INSERT INTO t (cols) VALUES (...) MATCHING (col) [RETURNING col]
+# Uses a more non-greedy approach for parens to avoid over-matching, 
+# though truly nested parens still require a parser.
 _FB_UPSERT_RE = re.compile(
-    r'UPDATE\s+OR\s+INSERT\s+INTO\s+(\w+)\s*'   # table name
-    r'\(([^)]+)\)\s*'                            # (col_list)
-    r'VALUES\s*\(([^)]+)\)\s*'                  # VALUES (val_list)
-    r'MATCHING\s*\(([^)]+)\)'                   # MATCHING (match_cols)
-    r'((?:\s+RETURNING\s+\w+)?)',               # optional RETURNING
+    r'UPDATE\s+OR\s+INSERT\s+INTO\s+(\w+)\s*'   # 1: table name
+    r'\((.*?)\)\s*'                              # 2: (col_list)
+    r'VALUES\s*\((.*?)\)\s*'                    # 3: VALUES (val_list)
+    r'MATCHING\s*\((.*?)\)'                     # 4: MATCHING (match_cols)
+    r'((?:\s+RETURNING\s+\w+)?)',               # 5: optional RETURNING
+    re.IGNORECASE | re.DOTALL,
+)
+
+# DATEDIFF(UNIT FROM col1 TO col2)
+_FB_DATEDIFF_RE = re.compile(
+    r'DATEDIFF\s*\(\s*(SECOND|MINUTE|HOUR|DAY)\s+FROM\s+([\w.]+)\s+TO\s+([\w.]+)\s*\)',
     re.IGNORECASE,
 )
 
-# SELECT FIRST n  (top-level; subquery form handled in Phase 3 read routing)
-_FB_FIRST_RE = re.compile(r'\bSELECT\s+FIRST\s+(\d+)\b', re.IGNORECASE)
-
-# DATEDIFF(SECOND FROM col1 TO col2)
-_FB_DATEDIFF_RE = re.compile(
-    r'DATEDIFF\s*\(\s*SECOND\s+FROM\s+([\w.]+)\s+TO\s+([\w.]+)\s*\)',
+# SELECT FIRST n …  (Firebird top-level row limit)
+_FB_FIRST_RE = re.compile(
+    r'\bSELECT\s+FIRST\s+(\d+)\s+',
     re.IGNORECASE,
 )
 
@@ -264,10 +268,21 @@ def _translate_fb_to_pg(query: str) -> str:
         query = query.rstrip().rstrip(';') + f' LIMIT {n}'
 
     # 3 – DATEDIFF
-    query = _FB_DATEDIFF_RE.sub(
-        lambda m2: f'EXTRACT(EPOCH FROM ({m2.group(2)} - {m2.group(1)}))::INTEGER',
-        query,
-    )
+    def _datediff_replace(m2: re.Match) -> str:
+        unit = m2.group(1).upper()
+        start = m2.group(2)
+        end = m2.group(3)
+        if unit == 'SECOND':
+            return f'EXTRACT(EPOCH FROM ({end} - {start}))::INTEGER'
+        elif unit == 'MINUTE':
+            return f'(EXTRACT(EPOCH FROM ({end} - {start})) / 60)::INTEGER'
+        elif unit == 'HOUR':
+            return f'(EXTRACT(EPOCH FROM ({end} - {start})) / 3600)::INTEGER'
+        elif unit == 'DAY':
+            return f'EXTRACT(DAY FROM ({end} - {start}))::INTEGER'
+        return m2.group(0)
+
+    query = _FB_DATEDIFF_RE.sub(_datediff_replace, query)
 
     # 3b – Firebird "ROWS ?" row-limit → PostgreSQL "LIMIT ?"
     query = re.sub(r'\bROWS\s+\?', 'LIMIT ?', query, flags=re.IGNORECASE)
@@ -287,6 +302,183 @@ def _translate_fb_to_pg(query: str) -> str:
     for i in range(0, len(parts), 2):
         parts[i] = parts[i].replace('?', '%s')
     return "'".join(parts)
+
+
+def _count_placeholders_firebird_style(sql: str) -> int:
+    """Count ``?`` placeholders outside single-quoted string literals."""
+    parts = sql.split("'")
+    return sum(parts[i].count("?") for i in range(0, len(parts), 2))
+
+
+def validate_readonly_sql_for_api(query: str) -> str | None:
+    """Return an error message if ``query`` is not allowed for /api/db/query; else None."""
+    text = (query or "").strip()
+    if not text:
+        return "Empty query"
+    upper = text.upper()
+    if not (upper.startswith("SELECT") or upper.startswith("WITH")):
+        return "Only read-only SELECT or WITH...SELECT queries are allowed"
+    dangerous_patterns = [
+        r"\bDROP\b",
+        r"\bDELETE\b",
+        r"\bINSERT\b",
+        r"\bUPDATE\b",
+        r"\bALTER\b",
+        r"\bCREATE\b",
+        r"\bTRUNCATE\b",
+        r"\bGRANT\b",
+        r"\bREVOKE\b",
+        r"--",
+        r";--",
+    ]
+    for pattern in dangerous_patterns:
+        if re.search(pattern, upper):
+            return f"Query contains forbidden pattern: {pattern}"
+    return None
+
+
+def execute_readonly_sql_for_api(
+    sql: str,
+    params: list | None = None,
+    *,
+    max_rows: int = 5000,
+) -> list[dict]:
+    """Run a validated read-only query for the Electron HTTP DB bridge (Firebird ``?`` params).
+
+    Uses the active engine (``_get_db_engine()``). For PostgreSQL, applies
+    ``_translate_fb_to_pg`` so clients can send the same SQL as for Firebird.
+    """
+    err = validate_readonly_sql_for_api(sql)
+    if err:
+        raise ValueError(err)
+    params = list(params) if params is not None else []
+    n_mark = _count_placeholders_firebird_style(sql)
+    if n_mark != len(params):
+        raise ValueError(
+            f"Parameter count mismatch: SQL has {n_mark} placeholders, got {len(params)} bound values"
+        )
+    max_rows = max(1, min(int(max_rows), 50_000))
+
+    if _get_db_engine() == "postgres":
+        if not db_postgres:
+            raise RuntimeError("database.engine is postgres but db_postgres is unavailable")
+        import psycopg2.extras
+
+        pg_sql = _translate_fb_to_pg(sql)
+        with db_postgres.PGConnectionManager() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(pg_sql, tuple(params) if params else None)
+                rows = cur.fetchmany(max_rows)
+                return [dict(r) for r in rows]
+
+    with connection() as conn:
+        c = conn.cursor()
+        try:
+            from firebird.driver import tpb, Isolation, TraAccessMode
+
+            ro_tpb = tpb(
+                isolation=Isolation.READ_COMMITTED_RECORD_VERSION,
+                access_mode=TraAccessMode.READ,
+            )
+            conn.begin(tpb=ro_tpb)
+        except Exception:
+            pass
+        if params:
+            c.execute(sql, tuple(params))
+        else:
+            c.execute(sql)
+        rows = c.fetchmany(max_rows)
+        columns = [d[0] for d in c.description] if c.description else []
+        return [dict(zip(columns, row)) for row in rows]
+
+
+def validate_write_sql_for_api(query: str) -> str | None:
+    """Return an error message if ``query`` is not allowed for mutating /api/db/query; else None."""
+    text = (query or "").strip()
+    if not text:
+        return "Empty query"
+    upper = text.upper()
+    if not (
+        upper.startswith("INSERT")
+        or upper.startswith("UPDATE")
+        or upper.startswith("DELETE")
+    ):
+        return "Write queries must start with INSERT, UPDATE, or DELETE (Firebird UPDATE OR INSERT is allowed)"
+    dangerous_patterns = [
+        r"\bDROP\b",
+        r"\bALTER\b",
+        r"\bCREATE\b",
+        r"\bTRUNCATE\b",
+        r"\bGRANT\b",
+        r"\bREVOKE\b",
+        r";--",
+    ]
+    for pattern in dangerous_patterns:
+        if re.search(pattern, upper):
+            return f"Query contains forbidden pattern: {pattern}"
+    return None
+
+
+def execute_write_sql_for_api(sql: str, params: list | None = None) -> list[dict]:
+    """Run INSERT/UPDATE/DELETE for the Electron HTTP DB bridge (Firebird ``?`` params).
+
+    Commits on success. Returns result rows when the statement produces a cursor description
+    (e.g. INSERT ... RETURNING, Firebird RETURNING), else an empty list.
+    """
+    err = validate_write_sql_for_api(sql)
+    if err:
+        raise ValueError(err)
+    params = list(params) if params is not None else []
+    n_mark = _count_placeholders_firebird_style(sql)
+    if n_mark != len(params):
+        raise ValueError(
+            f"Parameter count mismatch: SQL has {n_mark} placeholders, got {len(params)} bound values"
+        )
+
+    if _get_db_engine() == "postgres":
+        if not db_postgres:
+            raise RuntimeError("database.engine is postgres but db_postgres is unavailable")
+        import psycopg2.extras
+
+        pg_sql = _translate_fb_to_pg(sql)
+        with db_postgres.PGConnectionManager(commit=True) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(pg_sql, tuple(params) if params else None)
+                if cur.description:
+                    rows = cur.fetchall()
+                    return [dict(r) for r in rows]
+                return []
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        if params:
+            c.execute(sql, tuple(params))
+        else:
+            c.execute(sql)
+        if c.description:
+            rows = c.fetchall()
+            columns = [d[0] for d in c.description]
+            out = [
+                {str(k).lower(): v for k, v in zip(columns, row)}
+                for row in rows
+            ]
+            conn.commit()
+            return out
+        conn.commit()
+        return []
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 
 def _dual_write_worker():
     if not db_postgres:
@@ -681,13 +873,108 @@ def _humanize_firebird_connect_error(exc: BaseException, ctx: dict) -> str:
     return f"Firebird connection failed. Details: {raw_one}"
 
 
+def _resolve_firebird_host() -> str:
+    """Resolve the host IP for Firebird connection, especially for WSL/Docker."""
+    is_docker = os.environ.get("DOCKER_CONTAINER") == "1"
+    
+    # 0. Check Cache
+    global _cached_host_ip
+    with _IP_RESOLVE_LOCK:
+        host_ip = _cached_host_ip
+    
+    if host_ip:
+        return host_ip
+
+    # 1. Try Env Var
+    host_ip = os.environ.get("FIREBIRD_HOST")
+    if host_ip:
+        if DEBUG_DB_CONNECTION:
+            logger.debug("WSL: Using host_ip from FIREBIRD_HOST: %s", host_ip)
+    
+    # 2. Check for Docker
+    elif is_docker:
+        host_ip = "host.docker.internal"
+        if DEBUG_DB_CONNECTION:
+            logger.debug("WSL: Using host_ip for Docker: %s", host_ip)
+
+    # 3. Try Default Gateway (Most reliable for WSL2)
+    if not host_ip:
+        try:
+            import subprocess
+            # output: default via 172.22.144.1 dev eth0 ...
+            route_out = subprocess.check_output(["ip", "route", "show", "default"], timeout=2).decode().strip()
+            if "via" in route_out:
+                host_ip = route_out.split("via")[1].split()[0]
+                if DEBUG_DB_CONNECTION:
+                    logger.debug("WSL: Resolved host_ip via ip route: %s", host_ip)
+        except Exception as e:
+            logger.debug("Could not resolve default gateway: %s", e)
+
+    # 4. Fallback to Resolv.conf
+    if not host_ip:
+        try:
+            if os.path.exists("/etc/resolv.conf"):
+                with open("/etc/resolv.conf", "r") as f:
+                    for line in f:
+                        if "nameserver" in line:
+                            host_ip = line.split()[1]
+                            if DEBUG_DB_CONNECTION:
+                                logger.debug("WSL: Fallback host_ip via resolv.conf: %s", host_ip)
+                            break
+        except (OSError, IndexError) as e:
+            logger.debug("Could not read resolv.conf: %s", e)
+            
+    if not host_ip:
+        host_ip = "127.0.0.1"
+        if DEBUG_DB_CONNECTION:
+            logger.debug("WSL: Host resolution failed, defaulting to 127.0.0.1")
+    
+    # Update Cache
+    with _IP_RESOLVE_LOCK:
+        _cached_host_ip = host_ip
+    
+    return host_ip
+
+
+def _get_firebird_dsn(ctx: dict) -> str:
+    """Construct the Firebird DSN based on OS and configuration."""
+    use_local = os.environ.get("FIREBIRD_USE_LOCAL_PATH", "").strip() in ("1", "true", "yes")
+    ctx["use_local_path"] = use_local
+    
+    if os.name == 'nt':
+        win_path = DB_PATH
+        ctx["win_path"] = win_path
+        if use_local:
+            return win_path
+        return f"127.0.0.1/3050:{win_path}"
+    
+    # Linux/WSL
+    host_ip = _resolve_firebird_host()
+    ctx["host_ip"] = host_ip
+    
+    try:
+        win_path = _to_win_path(_PROJECT_ROOT) + "\\" + DB_FILE
+        env_win_path = os.environ.get("FIREBIRD_WIN_DB_PATH")
+        if env_win_path:
+            win_path = env_win_path
+    except (TypeError, ValueError):
+        win_path = DB_FILE # Fallback
+        
+    ctx["win_path"] = win_path
+    
+    if use_local:
+        return os.path.join(_PROJECT_ROOT, DB_FILE)
+    
+    return f"inet://{host_ip}/{win_path}"
+
+
 def get_db():
     import time
     t0 = time.perf_counter()
     fb_connect_ctx = {
         "dsn": None,
         "host_ip": None,
-        "is_docker": False,
+        "is_docker": os.environ.get("DOCKER_CONTAINER") == "1",
         "use_local_path": False,
         "win_path": None,
     }
@@ -703,207 +990,40 @@ def get_db():
                 logger.debug("get_db using Postgres primary connection")
             return PostgresConnectionProxy(conn)
 
-        if engine not in ("firebird", "postgres"):
-            logger.warning("Unknown database.engine=%r; defaulting to Firebird path", engine)
-
-        # Check if Firebird driver is available
         if connect is None:
              raise ImportError("firebird-driver not installed")
 
-        # Configure connection
-        # Configure connection
-        # Assuming Embedded structure: db file in project root, dlls in Firebird/
-        if os.name == 'nt':
-             # Windows: Use TCP with explicit port so MCP servers and UI sharing DB don't lock each other out.
-             # Using 127.0.0.1/3050: prevents the embedded fbclient.dll from using local IPC.
-             # FIREBIRD_USE_LOCAL_PATH=1 allows fallback to embedded local DB file access if necessary
-             win_path = DB_PATH
-             use_local = os.environ.get("FIREBIRD_USE_LOCAL_PATH", "").strip() in ("1", "true", "yes")
-             if use_local:
-                 dsn = win_path
-             else:
-                 dsn = f"127.0.0.1/3050:{win_path}"
+        dsn = _get_firebird_dsn(fb_connect_ctx)
+        fb_connect_ctx["dsn"] = dsn
 
-             fb_connect_ctx["dsn"] = dsn
-             fb_connect_ctx["use_local_path"] = use_local
-             fb_connect_ctx["is_docker"] = os.environ.get("DOCKER_CONTAINER") == "1"
+        # OS-specific driver setup and server auto-start
+        if os.name != 'nt' and not fb_connect_ctx["use_local_path"]:
+            # Linux setup
+            if driver_config and hasattr(driver_config, "fb_client_library") and FB_CLIENT_LIBRARY:
+                driver_config.fb_client_library.value = FB_CLIENT_LIBRARY
+            
+            # Auto-start check
+            if not fb_connect_ctx["is_docker"] and not _is_firebird_running(fb_connect_ctx["host_ip"]):
+                win_root = _to_win_path(_PROJECT_ROOT)
+                fb_exe_win = os.path.join(win_root, "Firebird", "firebird.exe")
+                _launch_firebird_server_wsl(fb_exe_win)
+                time.sleep(3)
 
-             if DEBUG_DB_CONNECTION:
-                 logger.debug("get_db connecting to DSN: %s (local fallback: %s)", dsn, use_local)
-                 if hasattr(driver_config, 'fb_client_library'):
-                     logger.debug("Client Lib: %s", driver_config.fb_client_library.value)
-             
-        else:
-             # Linux/WSL
-             if driver_config and connect:
-                 # Ensure we never point at the Windows DLL on Linux/WSL.
-                 if hasattr(driver_config, "fb_client_library") and FB_CLIENT_LIBRARY:
-                     driver_config.fb_client_library.value = FB_CLIENT_LIBRARY
-
-                 global _logged_wsl_info
-                 lib_dir = None
-                 if FB_CLIENT_LIBRARY and ("/" in FB_CLIENT_LIBRARY or "\\" in FB_CLIENT_LIBRARY) and os.path.exists(FB_CLIENT_LIBRARY):
-                     lib_dir = os.path.dirname(FB_CLIENT_LIBRARY)
-
-                 if lib_dir:
-                     if not _logged_wsl_info:
-                         logger.info("WSL Info: Ensure LD_LIBRARY_PATH includes %s", lib_dir)
-                         _logged_wsl_info = True
-                 else:
-                     if not _logged_wsl_info:
-                         logger.warning("Linux Firebird client lib not found/resolvable (FB_CLIENT_LIBRARY=%r)", FB_CLIENT_LIBRARY)
-                         _logged_wsl_info = True
-
-             # Must use TCP to Windows Host to avoid corruption and locking issues
-             # Use cached host so all threads (MainThread, JobDispatcher) share the same
-             # value. Otherwise JobDispatcher may get resolv.conf nameserver (10.255.255.254)
-             # when ip route fails in its thread, which does not run Firebird.
-             
-             is_docker = os.environ.get("DOCKER_CONTAINER") == "1"
-             # 0. Check Cache
-             global _cached_host_ip
-             with _IP_RESOLVE_LOCK:
-                 host_ip = _cached_host_ip
-             
-             if not host_ip:
-                 # 1. Try Env Var
-                 host_ip = os.environ.get("FIREBIRD_HOST")
-                 if host_ip and DEBUG_DB_CONNECTION:
-                     logger.debug("WSL: Using host_ip from FIREBIRD_HOST: %s", host_ip)
-                 
-                 # 2. Check for Docker
-                 if is_docker and not host_ip:
-                     host_ip = "host.docker.internal"
-                     if DEBUG_DB_CONNECTION:
-                         logger.debug("WSL: Using host_ip for Docker: %s", host_ip)
-
-                 # 3. Try Default Gateway (Most reliable for WSL2)
-                 if not host_ip:
-                     try:
-                         import subprocess
-                         # output: default via 172.22.144.1 dev eth0 ...
-                         route_out = subprocess.check_output(["ip", "route", "show", "default"], timeout=2).decode().strip()
-                         if "via" in route_out:
-                             host_ip = route_out.split("via")[1].split()[0]
-                             if DEBUG_DB_CONNECTION:
-                                 logger.debug("WSL: Resolved host_ip via ip route: %s", host_ip)
-                     except Exception as e:
-                         logger.debug("Could not resolve default gateway: %s", e)
-
-                 # 4. Fallback to Resolv.conf
-                 if not host_ip:
-                     try:
-                         if os.path.exists("/etc/resolv.conf"):
-                             with open("/etc/resolv.conf", "r") as f:
-                                 for line in f:
-                                     if "nameserver" in line:
-                                         host_ip = line.split()[1]
-                                         if DEBUG_DB_CONNECTION:
-                                             logger.debug("WSL: Fallback host_ip via resolv.conf: %s", host_ip)
-                                         break
-                     except (OSError, IndexError) as e:
-                         logger.debug("Could not read resolv.conf: %s", e)
-                         
-                 if not host_ip:
-                     host_ip = "127.0.0.1"
-                     if DEBUG_DB_CONNECTION:
-                         logger.debug("WSL: Host resolution failed, defaulting to 127.0.0.1")
-                 
-                 # Update Cache
-                 with _IP_RESOLVE_LOCK:
-                     _cached_host_ip = host_ip
-             
-             # Need to map the path correctly. Firebird on Windows expects Windows path.
-             # We assume DB_FILE ("scoring_history.fdb") is in the simple root.
-             # We need the ABSOLUTE WINDOWS PATH for the DSN.
-             
-             try:
-                 win_path = _to_win_path(_PROJECT_ROOT) + "\\" + DB_FILE
-                 # In Docker, _PROJECT_ROOT is /app so _to_win_path produces \app\... (wrong).
-                 # Allow the caller to pass the real Windows path via FIREBIRD_WIN_DB_PATH.
-                 env_win_path = os.environ.get("FIREBIRD_WIN_DB_PATH")
-                 if env_win_path:
-                     win_path = env_win_path
-                     if DEBUG_DB_CONNECTION:
-                         logger.debug("Docker: Using FIREBIRD_WIN_DB_PATH: %s", win_path)
-             except (TypeError, ValueError) as e:
-                 logger.debug("Could not build win_path for DSN: %s", e)
-
-             if is_docker and not os.environ.get("FIREBIRD_WIN_DB_PATH"):
-                 logger.warning(
-                     "Docker: FIREBIRD_WIN_DB_PATH is not set. "
-                     "DSN will use computed path '%s' which is likely wrong. "
-                     "Set FIREBIRD_WIN_DB_PATH to the Windows path of the FDB file "
-                     "(e.g. D:/Projects/image-scoring-backend/SCORING_HISTORY.FDB).",
-                     win_path,
-                 )
-
-             global _logged_dsn
-             # FIREBIRD_USE_LOCAL_PATH=1: use WSL path (embedded) instead of inet - workaround for "file in use" on Windows server
-             use_local = os.environ.get("FIREBIRD_USE_LOCAL_PATH", "").strip() in ("1", "true", "yes")
-             if use_local:
-                 local_db = os.path.join(_PROJECT_ROOT, DB_FILE)
-                 dsn = local_db
-                 # Auto-create DB if missing (Firebird does not create on connect like SQLite)
-                 if not os.path.exists(local_db) and create_database:
-                     try:
-                         logger.info("WSL: Creating new Firebird database at %s", local_db)
-                         create_database(local_db, user=DB_USER, password=DB_PASS)
-                     except Exception as e:
-                         logger.warning("Could not auto-create DB: %s", e)
-                 if not _logged_dsn:
-                     logger.info("WSL: Using local path (FIREBIRD_USE_LOCAL_PATH): %s", dsn)
-                     _logged_dsn = True
-             else:
-                 dsn = f"inet://{host_ip}/{win_path}"
-             
-             # Auto-start Firebird Server if needed (WSL -> Windows) - skip when using local path
-             # Skip auto-start in Docker for now as it's more complex to reach host process
-             if not use_local and not is_docker and not _is_firebird_running(host_ip):
-                 if not _logged_dsn:
-                     logger.warning("WSL: Firebird Server not detected on %s:3050. Attempting to start...", host_ip)
-                 
-                 # We need to launch firebird.exe -a on Windows
-                 # Path assumption: relative to project or hardcoded fallback
-                 # We try to infer from current location: /mnt/x/path/to/project -> x:\\path\\to\\project
-                 # Use dynamic project root
-                 win_root = _to_win_path(_PROJECT_ROOT)
-                 fb_exe_win = os.path.join(win_root, "Firebird", "firebird.exe")
-
-                 _launch_firebird_server_wsl(fb_exe_win)
-                 time.sleep(3) # Wait for startup
-
-             if not _logged_dsn:
-                 logger.info("WSL: Connecting to %s", dsn)
-                 _logged_dsn = True
-
-             fb_connect_ctx["dsn"] = dsn
-             fb_connect_ctx["host_ip"] = host_ip
-             fb_connect_ctx["is_docker"] = is_docker
-             fb_connect_ctx["use_local_path"] = use_local
-             fb_connect_ctx["win_path"] = win_path
-
-
-        # Basic connection (serialized: firebird driver_config + DPB build are not thread-safe)
+        # Connect
         if DEBUG_DB_CONNECTION:
             logger.debug("get_db attempting connect to dsn=%s", dsn)
+            
         try:
             with _DB_CONNECT_LOCK:
                 conn = connect(dsn, user=DB_USER, password=DB_PASS, charset='UTF8')
-            if DEBUG_DB_CONNECTION:
-                logger.debug("get_db connection successful")
         except Exception as e:
             friendly = _humanize_firebird_connect_error(e, fb_connect_ctx)
             logger.error("Database connection failed: %s", friendly)
-            if DEBUG_DB_CONNECTION:
-                logger.debug("Firebird driver error (traceback follows)", exc_info=True)
             raise FirebirdConnectionFailed(friendly) from e
 
-        # print(f"DEBUG: get_db dsn={dsn} conn={conn} type={type(conn)}")
-        # print(f"DEBUG: get_db dsn={dsn} conn={conn}")
         return FirebirdConnectionProxy(conn)
 
-    except FirebirdConnectionFailed:
+    except (FirebirdConnectionFailed, ImportError, RuntimeError):
         raise
     except Exception as e:
         logger.error("get_db failed: %s", e)
@@ -925,7 +1045,20 @@ def connection():
 
 def _get_db_engine() -> str:
     """Return the configured DB engine: 'firebird' (default) or 'postgres'."""
-    return config.get_config_section("database").get("engine", "firebird")
+    return str(
+        config.get_config_section("database").get("engine", "firebird") or "firebird"
+    ).strip().lower()
+
+
+def get_connector():
+    """Return the active IConnector for this process.
+
+    Thin shim that lazily imports ``modules.db_connector.get_connector`` to
+    avoid circular imports at module load time.  Callers in this module can
+    use ``get_connector()`` instead of ``get_db()`` + cursor + commit + close.
+    """
+    from modules.db_connector import get_connector as _gc
+    return _gc()
 
 
 def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
@@ -1421,6 +1554,13 @@ def image_exists(file_path, current_version=None):
 
 _db_initialized = False
 
+
+def reset_init_db_state_for_tests():
+    """Allow ``init_db()`` to run again after tests switch ``DB_PATH`` to another file."""
+    global _db_initialized
+    _db_initialized = False
+
+
 def init_db():
     global _db_initialized
     if _db_initialized:
@@ -1854,6 +1994,24 @@ def _init_db_impl():
         # Yes, if we use fp_cols variable it is fine.
         
         logger.debug("Starting Schema updates...")
+        if not _table_exists(c, "FILE_PATHS"):
+            c.execute(
+                """CREATE TABLE file_paths (
+                    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                    image_id INTEGER NOT NULL,
+                    path VARCHAR(4000),
+                    last_seen TIMESTAMP,
+                    path_type VARCHAR(10) DEFAULT 'WSL',
+                    is_verified SMALLINT DEFAULT 0,
+                    verification_date TIMESTAMP
+                )"""
+            )
+            try:
+                conn.commit()
+            except Exception:
+                conn.rollback()
+            c = conn.cursor()
+
         c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'FILE_PATHS'")
         fp_cols = [row[0].strip().lower() for row in c.fetchall()]
         
@@ -2828,24 +2986,14 @@ def _init_db_impl():
             pass
 
 def get_image_by_hash(image_hash):
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one(
-            "SELECT * FROM images WHERE image_hash = %s", (image_hash,))
-        if not row:
-            return None
-        data = dict(row)
-        data['file_paths'] = get_all_paths(data['id'])
-        return data
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT * FROM images WHERE image_hash = ?", (image_hash,))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        data = dict(row)
-        data['file_paths'] = get_all_paths(data['id'])
-        return data
-    return None
+    row = get_connector().query_one(
+        "SELECT * FROM images WHERE image_hash = ?", (image_hash,)
+    )
+    if not row:
+        return None
+    data = dict(row)
+    data['file_paths'] = get_all_paths(data['id'])
+    return data
 
 
 def update_image_field(image_id: int, field_name: str, value) -> bool:
@@ -2873,12 +3021,10 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
         return False
     
     try:
-        conn = get_db()
-        c = conn.cursor()
-        # Safe because field_name is validated against whitelist
-        c.execute(f"UPDATE images SET {field_name} = ? WHERE id = ?", (value, image_id))
-        conn.commit()
-        conn.close()
+        # field_name is safe: validated against whitelist above
+        get_connector().execute(
+            f"UPDATE images SET {field_name} = ? WHERE id = ?", (value, image_id)
+        )
 
         # Dual-write: sync normalized keyword tables
         if field_name == 'keywords':
@@ -2904,36 +3050,47 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
 
 
 def update_image_path(image_hash, new_path):
-    conn = get_db()
-    c = conn.cursor()
+    from pathlib import Path
+    new_name = Path(new_path).name
     try:
-        # Also need to update file_name
-        from pathlib import Path
-        new_name = Path(new_path).name
-        c.execute("UPDATE images SET file_path = ?, file_name = ? WHERE image_hash = ?", (new_path, new_name, image_hash))
-        
-        # Also register in file_paths
-        # We need image_id
-        c.execute("SELECT id FROM images WHERE image_hash = ?", (image_hash,))
-        row = c.fetchone()
-        if row:
-            img_id = row[0]
-            c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?) MATCHING (image_id, path)", 
-                      (img_id, new_path, datetime.datetime.now()))
-        
+        if _get_db_engine() == "postgres":
+            db_postgres.execute_write(
+                "UPDATE images SET file_path = %s, file_name = %s WHERE image_hash = %s",
+                (new_path, new_name, image_hash),
+            )
+            row = db_postgres.execute_select_one(
+                "SELECT id FROM images WHERE image_hash = %s", (image_hash,)
+            )
+            if row:
+                db_postgres.execute_write(
+                    "INSERT INTO file_paths (image_id, path, last_seen)"
+                    " VALUES (%s, %s, %s)"
+                    " ON CONFLICT (image_id, path) DO UPDATE SET last_seen = EXCLUDED.last_seen",
+                    (row["id"], new_path, datetime.datetime.now()),
+                )
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute("UPDATE images SET file_path = ?, file_name = ? WHERE image_hash = ?", (new_path, new_name, image_hash))
+                c.execute("SELECT id FROM images WHERE image_hash = ?", (image_hash,))
+                row = c.fetchone()
+                if row:
+                    img_id = row[0]
+                    c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?) MATCHING (image_id, path)",
+                              (img_id, new_path, datetime.datetime.now()))
+                conn.commit()
+            finally:
+                conn.close()
 
-        conn.commit()
         # Post-update folder fix
         try:
-             update_image_folder_id(image_hash=image_hash) 
+            update_image_folder_id(image_hash=image_hash)
         except Exception: pass
-        
         return True
     except Exception as e:
         logging.error(f"Failed to update path for hash {image_hash}: {e}")
         return False
-    finally:
-        conn.close()
 
 
 def update_image_uuid(image_id: int, image_uuid: str) -> bool:
@@ -2945,66 +3102,93 @@ def update_image_folder_id(image_hash=None, image_id=None):
     """
     Helper to update folder_id for a single image.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        if image_hash:
-             c.execute("SELECT id, file_path FROM images WHERE image_hash = ?", (image_hash,))
-        elif image_id:
-             c.execute("SELECT id, file_path FROM images WHERE id = ?", (image_id,))
-        else:
-             return
+        if _get_db_engine() == "postgres":
+            if image_hash:
+                row = db_postgres.execute_select_one(
+                    "SELECT id, file_path, folder_id FROM images WHERE image_hash = %s", (image_hash,)
+                )
+            elif image_id:
+                row = db_postgres.execute_select_one(
+                    "SELECT id, file_path, folder_id FROM images WHERE id = %s", (image_id,)
+                )
+            else:
+                return
+            if row and row["file_path"]:
+                img_id = row["id"]
+                old_folder_id = row["folder_id"]
+                dirname = os.path.normpath(os.path.dirname(row["file_path"]))
+                fid = get_or_create_folder(dirname)
+                db_postgres.execute_write(
+                    "UPDATE images SET folder_id = %s WHERE id = %s", (fid, img_id)
+                )
+                if fid:
+                    invalidate_folder_phase_aggregates(folder_id=fid)
+                if old_folder_id and old_folder_id != fid:
+                    invalidate_folder_phase_aggregates(folder_id=old_folder_id)
+            return
 
-        row = c.fetchone()
-        if row:
-             img_id = row[0]
-             path = row[1]
-             c.execute("SELECT folder_id FROM images WHERE id = ?", (img_id,))
-             old_row = c.fetchone()
-             old_folder_id = old_row[0] if old_row else None
-             if path:
-                 dirname = os.path.dirname(path)
-                 dirname = os.path.normpath(dirname)
-                 # This calls get_or_create_folder which opens its own connection. 
-                 # Should be fine if we are not holding a write lock on main conn.
-                 conn.close() # Close read lock
-                 
-                 fid = get_or_create_folder(dirname)
-                 
-                 conn = get_db()
-                 c = conn.cursor()
-                 c.execute("UPDATE images SET folder_id = ? WHERE id = ?", (fid, img_id))
-                 conn.commit()
-                 if fid:
-                     invalidate_folder_phase_aggregates(folder_id=fid)
-                 if old_folder_id and old_folder_id != fid:
-                     invalidate_folder_phase_aggregates(folder_id=old_folder_id)
+        conn = get_db()
+        c = conn.cursor()
+        try:
+            if image_hash:
+                c.execute("SELECT id, file_path FROM images WHERE image_hash = ?", (image_hash,))
+            elif image_id:
+                c.execute("SELECT id, file_path FROM images WHERE id = ?", (image_id,))
+            else:
+                return
+
+            row = c.fetchone()
+            if row:
+                img_id = row[0]
+                path = row[1]
+                c.execute("SELECT folder_id FROM images WHERE id = ?", (img_id,))
+                old_row = c.fetchone()
+                old_folder_id = old_row[0] if old_row else None
+                if path:
+                    dirname = os.path.dirname(path)
+                    dirname = os.path.normpath(dirname)
+                    # Close read lock before calling get_or_create_folder (opens its own conn)
+                    conn.close()
+                    fid = get_or_create_folder(dirname)
+                    conn = get_db()
+                    c = conn.cursor()
+                    c.execute("UPDATE images SET folder_id = ? WHERE id = ?", (fid, img_id))
+                    conn.commit()
+                    if fid:
+                        invalidate_folder_phase_aggregates(folder_id=fid)
+                    if old_folder_id and old_folder_id != fid:
+                        invalidate_folder_phase_aggregates(folder_id=old_folder_id)
+        finally:
+            try: conn.close()
+            except Exception: pass
     except Exception as e:
-        print(f"Error updating folder_id: {e}")
-    finally:
-        # conn close handled
-        try: conn.close()
-        except Exception: pass
+        logger.warning("Error updating folder_id: %s", e)
 
 def register_image_path(image_id, path):
     """
     Registers a path for a given image ID (default type='WSL').
     """
-    conn = get_db()
-    c = conn.cursor()
+    path_type = 'WSL'
     try:
-        # Default logic: merge into matches.
-        # This function typically called from scoring (Linux/WSL)
-        path_type = 'WSL'
-        
-        # Check if already exists?
-        c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, path_type, last_seen) VALUES (?, ?, ?, ?) MATCHING (image_id, path)", 
-                  (image_id, path, path_type, datetime.datetime.now()))
-        conn.commit()
+        if _get_db_engine() == "postgres":
+            db_postgres.execute_write(
+                "INSERT INTO file_paths (image_id, path, path_type, last_seen)"
+                " VALUES (%s, %s, %s, %s)"
+                " ON CONFLICT (image_id, path) DO UPDATE SET path_type = EXCLUDED.path_type, last_seen = EXCLUDED.last_seen",
+                (image_id, path, path_type, datetime.datetime.now()),
+            )
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, path_type, last_seen) VALUES (?, ?, ?, ?) MATCHING (image_id, path)",
+                          (image_id, path, path_type, datetime.datetime.now()))
+                conn.commit()
+            finally:
+                conn.close()
     except Exception as e:
         logging.error(f"Failed to register path {path} for image {image_id}: {e}")
-    finally:
-        conn.close()
 
 
 
@@ -3535,11 +3719,17 @@ def rebuild_folder_cache():
 def set_folder_scored(folder_path, is_scored=True):
     folder_id = get_or_create_folder(folder_path)
     if not folder_id: return
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE folders SET is_fully_scored = ? WHERE id = ?", (1 if is_scored else 0, folder_id))
-    conn.commit()
-    conn.close()
+    if _get_db_engine() == "postgres":
+        db_postgres.execute_write(
+            "UPDATE folders SET is_fully_scored = %s WHERE id = %s",
+            (1 if is_scored else 0, folder_id),
+        )
+    else:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE folders SET is_fully_scored = ? WHERE id = ?", (1 if is_scored else 0, folder_id))
+        conn.commit()
+        conn.close()
     
     # Broadcast folder update
     try:
@@ -3916,9 +4106,6 @@ def create_job(input_path, phase_code=None, job_type=None, status="pending", cur
         runner_state: High-level runner/orchestrator state.
         queue_payload: Optional queue metadata payload persisted as JSON.
     """
-    conn = get_db()
-    c = conn.cursor()
-
     phase_id = None
     if phase_code:
         phase_id = get_phase_id(phase_code)
@@ -3927,15 +4114,12 @@ def create_job(input_path, phase_code=None, job_type=None, status="pending", cur
 
     now = datetime.datetime.now()
     payload_json = json.dumps(queue_payload) if queue_payload is not None else None
-    c.execute(
+    rows = get_connector().execute_returning(
         """INSERT INTO jobs (input_path, phase_id, job_type, status, created_at, current_phase, next_phase_index, runner_state, enqueued_at, queue_payload, cancel_requested)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0) RETURNING id""",
         (input_path, phase_id, job_type, status, now, current_phase, next_phase_index, runner_state, now, payload_json)
     )
-    row = c.fetchone()
-    job_id = row[0] if row else None
-    conn.commit()
-    conn.close()
+    job_id = rows[0]['id'] if rows else None
 
     record_pipeline_event(
         "state-change",
@@ -3964,14 +4148,20 @@ def get_job(job_id):
 
 def set_job_execution_cursor(job_id, current_phase=None, next_phase_index=None, runner_state=None):
     """Persist pipeline execution cursor fields on a job row."""
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(
-        "UPDATE jobs SET current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-        (current_phase, next_phase_index, runner_state, job_id)
-    )
-    conn.commit()
-    conn.close()
+    if _get_db_engine() == "postgres":
+        db_postgres.execute_write(
+            "UPDATE jobs SET current_phase = %s, next_phase_index = %s, runner_state = %s WHERE id = %s",
+            (current_phase, next_phase_index, runner_state, job_id),
+        )
+    else:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute(
+            "UPDATE jobs SET current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
+            (current_phase, next_phase_index, runner_state, job_id)
+        )
+        conn.commit()
+        conn.close()
 
     record_pipeline_event(
         "state-change",
@@ -3986,108 +4176,105 @@ def set_job_execution_cursor(job_id, current_phase=None, next_phase_index=None, 
 
 
 def update_job_status(job_id, status, log=None, current_phase=None, next_phase_index=None, runner_state=None):
-    conn = get_db()
-    c = conn.cursor()
+    with connection() as conn:
+        c = conn.cursor()
 
-    c.execute("SELECT status, current_phase, next_phase_index, runner_state FROM jobs WHERE id = ?", (job_id,))
-    row = c.fetchone()
-    if not row:
-        conn.close()
-        raise ValueError(f"Job not found: {job_id}")
+        c.execute("SELECT status, current_phase, next_phase_index, runner_state FROM jobs WHERE id = ?", (job_id,))
+        row = c.fetchone()
+        if not row:
+            raise ValueError(f"Job not found: {job_id}")
 
-    old_status = (row[0] or "pending").strip().lower()
-    new_status = (status or "").strip().lower()
+        old_status = (row[0] or "pending").strip().lower()
+        new_status = (status or "").strip().lower()
 
-    allowed_next = JOB_ALLOWED_TRANSITIONS.get(old_status)
-    if allowed_next is not None and old_status != new_status and new_status not in allowed_next:
-        conn.close()
-        raise ValueError(f"Invalid job status transition: {old_status} -> {new_status} (job_id={job_id})")
+        allowed_next = JOB_ALLOWED_TRANSITIONS.get(old_status)
+        if allowed_next is not None and old_status != new_status and new_status not in allowed_next:
+            raise ValueError(f"Invalid job status transition: {old_status} -> {new_status} (job_id={job_id})")
 
-    final_log = log
-    if final_log is None:
-        final_log = None
+        final_log = log
+        if final_log is None:
+            final_log = None
 
-    # Keep existing cursor values unless caller explicitly overrides
-    final_phase = current_phase if current_phase is not None else row[1]
-    final_next_idx = next_phase_index if next_phase_index is not None else row[2]
-    final_runner_state = runner_state if runner_state is not None else row[3]
+        # Keep existing cursor values unless caller explicitly overrides
+        final_phase = current_phase if current_phase is not None else row[1]
+        final_next_idx = next_phase_index if next_phase_index is not None else row[2]
+        final_runner_state = runner_state if runner_state is not None else row[3]
 
-    now = datetime.datetime.now()
-    if new_status == "running":
-        c.execute(
-            "UPDATE jobs SET status = ?, started_at = COALESCE(started_at, ?), log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-            (new_status, now, final_log, final_phase, final_next_idx, final_runner_state, job_id),
-        )
-    elif new_status in JOB_TERMINAL_STATES:
-        c.execute(
-            "UPDATE jobs SET status = ?, finished_at = ?, completed_at = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-            (new_status, now, now, final_log, final_phase, final_next_idx, final_runner_state, job_id),
-        )
-    else:
-        c.execute(
-            "UPDATE jobs SET status = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-            (new_status, final_log, final_phase, final_next_idx, final_runner_state, job_id),
-        )
+        now = datetime.datetime.now()
+        if new_status == "running":
+            c.execute(
+                "UPDATE jobs SET status = ?, started_at = COALESCE(started_at, ?), log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
+                (new_status, now, final_log, final_phase, final_next_idx, final_runner_state, job_id),
+            )
+        elif new_status in JOB_TERMINAL_STATES:
+            c.execute(
+                "UPDATE jobs SET status = ?, finished_at = ?, completed_at = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
+                (new_status, now, now, final_log, final_phase, final_next_idx, final_runner_state, job_id),
+            )
+        else:
+            c.execute(
+                "UPDATE jobs SET status = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
+                (new_status, final_log, final_phase, final_next_idx, final_runner_state, job_id),
+            )
 
-    # Keep job_phases state in sync for phase-bound jobs
-    try:
-        c.execute("SELECT COUNT(*) FROM job_phases WHERE job_id = ?", (job_id,))
-        n_phases = c.fetchone()[0]
+        # Keep job_phases state in sync for phase-bound jobs
+        try:
+            c.execute("SELECT COUNT(*) FROM job_phases WHERE job_id = ?", (job_id,))
+            n_phases = c.fetchone()[0]
 
-        c.execute("SELECT phase_id, job_type FROM jobs WHERE id = ?", (job_id,))
-        job_row = c.fetchone()
-        phase_code = None
-        if job_row:
-            if job_row[0]:
-                c.execute("SELECT code FROM pipeline_phases WHERE id = ?", (job_row[0],))
-                phase_row = c.fetchone()
-                if phase_row:
-                    phase_code = phase_row[0]
-            if not phase_code and job_row[1] != "pipeline":
-                phase_code = job_row[1]
-            if not phase_code and job_row[1] == "pipeline":
-                phase_code = get_next_running_job_phase(job_id)
+            c.execute("SELECT phase_id, job_type FROM jobs WHERE id = ?", (job_id,))
+            job_row = c.fetchone()
+            phase_code = None
+            if job_row:
+                if job_row[0]:
+                    c.execute("SELECT code FROM pipeline_phases WHERE id = ?", (job_row[0],))
+                    phase_row = c.fetchone()
+                    if phase_row:
+                        phase_code = phase_row[0]
+                if not phase_code and job_row[1] != "pipeline":
+                    phase_code = job_row[1]
+                if not phase_code and job_row[1] == "pipeline":
+                    phase_code = get_next_running_job_phase(job_id)
 
-        phase_state_map = {
-            "queued": "queued",
-            "running": "running",
-            "paused": "paused",
-            "cancel_requested": "cancel_requested",
-            "restarting": "restarting",
-            "completed": "completed",
-            "failed": "failed",
-            "canceled": "canceled",
-            "cancelled": "canceled",
-            "interrupted": "interrupted",
-        }
-        phase_state = phase_state_map.get(new_status, "running")
+            phase_state_map = {
+                "queued": "queued",
+                "running": "running",
+                "paused": "paused",
+                "cancel_requested": "cancel_requested",
+                "restarting": "restarting",
+                "completed": "completed",
+                "failed": "failed",
+                "canceled": "canceled",
+                "cancelled": "canceled",
+                "interrupted": "interrupted",
+            }
+            phase_state = phase_state_map.get(new_status, "running")
 
-        if n_phases > 1:
-            multi = _resolve_multi_phase_job_phases_sync_code(job_id, new_status)
-            if multi == "__bulk_completed__":
-                c.execute(
-                    "UPDATE job_phases SET state = 'completed', completed_at = ?, error_message = NULL WHERE job_id = ?",
-                    (now, job_id),
-                )
-            elif multi:
+            if n_phases > 1:
+                multi = _resolve_multi_phase_job_phases_sync_code(job_id, new_status)
+                if multi == "__bulk_completed__":
+                    c.execute(
+                        "UPDATE job_phases SET state = 'completed', completed_at = ?, error_message = NULL WHERE job_id = ?",
+                        (now, job_id),
+                    )
+                elif multi:
+                    set_job_phase_state(
+                        job_id,
+                        multi,
+                        phase_state,
+                        error_message=log if new_status in {"failed", "interrupted"} else None,
+                    )
+            elif phase_code:
                 set_job_phase_state(
                     job_id,
-                    multi,
+                    phase_code,
                     phase_state,
                     error_message=log if new_status in {"failed", "interrupted"} else None,
                 )
-        elif phase_code:
-            set_job_phase_state(
-                job_id,
-                phase_code,
-                phase_state,
-                error_message=log if new_status in {"failed", "interrupted"} else None,
-            )
-    except Exception as e:
-        logger.debug("update_job_status: failed to sync job_phases for job %s: %s", job_id, e)
+        except Exception as e:
+            logger.debug("update_job_status: failed to sync job_phases for job %s: %s", job_id, e)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
     event_type = "state-change"
     severity = "info"
@@ -4133,8 +4320,6 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
 
 def enqueue_job(input_path, phase_code, job_type=None, queue_payload=None):
     """Create a queued job with a stable internal sort key and dense display position."""
-    conn = get_db()
-    c = conn.cursor()
     phase_id = get_phase_id(phase_code) if phase_code else None
     if job_type is None:
         job_type = phase_code
@@ -4149,40 +4334,39 @@ def enqueue_job(input_path, phase_code, job_type=None, queue_payload=None):
     if not target_scope:
         target_scope = input_path
 
-    c.execute(
-        """
-        INSERT INTO jobs (
-            input_path, phase_id, job_type, status, queue_position,
-            created_at, enqueued_at, queue_payload, cancel_requested,
-            priority, target_scope, retry_count
-        ) VALUES (?, ?, ?, 'queued', NULL, ?, ?, ?, 0, ?, ?, 0) RETURNING id
-        """,
-        (input_path, phase_id, job_type, now, now, payload_json, priority, target_scope)
-    )
-    row = c.fetchone()
-    job_id = row[0] if row else None
-    if job_id is None:
-        conn.rollback()
-        conn.close()
+    def _tx(tx):
+        rows = tx.execute_returning(
+            """
+            INSERT INTO jobs (
+                input_path, phase_id, job_type, status, queue_position,
+                created_at, enqueued_at, queue_payload, cancel_requested,
+                priority, target_scope, retry_count
+            ) VALUES (?, ?, ?, 'queued', NULL, ?, ?, ?, 0, ?, ?, 0) RETURNING id
+            """,
+            (input_path, phase_id, job_type, now, now, payload_json, priority, target_scope),
+        )
+        job_id = rows[0]['id'] if rows else None
+        if not job_id:
+            raise RuntimeError("Failed to insert job row")
+
+        # Persist a stable queue ordering key using the DB identity.
+        tx.execute("UPDATE jobs SET queue_position = ? WHERE id = ?", (job_id, job_id))
+
+        # Return dense user-facing queue position (1..N), not the internal sort key.
+        count_rows = tx.query(
+            """
+            SELECT COUNT(*) AS cnt FROM jobs
+            WHERE status = 'queued' AND COALESCE(queue_position, id) <= ?
+            """,
+            (job_id,),
+        )
+        display_position = int((count_rows[0].get('cnt') or 0) if count_rows else 0)
+        return job_id, display_position
+
+    try:
+        return get_connector().run_transaction(_tx)
+    except RuntimeError:
         return None, 0
-
-    # Persist a stable queue ordering key using the DB identity.
-    c.execute("UPDATE jobs SET queue_position = ? WHERE id = ?", (job_id, job_id))
-
-    # Return dense user-facing queue position (1..N), not the internal sort key.
-    c.execute(
-        """
-        SELECT COUNT(*) FROM jobs
-        WHERE status = 'queued' AND COALESCE(queue_position, id) <= ?
-        """,
-        (job_id,)
-    )
-    pos_row = c.fetchone()
-    display_position = int(pos_row[0] or 0) if pos_row else 0
-
-    conn.commit()
-    conn.close()
-    return job_id, display_position
 
 
 def requeue_job(job_id):
@@ -4241,11 +4425,17 @@ def requeue_job(job_id):
 
 def update_job_payload(job_id, queue_payload):
     """Update the queue_payload column on an existing job."""
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE jobs SET queue_payload = ? WHERE id = ?", (queue_payload, job_id))
-    conn.commit()
-    conn.close()
+    if _get_db_engine() == "postgres":
+        db_postgres.execute_write(
+            "UPDATE jobs SET queue_payload = %s WHERE id = %s",
+            (queue_payload, job_id),
+        )
+    else:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE jobs SET queue_payload = ? WHERE id = ?", (queue_payload, job_id))
+        conn.commit()
+        conn.close()
 
 
 def get_job_by_id(job_id):
@@ -4255,6 +4445,30 @@ def get_job_by_id(job_id):
 
 def dequeue_next_job():
     """Atomically take the oldest queued job and mark it running."""
+    if _get_db_engine() == "postgres":
+        with db_postgres.PGConnectionManager(commit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM jobs"
+                    " WHERE status = 'queued' AND COALESCE(cancel_requested, 0) = 0"
+                    " ORDER BY COALESCE(priority, 100) DESC, COALESCE(queue_position, id) ASC,"
+                    " enqueued_at ASC, id ASC LIMIT 1"
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                job_id = int(row[0])
+                now = datetime.datetime.now()
+                cur.execute(
+                    "UPDATE jobs SET status = 'running', started_at = %s, queue_position = NULL"
+                    " WHERE id = %s AND status = 'queued' AND COALESCE(cancel_requested, 0) = 0",
+                    (now, job_id),
+                )
+                if cur.rowcount == 0:
+                    conn.rollback()
+                    return None
+        return get_job_by_id(job_id)
+
     conn = get_db()
     c = conn.cursor()
     try:
@@ -4468,12 +4682,18 @@ def bump_job_priority(job_id, delta=10):
 
 def set_job_priority(job_id, priority):
     """Update job priority for queued/paused jobs."""
-    conn = get_db()
-    c = conn.cursor()
     try:
         p = max(1, min(int(priority), 999))
     except Exception:
         p = 100
+    if _get_db_engine() == "postgres":
+        rowcount = db_postgres.execute_write(
+            "UPDATE jobs SET priority = %s WHERE id = %s AND status IN ('queued', 'paused')",
+            (p, job_id),
+        )
+        return {"success": rowcount > 0, "priority": p}
+    conn = get_db()
+    c = conn.cursor()
     c.execute("UPDATE jobs SET priority = ? WHERE id = ? AND status IN ('queued', 'paused')", (p, job_id))
     updated = c.rowcount > 0
     if updated:
@@ -4486,9 +4706,15 @@ def set_job_priority(job_id, priority):
 
 def pause_queue_job(job_id):
     """Pause a queued job so it is temporarily skipped by dequeue."""
+    now = datetime.datetime.now()
+    if _get_db_engine() == "postgres":
+        rowcount = db_postgres.execute_write(
+            "UPDATE jobs SET status = 'paused', paused_at = %s WHERE id = %s AND status = 'queued'",
+            (now, job_id),
+        )
+        return {"success": rowcount > 0}
     conn = get_db()
     c = conn.cursor()
-    now = datetime.datetime.now()
     c.execute("UPDATE jobs SET status = 'paused', paused_at = ? WHERE id = ? AND status = 'queued'", (now, job_id))
     updated = c.rowcount > 0
     if updated:
@@ -4501,9 +4727,18 @@ def pause_queue_job(job_id):
 
 def restart_failed_job(job_id):
     """Move failed job back to queued and increment retry_count."""
+    now = datetime.datetime.now()
+    if _get_db_engine() == "postgres":
+        rowcount = db_postgres.execute_write(
+            "UPDATE jobs SET status = 'queued', cancel_requested = 0, enqueued_at = %s,"
+            " queue_position = id, retry_count = COALESCE(retry_count, 0) + 1,"
+            " paused_at = NULL, started_at = NULL, finished_at = NULL, completed_at = NULL"
+            " WHERE id = %s AND status = 'failed'",
+            (now, job_id),
+        )
+        return {"success": rowcount > 0}
     conn = get_db()
     c = conn.cursor()
-    now = datetime.datetime.now()
     c.execute(
         """
         UPDATE jobs
@@ -4524,6 +4759,35 @@ def restart_failed_job(job_id):
 
 
 def request_cancel_job(job_id):
+    now = datetime.datetime.now()
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one("SELECT status FROM jobs WHERE id = %s", (job_id,))
+        if not row:
+            return {"success": False, "reason": "not_found"}
+        status = (row["status"] or "").strip().lower()
+        if status in ("completed", "failed", "cancelled"):
+            return {"success": False, "reason": "already_finished", "status": status}
+        if status == "running":
+            return {"success": False, "reason": "running_not_supported", "status": status}
+        if status not in ("queued", "paused"):
+            return {"success": False, "reason": "not_cancellable_state", "status": status}
+        rowcount = db_postgres.execute_write(
+            "UPDATE jobs SET status = 'cancelled', cancel_requested = 1, queue_position = NULL,"
+            " finished_at = %s, completed_at = %s WHERE id = %s AND status IN ('queued', 'paused')",
+            (now, now, job_id),
+        )
+        if rowcount == 0:
+            latest = db_postgres.execute_select_one("SELECT status FROM jobs WHERE id = %s", (job_id,))
+            latest_status = (latest["status"] or "").strip().lower() if latest else "not_found"
+            if latest_status == "running":
+                return {"success": False, "reason": "running_not_supported", "status": latest_status}
+            if latest_status in ("completed", "failed", "cancelled"):
+                return {"success": False, "reason": "already_finished", "status": latest_status}
+            if latest_status == "not_found":
+                return {"success": False, "reason": "not_found"}
+            return {"success": False, "reason": "cancel_failed", "status": latest_status}
+        return {"success": True, "reason": "cancelled", "status": status}
+
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT status FROM jobs WHERE id = ?", (job_id,))
@@ -4545,7 +4809,6 @@ def request_cancel_job(job_id):
         conn.close()
         return {"success": False, "reason": "not_cancellable_state", "status": status}
 
-    now = datetime.datetime.now()
     c.execute(
         """
         UPDATE jobs
@@ -4689,58 +4952,103 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
         "skipped": set(),
         "canceled": set(),
     }
-    conn = get_db()
-    c = conn.cursor()
     now = datetime.datetime.now()
-    c.execute(
-        "SELECT id, state FROM job_phases WHERE job_id = ? AND phase_code = ?",
-        (job_id, phase_code),
-    )
-    row = c.fetchone()
-    if not row:
-        conn.close()
-        return None
 
-    phase_id = row[0]
-    old_state = str(row[1] or "pending").strip().lower()
-    new_state = str(state or "").strip().lower()
-    if old_state != new_state and new_state not in allowed.get(old_state, set()):
-        # Allow failed->skipped and failed->pending (user recovery)
-        if not (old_state == "failed" and new_state in ("skipped", "pending")):
-            msg = f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})"
-            logger.warning(msg)
-            conn.close()
-            raise ValueError(msg)
-    fields = ["state = ?"]
-    params = [state]
-    if state == "running":
-        fields.append("started_at = COALESCE(started_at, ?)")
-        params.append(now)
-        fields.append("error_message = NULL")
-    if state in {"completed", "failed", "skipped", "interrupted"}:
-        fields.append("completed_at = ?")
-        params.append(now)
-    if error_message is not None:
-        fields.append("error_message = ?")
-        params.append(error_message)
-
-    params.append(phase_id)
-    c.execute(f"UPDATE job_phases SET {', '.join(fields)} WHERE id = ?", params)
-
-    if state in {"completed", "skipped"}:
-        c.execute(
-            "SELECT id FROM job_phases WHERE job_id = ? AND phase_order > (SELECT phase_order FROM job_phases WHERE id = ?) AND state = 'pending' ORDER BY phase_order FETCH FIRST 1 ROWS ONLY",
-            (job_id, phase_id),
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one(
+            "SELECT id, state FROM job_phases WHERE job_id = %s AND phase_code = %s",
+            (job_id, phase_code),
         )
-        next_row = c.fetchone()
-        if next_row:
-            c.execute(
-                "UPDATE job_phases SET state = 'running', started_at = COALESCE(started_at, ?), error_message = NULL WHERE id = ?",
-                (now, next_row[0]),
-            )
+        if not row:
+            return None
+        phase_id = row["id"]
+        old_state = str(row["state"] or "pending").strip().lower()
+        new_state = str(state or "").strip().lower()
+        if old_state != new_state and new_state not in allowed.get(old_state, set()):
+            if not (old_state == "failed" and new_state in ("skipped", "pending")):
+                msg = f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})"
+                logger.warning(msg)
+                raise ValueError(msg)
+        fields = ["state = %s"]
+        params = [state]
+        if state == "running":
+            fields.append("started_at = COALESCE(started_at, %s)")
+            params.append(now)
+            fields.append("error_message = NULL")
+        if state in {"completed", "failed", "skipped", "interrupted"}:
+            fields.append("completed_at = %s")
+            params.append(now)
+        if error_message is not None:
+            fields.append("error_message = %s")
+            params.append(error_message)
+        params.append(phase_id)
+        with db_postgres.PGConnectionManager(commit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE job_phases SET {', '.join(fields)} WHERE id = %s", params)
+                if state in {"completed", "skipped"}:
+                    cur.execute(
+                        "SELECT id FROM job_phases WHERE job_id = %s"
+                        " AND phase_order > (SELECT phase_order FROM job_phases WHERE id = %s)"
+                        " AND state = 'pending' ORDER BY phase_order LIMIT 1",
+                        (job_id, phase_id),
+                    )
+                    next_row = cur.fetchone()
+                    if next_row:
+                        cur.execute(
+                            "UPDATE job_phases SET state = 'running',"
+                            " started_at = COALESCE(started_at, %s), error_message = NULL WHERE id = %s",
+                            (now, next_row[0]),
+                        )
+        return get_job_phases(job_id)
 
-    conn.commit()
-    conn.close()
+    with connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, state FROM job_phases WHERE job_id = ? AND phase_code = ?",
+            (job_id, phase_code),
+        )
+        row = c.fetchone()
+        if not row:
+            return None
+
+        phase_id = row[0]
+        old_state = str(row[1] or "pending").strip().lower()
+        new_state = str(state or "").strip().lower()
+        if old_state != new_state and new_state not in allowed.get(old_state, set()):
+            # Allow failed->skipped and failed->pending (user recovery)
+            if not (old_state == "failed" and new_state in ("skipped", "pending")):
+                msg = f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})"
+                logger.warning(msg)
+                raise ValueError(msg)
+        fields = ["state = ?"]
+        params = [state]
+        if state == "running":
+            fields.append("started_at = COALESCE(started_at, ?)")
+            params.append(now)
+            fields.append("error_message = NULL")
+        if state in {"completed", "failed", "skipped", "interrupted"}:
+            fields.append("completed_at = ?")
+            params.append(now)
+        if error_message is not None:
+            fields.append("error_message = ?")
+            params.append(error_message)
+
+        params.append(phase_id)
+        c.execute(f"UPDATE job_phases SET {', '.join(fields)} WHERE id = ?", params)
+
+        if state in {"completed", "skipped"}:
+            c.execute(
+                "SELECT id FROM job_phases WHERE job_id = ? AND phase_order > (SELECT phase_order FROM job_phases WHERE id = ?) AND state = 'pending' ORDER BY phase_order FETCH FIRST 1 ROWS ONLY",
+                (job_id, phase_id),
+            )
+            next_row = c.fetchone()
+            if next_row:
+                c.execute(
+                    "UPDATE job_phases SET state = 'running', started_at = COALESCE(started_at, ?), error_message = NULL WHERE id = ?",
+                    (now, next_row[0]),
+                )
+
+        conn.commit()
     return get_job_phases(job_id)
 
 
@@ -5162,14 +5470,34 @@ def sync_folder_to_db(folder_path, job_id=None):
         event_manager.broadcast_threadsafe("folder_scanned", {"folder_path": folder_path, "new_images": count})
     return count
 
-def upsert_image(job_id, result):
+def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
     """
     Upsert a single image result from the streaming output.
     result is a generic dictionary (the JSON output from batch_process_images).
+
+    Args:
+        invalidate_agg: When False, skip per-row ``invalidate_folder_phase_aggregates``;
+            caller should batch-invalidate (e.g. scoring ResultWorker + engine flush).
+        dirty_folder_ids: If provided and ``invalidate_agg`` is False, folder_id values
+            that would have been invalidated are added to this set for later flush.
     """
     conn = get_db()
     c = conn.cursor()
     from modules import utils
+
+    def _record_phase_agg(fld_id, old_fld=None):
+        if not fld_id and not old_fld:
+            return
+        if invalidate_agg:
+            if fld_id:
+                invalidate_folder_phase_aggregates(folder_id=fld_id)
+            if old_fld and old_fld != fld_id:
+                invalidate_folder_phase_aggregates(folder_id=old_fld)
+        elif dirty_folder_ids is not None:
+            if fld_id:
+                dirty_folder_ids.add(fld_id)
+            if old_fld and old_fld != fld_id:
+                dirty_folder_ids.add(old_fld)
 
     # Extract fields
     image_path = result.get("image_path", "")
@@ -5359,10 +5687,7 @@ def upsert_image(job_id, result):
                     pass
                 if image_path:
                     invalidate_folder_images_cache(os.path.dirname(image_path))
-                if folder_id:
-                    invalidate_folder_phase_aggregates(folder_id=folder_id)
-                if old_folder_id and old_folder_id != folder_id:
-                    invalidate_folder_phase_aggregates(folder_id=old_folder_id)
+                _record_phase_agg(folder_id, old_folder_id)
                 event_manager.broadcast_threadsafe("image_scored", {
                     "image_id": existing_id,
                     "file_path": image_path,
@@ -5427,10 +5752,7 @@ def upsert_image(job_id, result):
     if image_path:
         invalidate_folder_images_cache(os.path.dirname(image_path))
 
-    if folder_id:
-        invalidate_folder_phase_aggregates(folder_id=folder_id)
-    if old_folder_id and old_folder_id != folder_id:
-        invalidate_folder_phase_aggregates(folder_id=old_folder_id)
+    _record_phase_agg(folder_id, old_folder_id)
 
     # Register path in file_paths
     if image_id:
@@ -5452,27 +5774,15 @@ def upsert_image(job_id, result):
 
 
 def get_image_details(file_path):
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one(
-            "SELECT * FROM images WHERE file_path = %s", (file_path,))
-        if not row:
-            return {}
-        data = dict(row)
-        data['file_paths'] = get_all_paths(data['id'])
-        data['resolved_path'] = get_resolved_path(data['id'], verified_only=False)
-        return data
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT * FROM images WHERE file_path = ?", (file_path,))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        data = dict(row)
-        data['file_paths'] = get_all_paths(data['id'])
-        # Include resolved Windows path if available
-        data['resolved_path'] = get_resolved_path(data['id'], verified_only=False)
-        return data
-    return {}
+    row = get_connector().query_one(
+        "SELECT * FROM images WHERE file_path = ?", (file_path,)
+    )
+    if not row:
+        return {}
+    data = dict(row)
+    data['file_paths'] = get_all_paths(data['id'])
+    data['resolved_path'] = get_resolved_path(data['id'], verified_only=False)
+    return data
 
 
 def upsert_image_exif(image_id: int, data: dict) -> bool:
@@ -5687,6 +5997,53 @@ def delete_image(file_path, delete_related: bool = True):
     if not file_path:
         return False, "No file path provided"
 
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one(
+            "SELECT id, stack_id, thumbnail_path, thumbnail_path_win FROM images WHERE file_path = %s",
+            (file_path,),
+        )
+        if not row:
+            return False, "Image not found in DB"
+        image_id = row["id"]
+        stack_id = row["stack_id"]
+        thumbnail_path = row["thumbnail_path"]
+        thumbnail_path_win = row["thumbnail_path_win"]
+        try:
+            with db_postgres.PGConnectionManager(commit=True) as conn:
+                with conn.cursor() as cur:
+                    if delete_related:
+                        cur.execute("DELETE FROM culling_picks WHERE image_id = %s", (image_id,))
+                        cur.execute("DELETE FROM file_paths WHERE image_id = %s", (image_id,))
+                    cur.execute("DELETE FROM images WHERE id = %s", (image_id,))
+                    if stack_id is not None:
+                        cur.execute("SELECT COUNT(*) FROM images WHERE stack_id = %s", (stack_id,))
+                        remaining = cur.fetchone()[0]
+                        if remaining == 0:
+                            cur.execute("DELETE FROM stacks WHERE id = %s", (stack_id,))
+                        else:
+                            cur.execute("SELECT best_image_id FROM stacks WHERE id = %s", (stack_id,))
+                            best_row = cur.fetchone()
+                            if best_row and best_row[0] == image_id:
+                                cur.execute(
+                                    "UPDATE stacks SET best_image_id = ("
+                                    " SELECT id FROM images WHERE stack_id = %s"
+                                    " ORDER BY score_general DESC NULLS LAST LIMIT 1"
+                                    ") WHERE id = %s",
+                                    (stack_id, stack_id),
+                                )
+        except Exception as exc:
+            return False, str(exc)
+        invalidate_folder_images_cache(os.path.dirname(file_path))
+        import platform as _plat
+        _local_thumb = thumbnail_path_win if _plat.system() == "Windows" else thumbnail_path
+        if _local_thumb:
+            try:
+                if os.path.exists(_local_thumb):
+                    os.remove(_local_thumb)
+            except Exception:
+                pass
+        return True, f"Removed DB record for: {file_path}"
+
     conn = get_db()
     c = conn.cursor()
     try:
@@ -5802,28 +6159,35 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
     """
     Updates the metadata fields for a given image path.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        # Also need to update scores_json if possible?
-        # For now, just update the columns.
-        
-        c.execute('''UPDATE images 
-                     SET keywords = ?, title = ?, description = ?, rating = ?, label = ?
-                     WHERE file_path = ?''',
-                  (keywords, title, description, rating, label, file_path))
+        if _get_db_engine() == "postgres":
+            db_postgres.execute_write(
+                "UPDATE images SET keywords = %s, title = %s, description = %s,"
+                " rating = %s, label = %s WHERE file_path = %s",
+                (keywords, title, description, rating, label, file_path),
+            )
+            row = db_postgres.execute_select_one(
+                "SELECT id FROM images WHERE file_path = %s", (file_path,)
+            )
+            if row:
+                _sync_image_keywords(row["id"], keywords)
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute('''UPDATE images
+                             SET keywords = ?, title = ?, description = ?, rating = ?, label = ?
+                             WHERE file_path = ?''',
+                          (keywords, title, description, rating, label, file_path))
+                conn.commit()
+                # Must run after commit to avoid Firebird deadlock
+                c.execute("SELECT id FROM images WHERE file_path = ?", (file_path,))
+                row = c.fetchone()
+                if row:
+                    _sync_image_keywords(row[0], keywords)
+            finally:
+                conn.close()
 
-        conn.commit()
-
-        # Phase 2 dual-write: keep normalized keyword tables synchronized.
-        # Must run after commit to avoid: (1) dual-write inconsistency if outer
-        # commit fails; (2) Firebird deadlock (inner conn blocks on FK to row
-        # held by outer conn in WAIT mode).
-        c.execute("SELECT id FROM images WHERE file_path = ?", (file_path,))
-        row = c.fetchone()
-        if row:
-            _sync_image_keywords(row[0], keywords)
-        
         # Broadcast image update
         try:
             from modules.events import event_manager
@@ -5838,13 +6202,11 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
                 }
             })
         except Exception: pass
-        
+
         return True
     except Exception as e:
         logging.error(f"Failed to update metadata for {file_path}: {e}")
         return False
-    finally:
-        conn.close()
 
 def get_incomplete_records(limit: int | None = None):
     """
@@ -6225,38 +6587,54 @@ def clear_stacks():
     """
     Clears all stacks and resets stack_id in images.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("DELETE FROM stacks")
-        # Reset stack_id to NULL
-        c.execute("UPDATE images SET stack_id = NULL")
-        conn.commit()
+        if _get_db_engine() == "postgres":
+            with db_postgres.PGConnectionManager(commit=True) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM stacks")
+                    cur.execute("UPDATE images SET stack_id = NULL")
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute("DELETE FROM stacks")
+                c.execute("UPDATE images SET stack_id = NULL")
+                conn.commit()
+            finally:
+                conn.close()
         event_manager.broadcast_threadsafe("stacks_cleared", {})
     except Exception as e:
         logging.error(f"Failed to clear stacks: {e}")
-    finally:
-        conn.close()
 
 def create_stack(name, best_image_id=None):
     """
     Creates a new stack.
     """
-    conn = get_db()
-    c = conn.cursor()
     stack_id = None
     try:
-        c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
-                  (name, best_image_id, datetime.datetime.now()))
-        row = c.fetchone()
-        stack_id = row[0] if row else None
-        conn.commit()
+        if _get_db_engine() == "postgres":
+            row = db_postgres.execute_write_returning(
+                "INSERT INTO stacks (name, best_image_id, created_at) VALUES (%s, %s, %s) RETURNING id",
+                (name, best_image_id, datetime.datetime.now()),
+            )
+            stack_id = row["id"] if row else None
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute(
+                    "INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
+                    (name, best_image_id, datetime.datetime.now()),
+                )
+                row = c.fetchone()
+                stack_id = row[0] if row else None
+                conn.commit()
+            finally:
+                conn.close()
         if stack_id:
             event_manager.broadcast_threadsafe("stack_created", {"stack_id": stack_id})
     except Exception as e:
         logging.error(f"Failed to create stack: {e}")
-    finally:
-        conn.close()
     return stack_id
 
 def update_image_fields_batch(updates):
@@ -6273,17 +6651,31 @@ def update_image_fields_batch(updates):
     }
     if not updates:
         return
-    conn = get_db()
-    c = conn.cursor()
     try:
-        for image_id, fields in updates:
-            if not isinstance(fields, dict):
-                continue
-            for fname, val in fields.items():
-                if fname not in valid_fields:
-                    continue
-                c.execute(f"UPDATE images SET {fname} = ? WHERE id = ?", (val, image_id))
-        conn.commit()
+        if _get_db_engine() == "postgres":
+            with db_postgres.PGConnectionManager(commit=True) as conn:
+                with conn.cursor() as cur:
+                    for image_id, fields in updates:
+                        if not isinstance(fields, dict):
+                            continue
+                        for fname, val in fields.items():
+                            if fname not in valid_fields:
+                                continue
+                            cur.execute(f"UPDATE images SET {fname} = %s WHERE id = %s", (val, image_id))
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                for image_id, fields in updates:
+                    if not isinstance(fields, dict):
+                        continue
+                    for fname, val in fields.items():
+                        if fname not in valid_fields:
+                            continue
+                        c.execute(f"UPDATE images SET {fname} = ? WHERE id = ?", (val, image_id))
+                conn.commit()
+            finally:
+                conn.close()
 
         # Keyword Sync (Dual Writing)
         for image_id, fields in updates:
@@ -6305,8 +6697,6 @@ def update_image_fields_batch(updates):
                     pass
     except Exception as e:
         logging.error(f"Failed batch update_image_fields: {e}")
-    finally:
-        conn.close()
 
 
 def update_image_stack_batch(updates):
@@ -6314,14 +6704,21 @@ def update_image_stack_batch(updates):
     Batch updates image stack_ids.
     updates: list of (stack_id, image_id) tuples
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
-        conn.commit()
+        if _get_db_engine() == "postgres":
+            with db_postgres.PGConnectionManager(commit=True) as conn:
+                with conn.cursor() as cur:
+                    cur.executemany("UPDATE images SET stack_id = %s WHERE id = %s", updates)
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
+                conn.commit()
+            finally:
+                conn.close()
+
         invalidate_folder_images_cache()
-        
-        # Broadcast updates
         for stack_id, image_id in updates:
             event_manager.broadcast_threadsafe("image_updated", {
                 "image_id": image_id,
@@ -6329,8 +6726,6 @@ def update_image_stack_batch(updates):
             })
     except Exception as e:
         logging.error(f"Failed to batch update image stacks: {e}")
-    finally:
-        conn.close()
 
 
 def batch_update_cull_decisions(updates: list, policy_version: str = "1.0", batch_size: int = 1000):
@@ -6341,20 +6736,33 @@ def batch_update_cull_decisions(updates: list, policy_version: str = "1.0", batc
     """
     if not updates:
         return
-    conn = get_db()
-    c = conn.cursor()
     try:
-        for i in range(0, len(updates), batch_size):
-            batch = updates[i:i + batch_size]
-            params = [(decision, policy_version, img_id) for img_id, decision, _ in batch]
-            c.executemany(
-                "UPDATE images SET cull_decision = ?, cull_policy_version = ? WHERE id = ?",
-                params
-            )
-        conn.commit()
+        if _get_db_engine() == "postgres":
+            with db_postgres.PGConnectionManager(commit=True) as conn:
+                with conn.cursor() as cur:
+                    for i in range(0, len(updates), batch_size):
+                        batch = updates[i:i + batch_size]
+                        params = [(decision, policy_version, img_id) for img_id, decision, _ in batch]
+                        cur.executemany(
+                            "UPDATE images SET cull_decision = %s, cull_policy_version = %s WHERE id = %s",
+                            params,
+                        )
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                for i in range(0, len(updates), batch_size):
+                    batch = updates[i:i + batch_size]
+                    params = [(decision, policy_version, img_id) for img_id, decision, _ in batch]
+                    c.executemany(
+                        "UPDATE images SET cull_decision = ?, cull_policy_version = ? WHERE id = ?",
+                        params,
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
         invalidate_folder_images_cache()
-        
-        # Broadcast updates
         for img_id, decision, file_path in updates:
             event_manager.broadcast_threadsafe("image_updated", {
                 "image_id": img_id,
@@ -6363,25 +6771,24 @@ def batch_update_cull_decisions(updates: list, policy_version: str = "1.0", batc
             })
     except Exception as e:
         logging.error("Failed to batch update cull decisions: %s", e)
-    finally:
-        conn.close()
 
 
 def get_stacks():
     """
     Returns all stacks joined with their best image info.
     """
-    conn = get_db()
-    c = conn.cursor()
-    # Join with images to get path of best image
-    query = '''
+    sql = """
         SELECT s.*, i.file_path as best_image_path, i.score_general as best_image_score,
         (SELECT COUNT(*) FROM images WHERE stack_id = s.id) as image_count
         FROM stacks s
         LEFT JOIN images i ON s.best_image_id = i.id
         ORDER BY s.id ASC
-    '''
-    c.execute(query)
+    """
+    if _get_db_engine() == "postgres":
+        return db_postgres.execute_select(sql)
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(sql)
     rows = c.fetchall()
     conn.close()
     return rows
@@ -6392,21 +6799,43 @@ def get_stack_context(image_id):
     Get stack context for a single image.
     Returns dict with stack_id, stack_size, is_best, stack_name or None if not in stack.
     """
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one(
+            "SELECT stack_id FROM images WHERE id = %s", (image_id,)
+        )
+        if not row or not row["stack_id"]:
+            return None
+        stack_id = row["stack_id"]
+        stack_row = db_postgres.execute_select_one(
+            "SELECT s.name, s.best_image_id,"
+            " (SELECT COUNT(*) FROM images WHERE stack_id = s.id) as stack_size"
+            " FROM stacks s WHERE s.id = %s",
+            (stack_id,),
+        )
+        if not stack_row:
+            return None
+        return {
+            "stack_id": stack_id,
+            "stack_name": stack_row["name"],
+            "stack_size": stack_row["stack_size"],
+            "is_best": stack_row["best_image_id"] == image_id,
+        }
+
     conn = get_db()
     c = conn.cursor()
-    
+
     c.execute("SELECT stack_id FROM images WHERE id = ?", (image_id,))
     row = c.fetchone()
-    
+
     if not row or not row['stack_id']:
         conn.close()
         return None
-    
+
     stack_id = row['stack_id']
-    
+
     # Get stack info
     c.execute("""
-        SELECT 
+        SELECT
             s.name,
             s.best_image_id,
             (SELECT COUNT(*) FROM images WHERE stack_id = s.id) as stack_size
@@ -6415,10 +6844,10 @@ def get_stack_context(image_id):
     """, (stack_id,))
     stack_row = c.fetchone()
     conn.close()
-    
+
     if not stack_row:
         return None
-    
+
     return {
         'stack_id': stack_id,
         'stack_name': stack_row['name'],
@@ -6435,14 +6864,35 @@ def get_stack_contexts_batch(image_ids):
     """
     if not image_ids:
         return {}
-    
+
+    if _get_db_engine() == "postgres":
+        placeholders = ','.join(['%s'] * len(image_ids))
+        rows = db_postgres.execute_select(
+            f"""SELECT i.id as image_id, i.stack_id, s.name as stack_name, s.best_image_id,
+                       (SELECT COUNT(*) FROM images i2 WHERE i2.stack_id = s.id) as stack_size
+                FROM images i
+                LEFT JOIN stacks s ON i.stack_id = s.id
+                WHERE i.id IN ({placeholders})""",
+            list(image_ids),
+        )
+        result = {}
+        for row in rows:
+            if row["stack_id"]:
+                result[row["image_id"]] = {
+                    "stack_id": row["stack_id"],
+                    "stack_name": row["stack_name"],
+                    "stack_size": row["stack_size"],
+                    "is_best": row["best_image_id"] == row["image_id"],
+                }
+        return result
+
     conn = get_db()
     c = conn.cursor()
-    
+
     # Query all images and their stack info in one go
     placeholders = ','.join(['?'] * len(image_ids))
     query = f"""
-        SELECT 
+        SELECT
             i.id as image_id,
             i.stack_id,
             s.name as stack_name,
@@ -6455,7 +6905,7 @@ def get_stack_contexts_batch(image_ids):
     c.execute(query, image_ids)
     rows = c.fetchall()
     conn.close()
-    
+
     result = {}
     for row in rows:
         if row['stack_id']:
@@ -6465,7 +6915,7 @@ def get_stack_contexts_batch(image_ids):
                 'stack_size': row['stack_size'],
                 'is_best': row['best_image_id'] == row['image_id']
             }
-    
+
     return result
 
 
@@ -7006,36 +7456,48 @@ def set_stack_cover_image(stack_id, image_id):
     """
     if not stack_id or not image_id:
         return False, "Stack ID and Image ID are required"
-    
-    conn = get_db()
-    c = conn.cursor()
+
     try:
-        # Verify the stack exists
-        c.execute("SELECT name FROM stacks WHERE id = ?", (stack_id,))
-        stack_row = c.fetchone()
-        if not stack_row:
-            return False, f"Stack {stack_id} not found"
-        
-        # Verify the image exists and belongs to this stack
-        c.execute("SELECT file_name, stack_id FROM images WHERE id = ?", (image_id,))
-        img_row = c.fetchone()
-        if not img_row:
-            return False, f"Image {image_id} not found"
-        
-        if img_row['stack_id'] != stack_id:
-            return False, f"Image {image_id} does not belong to stack {stack_id}"
-        
-        # Update the stack's best_image_id
-        c.execute("UPDATE stacks SET best_image_id = ? WHERE id = ?", (image_id, stack_id))
-        
-        conn.commit()
+        if _get_db_engine() == "postgres":
+            stack_row = db_postgres.execute_select_one(
+                "SELECT name FROM stacks WHERE id = %s", (stack_id,)
+            )
+            if not stack_row:
+                return False, f"Stack {stack_id} not found"
+            img_row = db_postgres.execute_select_one(
+                "SELECT file_name, stack_id FROM images WHERE id = %s", (image_id,)
+            )
+            if not img_row:
+                return False, f"Image {image_id} not found"
+            if img_row["stack_id"] != stack_id:
+                return False, f"Image {image_id} does not belong to stack {stack_id}"
+            db_postgres.execute_write(
+                "UPDATE stacks SET best_image_id = %s WHERE id = %s", (image_id, stack_id)
+            )
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute("SELECT name FROM stacks WHERE id = ?", (stack_id,))
+                stack_row = c.fetchone()
+                if not stack_row:
+                    return False, f"Stack {stack_id} not found"
+                c.execute("SELECT file_name, stack_id FROM images WHERE id = ?", (image_id,))
+                img_row = c.fetchone()
+                if not img_row:
+                    return False, f"Image {image_id} not found"
+                if img_row['stack_id'] != stack_id:
+                    return False, f"Image {image_id} does not belong to stack {stack_id}"
+                c.execute("UPDATE stacks SET best_image_id = ? WHERE id = ?", (image_id, stack_id))
+                conn.commit()
+            finally:
+                conn.close()
+
         event_manager.broadcast_threadsafe("stack_updated", {"stack_id": stack_id})
         return True, f"Set '{img_row['file_name']}' as cover for '{stack_row['name']}'"
     except Exception as e:
         logging.error(f"Failed to set stack cover image: {e}")
         return False, str(e)
-    finally:
-        conn.close()
 
 
 def get_image_ids_by_paths(file_paths):
@@ -7159,20 +7621,28 @@ def update_culling_session(session_id, **kwargs):
     
     if not updates:
         return False
-    
-    conn = get_db()
-    c = conn.cursor()
+
     try:
-        set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
-        params = list(updates.values()) + [session_id]
-        c.execute(f"UPDATE culling_sessions SET {set_clause} WHERE id = ?", params)
-        conn.commit()
+        if _get_db_engine() == "postgres":
+            set_clause = ', '.join([f"{k} = %s" for k in updates.keys()])
+            params = list(updates.values()) + [session_id]
+            db_postgres.execute_write(
+                f"UPDATE culling_sessions SET {set_clause} WHERE id = %s", params
+            )
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+                params = list(updates.values()) + [session_id]
+                c.execute(f"UPDATE culling_sessions SET {set_clause} WHERE id = ?", params)
+                conn.commit()
+            finally:
+                conn.close()
         return True
     except Exception as e:
         logging.error(f"Failed to update culling session: {e}")
         return False
-    finally:
-        conn.close()
 
 
 def complete_culling_session(session_id):
@@ -7194,31 +7664,53 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
     if not image_ids:
         logging.warning(f"No image_ids provided for session {session_id}")
         return False
-        
+
+    now = datetime.datetime.now()
+    if _get_db_engine() == "postgres":
+        try:
+            added_count = 0
+            with db_postgres.PGConnectionManager(commit=True) as conn:
+                with conn.cursor() as cur:
+                    for img_id in image_ids:
+                        group_id = group_assignments.get(img_id) if group_assignments else None
+                        try:
+                            cur.execute(
+                                "INSERT INTO culling_picks"
+                                " (session_id, image_id, group_id, decision, auto_suggested, is_best_in_group, created_at)"
+                                " VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                                " ON CONFLICT (session_id, image_id) DO UPDATE"
+                                " SET group_id = EXCLUDED.group_id",
+                                (session_id, img_id, group_id, None, 0, 0, now),
+                            )
+                            added_count += 1
+                        except Exception as e:
+                            logging.error(f"Failed to add image {img_id} to session {session_id}: {e}")
+            logging.info(f"Added {added_count}/{len(image_ids)} images to culling session {session_id}")
+            return added_count > 0
+        except Exception as e:
+            logging.error(f"Failed to add images to culling session: {e}")
+            return False
+
     conn = get_db()
     c = conn.cursor()
     try:
-        now = datetime.datetime.now()
         added_count = 0
         for idx, img_id in enumerate(image_ids):
             group_id = group_assignments.get(img_id) if group_assignments else None
-            
+
             # Use UPDATE OR INSERT for Firebird (equivalent to SQLite's INSERT OR IGNORE)
-            # Explicitly set all columns to avoid Firebird conversion issues with defaults
-            # Firebird may have issues with SMALLINT defaults in UPDATE OR INSERT, so set them explicitly
             try:
-                c.execute("""UPDATE OR INSERT INTO culling_picks 
+                c.execute("""UPDATE OR INSERT INTO culling_picks
                              (session_id, image_id, group_id, decision, auto_suggested, is_best_in_group, created_at)
                              VALUES (?, ?, ?, ?, ?, ?, ?)
                              MATCHING (session_id, image_id)""",
                           (session_id, img_id, group_id, None, 0, 0, now))
-                
                 added_count += 1
             except Exception as e:
                 logging.error(f"Failed to add image {img_id} to session {session_id}: {e}")
                 continue
         conn.commit()
-        
+
         logging.info(f"Added {added_count}/{len(image_ids)} images to culling session {session_id}")
         return added_count > 0
     except Exception as e:
@@ -7235,53 +7727,72 @@ def set_pick_decision(session_id, image_id, decision, auto_suggested=False):
     Sets pick/reject decision for an image in a culling session.
     decision: 'pick', 'reject', 'maybe', or None (to clear)
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("""UPDATE culling_picks 
-                     SET decision = ?, auto_suggested = ?
-                     WHERE session_id = ? AND image_id = ?""",
-                  (decision, auto_suggested, session_id, image_id))
-        conn.commit()
-        
-        # Broadcast update
-        if c.rowcount > 0:
+        if _get_db_engine() == "postgres":
+            rowcount = db_postgres.execute_write(
+                "UPDATE culling_picks SET decision = %s, auto_suggested = %s"
+                " WHERE session_id = %s AND image_id = %s",
+                (decision, auto_suggested, session_id, image_id),
+            )
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute("""UPDATE culling_picks
+                             SET decision = ?, auto_suggested = ?
+                             WHERE session_id = ? AND image_id = ?""",
+                          (decision, auto_suggested, session_id, image_id))
+                conn.commit()
+                rowcount = c.rowcount
+            finally:
+                conn.close()
+
+        if rowcount > 0:
             event_manager.broadcast_threadsafe("image_updated", {
                 "image_id": image_id,
                 "updates": {"cull_decision": decision}
             })
-            
-        return c.rowcount > 0
+        return rowcount > 0
     except Exception as e:
         logging.error(f"Failed to set pick decision: {e}")
         return False
-    finally:
-        conn.close()
 
 
 def set_best_in_group(session_id, image_id, group_id):
     """Marks an image as the best in its group."""
-    conn = get_db()
-    c = conn.cursor()
     try:
-        # Clear previous best in this group
-        c.execute("""UPDATE culling_picks 
-                     SET is_best_in_group = ? 
-                     WHERE session_id = ? AND group_id = ?""",
-                  (0, session_id, group_id))
-        
-        # Set new best
-        c.execute("""UPDATE culling_picks 
-                     SET is_best_in_group = ?, decision = 'pick', auto_suggested = ?
-                     WHERE session_id = ? AND image_id = ?""",
-                  (1, 1, session_id, image_id))
-        conn.commit()
+        if _get_db_engine() == "postgres":
+            with db_postgres.PGConnectionManager(commit=True) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE culling_picks SET is_best_in_group = %s"
+                        " WHERE session_id = %s AND group_id = %s",
+                        (0, session_id, group_id),
+                    )
+                    cur.execute(
+                        "UPDATE culling_picks SET is_best_in_group = %s, decision = 'pick', auto_suggested = %s"
+                        " WHERE session_id = %s AND image_id = %s",
+                        (1, 1, session_id, image_id),
+                    )
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute("""UPDATE culling_picks
+                             SET is_best_in_group = ?
+                             WHERE session_id = ? AND group_id = ?""",
+                          (0, session_id, group_id))
+                c.execute("""UPDATE culling_picks
+                             SET is_best_in_group = ?, decision = 'pick', auto_suggested = ?
+                             WHERE session_id = ? AND image_id = ?""",
+                          (1, 1, session_id, image_id))
+                conn.commit()
+            finally:
+                conn.close()
         return True
     except Exception as e:
         logging.error(f"Failed to set best in group: {e}")
         return False
-    finally:
-        conn.close()
 
 
 def get_session_picks(session_id, decision_filter=None):
@@ -7367,28 +7878,53 @@ def get_session_groups(session_id):
 
 def get_session_stats(session_id):
     """Returns statistics for a culling session."""
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one(
+            """SELECT
+                   COUNT(*)                                                                          AS total,
+                   COUNT(*) FILTER (WHERE decision = 'pick')                                        AS picked,
+                   COUNT(*) FILTER (WHERE decision = 'reject')                                      AS rejected,
+                   COUNT(DISTINCT group_id) FILTER (WHERE group_id IS NOT NULL)                     AS groups,
+                   COUNT(DISTINCT group_id) FILTER (WHERE group_id IS NOT NULL AND decision IS NOT NULL) AS reviewed
+               FROM culling_picks WHERE session_id = %s""",
+            (session_id,),
+        )
+        total    = int(row["total"]    or 0)
+        picked   = int(row["picked"]   or 0)
+        rejected = int(row["rejected"] or 0)
+        groups   = int(row["groups"]   or 0)
+        reviewed = int(row["reviewed"] or 0)
+        return {
+            "total_images":    total,
+            "total_groups":    groups,
+            "reviewed_groups": reviewed,
+            "picked_count":    picked,
+            "rejected_count":  rejected,
+            "unreviewed":      total - picked - rejected,
+        }
+
     conn = get_db()
     c = conn.cursor()
-    
+
     c.execute("SELECT COUNT(*) FROM culling_picks WHERE session_id = ?", (session_id,))
     total = c.fetchone()[0]
-    
+
     c.execute("SELECT COUNT(*) FROM culling_picks WHERE session_id = ? AND decision = 'pick'", (session_id,))
     picked = c.fetchone()[0]
-    
+
     c.execute("SELECT COUNT(*) FROM culling_picks WHERE session_id = ? AND decision = 'reject'", (session_id,))
     rejected = c.fetchone()[0]
-    
+
     c.execute("SELECT COUNT(DISTINCT group_id) FROM culling_picks WHERE session_id = ? AND group_id IS NOT NULL", (session_id,))
     groups = c.fetchone()[0]
-    
+
     # Groups with at least one decision
-    c.execute("""SELECT COUNT(DISTINCT group_id) FROM culling_picks 
+    c.execute("""SELECT COUNT(DISTINCT group_id) FROM culling_picks
                  WHERE session_id = ? AND group_id IS NOT NULL AND decision IS NOT NULL""", (session_id,))
     reviewed = c.fetchone()[0]
-    
+
     conn.close()
-    
+
     return {
         'total_images': total,
         'total_groups': groups,
@@ -7404,19 +7940,25 @@ def clear_culling_picks(session_id):
     Removes all picks from a culling session.
     Used before re-importing groups from updated stacks.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("DELETE FROM culling_picks WHERE session_id = ?", (session_id,))
-        conn.commit()
-        deleted = c.rowcount
+        if _get_db_engine() == "postgres":
+            deleted = db_postgres.execute_write(
+                "DELETE FROM culling_picks WHERE session_id = %s", (session_id,)
+            )
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute("DELETE FROM culling_picks WHERE session_id = ?", (session_id,))
+                conn.commit()
+                deleted = c.rowcount
+            finally:
+                conn.close()
         logging.info(f"Cleared {deleted} picks from session {session_id}")
         return True
     except Exception as e:
         logging.error(f"Failed to clear picks for session {session_id}: {e}")
         return False
-    finally:
-        conn.close()
 
 
 def reset_culling_decisions(session_id):
@@ -7424,23 +7966,31 @@ def reset_culling_decisions(session_id):
     Resets all decisions (pick/reject) in a session without removing the picks.
     Used before re-running auto-pick.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("""
-            UPDATE culling_picks 
-            SET decision = NULL, auto_suggested = 0, is_best_in_group = 0
-            WHERE session_id = ?
-        """, (session_id,))
-        conn.commit()
-        updated = c.rowcount
+        if _get_db_engine() == "postgres":
+            updated = db_postgres.execute_write(
+                "UPDATE culling_picks SET decision = NULL, auto_suggested = 0,"
+                " is_best_in_group = 0 WHERE session_id = %s",
+                (session_id,),
+            )
+        else:
+            conn = get_db()
+            c = conn.cursor()
+            try:
+                c.execute("""
+                    UPDATE culling_picks
+                    SET decision = NULL, auto_suggested = 0, is_best_in_group = 0
+                    WHERE session_id = ?
+                """, (session_id,))
+                conn.commit()
+                updated = c.rowcount
+            finally:
+                conn.close()
         logging.info(f"Reset {updated} decisions in session {session_id}")
         return True
     except Exception as e:
         logging.error(f"Failed to reset decisions for session {session_id}: {e}")
         return False
-    finally:
-        conn.close()
 
 
 def get_image_culling_status(file_path):
@@ -7449,6 +7999,35 @@ def get_image_culling_status(file_path):
     Returns dict with 'decision' ('pick', 'reject', 'maybe', or None) and 'session_id'.
     'pick' = Accepted, 'reject' = Rejected
     """
+    if _get_db_engine() == "postgres":
+        try:
+            row = db_postgres.execute_select_one(
+                "SELECT id FROM images WHERE file_path = %s", (file_path,)
+            )
+            if not row:
+                return None
+            image_id = row["id"]
+            pick_row = db_postgres.execute_select_one(
+                """SELECT cp.decision, cp.session_id, cp.is_best_in_group, cs.folder_path
+                   FROM culling_picks cp
+                   JOIN culling_sessions cs ON cp.session_id = cs.id
+                   WHERE cp.image_id = %s
+                   ORDER BY cs.created_at DESC
+                   LIMIT 1""",
+                (image_id,),
+            )
+            if not pick_row:
+                return None
+            return {
+                "decision":        pick_row["decision"],
+                "session_id":      pick_row["session_id"],
+                "is_best_in_group": pick_row["is_best_in_group"],
+                "folder_path":     pick_row["folder_path"],
+            }
+        except Exception as e:
+            logging.error(f"Failed to get culling status for {file_path}: {e}")
+            return None
+
     conn = get_db()
     c = conn.cursor()
     try:
@@ -7457,9 +8036,9 @@ def get_image_culling_status(file_path):
         row = c.fetchone()
         if not row:
             return None
-        
+
         image_id = row[0]
-        
+
         # Get most recent culling decision for this image
         c.execute("""
             SELECT cp.decision, cp.session_id, cp.is_best_in_group, cs.folder_path
@@ -7469,11 +8048,11 @@ def get_image_culling_status(file_path):
             ORDER BY cs.created_at DESC
             FETCH FIRST 1 ROWS ONLY
         """, (image_id,))
-        
+
         row = c.fetchone()
         if not row:
             return None
-        
+
         return {
             'decision': row['decision'],
             'session_id': row['session_id'],
@@ -7491,15 +8070,23 @@ def is_folder_keywords_processed(folder_path):
     """
     Checks if a folder is marked as fully processed for keywords.
     """
+    folder_path = os.path.normpath(folder_path)
+    if _get_db_engine() == "postgres":
+        try:
+            row = db_postgres.execute_select_one(
+                "SELECT is_keywords_processed FROM folders WHERE path = %s", (folder_path,)
+            )
+            return bool(row and row["is_keywords_processed"])
+        except Exception as e:
+            logging.error(f"Error checking folder keyword status: {e}")
+            return False
+
     conn = get_db()
     c = conn.cursor()
     try:
-        folder_path = os.path.normpath(folder_path)
         c.execute("SELECT is_keywords_processed FROM folders WHERE path = ?", (folder_path,))
         row = c.fetchone()
-        if row and row[0] == 1:
-             return True
-        return False
+        return bool(row and row[0] == 1)
     except Exception as e:
         logging.error(f"Error checking folder keyword status: {e}")
         return False
@@ -7588,8 +8175,24 @@ def get_stack_count_for_folder(folder_path):
     finally:
         conn.close()
 
+def _embedding_bytes_to_pg(embedding_bytes):
+    """Convert raw float32 bytes to a numpy array suitable for pgvector."""
+    import numpy as np
+    return np.frombuffer(embedding_bytes, dtype=np.float32)
+
+
 def update_image_embedding(image_id, embedding_bytes):
     """Store a raw float32 embedding blob for an image."""
+    if _get_db_engine() == "postgres":
+        try:
+            vec = _embedding_bytes_to_pg(embedding_bytes) if embedding_bytes is not None else None
+            db_postgres.execute_write(
+                "UPDATE images SET image_embedding = %s WHERE id = %s",
+                (vec, image_id),
+            )
+        except Exception as e:
+            print(f"Error updating embedding for image {image_id}: {e}")
+        return
     conn = get_db()
     c = conn.cursor()
     try:
@@ -7607,6 +8210,19 @@ def update_image_embeddings_batch(pairs):
     """
     if not pairs:
         return
+    if _get_db_engine() == "postgres":
+        try:
+            with db_postgres.PGConnectionManager(commit=True) as conn:
+                with conn.cursor() as cur:
+                    for image_id, embedding_bytes in pairs:
+                        vec = _embedding_bytes_to_pg(embedding_bytes) if embedding_bytes is not None else None
+                        cur.execute(
+                            "UPDATE images SET image_embedding = %s WHERE id = %s",
+                            (vec, image_id),
+                        )
+        except Exception as e:
+            print(f"Error batch-updating embeddings: {e}")
+        return
     conn = get_db()
     c = conn.cursor()
     try:
@@ -7619,8 +8235,21 @@ def update_image_embeddings_batch(pairs):
         conn.close()
 
 
+def _pg_vec_to_bytes(vec) -> "bytes | None":
+    """Convert a pgvector result (numpy array) back to raw float32 bytes."""
+    if vec is None:
+        return None
+    import numpy as np
+    return np.array(vec, dtype=np.float32).tobytes()
+
+
 def get_image_embedding(image_id):
     """Return the raw embedding bytes for an image, or None."""
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one(
+            "SELECT image_embedding FROM images WHERE id = %s", (image_id,)
+        )
+        return _pg_vec_to_bytes(row["image_embedding"]) if row else None
     conn = get_db()
     c = conn.cursor()
     try:
@@ -7639,7 +8268,15 @@ def get_image_embeddings_batch(image_ids: list[int]) -> dict[int, bytes]:
     """Return a dictionary mapping image_id to raw embedding bytes for the given sequence of image IDs."""
     if not image_ids:
         return {}
-    
+
+    if _get_db_engine() == "postgres":
+        placeholders = ','.join(['%s'] * len(image_ids))
+        rows = db_postgres.execute_select(
+            f"SELECT id, image_embedding FROM images WHERE id IN ({placeholders})",
+            tuple(image_ids),
+        )
+        return {r["id"]: _pg_vec_to_bytes(r["image_embedding"]) for r in rows if r["image_embedding"] is not None}
+
     conn = get_db()
     c = conn.cursor()
     embeddings = {}
@@ -8072,116 +8709,114 @@ def set_image_phase_status(image_id, phase_code, status,
     now = datetime.datetime.now()
     folder_id = None
 
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        # Check existing row
-        c.execute(
-            "SELECT id, status, attempt_count FROM image_phase_status "
-            "WHERE image_id = ? AND phase_id = ?",
-            (image_id, phase_id)
-        )
-        existing = c.fetchone()
-
-        if existing:
-            row_id = existing[0]
-            old_status = existing[1].strip() if existing[1] else "not_started"
-            attempt_count = existing[2] or 0
-
-            # Guard: running → running is not allowed (duplicate job protection)
-            if old_status == PhaseStatus.RUNNING and status == PhaseStatus.RUNNING:
-                logger.warning(
-                    "set_image_phase_status: running→running guard triggered "
-                    "(img=%s, phase=%s) — skipping duplicate update", image_id, phase_code
-                )
-                return
-
-            old_enum = PhaseStatus(old_status) if old_status in {x.value for x in PhaseStatus} else None
-            new_enum = PhaseStatus(status) if status in {x.value for x in PhaseStatus} else None
-            if old_enum and new_enum and old_enum != new_enum:
-                from modules.phases import ALLOWED_TRANSITIONS
-                allowed = ALLOWED_TRANSITIONS.get(old_enum, set())
-                if new_enum not in allowed:
-                    raise ValueError(f"Invalid image phase transition: {old_status} -> {status} (img={image_id}, phase={phase_code})")
-
-            # Increment attempt on rerun transitions
-            if status == PhaseStatus.RUNNING and old_status in (
-                PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED
-            ):
-                attempt_count += 1
-
-            # Build UPDATE
-            fields = ["status = ?", "updated_at = ?", "attempt_count = ?"]
-            params = [status, now, attempt_count]
-
-            if status == PhaseStatus.RUNNING:
-                fields.append("started_at = ?")
-                params.append(now)
-            elif status in (PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED):
-                fields.append("finished_at = ?")
-                params.append(now)
-
-            if app_version is not None:
-                fields.append("app_version = ?")
-                params.append(app_version)
-            if executor_version is not None:
-                fields.append("executor_version = ?")
-                params.append(executor_version)
-            if job_id is not None:
-                fields.append("job_id = ?")
-                params.append(job_id)
-            if error is not None:
-                fields.append("last_error = ?")
-                params.append(error)
-            elif status == PhaseStatus.DONE:
-                # Clear error on success
-                fields.append("last_error = NULL")
-
-            if status == PhaseStatus.SKIPPED:
-                fields.append("skip_reason = ?")
-                params.append(skip_reason)
-                fields.append("skipped_by = ?")
-                params.append(skipped_by)
-            elif status == PhaseStatus.RUNNING:
-                # Explicit rerun clears prior skip metadata
-                fields.append("skip_reason = NULL")
-                fields.append("skipped_by = NULL")
-
-            params.append(row_id)
-            c.execute(
-                f"UPDATE image_phase_status SET {', '.join(fields)} WHERE id = ?",
-                tuple(params)
-            )
-        else:
-            # INSERT new row
-            started = now if status == PhaseStatus.RUNNING else None
-            finished = now if status in (
-                PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED
-            ) else None
-
-            c.execute(
-                "INSERT INTO image_phase_status "
-                "(image_id, phase_id, status, app_version, executor_version, "
-                " job_id, attempt_count, last_error, started_at, finished_at, updated_at, skip_reason, skipped_by) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (image_id, phase_id, status, app_version, executor_version,
-                 job_id, 0, error, started, finished, now, skip_reason if status == PhaseStatus.SKIPPED else None, skipped_by if status == PhaseStatus.SKIPPED else None)
-            )
-
-        c.execute("SELECT folder_id FROM images WHERE id = ?", (image_id,))
-        frow = c.fetchone()
-        folder_id = frow[0] if frow else None
-
-        conn.commit()
-    except Exception as e:
-        logger.error("set_image_phase_status failed (img=%s, phase=%s): %s",
-                     image_id, phase_code, e)
+    with connection() as conn:
+        c = conn.cursor()
         try:
-            conn.rollback()
-        except Exception:
-            pass
-    finally:
-        conn.close()
+            # Check existing row
+            c.execute(
+                "SELECT id, status, attempt_count FROM image_phase_status "
+                "WHERE image_id = ? AND phase_id = ?",
+                (image_id, phase_id)
+            )
+            existing = c.fetchone()
+
+            if existing:
+                row_id = existing[0]
+                old_status = existing[1].strip() if existing[1] else "not_started"
+                attempt_count = existing[2] or 0
+
+                # Guard: running → running is not allowed (duplicate job protection)
+                if old_status == PhaseStatus.RUNNING and status == PhaseStatus.RUNNING:
+                    logger.warning(
+                        "set_image_phase_status: running→running guard triggered "
+                        "(img=%s, phase=%s) — skipping duplicate update", image_id, phase_code
+                    )
+                    return
+
+                old_enum = PhaseStatus(old_status) if old_status in {x.value for x in PhaseStatus} else None
+                new_enum = PhaseStatus(status) if status in {x.value for x in PhaseStatus} else None
+                if old_enum and new_enum and old_enum != new_enum:
+                    from modules.phases import ALLOWED_TRANSITIONS
+                    allowed = ALLOWED_TRANSITIONS.get(old_enum, set())
+                    if new_enum not in allowed:
+                        raise ValueError(f"Invalid image phase transition: {old_status} -> {status} (img={image_id}, phase={phase_code})")
+
+                # Increment attempt on rerun transitions
+                if status == PhaseStatus.RUNNING and old_status in (
+                    PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED
+                ):
+                    attempt_count += 1
+
+                # Build UPDATE
+                fields = ["status = ?", "updated_at = ?", "attempt_count = ?"]
+                params = [status, now, attempt_count]
+
+                if status == PhaseStatus.RUNNING:
+                    fields.append("started_at = ?")
+                    params.append(now)
+                elif status in (PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED):
+                    fields.append("finished_at = ?")
+                    params.append(now)
+
+                if app_version is not None:
+                    fields.append("app_version = ?")
+                    params.append(app_version)
+                if executor_version is not None:
+                    fields.append("executor_version = ?")
+                    params.append(executor_version)
+                if job_id is not None:
+                    fields.append("job_id = ?")
+                    params.append(job_id)
+                if error is not None:
+                    fields.append("last_error = ?")
+                    params.append(error)
+                elif status == PhaseStatus.DONE:
+                    # Clear error on success
+                    fields.append("last_error = NULL")
+
+                if status == PhaseStatus.SKIPPED:
+                    fields.append("skip_reason = ?")
+                    params.append(skip_reason)
+                    fields.append("skipped_by = ?")
+                    params.append(skipped_by)
+                elif status == PhaseStatus.RUNNING:
+                    # Explicit rerun clears prior skip metadata
+                    fields.append("skip_reason = NULL")
+                    fields.append("skipped_by = NULL")
+
+                params.append(row_id)
+                c.execute(
+                    f"UPDATE image_phase_status SET {', '.join(fields)} WHERE id = ?",
+                    tuple(params)
+                )
+            else:
+                # INSERT new row
+                started = now if status == PhaseStatus.RUNNING else None
+                finished = now if status in (
+                    PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED
+                ) else None
+
+                c.execute(
+                    "INSERT INTO image_phase_status "
+                    "(image_id, phase_id, status, app_version, executor_version, "
+                    " job_id, attempt_count, last_error, started_at, finished_at, updated_at, skip_reason, skipped_by) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (image_id, phase_id, status, app_version, executor_version,
+                     job_id, 0, error, started, finished, now, skip_reason if status == PhaseStatus.SKIPPED else None, skipped_by if status == PhaseStatus.SKIPPED else None)
+                )
+
+            c.execute("SELECT folder_id FROM images WHERE id = ?", (image_id,))
+            frow = c.fetchone()
+            folder_id = frow[0] if frow else None
+
+            conn.commit()
+        except Exception as e:
+            logger.error("set_image_phase_status failed (img=%s, phase=%s): %s",
+                         image_id, phase_code, e)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
     phase_text = phase_code.value if hasattr(phase_code, "value") else str(phase_code)
     event_type = "progress" if status == PhaseStatus.RUNNING else "state-change"

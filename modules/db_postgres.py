@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import psycopg2
 import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
@@ -57,6 +58,93 @@ def release_pg_connection(conn):
     global _pool
     if _pool and conn:
         _pool.putconn(conn)
+
+
+def close_pool():
+    """Close all pooled connections and drop the pool (e.g. after POSTGRES_DB or host changes)."""
+    global _pool
+    if _pool is not None:
+        try:
+            _pool.closeall()
+        except Exception as e:
+            logger.warning("Error while closing PostgreSQL pool: %s", e)
+        finally:
+            _pool = None
+
+
+def reset_pool():
+    """Alias for :func:`close_pool` (tests and fixtures)."""
+    close_pool()
+
+
+# Application tables for bulk TRUNCATE (CASCADE handles FK order).
+def _quoted_db_identifier(name: str) -> str:
+    """Quote a database name for DDL. Only allows safe unquoted-style identifiers."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        raise ValueError(f"Refusing CREATE DATABASE for unsafe name: {name!r}")
+    return '"' + name.replace('"', '""') + '"'
+
+
+POSTGRES_APP_TABLES = (
+    "jobs",
+    "folders",
+    "stacks",
+    "images",
+    "file_paths",
+    "job_phases",
+    "job_steps",
+    "image_exif",
+    "image_xmp",
+    "cluster_progress",
+    "culling_sessions",
+    "culling_picks",
+    "pipeline_phases",
+    "image_phase_status",
+    "stack_cache",
+    "keywords_dim",
+    "image_keywords",
+)
+
+
+def ensure_database_exists(dbname: str, admin_dbname: str = "postgres") -> None:
+    """
+    Create database ``dbname`` if missing. Uses host/port/user/password from
+    config and env (same as :func:`get_pg_config`), but connects to ``admin_dbname``
+    for the CREATE DATABASE statement.
+    """
+    db_config = config.get_config_section("database") or {}
+    pg = db_config.get("postgres", {})
+    host = os.environ.get("POSTGRES_HOST", pg.get("host", "127.0.0.1"))
+    port = int(os.environ.get("POSTGRES_PORT", pg.get("port", 5432)))
+    user = os.environ.get("POSTGRES_USER", pg.get("user", "postgres"))
+    password = os.environ.get("POSTGRES_PASSWORD", pg.get("password", "postgres"))
+    conn = psycopg2.connect(
+        host=host,
+        port=port,
+        dbname=admin_dbname,
+        user=user,
+        password=password,
+        options="-c client_encoding=UTF8",
+    )
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (dbname,))
+            if cur.fetchone():
+                return
+            cur.execute(f"CREATE DATABASE {_quoted_db_identifier(dbname)}")
+            logger.info("Created PostgreSQL database %s", dbname)
+    finally:
+        conn.close()
+
+
+def truncate_app_tables() -> None:
+    """TRUNCATE all application tables and restart sequences (uses current pool)."""
+    table_list = ", ".join(POSTGRES_APP_TABLES)
+    with PGConnectionManager(commit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE")
+
 
 class PGConnectionManager:
     """Context manager for PostgreSQL connections from the pool."""

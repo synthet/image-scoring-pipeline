@@ -13,16 +13,29 @@ class BatchImageProcessor:
     """
     def __init__(self, output_dir=None, skip_existing=False, write_json=False, 
                  json_stdout=False, skip_predicate=None, scorer=None, progress_callback=None,
-                 target_phases=None):
+                 target_phases=None, liqe_scorer=None):
         self.output_dir = output_dir
         self.skip_existing = skip_existing
         self.scorer = scorer
+        self.liqe_scorer = liqe_scorer
         self.logger = logging.getLogger(__name__)
         self.stop_event = threading.Event()
         self.progress_callback = progress_callback
         self.processed_count = 0
         self.total_count = 0
         self.target_phases = target_phases or []
+        self._folder_agg_dirty_ids = set()
+
+    def _flush_folder_phase_aggregates(self):
+        """Apply batched folder phase_agg_dirty updates after scoring batch."""
+        if not self._folder_agg_dirty_ids:
+            return
+        for fid in list(self._folder_agg_dirty_ids):
+            try:
+                db.invalidate_folder_phase_aggregates(folder_id=fid)
+            except Exception:
+                pass
+        self._folder_agg_dirty_ids.clear()
         
     def log(self, msg, level="INFO"):
         lvl = getattr(logging, level.upper(), logging.INFO)
@@ -121,6 +134,7 @@ class BatchImageProcessor:
         
         self.total_count = len(files)
         self.processed_count = 0
+        self._folder_agg_dirty_ids.clear()
         if self.progress_callback:
             self.progress_callback(0, self.total_count)
         
@@ -142,13 +156,23 @@ class BatchImageProcessor:
         
         # Workers
         prep_worker = pipeline.PrepWorker(prep_queue, scoring_queue, self.stop_event, self.scorer)
-        scoring_worker = pipeline.ScoringWorker(scoring_queue, result_queue, self.stop_event, self.scorer)
+        scoring_worker = pipeline.ScoringWorker(
+            scoring_queue, result_queue, self.stop_event, self.scorer, liqe_scorer=self.liqe_scorer
+        )
         
         # Result callback wrapper — self.log() forwards to log_func when set (ScoringRunner), so per-image progress appears in UI console
         def result_logger(msg):
             self.log(msg)
             
-        result_worker = pipeline.ResultWorker(result_queue, None, self.stop_event, scorer_instance=self.scorer, progress_callback=result_logger, item_finished_callback=self._on_item_finished)
+        result_worker = pipeline.ResultWorker(
+            result_queue,
+            None,
+            self.stop_event,
+            scorer_instance=self.scorer,
+            progress_callback=result_logger,
+            item_finished_callback=self._on_item_finished,
+            folder_agg_dirty_ids=self._folder_agg_dirty_ids,
+        )
         
         workers = [prep_worker, scoring_worker, result_worker]
         for w in workers:
@@ -209,7 +233,8 @@ class BatchImageProcessor:
         scoring_worker.join()
         result_queue.put(None) # Sentinel for result
         result_worker.join()
-        
+
+        self._flush_folder_phase_aggregates()
         
         # 6. Update Folder Flags
         if visited_folders:
@@ -237,6 +262,7 @@ class BatchImageProcessor:
         self.log(f"Processing list of {len(jobs_list)} images...")
         self.total_count = len(jobs_list)
         self.processed_count = 0
+        self._folder_agg_dirty_ids.clear()
         if self.progress_callback:
              self.progress_callback(0, self.total_count)
         
@@ -255,7 +281,9 @@ class BatchImageProcessor:
         
         # Workers
         prep_worker = pipeline.PrepWorker(prep_queue, scoring_queue, self.stop_event, self.scorer)
-        scoring_worker = pipeline.ScoringWorker(scoring_queue, result_queue, self.stop_event, self.scorer)
+        scoring_worker = pipeline.ScoringWorker(
+            scoring_queue, result_queue, self.stop_event, self.scorer, liqe_scorer=self.liqe_scorer
+        )
         
         def result_logger(msg):
              # Ensure we log to the capturing function if set
@@ -264,7 +292,15 @@ class BatchImageProcessor:
              else:
                  self.log(msg)
                  
-        result_worker = pipeline.ResultWorker(result_queue, None, self.stop_event, scorer_instance=self.scorer, progress_callback=result_logger, item_finished_callback=self._on_item_finished)
+        result_worker = pipeline.ResultWorker(
+            result_queue,
+            None,
+            self.stop_event,
+            scorer_instance=self.scorer,
+            progress_callback=result_logger,
+            item_finished_callback=self._on_item_finished,
+            folder_agg_dirty_ids=self._folder_agg_dirty_ids,
+        )
         
         workers = [prep_worker, scoring_worker, result_worker]
         for w in workers:
@@ -296,5 +332,7 @@ class BatchImageProcessor:
         scoring_worker.join()
         result_queue.put(None)
         result_worker.join()
+
+        self._flush_folder_phase_aggregates()
         
         self.log("List processing finished.")

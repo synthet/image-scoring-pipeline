@@ -58,10 +58,41 @@ def _get_or_compute_embedding(image_id, file_path=None):
     return vec
 
 
+def _search_similar_images_numpy(example_image_id, query_vec, limit, folder_path, min_similarity):
+    """Firebird / non-pgvector: rank by cosine similarity in Python."""
+    candidates = db.get_embeddings_for_search(folder_path=folder_path, limit=None)
+    if not candidates:
+        return {
+            "error": "No embeddings available for similarity search; run clustering to populate embeddings.",
+        }
+    q = query_vec.astype(np.float32, copy=False)
+    q = _normalize(q.reshape(1, -1))[0]
+    ranked = []
+    for cid, cpath, cbytes in candidates:
+        if cid == example_image_id:
+            continue
+        cv = np.frombuffer(cbytes, dtype=np.float32)
+        cn = _normalize(cv.reshape(1, -1))[0]
+        sim = float(np.dot(q, cn))
+        ranked.append((sim, cid, cpath))
+    ranked.sort(key=lambda x: -x[0])
+    results = []
+    for sim, cid, cpath in ranked[:limit]:
+        if min_similarity is not None and sim < min_similarity:
+            break
+        results.append({
+            "image_id": int(cid),
+            "file_path": cpath,
+            "similarity": round(sim, 6),
+        })
+    return results
+
+
 def search_similar_images(example_path=None, example_image_id=None,
                           limit=20, folder_path=None, min_similarity=None):
     """
-    Find images most visually similar to a given example using pgvector cosine distance.
+    Find images most visually similar to a given example.
+    Postgres uses pgvector cosine distance; Firebird ranks candidates in Python.
 
     Provide either example_path (file path string) or example_image_id (int).
     Returns a list of dicts sorted by descending similarity.
@@ -80,7 +111,8 @@ def search_similar_images(example_path=None, example_image_id=None,
         conn = db.get_db()
         c = conn.cursor()
         try:
-            c.execute("SELECT file_path FROM images WHERE id = %s", (example_image_id,))
+            ph = "%s" if db._get_db_engine() == "postgres" else "?"
+            c.execute(f"SELECT file_path FROM images WHERE id = {ph}", (example_image_id,))
             row = c.fetchone()
             file_path = row[0] if row else None
         finally:
@@ -90,7 +122,12 @@ def search_similar_images(example_path=None, example_image_id=None,
     if query_vec is None:
         return {"error": "Could not obtain embedding for the example image"}
 
-    # Use pgvector cosine distance operator <=> for efficient ANN search
+    if db._get_db_engine() != "postgres":
+        return _search_similar_images_numpy(
+            example_image_id, query_vec, limit, folder_path, min_similarity
+        )
+
+    # Postgres: pgvector cosine distance operator <=> for efficient ANN search
     conn = db.get_db()
     c = conn.cursor()
     try:
@@ -145,8 +182,8 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
     """
     Find near-duplicate image pairs in the database based on embedding cosine similarity.
 
-    For small-to-medium libraries, uses SQL self-join with pgvector distance.
-    For large libraries (>5000 images), falls back to Python block-wise approach.
+    Postgres: SQL self-join with pgvector for smaller libraries; Python block-wise for large sets.
+    Firebird: always uses Python over ``get_embeddings_for_search`` (mock-friendly in tests).
 
     Returns a list of dicts representing near-duplicate pairs, sorted by similarity descending:
         [{'image_id_a': int, 'image_id_b': int, 'file_path_a': str, 'file_path_b': str, 'similarity': float}, ...]
@@ -162,7 +199,10 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
     else:
         limit = min(limit, max_pairs)
 
-    # Check how many embeddings exist to decide strategy
+    if db._get_db_engine() != "postgres":
+        return _find_near_duplicates_python(threshold, folder_path, limit)
+
+    # Postgres: count embeddings to choose pgvector self-join vs Python block path
     conn = db.get_db()
     c = conn.cursor()
     try:
@@ -191,12 +231,11 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
     if n_embeddings < 2:
         return []
 
-    # For large datasets use Python block-wise (SQL self-join is O(n²))
     PYTHON_THRESHOLD = 5000
     if n_embeddings > PYTHON_THRESHOLD:
         return _find_near_duplicates_python(threshold, folder_path, limit)
 
-    # SQL approach using pgvector
+    # Postgres: SQL self-join using pgvector
     conn = db.get_db()
     c = conn.cursor()
     try:

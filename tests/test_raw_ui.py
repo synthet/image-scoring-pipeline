@@ -1,4 +1,4 @@
-
+import importlib.util
 import pytest
 import os
 import sys
@@ -6,9 +6,8 @@ import sys
 try:
     from playwright.sync_api import Page, expect
 except ImportError:
-    # Handle environment where playwright is not installed
-    Page = object
-    expect = lambda x: x
+    Page = object  # type: ignore[misc, assignment]
+    expect = lambda x: x  # type: ignore[assignment]
 
 # Ensure project root is in path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,7 +15,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Configuration
 TEST_URL = "http://localhost:7860"
 
-@pytest.mark.skipif("playwright" not in sys.modules, reason="playwright not installed")
+_HAS_PYTEST_PLAYWRIGHT = importlib.util.find_spec("pytest_playwright") is not None
+
+pytestmark = pytest.mark.skipif(
+    not _HAS_PYTEST_PLAYWRIGHT,
+    reason="pytest-playwright not installed (no `page` fixture); pip install pytest-playwright",
+)
+
+
 def test_raw_preview_rendering(page: Page):
     """
     Verify that a RAW file can be opened and rendered in the browser.
@@ -52,6 +58,7 @@ def test_raw_preview_rendering(page: Page):
         
         is_rendered = page.evaluate("(id) => { const c = document.getElementById(id); return c && c.width > 0 && c.height > 0; }", "raw_canvas")
         assert is_rendered, "Canvas should have positive dimensions after RAW rendering"
+
 
 def test_gallery_filtering(page: Page):
     """

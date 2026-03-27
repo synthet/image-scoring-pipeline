@@ -1,11 +1,70 @@
 import sys
 import os
+import re
 import subprocess
 import pytest
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
+
+POSTGRES_TEST_DB = "image_scoring_test"
+
+
+def _postgres_tests_enabled(config):
+    if os.environ.get("RUN_POSTGRES_TESTS", "").strip().lower() in ("1", "true", "yes"):
+        return True
+    markexpr = (getattr(config.option, "markexpr", None) or "").strip()
+    if not markexpr:
+        return False
+    return bool(re.search(r"\bpostgres\b", markexpr, re.IGNORECASE))
+
+
+@pytest.fixture(scope="session")
+def postgres_test_session(request):
+    """
+    Isolated PostgreSQL database (image_scoring_test) with full app schema.
+    Opt-in: set RUN_POSTGRES_TESTS=1 or run ``pytest -m postgres``.
+    """
+    if not _postgres_tests_enabled(request.config):
+        pytest.skip(
+            "PostgreSQL tests disabled; set RUN_POSTGRES_TESTS=1 or run pytest -m postgres"
+        )
+
+    try:
+        from modules import db_postgres
+    except ModuleNotFoundError as e:
+        pytest.skip(f"PostgreSQL driver not available: {e}")
+
+    prev_db = os.environ.get("POSTGRES_DB")
+    os.environ["POSTGRES_DB"] = POSTGRES_TEST_DB
+    db_postgres.reset_pool()
+    try:
+        try:
+            db_postgres.ensure_database_exists(POSTGRES_TEST_DB)
+        except Exception as e:
+            pytest.skip(f"PostgreSQL unavailable (create DB): {e}")
+        db_postgres.reset_pool()
+        try:
+            db_postgres.init_db()
+        except Exception as e:
+            pytest.skip(f"PostgreSQL schema init failed: {e}")
+        yield POSTGRES_TEST_DB
+    finally:
+        db_postgres.reset_pool()
+        if prev_db is None:
+            os.environ.pop("POSTGRES_DB", None)
+        else:
+            os.environ["POSTGRES_DB"] = prev_db
+
+
+@pytest.fixture
+def clean_postgres(postgres_test_session):
+    """Empty all app tables before each test (requires postgres_test_session)."""
+    from modules import db_postgres
+
+    db_postgres.truncate_app_tables()
+    yield
 
 def pytest_sessionstart(session):
     """
