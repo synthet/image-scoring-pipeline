@@ -90,6 +90,23 @@ def execute_select_one(sql: str, params=None) -> "dict | None":
     return rows[0] if rows else None
 
 
+def execute_write(sql: str, params=None) -> int:
+    """Execute INSERT/UPDATE/DELETE on PostgreSQL and return rowcount."""
+    with PGConnectionManager(commit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.rowcount
+
+
+def execute_write_returning(sql: str, params=None) -> "dict | None":
+    """Execute INSERT/UPDATE ... RETURNING on PostgreSQL, return first row as dict."""
+    with PGConnectionManager(commit=True) as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
 def init_db():
     """Initialize PostgreSQL database schema (full parity with Firebird schema)."""
     with PGConnectionManager(commit=True) as conn:
@@ -453,5 +470,34 @@ def init_db():
                 folder_id               INTEGER REFERENCES folders(id) ON DELETE SET NULL
             );
             """)
+
+            # ------------------------------------------------------------------
+            # KEYWORDS_DIM — normalized keyword dictionary
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS keywords_dim (
+                keyword_id      SERIAL PRIMARY KEY,
+                keyword_norm    VARCHAR(200) NOT NULL,
+                keyword_display VARCHAR(200),
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_keywords_dim_norm ON keywords_dim(keyword_norm);")
+
+            # ------------------------------------------------------------------
+            # IMAGE_KEYWORDS — many-to-many junction (image <-> keyword)
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS image_keywords (
+                image_id    INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+                keyword_id  INTEGER NOT NULL REFERENCES keywords_dim(keyword_id) ON DELETE CASCADE,
+                source      VARCHAR(20) DEFAULT 'auto',
+                confidence  DOUBLE PRECISION,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (image_id, keyword_id)
+            );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_imgkw_image_id ON image_keywords(image_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_imgkw_keyword_id ON image_keywords(keyword_id);")
 
             logger.info("PostgreSQL schema initialization completed.")

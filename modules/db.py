@@ -276,6 +276,12 @@ def _translate_fb_to_pg(query: str) -> str:
     #      Handles both ? param and inlined numeric literals (e.g. FETCH FIRST 100 ROWS ONLY)
     query = re.sub(r'\bFETCH\s+FIRST\s+(\S+)\s+ROWS\s+ONLY\b', r'LIMIT \1', query, flags=re.IGNORECASE)
 
+    # 3d – Firebird RAND() → PostgreSQL RANDOM()
+    query = re.sub(r'\bRAND\s*\(\s*\)', 'RANDOM()', query, flags=re.IGNORECASE)
+
+    # 3e – Firebird LIST(expr, sep) → PostgreSQL STRING_AGG(expr, sep)
+    query = re.sub(r'\bLIST\s*\(', 'STRING_AGG(', query, flags=re.IGNORECASE)
+
     # 4 – ? → %s (skip content inside single-quoted string literals)
     parts = query.split("'")
     for i in range(0, len(parts), 2):
@@ -618,10 +624,73 @@ if connect and FB_CLIENT_LIBRARY:
         logger.debug("Firebird driver config setup failed: %s", e)
 
 
+class FirebirdConnectionFailed(RuntimeError):
+    """Raised when Firebird connect() fails; message is intended for logs and API surfaces."""
+
+
+def _humanize_firebird_connect_error(exc: BaseException, ctx: dict) -> str:
+    """Turn firebird.driver errors into short, actionable text."""
+    raw = str(exc).strip()
+    raw_one = " ".join(raw.splitlines())
+    low = raw_one.lower()
+
+    dsn = ctx.get("dsn")
+    host_ip = ctx.get("host_ip")
+    is_docker = bool(ctx.get("is_docker"))
+    use_local = bool(ctx.get("use_local_path"))
+
+    if use_local:
+        return (
+            "Cannot open the local Firebird database file (embedded mode). "
+            "Check that the file exists, paths are correct, and no other process holds a lock. "
+            f"DSN: {dsn!r}. Details: {raw_one}"
+        )
+
+    if "authentication" in low or ("password" in low and "fail" in low):
+        return (
+            "Firebird rejected the database login. "
+            "Check FIREBIRD_USER / FIREBIRD_PASSWORD (or sysdba credentials). "
+            f"Details: {raw_one}"
+        )
+
+    if is_docker or "host.docker.internal" in raw_one:
+        return (
+            "Docker could not reach Firebird on the host. "
+            "Start Firebird on Windows and ensure TCP port 3050 is reachable from the container. "
+            "On Linux Docker, add extra_hosts (e.g. host.docker.internal:host-gateway) or set FIREBIRD_HOST "
+            "to a reachable IP. Set FIREBIRD_WIN_DB_PATH to the Windows path of your .fdb "
+            "(e.g. D:/Projects/.../SCORING_HISTORY.FDB). "
+            f"Resolved host: {host_ip or 'unknown'}. Details: {raw_one}"
+        )
+
+    if _is_wsl() and not is_docker:
+        return (
+            "Could not connect from WSL to Firebird on Windows (TCP). "
+            "Ensure the Firebird server is running on the host (port 3050), the database path in the DSN is valid, "
+            "and the file is not exclusively locked. For file-only access in WSL you can try FIREBIRD_USE_LOCAL_PATH=1 "
+            f"when appropriate. Details: {raw_one}"
+        )
+
+    if any(x in low for x in ("network", "connection", "establish", "unable to complete")):
+        return (
+            "Could not reach the Firebird server over the network. "
+            "Confirm the service is listening (e.g. 127.0.0.1:3050), firewalls allow it, and the database path is correct. "
+            f"DSN: {dsn!r}. Details: {raw_one}"
+        )
+
+    return f"Firebird connection failed. Details: {raw_one}"
+
 
 def get_db():
     import time
     t0 = time.perf_counter()
+    fb_connect_ctx = {
+        "dsn": None,
+        "host_ip": None,
+        "is_docker": False,
+        "use_local_path": False,
+        "win_path": None,
+    }
     try:
         db_cfg = config.get_config_section("database")
         engine = str(db_cfg.get("engine", "firebird") or "firebird").strip().lower()
@@ -654,6 +723,10 @@ def get_db():
                  dsn = win_path
              else:
                  dsn = f"127.0.0.1/3050:{win_path}"
+
+             fb_connect_ctx["dsn"] = dsn
+             fb_connect_ctx["use_local_path"] = use_local
+             fb_connect_ctx["is_docker"] = os.environ.get("DOCKER_CONTAINER") == "1"
 
              if DEBUG_DB_CONNECTION:
                  logger.debug("get_db connecting to DSN: %s (local fallback: %s)", dsn, use_local)
@@ -804,6 +877,11 @@ def get_db():
                  logger.info("WSL: Connecting to %s", dsn)
                  _logged_dsn = True
 
+             fb_connect_ctx["dsn"] = dsn
+             fb_connect_ctx["host_ip"] = host_ip
+             fb_connect_ctx["is_docker"] = is_docker
+             fb_connect_ctx["use_local_path"] = use_local
+             fb_connect_ctx["win_path"] = win_path
 
 
         # Basic connection (serialized: firebird driver_config + DPB build are not thread-safe)
@@ -815,19 +893,18 @@ def get_db():
             if DEBUG_DB_CONNECTION:
                 logger.debug("get_db connection successful")
         except Exception as e:
-             logger.debug("get_db connect failed: %s", e)
-             if _is_wsl():
-                 logger.warning(
-                     "Firebird connection failed. Try: run_webui_local.bat (uses local file, auto-creates DB if missing). "
-                     "Or ensure: Firebird server running on Windows, no other process has DB open, file exists."
-                 )
-             traceback.print_exc()
-             raise e
-        
+            friendly = _humanize_firebird_connect_error(e, fb_connect_ctx)
+            logger.error("Database connection failed: %s", friendly)
+            if DEBUG_DB_CONNECTION:
+                logger.debug("Firebird driver error (traceback follows)", exc_info=True)
+            raise FirebirdConnectionFailed(friendly) from e
+
         # print(f"DEBUG: get_db dsn={dsn} conn={conn} type={type(conn)}")
         # print(f"DEBUG: get_db dsn={dsn} conn={conn}")
         return FirebirdConnectionProxy(conn)
 
+    except FirebirdConnectionFailed:
+        raise
     except Exception as e:
         logger.error("get_db failed: %s", e)
         traceback.print_exc()
@@ -3110,6 +3187,10 @@ def get_resolved_paths_batch(image_ids):
         conn.close()
 
 def get_folder_by_id(folder_id):
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one(
+            "SELECT path FROM folders WHERE id = %s", (folder_id,))
+        return row["path"] if row else None
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT path FROM folders WHERE id = ?", (folder_id,))
@@ -3753,13 +3834,18 @@ def get_images_by_folder(folder_path):
     if not folder_id:
         return []
 
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT * FROM images WHERE folder_id = ? ORDER BY file_name", (folder_id,))
-    rows = c.fetchall()
-    conn.close()
+    if _get_db_engine() == "postgres":
+        result = db_postgres.execute_select(
+            "SELECT * FROM images WHERE folder_id = %s ORDER BY file_name",
+            (folder_id,))
+    else:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT * FROM images WHERE folder_id = ? ORDER BY file_name", (folder_id,))
+        rows = c.fetchall()
+        conn.close()
+        result = [dict(row) for row in rows]
 
-    result = [dict(row) for row in rows]
     _folder_images_cache[folder_path] = (now, result)
     return result
 
@@ -4965,19 +5051,22 @@ def get_nef_paths_for_research(limit=500):
     Returns a random sample of NEF images with id, file_path, score_general.
     Used by scripts/research_models.py for test set selection.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
         limit = int(limit)
     except (TypeError, ValueError):
         limit = 500
     limit = max(1, min(limit, 10000))
-    c.execute(
+    fb_sql = (
         "SELECT id, file_path, score_general, score_technical, score_aesthetic "
         "FROM images WHERE LOWER(file_type) = 'nef' "
-        "ORDER BY RAND() FETCH FIRST ? ROWS ONLY",
-        (limit,),
+        "ORDER BY RAND() FETCH FIRST ? ROWS ONLY"
     )
+    if _get_db_engine() == "postgres":
+        pg_sql = _translate_fb_to_pg(fb_sql)
+        return db_postgres.execute_select(pg_sql, (limit,))
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(fb_sql, (limit,))
     rows = c.fetchall()
     conn.close()
     return rows
@@ -5489,6 +5578,9 @@ def get_image_exif(image_id: int) -> dict | None:
     """Get cached EXIF metadata for an image. Returns None if not found."""
     if not image_id:
         return None
+    if _get_db_engine() == "postgres":
+        return db_postgres.execute_select_one(
+            "SELECT * FROM image_exif WHERE image_id = %s", (image_id,))
     conn = get_db()
     c = conn.cursor()
     try:
@@ -5503,6 +5595,9 @@ def get_image_xmp(image_id: int) -> dict | None:
     """Get cached XMP metadata for an image. Returns None if not found."""
     if not image_id:
         return None
+    if _get_db_engine() == "postgres":
+        return db_postgres.execute_select_one(
+            "SELECT * FROM image_xmp WHERE image_id = %s", (image_id,))
     conn = get_db()
     c = conn.cursor()
     try:
@@ -6477,6 +6572,10 @@ def get_images_in_stack(stack_id):
     """
     Returns all images in a stack.
     """
+    if _get_db_engine() == "postgres":
+        return db_postgres.execute_select(
+            "SELECT * FROM images WHERE stack_id = %s ORDER BY score_general DESC",
+            (stack_id,))
     conn = get_db()
     c = conn.cursor()
     query = "SELECT * FROM images WHERE stack_id = ? ORDER BY score_general DESC"
@@ -6486,6 +6585,9 @@ def get_images_in_stack(stack_id):
     return rows
 
 def get_stack_count():
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one("SELECT COUNT(*) AS cnt FROM stacks")
+        return row["cnt"] if row else 0
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM stacks")
@@ -6497,6 +6599,9 @@ def get_clustered_folders():
     """
     Returns a set of folders that have been clustered.
     """
+    if _get_db_engine() == "postgres":
+        rows = db_postgres.execute_select("SELECT folder_path FROM cluster_progress")
+        return {r["folder_path"] for r in rows}
     conn = get_db()
     c = conn.cursor()
     try:
@@ -6940,7 +7045,23 @@ def get_image_ids_by_paths(file_paths):
     """
     if not file_paths:
         return []
-    
+
+    if _get_db_engine() == "postgres":
+        ids = []
+        for path in file_paths:
+            row = db_postgres.execute_select_one(
+                "SELECT id FROM images WHERE file_path = %s", (path,))
+            if row:
+                ids.append(row['id'])
+            else:
+                basename = os.path.basename(path)
+                row = db_postgres.execute_select_one(
+                    "SELECT id FROM images WHERE file_name = %s", (basename,))
+                if row:
+                    logging.warning(f"Path lookup fallback used: {path} -> id {row['id']} (matched by filename)")
+                    ids.append(row['id'])
+        return ids
+
     conn = get_db()
     c = conn.cursor()
     try:
@@ -7001,6 +7122,9 @@ def create_culling_session(folder_path, mode='automated'):
 
 def get_culling_session(session_id):
     """Returns culling session details."""
+    if _get_db_engine() == "postgres":
+        return db_postgres.execute_select_one(
+            "SELECT * FROM culling_sessions WHERE id = %s", (session_id,))
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT * FROM culling_sessions WHERE id = ?", (session_id,))
@@ -7011,10 +7135,13 @@ def get_culling_session(session_id):
 
 def get_active_culling_sessions():
     """Returns all active (incomplete) culling sessions."""
+    if _get_db_engine() == "postgres":
+        return db_postgres.execute_select(
+            "SELECT * FROM culling_sessions WHERE status = 'active' ORDER BY created_at DESC")
     conn = get_db()
     c = conn.cursor()
-    c.execute("""SELECT * FROM culling_sessions 
-                 WHERE status = 'active' 
+    c.execute("""SELECT * FROM culling_sessions
+                 WHERE status = 'active'
                  ORDER BY created_at DESC""")
     rows = c.fetchall()
     conn.close()
@@ -7162,9 +7289,6 @@ def get_session_picks(session_id, decision_filter=None):
     Returns all picks for a session with image details.
     decision_filter: None for all, or 'pick', 'reject', 'maybe'
     """
-    conn = get_db()
-    c = conn.cursor()
-    
     query = """
         SELECT cp.*, i.file_path, i.file_name, i.thumbnail_path, i.thumbnail_path_win,
                i.score_general, i.score_technical, i.score_aesthetic,
@@ -7174,13 +7298,19 @@ def get_session_picks(session_id, decision_filter=None):
         WHERE cp.session_id = ?
     """
     params = [session_id]
-    
+
     if decision_filter:
         query += " AND cp.decision = ?"
         params.append(decision_filter)
-    
+
     query += " ORDER BY cp.group_id, i.score_general DESC"
-    
+
+    if _get_db_engine() == "postgres":
+        pg_sql = _translate_fb_to_pg(query)
+        return db_postgres.execute_select(pg_sql, tuple(params))
+
+    conn = get_db()
+    c = conn.cursor()
     c.execute(query, params)
     rows = c.fetchall()
     conn.close()
@@ -7192,10 +7322,7 @@ def get_session_groups(session_id):
     Returns images grouped by group_id for a session.
     Returns list of groups, each group is a dict with group info and list of images.
     """
-    conn = get_db()
-    c = conn.cursor()
-    
-    c.execute("""
+    query = """
         SELECT cp.group_id, cp.image_id, cp.decision, cp.auto_suggested, cp.is_best_in_group,
                i.file_path, i.file_name, i.thumbnail_path, i.thumbnail_path_win,
                i.score_general, i.score_technical, i.score_aesthetic
@@ -7203,11 +7330,18 @@ def get_session_groups(session_id):
         JOIN images i ON cp.image_id = i.id
         WHERE cp.session_id = ?
         ORDER BY cp.group_id, i.score_general DESC
-    """, (session_id,))
-    
-    rows = c.fetchall()
-    conn.close()
-    
+    """
+
+    if _get_db_engine() == "postgres":
+        rows = db_postgres.execute_select(
+            _translate_fb_to_pg(query), (session_id,))
+    else:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute(query, (session_id,))
+        rows = c.fetchall()
+        conn.close()
+
     # Group by group_id
     groups = {}
     for row in rows:
@@ -7886,6 +8020,14 @@ def get_phase_id(phase_code):
     
     if code in _phase_id_cache:
         return _phase_id_cache[code]
+
+    if _get_db_engine() == "postgres":
+        row = db_postgres.execute_select_one(
+            "SELECT id FROM pipeline_phases WHERE code = %s", (code,))
+        if row:
+            _phase_id_cache[code] = row["id"]
+            return row["id"]
+        return None
 
     conn = get_db()
     c = conn.cursor()

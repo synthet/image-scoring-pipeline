@@ -168,9 +168,29 @@ python scripts/python/migrate_firebird_to_postgres.py --dry-run
 | `get_all_images` | `db.py` |
 | `get_incomplete_records` | `db.py` |
 | `get_queued_jobs` | `db.py` (hardcoded Postgres query; uses `STRING_AGG` instead of Firebird `LIST()`) |
+| `get_folder_by_id` | `db.py` |
+| `get_image_exif` | `db.py` |
+| `get_image_xmp` | `db.py` |
+| `get_culling_session` | `db.py` |
+| `get_active_culling_sessions` | `db.py` |
+| `get_session_picks` | `db.py` |
+| `get_session_groups` | `db.py` |
+| `get_images_in_stack` | `db.py` |
+| `get_stack_count` | `db.py` |
+| `get_clustered_folders` | `db.py` |
+| `get_phase_id` | `db.py` |
+| `get_images_by_folder` | `db.py` |
+| `get_nef_paths_for_research` | `db.py` |
+| `get_image_ids_by_paths` | `db.py` |
 
 **SQL translation additions:**
 - `FETCH FIRST n ROWS ONLY` → `LIMIT n` added to `_translate_fb_to_pg()` (step 3c)
+- `RAND()` → `RANDOM()` (step 3d)
+- `LIST(expr, sep)` → `STRING_AGG(expr, sep)` (step 3e)
+
+**PostgreSQL schema additions:**
+- `keywords_dim` and `image_keywords` tables added to `db_postgres.init_db()`
+- `execute_write()` and `execute_write_returning()` helpers added to `db_postgres.py`
 
 **To activate:** set `"engine": "postgres"` in `config.json` under `database`.
 

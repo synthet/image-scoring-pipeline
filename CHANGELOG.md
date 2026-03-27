@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.20.0] - 2026-03-26
+
+### Added
+- **Docker Compose** (`docker-compose.yml`): Bundled PostgreSQL service (`pgvector/pgvector:pg17`) with healthcheck and named volume; WebUI service now depends on postgres being healthy; `POSTGRES_*` env vars wired through to the webui container.
+- **DB Postgres** (`modules/db_postgres.py`): `execute_write()` and `execute_write_returning()` write helpers; `keywords_dim` and `image_keywords` tables added to PostgreSQL schema initialization.
+- **DB** (`modules/db.py`): `FirebirdConnectionFailed` exception class and `_humanize_firebird_connect_error()` — environment-aware, actionable error messages for Docker, WSL, network, auth, and local-file failure scenarios; `RAND()` → `RANDOM()` and `LIST()` → `STRING_AGG()` SQL translation rules; PostgreSQL read routing for `get_folder_by_id`, `get_images_by_folder`, and `get_nef_paths_for_research`.
+- **Utils** (`modules/utils.py`): `calculate_image_hash` alias for `compute_file_hash` (backwards compatibility for callers expecting the older name).
+- **Scripts**: `scripts/powershell/Compact-WslVhdx.ps1` and `scripts/powershell/Move-WslToD.ps1` for WSL VHD maintenance.
+- **Tests** (`tests/test_db_engine_switch.py`): 8 new unit tests covering `_translate_fb_to_pg()` — `RAND()`, `LIST()`, `FETCH FIRST`, `SELECT FIRST`, `DATEDIFF`, placeholder-in-string-literal safety, and upsert translation.
+
+### Fixed
+- **IndexingRunner** (`modules/indexing_runner.py`): Status message logic corrected — an already-`"Failed"` status no longer falls through to the `"Error"` substring check, preventing a spurious double assignment.
+
+### Removed
+- `docker-compose.postgres.yml` — merged into the default `docker-compose.yml`.
+
 ## [4.19.0] - 2026-03-25
 
 ### Added

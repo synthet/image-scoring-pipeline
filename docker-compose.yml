@@ -1,4 +1,22 @@
 services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: image-scoring-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=image_scoring
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   webui:
     build:
       context: .
@@ -7,11 +25,19 @@ services:
     container_name: image-scoring-webui
     ports:
       - "7860:7860"
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       - DOCKER_CONTAINER=1
       - WEBUI_HOST=0.0.0.0
       - FIREBIRD_WIN_DB_PATH=D:/Projects/image-scoring-backend/SCORING_HISTORY.FDB
       - FIREBIRD_CLIENT_LIBRARY=/app/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib/libfbclient.so
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=image_scoring
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
     volumes:
       - .:/app
       # Mount Windows drives for image file access (add more as needed)
@@ -26,3 +52,6 @@ services:
               count: all
               capabilities: [gpu]
     restart: unless-stopped
+
+volumes:
+  postgres_data:

@@ -54,7 +54,9 @@ class IndexingRunner:
                 self.status_message = "Failed"
             finally:
                 self.is_running = False
-            if "Error" in self.status_message:
+            if self.status_message == "Failed":
+                pass
+            elif "Error" in self.status_message:
                 self.status_message = "Failed"
             elif not self.status_message.startswith("Done"):
                 self.status_message = "Done"

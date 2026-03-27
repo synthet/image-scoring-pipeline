@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { PanelLeft, Zap, Image, Settings, Activity } from 'lucide-react'
+import { PanelLeft, Zap, Settings, Activity } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { useUiStore } from '@/stores/uiStore'
 import { useWsStore } from '@/stores/wsStore'
@@ -42,7 +42,6 @@ export function Shell() {
 
         <nav className="flex items-center gap-1">
           <NavItem to="/runs" icon={<Activity size={14} />} label="Runs" />
-          <NavItem to="/gallery" end icon={<Image size={14} />} label="Gallery" />
           <NavItem to="/diagnostics" icon={<Activity size={14} />} label="Diagnostics" />
           <NavItem to="/settings" icon={<Settings size={14} />} label="Settings" />
         </nav>

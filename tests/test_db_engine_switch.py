@@ -154,3 +154,62 @@ def test_dual_write_disabled_when_no_flag(monkeypatch):
     )
     db.init_dual_write()
     assert db._DUAL_WRITE_ENABLED is False
+
+
+# ---- _translate_fb_to_pg() unit tests ----
+
+def test_translate_rand_to_random():
+    """RAND() → RANDOM()"""
+    sql = "SELECT * FROM images ORDER BY RAND() FETCH FIRST 10 ROWS ONLY"
+    result = db._translate_fb_to_pg(sql)
+    assert "RANDOM()" in result
+    assert "RAND()" not in result
+    assert "LIMIT 10" in result
+
+
+def test_translate_list_to_string_agg():
+    """LIST(expr, sep) → STRING_AGG(expr, sep)"""
+    sql = "SELECT LIST(kd.keyword_display, ', ') FROM image_keywords ik"
+    result = db._translate_fb_to_pg(sql)
+    assert "STRING_AGG(" in result
+    assert "LIST(" not in result
+
+
+def test_translate_fetch_first_param():
+    """FETCH FIRST ? ROWS ONLY → LIMIT %s"""
+    sql = "SELECT * FROM jobs ORDER BY id FETCH FIRST ? ROWS ONLY"
+    result = db._translate_fb_to_pg(sql)
+    assert "LIMIT %s" in result
+    assert "FETCH" not in result
+
+
+def test_translate_select_first_n():
+    """SELECT FIRST n → SELECT ... LIMIT n"""
+    sql = "SELECT FIRST 5 id FROM images"
+    result = db._translate_fb_to_pg(sql)
+    assert "FIRST" not in result
+    assert "LIMIT 5" in result
+
+
+def test_translate_datediff():
+    """DATEDIFF(SECOND FROM a TO b) → EXTRACT(EPOCH FROM (b - a))::INTEGER"""
+    sql = "SELECT DATEDIFF(SECOND FROM started_at TO finished_at) FROM jobs"
+    result = db._translate_fb_to_pg(sql)
+    assert "EXTRACT(EPOCH FROM (finished_at - started_at))::INTEGER" in result
+    assert "DATEDIFF" not in result
+
+
+def test_translate_placeholder_in_string_literal():
+    """? inside string literals should NOT be translated to %s."""
+    sql = "SELECT * FROM images WHERE label = '?' AND id = ?"
+    result = db._translate_fb_to_pg(sql)
+    assert result == "SELECT * FROM images WHERE label = '?' AND id = %s"
+
+
+def test_translate_upsert():
+    """UPDATE OR INSERT → INSERT ... ON CONFLICT ... DO UPDATE SET"""
+    sql = "UPDATE OR INSERT INTO cluster_progress (folder_path, last_run) VALUES (?, ?) MATCHING (folder_path)"
+    result = db._translate_fb_to_pg(sql)
+    assert "INSERT INTO cluster_progress" in result
+    assert "ON CONFLICT (folder_path) DO UPDATE SET" in result
+    assert "last_run = EXCLUDED.last_run" in result
