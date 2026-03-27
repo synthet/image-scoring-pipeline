@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.21.0] - 2026-03-26
+
+### Added
+- **WebUI open** (`modules/webui_open.py`, `launch.py`, `webui.py`): After the server is listening, optionally open the React UI in the default browser or an Electron shell — set `WEBUI_OPEN_UI=browser|electron` or pass `--webui-open=` through `launch.py` (stripped before `webui.py`). Electron resolves a sibling `image-scoring-gallery` / `electron-image-scoring` or `WEBUI_ELECTRON_GALLERY_DIR`; WSL browser open uses `cmd.exe start` when available.
+- **Docker launcher** (`run_webui_docker.bat`): `cd` to script directory; default `WEBUI_OPEN_UI=browser`; if port 7860 already answers, open UI and exit; require local image `image-scoring:latest` (see `docker_rebuild.bat`); `docker compose up -d`, wait for readiness, open browser or Electron, then `docker compose logs -f`.
+- **Scripts** (`docker_rebuild.bat`): Full `docker compose` down, `--no-cache` build, and foreground stack start (Postgres volume preserved).
+- **Favicon** (`webui.py`): `GET /favicon.png` and `GET /favicon.ico` at site root; Gradio `/app` uses `static/favicon.png`; SPA `index.html` shells point at `/favicon.png`.
+- **Git** (`.gitignore`): Exception `!static/favicon.png` so the bundled PNG favicon is versioned despite `*.png` ignores.
+
+### Changed
+- **`static/favicon.ico`**: Refreshed root icon asset.
+
 ## [4.20.0] - 2026-03-26
 
 ### Added

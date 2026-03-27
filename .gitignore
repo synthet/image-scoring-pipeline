@@ -98,6 +98,7 @@ research_output/
 *.jpg
 *.jpeg
 *.png
+!static/favicon.png
 *.gif
 *.bmp
 *.tiff

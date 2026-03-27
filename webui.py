@@ -4,8 +4,9 @@ import warnings
 import logging
 from contextlib import asynccontextmanager
 import gradio as gr
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from modules.ui import app as app_module
@@ -308,15 +309,27 @@ def main():
             logging.error(f"WebSocket error: {e}")
             event_manager.disconnect(websocket)
 
+    _webui_root = os.path.dirname(os.path.abspath(__file__))
+    _favicon_png = os.path.join(_webui_root, "static", "favicon.png")
+    _favicon_ico = os.path.join(_webui_root, "static", "favicon.ico")
+
+    @app.get("/favicon.png")
+    @app.get("/favicon.ico")
+    async def serve_root_favicon():
+        """Serve app favicon at site root (avoids Gradio default + broken /ui/*/relative icon URLs)."""
+        if os.path.isfile(_favicon_png):
+            return FileResponse(_favicon_png, media_type="image/png")
+        if os.path.isfile(_favicon_ico):
+            return FileResponse(_favicon_ico, media_type="image/x-icon")
+        raise HTTPException(status_code=404, detail="favicon not found")
+
     # Mount Gradio App onto FastAPI at /app (legacy fallback)
-    app = gr.mount_gradio_app(app, demo, path="/app", allowed_paths=allowed_paths, favicon_path="static/favicon.ico")
+    app = gr.mount_gradio_app(app, demo, path="/app", allowed_paths=allowed_paths, favicon_path="static/favicon.png")
 
     # Serve React SPA build (static/app/) — must be mounted AFTER /api routes
     # SPA files are built via: cd frontend && npm run build  (outputs to static/app/)
     _spa_dir = os.path.join(os.path.dirname(__file__), "static", "app")
     if os.path.isdir(_spa_dir):
-        from fastapi.responses import FileResponse
-
         _spa_root = os.path.abspath(_spa_dir)
         # Avoid stale index.html: without this, browsers may keep an old shell that references
         # a removed hashed JS bundle after `npm run build`. Hashed assets stay long-cacheable.
@@ -380,6 +393,13 @@ def main():
     # Launch using Uvicorn
     # Note: inbrowser=False is default for uvicorn, handled by user opening browser
     print(f"Launching Uvicorn server at http://{display_host}:{server_port}")
+
+    open_ui = (os.environ.get("WEBUI_OPEN_UI") or "").strip().lower()
+    if open_ui in ("browser", "electron"):
+        from modules.webui_open import schedule_webui_open
+
+        schedule_webui_open("127.0.0.1", server_port, open_ui)
+        print(f"WEBUI_OPEN_UI={open_ui}: will open when the server is ready.")
 
     try:
         uvicorn.run(app, host=server_host, port=server_port, log_level="info")
