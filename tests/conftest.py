@@ -1,6 +1,7 @@
 import sys
 import os
 import re
+import glob
 import subprocess
 import pytest
 
@@ -86,3 +87,18 @@ def pytest_sessionstart(session):
         print("Tests may run against an outdated or locked test DB.")
     except Exception as e:
         print(f"\n[conftest] ERROR: Could not run test database setup: {e}")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Best-effort removal of orphan Firebird test DBs and migration *.bak sidecars at repo root."""
+    patterns = (
+        os.path.join(project_root, "TEST_*.fdb"),
+        os.path.join(project_root, "TEST_*.fdb.*"),
+    )
+    for pattern in patterns:
+        for path in glob.glob(pattern):
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+            except OSError:
+                pass

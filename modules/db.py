@@ -287,6 +287,15 @@ def _translate_fb_to_pg(query: str) -> str:
     # 3b – Firebird "ROWS ?" row-limit → PostgreSQL "LIMIT ?"
     query = re.sub(r'\bROWS\s+\?', 'LIMIT ?', query, flags=re.IGNORECASE)
 
+    # 3b.5 – Firebird "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY" → PostgreSQL "OFFSET ? LIMIT ?"
+    #         Preserves parameter order (offset first, then page_size).
+    query = re.sub(
+        r'\bOFFSET\s+(\S+)\s+ROWS\s+FETCH\s+NEXT\s+(\S+)\s+ROWS\s+ONLY\b',
+        r'OFFSET \1 LIMIT \2',
+        query,
+        flags=re.IGNORECASE,
+    )
+
     # 3c – Firebird "FETCH FIRST n ROWS ONLY" → PostgreSQL "LIMIT n"
     #      Handles both ? param and inlined numeric literals (e.g. FETCH FIRST 100 ROWS ONLY)
     query = re.sub(r'\bFETCH\s+FIRST\s+(\S+)\s+ROWS\s+ONLY\b', r'LIMIT \1', query, flags=re.IGNORECASE)
@@ -1062,23 +1071,16 @@ def get_connector():
 
 
 def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
-    conn = get_db()
-    c = conn.cursor()
-    
     query = "SELECT COUNT(*) FROM images"
     params = []
     conditions = []
 
     if rating_filter:
         placeholders = ','.join(['?'] * len(rating_filter))
-        # Handle "Unrated" (0) separate or included?
-        # UI sends ["1", "2"] etc. "Unrated" might be sent as "0" or "Unrated"
-        # Let's assume input is list of ints. "Unrated" maps to 0.
         conditions.append(f"rating IN ({placeholders})")
         params.extend(rating_filter)
 
     if label_filter:
-        # Handle "None" label
         clean_labels = [l for l in label_filter if l != "None"]
         has_none = "None" in label_filter
 
@@ -1100,7 +1102,7 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
     if min_score_general > 0:
         conditions.append("score_general >= ?")
         params.append(min_score_general)
-    
+
     if min_score_aesthetic > 0:
         conditions.append("score_aesthetic >= ?")
         params.append(min_score_aesthetic)
@@ -1108,7 +1110,7 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
     if min_score_technical > 0:
         conditions.append("score_technical >= ?")
         params.append(min_score_technical)
-        
+
     # Date Filter
     if date_range:
         start_date, end_date = date_range
@@ -1119,7 +1121,7 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
         if end_date:
             conditions.append("CAST(created_at AS DATE) <= CAST(? AS DATE)")
             params.append(end_date)
-            
+
     if folder_path:
         folder_id = get_or_create_folder(folder_path)
         conditions.append("folder_id = ?")
@@ -1132,29 +1134,14 @@ def get_image_count(rating_filter=None, label_filter=None, keyword_filter=None, 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
 
-    if _get_db_engine() == "postgres":
-        pg_sql = _translate_fb_to_pg(query)
-        row = db_postgres.execute_select_one(pg_sql, tuple(params) if params else None)
-        conn.close()
-        return row["count"] if row else 0
-
-    try:
-        c.execute(query, tuple(params))
-        count = c.fetchone()[0]
-        return count
-    except Exception as e:
-
-        raise
-    finally:
-        conn.close()
+    row = get_connector().query_one(query, tuple(params) if params else None)
+    return (row.get("count") or row.get("COUNT(*)") or 0) if row else 0
 
 def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     # Load page_size from config if not provided
     if page_size is None:
         ui_config = config.get_config_section('ui')
         page_size = ui_config.get('gallery_page_size', 50)
-    conn = get_db()
-    c = conn.cursor()
     # Ensure integers
     try: page = int(page)
     except (ValueError, TypeError): page = 1
@@ -1230,16 +1217,8 @@ def get_images_paginated(page=1, page_size=None, sort_by="score", order="desc", 
 
     query += f" ORDER BY {sort_by} {order} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
     params.extend([offset, page_size])
-    
-    try:
-        c.execute(query, tuple(params))
-        rows = c.fetchall()
-        return rows
-    except Exception as e:
 
-        raise
-    finally:
-        conn.close()
+    return list(get_connector().query(query, tuple(params)))
 
 def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", order="desc", rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None, use_exif_date=False, make_filter=None, model_filter=None, lens_filter=None, iso_min=None, iso_max=None):
     """
@@ -1257,10 +1236,7 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
     if page_size is None:
         ui_config = config.get_config_section('ui')
         page_size = ui_config.get('gallery_page_size', 50)
-    
-    conn = get_db()
-    c = conn.cursor()
-    
+
     # Ensure integers
     try: page = int(page)
     except (ValueError, TypeError): page = 1
@@ -1279,7 +1255,6 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         or sort_by in exif_sort_cols
     )
 
-    tbl = "images"
     if need_exif_join:
         from_clause = " images LEFT JOIN image_exif ON images.id = image_exif.image_id"
         tbl_prefix = "images."
@@ -1296,24 +1271,24 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         placeholders = ','.join(['?'] * len(rating_filter))
         conditions.append(f"{tbl_prefix}rating IN ({placeholders})")
         params.extend(rating_filter)
-    
-    # Label filter    
+
+    # Label filter
     if label_filter:
         clean_labels = [l for l in label_filter if l != "None"]
         has_none = "None" in label_filter
-        
+
         lbl_conds = []
         if clean_labels:
             placeholders = ','.join(['?'] * len(clean_labels))
             lbl_conds.append(f"{tbl_prefix}label IN ({placeholders})")
             params.extend(clean_labels)
-            
+
         if has_none:
             lbl_conds.append(f"({tbl_prefix}label IS NULL OR {tbl_prefix}label = '')")
-            
+
         if lbl_conds:
             conditions.append(f"({' OR '.join(lbl_conds)})")
-    
+
     # Keyword filter
     _add_keyword_filter(conditions, params, keyword_filter)
 
@@ -1321,7 +1296,7 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
     if min_score_general > 0:
         conditions.append(f"{tbl_prefix}score_general >= ?")
         params.append(min_score_general)
-    
+
     if min_score_aesthetic > 0:
         conditions.append(f"{tbl_prefix}score_aesthetic >= ?")
         params.append(min_score_aesthetic)
@@ -1340,7 +1315,7 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         if end_date:
             conditions.append(f"CAST({date_col} AS DATE) <= CAST(? AS DATE)")
             params.append(end_date)
-    
+
     # EXIF filters
     if need_exif_join:
         if make_filter and make_filter.strip():
@@ -1358,7 +1333,7 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
         if iso_max is not None and iso_max > 0:
             conditions.append("image_exif.iso <= ?")
             params.append(iso_max)
-    
+
     # Folder filter
     if folder_path:
         folder_id = get_or_create_folder(folder_path)
@@ -1374,7 +1349,7 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
     where_clause = ""
     if conditions:
         where_clause = " WHERE " + " AND ".join(conditions)
-    
+
     # ORDER BY - EXIF columns need special handling
     if need_exif_join and sort_by in exif_sort_cols:
         nulls = " NULLS LAST" if order == "DESC" else " NULLS FIRST"
@@ -1384,64 +1359,32 @@ def get_images_paginated_with_count(page=1, page_size=None, sort_by="score", ord
             order_by = f"image_exif.{sort_by} {order}{nulls}"
     else:
         order_by = f"{tbl_prefix}{sort_by} {order}" if tbl_prefix else f"{sort_by} {order}"
-    
+
+    # OPTIMIZATION: Use Window Function to get count and data in single query
+    query = f"SELECT images.*, COUNT(*) OVER() as total_count FROM{from_clause}{where_clause} ORDER BY {order_by} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+    params.extend([offset, page_size])
+
     try:
-        # OPTIMIZATION: Use Window Function to get count and data in single query
-        # This reduces DB round trips by 50%
-        
-        query = f"SELECT images.*, COUNT(*) OVER() as total_count FROM{from_clause}{where_clause} ORDER BY {order_by} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
-
-        # Add pagination params
-        params.extend([offset, page_size])
-
-        if _get_db_engine() == "postgres":
-            # Postgres uses LIMIT n OFFSET n (params order: page_size before offset)
-            pg_params = params[:-2] + [page_size, offset]
-            pg_query = _translate_fb_to_pg(
-                f"SELECT images.*, COUNT(*) OVER() as total_count FROM{from_clause}{where_clause}"
-                f" ORDER BY {order_by} LIMIT ? OFFSET ?"
-            )
-            pg_rows = db_postgres.execute_select(pg_query, tuple(pg_params))
-            total_count = int(pg_rows[0]["total_count"]) if pg_rows else 0
-            conn.close()
-            return pg_rows, total_count
-
-        c.execute(query, tuple(params))
-        rows = c.fetchall()
-        
-        # Extract total_count from first row if available
+        rows = list(get_connector().query(query, tuple(params)))
         total_count = 0
         if rows:
-            # RowWrapper allows dict-like access
-            # The column alias 'total_count' should be available
-            # We check the first row safely
-            first_row = rows[0]
             try:
-                total_count = int(first_row['total_count'])
+                total_count = int(rows[0]['total_count'])
             except (KeyError, IndexError, ValueError):
-                # Fallback if alias fails (though it shouldn't)
-                total_count = len(rows) # Incorrect but better than crashing
+                total_count = len(rows)
                 logger.warning("Could not retrieve total_count from window function result")
-        
         return rows, total_count
-        
     except Exception as e:
         logger.error("Error in get_images_paginated_with_count: %s", e)
-        # Fallback to separate queries if Window Function fails (e.g. old Firebird version)
+        # Fallback to separate queries if window function fails
         try:
-             # Query 1: Get count
-             c.execute(f"SELECT COUNT(*) FROM{from_clause}{where_clause}", tuple(params[:-2]))
-             total_count = c.fetchone()[0]
-             
-             # Query 2: Get data
-             query_fallback = f"SELECT images.* FROM{from_clause}{where_clause} ORDER BY {order_by} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
-             c.execute(query_fallback, tuple(params))
-             rows = c.fetchall()
-             return rows, total_count
+            count_row = get_connector().query_one(f"SELECT COUNT(*) FROM{from_clause}{where_clause}", tuple(params[:-2]))
+            total_count = (count_row.get("count") or count_row.get("COUNT(*)") or 0) if count_row else 0
+            query_fallback = f"SELECT images.* FROM{from_clause}{where_clause} ORDER BY {order_by} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+            rows = list(get_connector().query(query_fallback, tuple(params)))
+            return rows, total_count
         except Exception:
-             raise e
-    finally:
-        conn.close()
+            raise e
 
 def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=None, min_score_general=0, min_score_aesthetic=0, min_score_technical=0, date_range=None, folder_path=None, stack_id=None):
     """
@@ -1512,42 +1455,35 @@ def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=Non
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
-    
-    c.execute(query, tuple(params))
-    rows = c.fetchall()
-    conn.close()
-    return [row[0] for row in rows]
+
+    rows = get_connector().query(query, tuple(params))
+    return [row['file_path'] for row in rows]
 
 def image_exists(file_path, current_version=None):
-    conn = get_db()
-    c = conn.cursor()
-    # Check existence AND if score is valid (not 0 or NULL)
-    c.execute("SELECT score, model_version, score_general, thumbnail_path FROM images WHERE file_path = ?", (file_path,))
-    row = c.fetchone()
-    conn.close()
-    
+    row = get_connector().query_one(
+        "SELECT score, model_version, score_general, thumbnail_path FROM images WHERE file_path = ?",
+        (file_path,)
+    )
+
     if row:
-        score = row['score'] if 'score' in row.keys() else row[0] # Handle Row or tuple
-        
+        score = row['score']
+
         # Check if score is valid
         if score is None or score <= 0:
-            return False 
+            return False
 
         # Check thumbnail existence (User Requirement)
-        thumb = row['thumbnail_path'] if 'thumbnail_path' in row.keys() else row[3]
-        if not thumb:
-             return False
+        if not row['thumbnail_path']:
+            return False
 
         # Check version if provided
         if current_version:
-             db_version = row['model_version'] if 'model_version' in row.keys() else row[1]
-             if db_version != current_version:
-                 return False # Version mismatch, treat as stale
-            
-             # Also strict check for score_general if we are strictly version checking
-             sg = row['score_general'] if 'score_general' in row.keys() else row[2]
-             if sg is None or sg <= 0:
-                 return False
+            if row['model_version'] != current_version:
+                return False  # Version mismatch, treat as stale
+            # Also strict check for score_general if we are strictly version checking
+            sg = row['score_general']
+            if sg is None or sg <= 0:
+                return False
 
         return True
     return False
@@ -1599,9 +1535,11 @@ def _index_exists(cursor, index_name):
 
 def _backup_db():
     """Create a timestamped backup of the database."""
+    if "pytest" in sys.modules:
+        return
     if not os.path.exists(DB_PATH):
         return
-        
+
     try:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = f"{DB_PATH}.{timestamp}.bak"
@@ -2779,6 +2717,23 @@ def _init_db_impl():
                     except Exception: pass
                     c = conn.cursor()
 
+        try:
+            n_folders = None
+            n_stack_cache = None
+            if _table_exists(c, "FOLDERS"):
+                c.execute("SELECT COUNT(*) FROM folders")
+                n_folders = c.fetchone()[0]
+            if _table_exists(c, "STACK_CACHE"):
+                c.execute("SELECT COUNT(*) FROM stack_cache")
+                n_stack_cache = c.fetchone()[0]
+            logger.info(
+                "Phase1 after 1.5e row counts (for pause diagnosis): folders=%s stack_cache=%s",
+                n_folders,
+                n_stack_cache,
+            )
+        except Exception:
+            pass
+
         # 1.5f: UQ_FOLDERS_PATH
         print("  [1.5f] Adding UQ_FOLDERS_PATH...")
         if not _index_exists(c, 'UQ_FOLDERS_PATH'):
@@ -3053,36 +3008,18 @@ def update_image_path(image_hash, new_path):
     from pathlib import Path
     new_name = Path(new_path).name
     try:
-        if _get_db_engine() == "postgres":
-            db_postgres.execute_write(
-                "UPDATE images SET file_path = %s, file_name = %s WHERE image_hash = %s",
+        def _tx(tx):
+            tx.execute(
+                "UPDATE images SET file_path = ?, file_name = ? WHERE image_hash = ?",
                 (new_path, new_name, image_hash),
             )
-            row = db_postgres.execute_select_one(
-                "SELECT id FROM images WHERE image_hash = %s", (image_hash,)
-            )
+            row = tx.query_one("SELECT id FROM images WHERE image_hash = ?", (image_hash,))
             if row:
-                db_postgres.execute_write(
-                    "INSERT INTO file_paths (image_id, path, last_seen)"
-                    " VALUES (%s, %s, %s)"
-                    " ON CONFLICT (image_id, path) DO UPDATE SET last_seen = EXCLUDED.last_seen",
+                tx.execute(
+                    "UPDATE OR INSERT INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?) MATCHING (image_id, path)",
                     (row["id"], new_path, datetime.datetime.now()),
                 )
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute("UPDATE images SET file_path = ?, file_name = ? WHERE image_hash = ?", (new_path, new_name, image_hash))
-                c.execute("SELECT id FROM images WHERE image_hash = ?", (image_hash,))
-                row = c.fetchone()
-                if row:
-                    img_id = row[0]
-                    c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, last_seen) VALUES (?, ?, ?) MATCHING (image_id, path)",
-                              (img_id, new_path, datetime.datetime.now()))
-                conn.commit()
-            finally:
-                conn.close()
-
+        get_connector().run_transaction(_tx)
         # Post-update folder fix
         try:
             update_image_folder_id(image_hash=image_hash)
@@ -3103,65 +3040,26 @@ def update_image_folder_id(image_hash=None, image_id=None):
     Helper to update folder_id for a single image.
     """
     try:
-        if _get_db_engine() == "postgres":
-            if image_hash:
-                row = db_postgres.execute_select_one(
-                    "SELECT id, file_path, folder_id FROM images WHERE image_hash = %s", (image_hash,)
-                )
-            elif image_id:
-                row = db_postgres.execute_select_one(
-                    "SELECT id, file_path, folder_id FROM images WHERE id = %s", (image_id,)
-                )
-            else:
-                return
-            if row and row["file_path"]:
-                img_id = row["id"]
-                old_folder_id = row["folder_id"]
-                dirname = os.path.normpath(os.path.dirname(row["file_path"]))
-                fid = get_or_create_folder(dirname)
-                db_postgres.execute_write(
-                    "UPDATE images SET folder_id = %s WHERE id = %s", (fid, img_id)
-                )
-                if fid:
-                    invalidate_folder_phase_aggregates(folder_id=fid)
-                if old_folder_id and old_folder_id != fid:
-                    invalidate_folder_phase_aggregates(folder_id=old_folder_id)
+        if image_hash:
+            row = get_connector().query_one(
+                "SELECT id, file_path, folder_id FROM images WHERE image_hash = ?", (image_hash,)
+            )
+        elif image_id:
+            row = get_connector().query_one(
+                "SELECT id, file_path, folder_id FROM images WHERE id = ?", (image_id,)
+            )
+        else:
             return
-
-        conn = get_db()
-        c = conn.cursor()
-        try:
-            if image_hash:
-                c.execute("SELECT id, file_path FROM images WHERE image_hash = ?", (image_hash,))
-            elif image_id:
-                c.execute("SELECT id, file_path FROM images WHERE id = ?", (image_id,))
-            else:
-                return
-
-            row = c.fetchone()
-            if row:
-                img_id = row[0]
-                path = row[1]
-                c.execute("SELECT folder_id FROM images WHERE id = ?", (img_id,))
-                old_row = c.fetchone()
-                old_folder_id = old_row[0] if old_row else None
-                if path:
-                    dirname = os.path.dirname(path)
-                    dirname = os.path.normpath(dirname)
-                    # Close read lock before calling get_or_create_folder (opens its own conn)
-                    conn.close()
-                    fid = get_or_create_folder(dirname)
-                    conn = get_db()
-                    c = conn.cursor()
-                    c.execute("UPDATE images SET folder_id = ? WHERE id = ?", (fid, img_id))
-                    conn.commit()
-                    if fid:
-                        invalidate_folder_phase_aggregates(folder_id=fid)
-                    if old_folder_id and old_folder_id != fid:
-                        invalidate_folder_phase_aggregates(folder_id=old_folder_id)
-        finally:
-            try: conn.close()
-            except Exception: pass
+        if row and row["file_path"]:
+            img_id = row["id"]
+            old_folder_id = row.get("folder_id")
+            dirname = os.path.normpath(os.path.dirname(row["file_path"]))
+            fid = get_or_create_folder(dirname)
+            get_connector().execute("UPDATE images SET folder_id = ? WHERE id = ?", (fid, img_id))
+            if fid:
+                invalidate_folder_phase_aggregates(folder_id=fid)
+            if old_folder_id and old_folder_id != fid:
+                invalidate_folder_phase_aggregates(folder_id=old_folder_id)
     except Exception as e:
         logger.warning("Error updating folder_id: %s", e)
 
@@ -3171,38 +3069,18 @@ def register_image_path(image_id, path):
     """
     path_type = 'WSL'
     try:
-        if _get_db_engine() == "postgres":
-            db_postgres.execute_write(
-                "INSERT INTO file_paths (image_id, path, path_type, last_seen)"
-                " VALUES (%s, %s, %s, %s)"
-                " ON CONFLICT (image_id, path) DO UPDATE SET path_type = EXCLUDED.path_type, last_seen = EXCLUDED.last_seen",
-                (image_id, path, path_type, datetime.datetime.now()),
-            )
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute("UPDATE OR INSERT INTO file_paths (image_id, path, path_type, last_seen) VALUES (?, ?, ?, ?) MATCHING (image_id, path)",
-                          (image_id, path, path_type, datetime.datetime.now()))
-                conn.commit()
-            finally:
-                conn.close()
+        get_connector().execute(
+            "UPDATE OR INSERT INTO file_paths (image_id, path, path_type, last_seen) VALUES (?, ?, ?, ?) MATCHING (image_id, path)",
+            (image_id, path, path_type, datetime.datetime.now()),
+        )
     except Exception as e:
         logging.error(f"Failed to register path {path} for image {image_id}: {e}")
 
 
 
 def get_all_paths(image_id):
-    if _get_db_engine() == "postgres":
-        rows = db_postgres.execute_select(
-            "SELECT path FROM file_paths WHERE image_id = %s", (image_id,))
-        return [r["path"] for r in rows]
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT path FROM file_paths WHERE image_id = ?", (image_id,))
-    rows = c.fetchall()
-    conn.close()
-    return [row[0] for row in rows]
+    rows = get_connector().query("SELECT path FROM file_paths WHERE image_id = ?", (image_id,))
+    return [r["path"] for r in rows]
 
 
 # --- Resolved Paths (Windows Native Viewer Support) ---
@@ -3284,23 +3162,11 @@ def get_resolved_path(image_id, verified_only=True):
     """
     Returns the Windows path for an image from file_paths (type='WIN').
     """
-    if _get_db_engine() == "postgres":
-        sql = "SELECT path FROM file_paths WHERE image_id = %s AND path_type = 'WIN'"
-        if verified_only:
-            sql += " AND is_verified = 1"
-        row = db_postgres.execute_select_one(sql, (image_id,))
-        return row["path"] if row else None
-    conn = get_db()
-    c = conn.cursor()
-    
     query = "SELECT path FROM file_paths WHERE image_id = ? AND path_type = 'WIN'"
     if verified_only:
         query += " AND is_verified = 1"
-        
-    c.execute(query, (image_id,))
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else None
+    row = get_connector().query_one(query, (image_id,))
+    return row["path"] if row else None
 
 
 def verify_resolved_path(image_id):
@@ -3371,48 +3237,22 @@ def get_resolved_paths_batch(image_ids):
         conn.close()
 
 def get_folder_by_id(folder_id):
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one(
-            "SELECT path FROM folders WHERE id = %s", (folder_id,))
-        return row["path"] if row else None
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT path FROM folders WHERE id = ?", (folder_id,))
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else None
+    row = get_connector().query_one("SELECT path FROM folders WHERE id = ?", (folder_id,))
+    return row["path"] if row else None
 
 
 def find_image_id_by_path(file_path):
     """Returns image id if exists by file_path, else None."""
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one("SELECT id FROM images WHERE file_path = %s", (file_path,))
-        return row["id"] if row else None
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute("SELECT id FROM images WHERE file_path = ?", (file_path,))
-        row = c.fetchone()
-        return row[0] if row else None
-    finally:
-        conn.close()
+    row = get_connector().query_one("SELECT id FROM images WHERE file_path = ?", (file_path,))
+    return row["id"] if row else None
 
 
 def find_image_id_by_uuid(image_uuid):
     """Returns image id if exists by image_uuid, else None."""
     if not image_uuid or not isinstance(image_uuid, str) or not image_uuid.strip():
         return None
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one("SELECT id FROM images WHERE image_uuid = %s", (image_uuid.strip(),))
-        return row["id"] if row else None
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute("SELECT id FROM images WHERE image_uuid = ?", (image_uuid.strip(),))
-        row = c.fetchone()
-        return row[0] if row else None
-    finally:
-        conn.close()
+    row = get_connector().query_one("SELECT id FROM images WHERE image_uuid = ?", (image_uuid.strip(),))
+    return row["id"] if row else None
 
 
 def _get_folder_ancestor_ids(folder_id):
@@ -3420,20 +3260,14 @@ def _get_folder_ancestor_ids(folder_id):
     if not folder_id:
         return []
 
-    conn = get_db()
-    c = conn.cursor()
     seen = set()
     ids = []
     current = folder_id
-    try:
-        while current and current not in seen:
-            seen.add(current)
-            ids.append(current)
-            c.execute("SELECT parent_id FROM folders WHERE id = ?", (current,))
-            row = c.fetchone()
-            current = row[0] if row else None
-    finally:
-        conn.close()
+    while current and current not in seen:
+        seen.add(current)
+        ids.append(current)
+        row = get_connector().query_one("SELECT parent_id FROM folders WHERE id = ?", (current,))
+        current = row["parent_id"] if row else None
     return ids
 
 
@@ -3448,17 +3282,11 @@ def invalidate_folder_phase_aggregates(folder_id=None, folder_path=None):
     if not ancestor_ids:
         return
 
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        placeholders = ",".join(["?"] * len(ancestor_ids))
-        c.execute(
-            f"UPDATE folders SET phase_agg_dirty = 1 WHERE id IN ({placeholders})",
-            tuple(ancestor_ids)
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    placeholders = ",".join(["?"] * len(ancestor_ids))
+    get_connector().execute(
+        f"UPDATE folders SET phase_agg_dirty = 1 WHERE id IN ({placeholders})",
+        tuple(ancestor_ids)
+    )
 
 
 def register_image_for_import(file_path, file_name, file_type, folder_id, image_uuid=None):
@@ -3467,17 +3295,13 @@ def register_image_for_import(file_path, file_name, file_type, folder_id, image_
     Returns (image_id, was_new): image_id on success, None on failure; was_new True if inserted, False if already existed.
     On duplicate (UQ_IMAGES_FILE_PATH), returns the existing image_id with was_new=False.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute(
+        rows = get_connector().execute_returning(
             """INSERT INTO images (file_path, file_name, file_type, folder_id, image_uuid, created_at)
                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id""",
             (file_path, file_name, file_type, folder_id, image_uuid or None)
         )
-        row = c.fetchone()
-        conn.commit()
-        image_id = row[0] if row else None
+        image_id = rows[0]["id"] if rows else None
         if image_id:
             register_image_path(image_id, file_path)
             try:
@@ -3488,21 +3312,11 @@ def register_image_for_import(file_path, file_name, file_type, folder_id, image_
     except Exception as e:
         err_str = str(e)
         if "UQ_IMAGES_FILE_PATH" in err_str or "duplicate value" in err_str.lower():
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             existing_id = find_image_id_by_path(file_path)
             if existing_id:
                 return (existing_id, False)
         logger.warning("register_image_for_import failed for %s: %s", file_path, e)
-        try:
-            conn.rollback()
-        except Exception:
-            pass
         return (None, False)
-    finally:
-        conn.close()
 
 
 def get_or_create_folder(folder_path, _depth=0):
@@ -3719,17 +3533,10 @@ def rebuild_folder_cache():
 def set_folder_scored(folder_path, is_scored=True):
     folder_id = get_or_create_folder(folder_path)
     if not folder_id: return
-    if _get_db_engine() == "postgres":
-        db_postgres.execute_write(
-            "UPDATE folders SET is_fully_scored = %s WHERE id = %s",
-            (1 if is_scored else 0, folder_id),
-        )
-    else:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("UPDATE folders SET is_fully_scored = ? WHERE id = ?", (1 if is_scored else 0, folder_id))
-        conn.commit()
-        conn.close()
+    get_connector().execute(
+        "UPDATE folders SET is_fully_scored = ? WHERE id = ?",
+        (1 if is_scored else 0, folder_id),
+    )
     
     # Broadcast folder update
     try:
@@ -3743,12 +3550,8 @@ def set_folder_scored(folder_path, is_scored=True):
 def is_folder_scored(folder_path):
     folder_id = get_or_create_folder(folder_path)
     if not folder_id: return False
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT is_fully_scored FROM folders WHERE id = ?", (folder_id,))
-    row = c.fetchone()
-    conn.close()
-    return bool(row and row[0])
+    row = get_connector().query_one("SELECT is_fully_scored FROM folders WHERE id = ?", (folder_id,))
+    return bool(row and row["is_fully_scored"])
 
 def check_and_update_folder_status(folder_path):
     """
@@ -3777,12 +3580,8 @@ def check_and_update_folder_status(folder_path):
     folder_id = get_or_create_folder(folder_path)
     if not folder_id: return False
 
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT file_name, score_general FROM images WHERE folder_id = ?", (folder_id,))
-    rows = c.fetchall()
-    conn.close()
-    
+    rows = list(get_connector().query("SELECT file_name, score_general FROM images WHERE folder_id = ?", (folder_id,)))
+
     # helper set of scored filenames
     scored_files = {row['file_name'] for row in rows if row['score_general'] and row['score_general'] > 0}
             
@@ -3804,16 +3603,8 @@ def get_all_folders():
     Returns a sorted list of all unique folder paths from the folders table.
     Does NOT auto-rebuild to avoid blocking the UI - use rebuild_folder_cache() explicitly.
     """
-    if _get_db_engine() == "postgres":
-        rows = db_postgres.execute_select("SELECT path FROM folders ORDER BY path")
-        return [r["path"] for r in rows]
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT path FROM folders ORDER BY path")
-    rows = c.fetchall()
-    conn.close()
-
-    return [row['path'] for row in rows]
+    rows = get_connector().query("SELECT path FROM folders ORDER BY path")
+    return [r["path"] for r in rows]
 
 
 def backfill_folder_phase_aggregates(limit=None):
@@ -3821,18 +3612,10 @@ def backfill_folder_phase_aggregates(limit=None):
     Maintenance helper to recalculate folder phase aggregate caches.
     Marks all folders dirty, then recomputes deepest folders first.
     """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute("UPDATE folders SET phase_agg_dirty = 1")
-        conn.commit()
+    get_connector().execute("UPDATE folders SET phase_agg_dirty = 1")
+    rows = list(get_connector().query("SELECT path FROM folders ORDER BY CHAR_LENGTH(path) DESC"))
 
-        c.execute("SELECT path FROM folders ORDER BY CHAR_LENGTH(path) DESC")
-        rows = c.fetchall()
-    finally:
-        conn.close()
-
-    paths = [r[0] for r in rows if r and r[0]]
+    paths = [r["path"] for r in rows if r and r["path"]]
     if isinstance(limit, int) and limit > 0:
         paths = paths[:limit]
 
@@ -4024,18 +3807,9 @@ def get_images_by_folder(folder_path):
     if not folder_id:
         return []
 
-    if _get_db_engine() == "postgres":
-        result = db_postgres.execute_select(
-            "SELECT * FROM images WHERE folder_id = %s ORDER BY file_name",
-            (folder_id,))
-    else:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT * FROM images WHERE folder_id = ? ORDER BY file_name", (folder_id,))
-        rows = c.fetchall()
-        conn.close()
-        result = [dict(row) for row in rows]
-
+    result = list(get_connector().query(
+        "SELECT * FROM images WHERE folder_id = ? ORDER BY file_name", (folder_id,)
+    ))
     _folder_images_cache[folder_path] = (now, result)
     return result
 
@@ -4135,33 +3909,16 @@ def create_job(input_path, phase_code=None, job_type=None, status="pending", cur
 
 
 def get_job(job_id):
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one("SELECT * FROM jobs WHERE id = %s", (job_id,))
-        return dict(row) if row else None
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
-    row = c.fetchone()
-    conn.close()
+    row = get_connector().query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
     return dict(row) if row else None
 
 
 def set_job_execution_cursor(job_id, current_phase=None, next_phase_index=None, runner_state=None):
     """Persist pipeline execution cursor fields on a job row."""
-    if _get_db_engine() == "postgres":
-        db_postgres.execute_write(
-            "UPDATE jobs SET current_phase = %s, next_phase_index = %s, runner_state = %s WHERE id = %s",
-            (current_phase, next_phase_index, runner_state, job_id),
-        )
-    else:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute(
-            "UPDATE jobs SET current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-            (current_phase, next_phase_index, runner_state, job_id)
-        )
-        conn.commit()
-        conn.close()
+    get_connector().execute(
+        "UPDATE jobs SET current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
+        (current_phase, next_phase_index, runner_state, job_id),
+    )
 
     record_pipeline_event(
         "state-change",
@@ -4376,66 +4133,53 @@ def requeue_job(job_id):
     Updates queue_position so it sorts after any already-queued jobs.
     Returns (job_id, display_position).
     """
-    conn = get_db()
-    c = conn.cursor()
     now = datetime.datetime.now()
 
-    # Use the transition guard in update_job_status for the status change
-    # but we need to reset more fields, so do it directly here after
-    # checking the transition is allowed.
-    c.execute("SELECT status FROM jobs WHERE id = ?", (job_id,))
-    row = c.fetchone()
-    if not row:
-        conn.close()
-        raise ValueError(f"Job {job_id} not found")
-    old_status = (row[0] or "").strip().lower()
-    allowed = JOB_ALLOWED_TRANSITIONS.get(old_status, set())
-    if "queued" not in allowed:
-        conn.close()
-        raise ValueError(f"Cannot requeue job from status '{old_status}'")
+    def _tx(tx):
+        row = tx.query_one("SELECT status FROM jobs WHERE id = ?", (job_id,))
+        if not row:
+            raise ValueError(f"Job {job_id} not found")
+        old_status = (row["status"] or "").strip().lower()
+        allowed = JOB_ALLOWED_TRANSITIONS.get(old_status, set())
+        if "queued" not in allowed:
+            raise ValueError(f"Cannot requeue job from status '{old_status}'")
 
-    c.execute(
-        """
-        UPDATE jobs
-        SET status = 'queued',
-            started_at = NULL,
-            finished_at = NULL,
-            completed_at = NULL,
-            enqueued_at = ?,
-            queue_position = ?,
-            runner_state = NULL,
-            current_phase = NULL,
-            cancel_requested = 0
-        WHERE id = ?
-        """,
-        (now, job_id, job_id),
-    )
+        tx.execute(
+            """
+            UPDATE jobs
+            SET status = 'queued',
+                started_at = NULL,
+                finished_at = NULL,
+                completed_at = NULL,
+                enqueued_at = ?,
+                queue_position = ?,
+                runner_state = NULL,
+                current_phase = NULL,
+                cancel_requested = 0
+            WHERE id = ?
+            """,
+            (now, job_id, job_id),
+        )
 
-    c.execute(
-        "SELECT COUNT(*) FROM jobs WHERE status = 'queued' AND COALESCE(queue_position, id) <= ?",
-        (job_id,),
-    )
-    pos_row = c.fetchone()
-    display_position = int(pos_row[0] or 0) if pos_row else 0
+        pos_row = tx.query_one(
+            "SELECT COUNT(*) FROM jobs WHERE status = 'queued' AND COALESCE(queue_position, id) <= ?",
+            (job_id,),
+        )
+        display_position = int((pos_row.get("count") or pos_row.get("COUNT(*)") or 0) if pos_row else 0)
+        return job_id, display_position
 
-    conn.commit()
-    conn.close()
-    return job_id, display_position
+    try:
+        return get_connector().run_transaction(_tx)
+    except RuntimeError:
+        return None, 0
 
 
 def update_job_payload(job_id, queue_payload):
     """Update the queue_payload column on an existing job."""
-    if _get_db_engine() == "postgres":
-        db_postgres.execute_write(
-            "UPDATE jobs SET queue_payload = %s WHERE id = %s",
-            (queue_payload, job_id),
-        )
-    else:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("UPDATE jobs SET queue_payload = ? WHERE id = ?", (queue_payload, job_id))
-        conn.commit()
-        conn.close()
+    get_connector().execute(
+        "UPDATE jobs SET queue_payload = ? WHERE id = ?",
+        (queue_payload, job_id),
+    )
 
 
 def get_job_by_id(job_id):
@@ -4445,34 +4189,8 @@ def get_job_by_id(job_id):
 
 def dequeue_next_job():
     """Atomically take the oldest queued job and mark it running."""
-    if _get_db_engine() == "postgres":
-        with db_postgres.PGConnectionManager(commit=True) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id FROM jobs"
-                    " WHERE status = 'queued' AND COALESCE(cancel_requested, 0) = 0"
-                    " ORDER BY COALESCE(priority, 100) DESC, COALESCE(queue_position, id) ASC,"
-                    " enqueued_at ASC, id ASC LIMIT 1"
-                )
-                row = cur.fetchone()
-                if not row:
-                    return None
-                job_id = int(row[0])
-                now = datetime.datetime.now()
-                cur.execute(
-                    "UPDATE jobs SET status = 'running', started_at = %s, queue_position = NULL"
-                    " WHERE id = %s AND status = 'queued' AND COALESCE(cancel_requested, 0) = 0",
-                    (now, job_id),
-                )
-                if cur.rowcount == 0:
-                    conn.rollback()
-                    return None
-        return get_job_by_id(job_id)
-
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute(
+    def _tx(tx):
+        row = tx.query_one(
             """
             SELECT id FROM jobs
             WHERE status = 'queued' AND COALESCE(cancel_requested, 0) = 0
@@ -4480,27 +4198,29 @@ def dequeue_next_job():
             FETCH FIRST 1 ROWS ONLY
             """
         )
-        row = c.fetchone()
         if not row:
             return None
-
-        job_id = int(row[0])
+        job_id = int(row["id"])
         now = datetime.datetime.now()
-        c.execute(
+        rowcount = tx.execute(
             """
             UPDATE jobs
             SET status = 'running', started_at = ?, queue_position = NULL
             WHERE id = ? AND status = 'queued' AND COALESCE(cancel_requested, 0) = 0
             """,
-            (now, job_id)
+            (now, job_id),
         )
-        if c.rowcount == 0:
-            conn.rollback()
-            return None
-        conn.commit()
-        return get_job_by_id(job_id)
-    finally:
-        conn.close()
+        if rowcount == 0:
+            raise RuntimeError("dequeue race condition")
+        return job_id
+
+    try:
+        job_id = get_connector().run_transaction(_tx)
+    except RuntimeError:
+        return None
+    if job_id is None:
+        return None
+    return get_job_by_id(job_id)
 
 
 
@@ -4513,73 +4233,7 @@ def get_queued_jobs(limit=200, include_related=False):
         return []
     limit = min(limit, 1000)
 
-    if _get_db_engine() == "postgres":
-        rows = db_postgres.execute_select(
-            """
-            SELECT
-                j.*,
-                p.name AS phase_name,
-                ph.selected_phases,
-                ph.dependency_blockers
-            FROM jobs j
-            LEFT JOIN pipeline_phases p ON p.id = j.phase_id
-            LEFT JOIN (
-                SELECT
-                    jp.job_id,
-                    STRING_AGG(jp.phase_code, ', ') AS selected_phases,
-                    STRING_AGG(
-                        CASE WHEN jp.state IN ('blocked', 'waiting', 'pending_dependency')
-                             THEN jp.phase_code ELSE NULL END,
-                        ', '
-                    ) AS dependency_blockers
-                FROM job_phases jp
-                GROUP BY jp.job_id
-            ) ph ON ph.job_id = j.id
-            WHERE j.status IN ('queued', 'paused', 'failed')
-              AND (%s = 1 OR j.status = 'queued')
-            ORDER BY
-                CASE j.status WHEN 'queued' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,
-                COALESCE(j.priority, 100) DESC,
-                COALESCE(j.queue_position, j.id) ASC,
-                j.enqueued_at ASC,
-                j.id ASC
-            LIMIT %s
-            """,
-            (1 if include_related else 0, limit)
-        )
-        avg_seconds = 120
-        try:
-            avg_row = db_postgres.execute_select_one(
-                "SELECT AVG(EXTRACT(EPOCH FROM (completed_at - started_at))::INTEGER) AS avg_sec "
-                "FROM jobs "
-                "WHERE status = 'completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL"
-            )
-            if avg_row and avg_row["avg_sec"]:
-                avg_seconds = max(15, int(avg_row["avg_sec"]))
-        except Exception:
-            pass
-        rows = [dict(r) for r in rows]
-        queue_idx = 0
-        now = datetime.datetime.now()
-        for row in rows:
-            if row.get("status") in ("queued", "paused"):
-                queue_idx += 1
-                row["queue_position"] = queue_idx
-                eta = now + datetime.timedelta(seconds=(queue_idx - 1) * avg_seconds)
-                row["estimated_start"] = eta.isoformat(sep=" ", timespec="seconds")
-            else:
-                row["queue_position"] = "-"
-                row["estimated_start"] = "-"
-            row["target_scope"] = row.get("target_scope") or row.get("input_path") or "-"
-            row["selected_phases"] = row.get("selected_phases") or row.get("phase_name") or row.get("job_type") or "-"
-            row["dependency_blockers"] = row.get("dependency_blockers") or "None"
-            row["retry_count"] = int(row.get("retry_count") or 0)
-            row["priority"] = int(row.get("priority") or 100)
-        return rows
-
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(
+    rows = [dict(r) for r in get_connector().query(
         """
         SELECT
             j.*,
@@ -4606,22 +4260,20 @@ def get_queued_jobs(limit=200, include_related=False):
             j.id ASC
         FETCH FIRST ? ROWS ONLY
         """,
-        (1 if include_related else 0, limit)
-    )
-    rows = [dict(r) for r in c.fetchall()]
+        (1 if include_related else 0, limit),
+    )]
 
     avg_seconds = 120
     try:
-        c.execute(
+        avg_row = get_connector().query_one(
             """
-            SELECT AVG(DATEDIFF(SECOND FROM started_at TO completed_at))
+            SELECT AVG(DATEDIFF(SECOND FROM started_at TO completed_at)) AS avg_sec
             FROM jobs
             WHERE status = 'completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL
             """
         )
-        avg_row = c.fetchone()
-        if avg_row and avg_row[0]:
-            avg_seconds = max(15, int(avg_row[0]))
+        if avg_row and avg_row.get("avg_sec"):
+            avg_seconds = max(15, int(avg_row["avg_sec"]))
     except Exception:
         pass
 
@@ -4641,7 +4293,6 @@ def get_queued_jobs(limit=200, include_related=False):
         row["dependency_blockers"] = row.get("dependency_blockers") or "None"
         row["retry_count"] = int(row.get("retry_count") or 0)
         row["priority"] = int(row.get("priority") or 100)
-    conn.close()
     return rows
 
 
@@ -4649,35 +4300,32 @@ def get_queued_jobs(limit=200, include_related=False):
 
 def bump_job_priority(job_id, delta=10):
     """Increase/decrease job priority for queued/paused jobs."""
-    conn = get_db()
-    c = conn.cursor()
     try:
         d = int(delta)
     except Exception:
         d = 10
-    c.execute(
-        """
-        UPDATE jobs
-        SET priority = CASE
-            WHEN COALESCE(priority, 100) + ? < 1 THEN 1
-            WHEN COALESCE(priority, 100) + ? > 999 THEN 999
-            ELSE COALESCE(priority, 100) + ?
-        END
-        WHERE id = ? AND status IN ('queued', 'paused')
-        """,
-        (d, d, d, job_id),
-    )
-    updated = c.rowcount > 0
-    if updated:
-        conn.commit()
-        c.execute("SELECT priority FROM jobs WHERE id = ?", (job_id,))
-        row = c.fetchone()
-        new_priority = int(row[0]) if row and row[0] is not None else 100
-    else:
-        conn.rollback()
-        new_priority = None
-    conn.close()
-    return {"success": updated, "priority": new_priority}
+
+    def _tx(tx):
+        rowcount = tx.execute(
+            """
+            UPDATE jobs
+            SET priority = CASE
+                WHEN COALESCE(priority, 100) + ? < 1 THEN 1
+                WHEN COALESCE(priority, 100) + ? > 999 THEN 999
+                ELSE COALESCE(priority, 100) + ?
+            END
+            WHERE id = ? AND status IN ('queued', 'paused')
+            """,
+            (d, d, d, job_id),
+        )
+        if rowcount > 0:
+            row = tx.query_one("SELECT priority FROM jobs WHERE id = ?", (job_id,))
+            new_priority = int(row["priority"]) if row and row["priority"] is not None else 100
+        else:
+            new_priority = None
+        return {"success": rowcount > 0, "priority": new_priority}
+
+    return get_connector().run_transaction(_tx)
 
 
 def set_job_priority(job_id, priority):
@@ -4686,60 +4334,27 @@ def set_job_priority(job_id, priority):
         p = max(1, min(int(priority), 999))
     except Exception:
         p = 100
-    if _get_db_engine() == "postgres":
-        rowcount = db_postgres.execute_write(
-            "UPDATE jobs SET priority = %s WHERE id = %s AND status IN ('queued', 'paused')",
-            (p, job_id),
-        )
-        return {"success": rowcount > 0, "priority": p}
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE jobs SET priority = ? WHERE id = ? AND status IN ('queued', 'paused')", (p, job_id))
-    updated = c.rowcount > 0
-    if updated:
-        conn.commit()
-    else:
-        conn.rollback()
-    conn.close()
-    return {"success": updated, "priority": p}
+    rowcount = get_connector().execute(
+        "UPDATE jobs SET priority = ? WHERE id = ? AND status IN ('queued', 'paused')",
+        (p, job_id),
+    )
+    return {"success": rowcount > 0, "priority": p}
 
 
 def pause_queue_job(job_id):
     """Pause a queued job so it is temporarily skipped by dequeue."""
     now = datetime.datetime.now()
-    if _get_db_engine() == "postgres":
-        rowcount = db_postgres.execute_write(
-            "UPDATE jobs SET status = 'paused', paused_at = %s WHERE id = %s AND status = 'queued'",
-            (now, job_id),
-        )
-        return {"success": rowcount > 0}
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE jobs SET status = 'paused', paused_at = ? WHERE id = ? AND status = 'queued'", (now, job_id))
-    updated = c.rowcount > 0
-    if updated:
-        conn.commit()
-    else:
-        conn.rollback()
-    conn.close()
-    return {"success": updated}
+    rowcount = get_connector().execute(
+        "UPDATE jobs SET status = 'paused', paused_at = ? WHERE id = ? AND status = 'queued'",
+        (now, job_id),
+    )
+    return {"success": rowcount > 0}
 
 
 def restart_failed_job(job_id):
     """Move failed job back to queued and increment retry_count."""
     now = datetime.datetime.now()
-    if _get_db_engine() == "postgres":
-        rowcount = db_postgres.execute_write(
-            "UPDATE jobs SET status = 'queued', cancel_requested = 0, enqueued_at = %s,"
-            " queue_position = id, retry_count = COALESCE(retry_count, 0) + 1,"
-            " paused_at = NULL, started_at = NULL, finished_at = NULL, completed_at = NULL"
-            " WHERE id = %s AND status = 'failed'",
-            (now, job_id),
-        )
-        return {"success": rowcount > 0}
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(
+    rowcount = get_connector().execute(
         """
         UPDATE jobs
         SET status = 'queued', cancel_requested = 0, enqueued_at = ?, queue_position = id,
@@ -4747,21 +4362,16 @@ def restart_failed_job(job_id):
             started_at = NULL, finished_at = NULL, completed_at = NULL
         WHERE id = ? AND status = 'failed'
         """,
-        (now, job_id)
+        (now, job_id),
     )
-    updated = c.rowcount > 0
-    if updated:
-        conn.commit()
-    else:
-        conn.rollback()
-    conn.close()
-    return {"success": updated}
+    return {"success": rowcount > 0}
 
 
 def request_cancel_job(job_id):
     now = datetime.datetime.now()
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one("SELECT status FROM jobs WHERE id = %s", (job_id,))
+
+    def _tx(tx):
+        row = tx.query_one("SELECT status FROM jobs WHERE id = ?", (job_id,))
         if not row:
             return {"success": False, "reason": "not_found"}
         status = (row["status"] or "").strip().lower()
@@ -4771,13 +4381,17 @@ def request_cancel_job(job_id):
             return {"success": False, "reason": "running_not_supported", "status": status}
         if status not in ("queued", "paused"):
             return {"success": False, "reason": "not_cancellable_state", "status": status}
-        rowcount = db_postgres.execute_write(
-            "UPDATE jobs SET status = 'cancelled', cancel_requested = 1, queue_position = NULL,"
-            " finished_at = %s, completed_at = %s WHERE id = %s AND status IN ('queued', 'paused')",
+        rowcount = tx.execute(
+            """
+            UPDATE jobs
+            SET status = 'cancelled', cancel_requested = 1, queue_position = NULL,
+                finished_at = ?, completed_at = ?
+            WHERE id = ? AND status IN ('queued', 'paused')
+            """,
             (now, now, job_id),
         )
         if rowcount == 0:
-            latest = db_postgres.execute_select_one("SELECT status FROM jobs WHERE id = %s", (job_id,))
+            latest = tx.query_one("SELECT status FROM jobs WHERE id = ?", (job_id,))
             latest_status = (latest["status"] or "").strip().lower() if latest else "not_found"
             if latest_status == "running":
                 return {"success": False, "reason": "running_not_supported", "status": latest_status}
@@ -4788,52 +4402,7 @@ def request_cancel_job(job_id):
             return {"success": False, "reason": "cancel_failed", "status": latest_status}
         return {"success": True, "reason": "cancelled", "status": status}
 
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT status FROM jobs WHERE id = ?", (job_id,))
-    row = c.fetchone()
-    if not row:
-        conn.close()
-        return {"success": False, "reason": "not_found"}
-
-    status = (row[0] or "").strip().lower()
-    if status in ("completed", "failed", "cancelled"):
-        conn.close()
-        return {"success": False, "reason": "already_finished", "status": status}
-
-    if status == "running":
-        conn.close()
-        return {"success": False, "reason": "running_not_supported", "status": status}
-
-    if status not in ("queued", "paused"):
-        conn.close()
-        return {"success": False, "reason": "not_cancellable_state", "status": status}
-
-    c.execute(
-        """
-        UPDATE jobs
-        SET status = 'cancelled', cancel_requested = 1, queue_position = NULL, finished_at = ?, completed_at = ?
-        WHERE id = ? AND status IN ('queued', 'paused')
-        """,
-        (now, now, job_id)
-    )
-    if c.rowcount == 0:
-        conn.rollback()
-        c.execute("SELECT status FROM jobs WHERE id = ?", (job_id,))
-        latest = c.fetchone()
-        conn.close()
-        latest_status = (latest[0] or "").strip().lower() if latest else "not_found"
-        if latest_status == "running":
-            return {"success": False, "reason": "running_not_supported", "status": latest_status}
-        if latest_status in ("completed", "failed", "cancelled"):
-            return {"success": False, "reason": "already_finished", "status": latest_status}
-        if latest_status == "not_found":
-            return {"success": False, "reason": "not_found"}
-        return {"success": False, "reason": "cancel_failed", "status": latest_status}
-
-    conn.commit()
-    conn.close()
-    return {"success": True, "reason": "cancelled", "status": status}
+    return get_connector().run_transaction(_tx)
 
 
 def create_job_phases(job_id, phase_codes, first_phase_state=None):
@@ -4846,11 +4415,7 @@ def create_job_phases(job_id, phase_codes, first_phase_state=None):
     if not phase_codes:
         return []
 
-    conn = get_db()
-    c = conn.cursor()
     now = datetime.datetime.now()
-    c.execute("DELETE FROM job_phases WHERE job_id = ?", (job_id,))
-
     rows = []
     for idx, phase_code in enumerate(phase_codes):
         if idx > 0:
@@ -4862,22 +4427,21 @@ def create_job_phases(job_id, phase_codes, first_phase_state=None):
         else:
             state = "running"
             started_at = now
-        c.execute(
-            "INSERT INTO job_phases (job_id, phase_order, phase_code, state, started_at) VALUES (?, ?, ?, ?, ?)",
-            (job_id, idx, phase_code, state, started_at),
-        )
-        rows.append({
-            "phase_order": idx,
-            "phase_code": phase_code,
-            "state": state,
-            "started_at": started_at,
-            "completed_at": None,
-            "error_message": None,
-        })
+        rows.append((job_id, idx, phase_code, state, started_at))
 
-    conn.commit()
-    conn.close()
-    return rows
+    def _tx(tx):
+        tx.execute("DELETE FROM job_phases WHERE job_id = ?", (job_id,))
+        for row in rows:
+            tx.execute(
+                "INSERT INTO job_phases (job_id, phase_order, phase_code, state, started_at) VALUES (?, ?, ?, ?, ?)",
+                row,
+            )
+    get_connector().run_transaction(_tx)
+
+    return [
+        {"phase_order": r[1], "phase_code": r[2], "state": r[3], "started_at": r[4], "completed_at": None, "error_message": None}
+        for r in rows
+    ]
 
 
 def resume_job_phases(job_id):
@@ -4886,47 +4450,39 @@ def resume_job_phases(job_id):
     The first incomplete phase is set to 'queued' so the dispatcher picks it up.
     Returns the updated phase list.
     """
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(
-        "SELECT phase_order, phase_code, state FROM job_phases "
-        "WHERE job_id = ? ORDER BY phase_order",
+    rows = get_connector().query(
+        "SELECT phase_order, phase_code, state FROM job_phases WHERE job_id = ? ORDER BY phase_order",
         (job_id,),
     )
-    rows = c.fetchall()
     if not rows:
-        conn.close()
         return []
 
     keep_states = {"completed", "skipped"}
     first_incomplete_set = False
+    updates = []
     for r in rows:
-        phase_order, phase_code, state = r[0], r[1], (r[2] or "").strip().lower()
+        state = (r["state"] or "").strip().lower()
         if state in keep_states:
             continue
-        # First incomplete phase → queued; rest → pending
-        if not first_incomplete_set:
-            new_state = "queued"
-            first_incomplete_set = True
-        else:
-            new_state = "pending"
-        c.execute(
-            "UPDATE job_phases SET state = ?, started_at = NULL, completed_at = NULL, error_message = NULL "
-            "WHERE job_id = ? AND phase_code = ?",
-            (new_state, job_id, phase_code),
-        )
+        new_state = "queued" if not first_incomplete_set else "pending"
+        first_incomplete_set = True
+        updates.append((new_state, job_id, r["phase_code"]))
 
-    conn.commit()
+    if updates:
+        def _tx(tx):
+            for params in updates:
+                tx.execute(
+                    "UPDATE job_phases SET state = ?, started_at = NULL, completed_at = NULL, error_message = NULL "
+                    "WHERE job_id = ? AND phase_code = ?",
+                    params,
+                )
+        get_connector().run_transaction(_tx)
 
-    # Return updated phases
-    c.execute(
+    return [dict(r) for r in get_connector().query(
         "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
         "FROM job_phases WHERE job_id = ? ORDER BY phase_order",
         (job_id,),
-    )
-    result = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return result
+    )]
 
 
 def set_job_phase_state(job_id, phase_code, state, error_message=None):
@@ -4954,13 +4510,14 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
     }
     now = datetime.datetime.now()
 
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one(
-            "SELECT id, state FROM job_phases WHERE job_id = %s AND phase_code = %s",
+    def _tx(tx):
+        row = tx.query_one(
+            "SELECT id, state FROM job_phases WHERE job_id = ? AND phase_code = ?",
             (job_id, phase_code),
         )
         if not row:
             return None
+
         phase_id = row["id"]
         old_state = str(row["state"] or "pending").strip().lower()
         new_state = str(state or "").strip().lower()
@@ -4969,57 +4526,7 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
                 msg = f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})"
                 logger.warning(msg)
                 raise ValueError(msg)
-        fields = ["state = %s"]
-        params = [state]
-        if state == "running":
-            fields.append("started_at = COALESCE(started_at, %s)")
-            params.append(now)
-            fields.append("error_message = NULL")
-        if state in {"completed", "failed", "skipped", "interrupted"}:
-            fields.append("completed_at = %s")
-            params.append(now)
-        if error_message is not None:
-            fields.append("error_message = %s")
-            params.append(error_message)
-        params.append(phase_id)
-        with db_postgres.PGConnectionManager(commit=True) as conn:
-            with conn.cursor() as cur:
-                cur.execute(f"UPDATE job_phases SET {', '.join(fields)} WHERE id = %s", params)
-                if state in {"completed", "skipped"}:
-                    cur.execute(
-                        "SELECT id FROM job_phases WHERE job_id = %s"
-                        " AND phase_order > (SELECT phase_order FROM job_phases WHERE id = %s)"
-                        " AND state = 'pending' ORDER BY phase_order LIMIT 1",
-                        (job_id, phase_id),
-                    )
-                    next_row = cur.fetchone()
-                    if next_row:
-                        cur.execute(
-                            "UPDATE job_phases SET state = 'running',"
-                            " started_at = COALESCE(started_at, %s), error_message = NULL WHERE id = %s",
-                            (now, next_row[0]),
-                        )
-        return get_job_phases(job_id)
 
-    with connection() as conn:
-        c = conn.cursor()
-        c.execute(
-            "SELECT id, state FROM job_phases WHERE job_id = ? AND phase_code = ?",
-            (job_id, phase_code),
-        )
-        row = c.fetchone()
-        if not row:
-            return None
-
-        phase_id = row[0]
-        old_state = str(row[1] or "pending").strip().lower()
-        new_state = str(state or "").strip().lower()
-        if old_state != new_state and new_state not in allowed.get(old_state, set()):
-            # Allow failed->skipped and failed->pending (user recovery)
-            if not (old_state == "failed" and new_state in ("skipped", "pending")):
-                msg = f"Invalid job phase transition: {old_state} -> {new_state} (job_id={job_id}, phase={phase_code})"
-                logger.warning(msg)
-                raise ValueError(msg)
         fields = ["state = ?"]
         params = [state]
         if state == "running":
@@ -5034,42 +4541,35 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
             params.append(error_message)
 
         params.append(phase_id)
-        c.execute(f"UPDATE job_phases SET {', '.join(fields)} WHERE id = ?", params)
+        tx.execute(f"UPDATE job_phases SET {', '.join(fields)} WHERE id = ?", params)
 
         if state in {"completed", "skipped"}:
-            c.execute(
-                "SELECT id FROM job_phases WHERE job_id = ? AND phase_order > (SELECT phase_order FROM job_phases WHERE id = ?) AND state = 'pending' ORDER BY phase_order FETCH FIRST 1 ROWS ONLY",
+            next_row = tx.query_one(
+                "SELECT id FROM job_phases WHERE job_id = ? AND phase_order > "
+                "(SELECT phase_order FROM job_phases WHERE id = ?) AND state = 'pending' "
+                "ORDER BY phase_order FETCH FIRST 1 ROWS ONLY",
                 (job_id, phase_id),
             )
-            next_row = c.fetchone()
             if next_row:
-                c.execute(
+                tx.execute(
                     "UPDATE job_phases SET state = 'running', started_at = COALESCE(started_at, ?), error_message = NULL WHERE id = ?",
-                    (now, next_row[0]),
+                    (now, next_row["id"]),
                 )
+        return True
 
-        conn.commit()
+    result = get_connector().run_transaction(_tx)
+    if result is None:
+        return None
     return get_job_phases(job_id)
 
 
 def get_job_phases(job_id):
     """Get ordered phase plan/status rows for a job."""
-    if _get_db_engine() == "postgres":
-        rows = db_postgres.execute_select(
-            "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
-            "FROM job_phases WHERE job_id = %s ORDER BY phase_order",
-            (job_id,))
-        return [dict(r) for r in rows]
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(
+    return [dict(r) for r in get_connector().query(
         "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
         "FROM job_phases WHERE job_id = ? ORDER BY phase_order",
         (job_id,),
-    )
-    rows = c.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    )]
 
 
 def _resolve_multi_phase_job_phases_sync_code(job_id, new_status):
@@ -5126,61 +4626,53 @@ def _resolve_multi_phase_job_phases_sync_code(job_id, new_status):
 
 def get_job_steps(job_id, phase_code):
     """Return step-level telemetry rows for a job+phase from job_steps table."""
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute(
+        rows = get_connector().query(
             "SELECT id, step_code, step_name, status, started_at, completed_at, "
             "items_total, items_done, throughput_rps, error_message "
             "FROM job_steps WHERE job_id = ? AND phase_code = ? ORDER BY id",
             (job_id, phase_code),
         )
-        rows = c.fetchall()
         return [
             {
-                "id": r[0],
-                "step_code": r[1],
-                "step_name": r[2],
-                "status": r[3],
-                "started_at": str(r[4]) if r[4] else None,
-                "completed_at": str(r[5]) if r[5] else None,
-                "items_total": r[6] or 0,
-                "items_done": r[7] or 0,
-                "throughput_rps": r[8],
-                "error_message": r[9],
+                "id": r["id"],
+                "step_code": r["step_code"],
+                "step_name": r["step_name"],
+                "status": r["status"],
+                "started_at": str(r["started_at"]) if r["started_at"] else None,
+                "completed_at": str(r["completed_at"]) if r["completed_at"] else None,
+                "items_total": r["items_total"] or 0,
+                "items_done": r["items_done"] or 0,
+                "throughput_rps": r["throughput_rps"],
+                "error_message": r["error_message"],
             }
             for r in rows
         ]
     except Exception:
         return []
-    finally:
-        conn.close()
 
 
 def upsert_job_step(job_id, phase_code, step_code, step_name, status="pending",
                     items_total=0, items_done=0, throughput_rps=None, error_message=None):
     """Insert or update a step telemetry row in job_steps."""
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute(
+    now = datetime.datetime.now()
+    def _tx(tx):
+        row = tx.query_one(
             "SELECT id FROM job_steps WHERE job_id = ? AND phase_code = ? AND step_code = ?",
             (job_id, phase_code, step_code),
         )
-        row = c.fetchone()
-        now = datetime.datetime.now()
         if row:
-            c.execute(
+            tx.execute(
                 "UPDATE job_steps SET status = ?, items_total = ?, items_done = ?, "
                 "throughput_rps = ?, error_message = ?, "
                 "started_at = CASE WHEN status = 'running' THEN COALESCE(started_at, ?) ELSE started_at END, "
                 "completed_at = CASE WHEN ? IN ('completed','failed','skipped') THEN ? ELSE completed_at END "
                 "WHERE id = ?",
                 (status, items_total, items_done, throughput_rps, error_message,
-                 now, status, now, row[0]),
+                 now, status, now, row["id"]),
             )
         else:
-            c.execute(
+            tx.execute(
                 "INSERT INTO job_steps (job_id, phase_code, step_code, step_name, status, "
                 "items_total, items_done, throughput_rps, error_message, started_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -5188,11 +4680,10 @@ def upsert_job_step(job_id, phase_code, step_code, step_name, status="pending",
                  items_total, items_done, throughput_rps, error_message,
                  now if status == "running" else None),
             )
-        conn.commit()
+    try:
+        get_connector().run_transaction(_tx)
     except Exception:
-        conn.rollback()
-    finally:
-        conn.close()
+        pass
 
 
 def get_job_stage_images(job_id, phase_code, offset=0, limit=50):
@@ -5251,64 +4742,51 @@ def get_job_stage_images(job_id, phase_code, offset=0, limit=50):
 
 def get_next_running_job_phase(job_id):
     """Return current running phase for a job, if any."""
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(
+    row = get_connector().query_one(
         "SELECT phase_code FROM job_phases WHERE job_id = ? AND state = 'running' ORDER BY phase_order FETCH FIRST 1 ROWS ONLY",
         (job_id,),
     )
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else None
+    return row["phase_code"] if row else None
 
 
 def recover_running_jobs(mark_as="interrupted"):
     """Mark stale running jobs (and their in-flight job_phases) as interrupted."""
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id FROM jobs WHERE status = 'running'")
-    rows = c.fetchall()
-    recovered = [r[0] for r in rows]
+    rows = get_connector().query("SELECT id FROM jobs WHERE status = 'running'")
+    recovered = [r["id"] for r in rows]
     if recovered:
         now = datetime.datetime.now()
-        c.execute(
-            "UPDATE jobs SET status = ?, completed_at = ?, runner_state = ? WHERE status = 'running'",
-            (mark_as, now, mark_as),
-        )
-        # Reset orphaned job_phases that were mid-flight
-        placeholders = ",".join("?" * len(recovered))
-        c.execute(
-            f"UPDATE job_phases SET state = ?, completed_at = ? "
-            f"WHERE job_id IN ({placeholders}) AND state = 'running'",
-            [mark_as, now] + recovered,
-        )
-    conn.commit()
-    conn.close()
+        def _tx(tx):
+            tx.execute(
+                "UPDATE jobs SET status = ?, completed_at = ?, runner_state = ? WHERE status = 'running'",
+                (mark_as, now, mark_as),
+            )
+            placeholders = ",".join("?" * len(recovered))
+            tx.execute(
+                f"UPDATE job_phases SET state = ?, completed_at = ? "
+                f"WHERE job_id IN ({placeholders}) AND state = 'running'",
+                [mark_as, now] + recovered,
+            )
+        get_connector().run_transaction(_tx)
     return recovered
 
 
 def get_interrupted_jobs(job_type=None, limit=100):
-    conn = get_db()
-    c = conn.cursor()
     try:
         limit = int(limit)
     except (TypeError, ValueError):
         limit = 100
 
     if job_type:
-        c.execute(
+        rows = get_connector().query(
             "SELECT * FROM jobs WHERE status = 'interrupted' AND job_type = ? ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY",
             (job_type, limit),
         )
     else:
-        c.execute(
+        rows = get_connector().query(
             "SELECT * FROM jobs WHERE status = 'interrupted' ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY",
             (limit,),
         )
-
-    rows = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return rows
+    return [dict(r) for r in rows]
 
 
 def get_jobs(limit=50):
@@ -5316,16 +4794,9 @@ def get_jobs(limit=50):
     except (ValueError, TypeError): limit = 50
     if limit < 0: limit = 50
     limit = min(limit, 1000)
-    if _get_db_engine() == "postgres":
-        pg_sql = _translate_fb_to_pg(
-            "SELECT * FROM jobs ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY")
-        return [dict(r) for r in db_postgres.execute_select(pg_sql, (limit,))]
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT * FROM jobs ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY", (limit,))
-    rows = [dict(zip(r.keys(), [r[k] for k in r.keys()])) for r in c.fetchall()]
-    conn.close()
-    return rows
+    return [dict(r) for r in get_connector().query(
+        "SELECT * FROM jobs ORDER BY created_at DESC FETCH FIRST ? ROWS ONLY", (limit,)
+    )]
 
 
 def get_all_images(sort_by="score", order="desc", limit=100):
@@ -5333,24 +4804,11 @@ def get_all_images(sort_by="score", order="desc", limit=100):
     try: limit = int(limit)
     except (ValueError, TypeError): limit = 100
     sort_by, order = _validate_sort(sort_by, order)
-    if _get_db_engine() == "postgres":
-        if limit > 0:
-            pg_sql = _translate_fb_to_pg(
-                f"SELECT * FROM images ORDER BY {sort_by} {order} FETCH FIRST ? ROWS ONLY")
-            return list(db_postgres.execute_select(pg_sql, (limit,)))
-        return list(db_postgres.execute_select(
-            f"SELECT * FROM images ORDER BY {sort_by} {order}"))
-    conn = get_db()
-    c = conn.cursor()
     if limit > 0:
-        query = f"SELECT * FROM images ORDER BY {sort_by} {order} FETCH FIRST ? ROWS ONLY"
-        c.execute(query, (limit,))
-    else:
-        query = f"SELECT * FROM images ORDER BY {sort_by} {order}"
-        c.execute(query)
-    rows = c.fetchall()
-    conn.close()
-    return rows
+        return list(get_connector().query(
+            f"SELECT * FROM images ORDER BY {sort_by} {order} FETCH FIRST ? ROWS ONLY", (limit,)
+        ))
+    return list(get_connector().query(f"SELECT * FROM images ORDER BY {sort_by} {order}"))
 
 
 def get_nef_paths_for_research(limit=500):
@@ -5369,88 +4827,58 @@ def get_nef_paths_for_research(limit=500):
         "FROM images WHERE LOWER(file_type) = 'nef' "
         "ORDER BY RAND() FETCH FIRST ? ROWS ONLY"
     )
-    if _get_db_engine() == "postgres":
-        pg_sql = _translate_fb_to_pg(fb_sql)
-        return db_postgres.execute_select(pg_sql, (limit,))
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(fb_sql, (limit,))
-    rows = c.fetchall()
-    conn.close()
-    return rows
+    return list(get_connector().query(fb_sql, (limit,)))
 
 def sync_folder_to_db(folder_path, job_id=None):
     """
     Scans a folder for .json files (generated by scoring) and upserts them to DB.
     """
-    conn = get_db()
-    c = conn.cursor()
     from modules import utils
-    
+
     count = 0
-    # Find all JSONs that look like scoring results
-    # We assume valid scoring results have 'summary' key
+    touched_folder_ids = set()
     folder = Path(folder_path)
     if not folder.exists():
         return 0
+
+    # Collect rows first; execute in a single transaction
+    upserts = []
+    uuid_updates = []
 
     for json_file in folder.glob("*.json"):
         try:
             with open(json_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
-            # Simple validation: checks for 'summary' or 'average_normalized_score'
+
             if "summary" not in data and "average_normalized_score" not in data:
                 continue
 
-            # Handle different versions of JSON structure if needed
-            # Assuming current structure based on batch_process_images.py
-            
             # Extract score (General)
             score = 0
             if "summary" in data and "weighted_scores" in data["summary"]:
                 score = data["summary"]["weighted_scores"].get("general", 0)
             elif "summary" in data:
-                 # Legacy fallback
-                 score = data["summary"].get("average_normalized_score", 0)
-                
-            # Find original image path
-            # The JSON usually contains "image_path" but it might be a WSL path if generated inside WSL?
-            # Actually batch_process_images.py runs inside WSL but might save WSL paths.
-            # We need to map it back or just trust the JSON filename matching the image?
-            # Let's rely on the JSON's stated path if it exists, or infer from filename.
-            
+                score = data["summary"].get("average_normalized_score", 0)
+
             image_path = data.get("image_path", "")
             if not image_path:
-                # Infer from JSON name
-                # image.jpg -> image.json
                 stem = json_file.stem
-                # Try to find the image file
                 for ext in ['.jpg', '.nef', '.png']:
                     probe = folder / (stem + ext)
                     if probe.exists():
                         image_path = str(probe)
                         break
-            
-            if not image_path:
-                image_path = str(json_file.with_suffix('')) # Fallback
-                
-            file_name = Path(image_path).name
-            
-            # Upsert
-            c.execute('''UPDATE OR INSERT INTO images
-                          (job_id, file_path, file_name, score, scores_json, created_at)
-                          VALUES (?, ?, ?, ?, ?, ?)
-                          MATCHING (file_path)''',
-                      (job_id, str(image_path), file_name, score, json.dumps(data), utils.get_image_creation_time(str(image_path))))
 
-            # Assign UUID only if not already set (preserve existing)
+            if not image_path:
+                image_path = str(json_file.with_suffix(''))
+
+            file_name = Path(image_path).name
+
+            upserts.append((job_id, str(image_path), file_name, score, json.dumps(data), utils.get_image_creation_time(str(image_path))))
+
             meta_dict = data.get("metadata") if isinstance(data.get("metadata"), dict) else None
             image_uuid = generate_image_uuid(meta_dict)
-            c.execute(
-                "UPDATE images SET image_uuid = ? WHERE file_path = ? AND (image_uuid IS NULL OR image_uuid = '')",
-                (image_uuid, str(image_path))
-            )
+            uuid_updates.append((image_uuid, str(image_path)))
 
             folder_id = get_or_create_folder(os.path.dirname(str(image_path))) if image_path else None
             if folder_id:
@@ -5459,9 +4887,24 @@ def sync_folder_to_db(folder_path, job_id=None):
             count += 1
         except Exception as e:
             logging.error(f"Failed to sync {json_file}: {e}")
-            
-    conn.commit()
-    conn.close()
+
+    if upserts:
+        def _batch(tx):
+            for row in upserts:
+                tx.execute(
+                    '''UPDATE OR INSERT INTO images
+                       (job_id, file_path, file_name, score, scores_json, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)
+                       MATCHING (file_path)''',
+                    row,
+                )
+            for image_uuid, image_path in uuid_updates:
+                tx.execute(
+                    "UPDATE images SET image_uuid = ? WHERE file_path = ? AND (image_uuid IS NULL OR image_uuid = '')",
+                    (image_uuid, image_path),
+                )
+        get_connector().run_transaction(_batch)
+
     if touched_folder_ids:
         for fid in touched_folder_ids:
             invalidate_folder_phase_aggregates(folder_id=fid)
@@ -5481,8 +4924,6 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
         dirty_folder_ids: If provided and ``invalidate_agg`` is False, folder_id values
             that would have been invalidated are added to this set for later flush.
     """
-    conn = get_db()
-    c = conn.cursor()
     from modules import utils
 
     def _record_phase_agg(fld_id, old_fld=None):
@@ -5636,8 +5077,9 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
     existing_image = None
     if image_path:
         try:
-            c.execute("SELECT id, folder_id FROM images WHERE file_path = ?", (image_path,))
-            existing_image = c.fetchone()
+            existing_image = get_connector().query_one(
+                "SELECT id, folder_id FROM images WHERE file_path = ?", (image_path,)
+            )
         except Exception:
             existing_image = None
 
@@ -5653,18 +5095,18 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
             existing_path = None
             old_folder_id = None
             try:
-                c2 = conn.cursor()
-                c2.execute("SELECT file_path, folder_id FROM images WHERE id = ?", (existing_id,))
-                r = c2.fetchone()
+                r = get_connector().query_one(
+                    "SELECT file_path, folder_id FROM images WHERE id = ?", (existing_id,)
+                )
                 if r:
-                    existing_path = r[0] if r else None
-                    old_folder_id = r[1] if len(r) > 1 else None
+                    existing_path = r["file_path"]
+                    old_folder_id = r["folder_id"]
             except Exception:
                 pass
             if existing_path != image_path:
                 logger.info("Duplicate by UUID %s: updating existing id=%s path %s -> %s",
                             image_uuid_val[:16], existing_id, existing_path, image_path)
-                c.execute(
+                get_connector().execute(
                     '''UPDATE images SET
                        job_id=?, file_path=?, file_name=?, file_type=?,
                        score=?, score_spaq=?, score_ava=?, score_koniq=?, score_paq2piq=?, score_liqe=?,
@@ -5678,7 +5120,6 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
                      rating, label, keywords, title, description, metadata, json.dumps(result),
                      thumbnail_path, thumbnail_path_win, image_hash, folder_id, existing_id)
                 )
-                conn.commit()
                 _sync_image_keywords(existing_id, keywords)
                 register_image_path(existing_id, image_path)
                 try:
@@ -5698,12 +5139,23 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
                     "label": label,
                     "image_hash": image_hash
                 })
-                conn.close()
                 return
 
-    # Firebird: We can use RETURNING!
-    query = '''UPDATE OR INSERT INTO images 
-                  (job_id, file_path, file_name, file_type, 
+    _upsert_params = (
+        job_id, image_path, file_name, file_type,
+        score,
+        score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
+        score_technical, score_aesthetic, score_general, model_version,
+        rating, label,
+        keywords, title, description, metadata, json.dumps(result),
+        thumbnail_path, thumbnail_path_win,
+        image_hash, folder_id, utils.get_image_creation_time(image_path)
+    )
+
+    def _tx(tx):
+        ret = tx.execute_returning(
+            '''UPDATE OR INSERT INTO images
+                  (job_id, file_path, file_name, file_type,
                    score,
                    score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
                    score_technical, score_aesthetic, score_general, model_version,
@@ -5712,39 +5164,26 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
                    thumbnail_path, thumbnail_path_win,
                    image_hash, folder_id, created_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                  MATCHING (file_path) RETURNING id'''
-    
-    c.execute(query,
-              (job_id, image_path, file_name, file_type, 
-               score,
-               score_spaq, score_ava, score_koniq, score_paq2piq, score_liqe,
-               score_technical, score_aesthetic, score_general, model_version,
-               rating, label,
-               keywords, title, description, metadata, json.dumps(result),
-               thumbnail_path, thumbnail_path_win,
-               image_hash, folder_id, utils.get_image_creation_time(image_path)))
-    
-    row = c.fetchone()
-    image_id = row[0] if row else None
+                  MATCHING (file_path) RETURNING id''',
+            _upsert_params,
+        )
+        img_id = ret[0]["id"] if ret else None
+        if img_id:
+            try:
+                _meta = result.get("metadata") if isinstance(result.get("metadata"), dict) else (
+                    json.loads(result.get("metadata")) if isinstance(result.get("metadata"), str) else None
+                )
+                new_uuid = generate_image_uuid(_meta)
+                tx.execute(
+                    "UPDATE images SET image_uuid = ? WHERE id = ? AND (image_uuid IS NULL OR image_uuid = '')",
+                    (new_uuid, img_id),
+                )
+            except Exception as _uuid_err:
+                logger.warning("Could not assign image_uuid for id %s: %s", img_id, _uuid_err)
+        return img_id
 
-    # Assign image_uuid on creation (preserve existing UUID if already set)
-    if image_id:
-        try:
-            meta_dict = result.get("metadata") if isinstance(result.get("metadata"), dict) else (
-                json.loads(result.get("metadata")) if isinstance(result.get("metadata"), str) else None
-            )
-            new_uuid = generate_image_uuid(meta_dict)
-            c.execute(
-                "UPDATE images SET image_uuid = ? WHERE id = ? AND (image_uuid IS NULL OR image_uuid = '')",
-                (new_uuid, image_id)
-            )
-        except Exception as _uuid_err:
-            logger.warning("Could not assign image_uuid for id %s: %s", image_id, _uuid_err)
-
-    old_folder_id = existing_image[1] if existing_image else None
-
-    conn.commit()
-    conn.close()
+    image_id = get_connector().run_transaction(_tx)
+    old_folder_id = existing_image["folder_id"] if existing_image else None
 
     if image_id:
         _sync_image_keywords(image_id, keywords)
@@ -5795,47 +5234,43 @@ def upsert_image_exif(image_id: int, data: dict) -> bool:
     """
     if not image_id or not isinstance(data, dict):
         return False
-    conn = get_db()
-    c = conn.cursor()
     try:
         extracted_at = datetime.datetime.now()
-        c.execute('''UPDATE OR INSERT INTO image_exif (
-            image_id, make, model, lens_model, focal_length, focal_length_35mm,
-            date_time_original, create_date, exposure_time, f_number, iso,
-            exposure_compensation, image_width, image_height, orientation, flash,
-            image_unique_id, shutter_count, sub_sec_time_original, extracted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        MATCHING (image_id)''', (
-            image_id,
-            data.get('make'),
-            data.get('model'),
-            data.get('lens_model'),
-            data.get('focal_length'),
-            _safe_int(data.get('focal_length_35mm')),
-            _parse_exif_timestamp(data.get('date_time_original')),
-            _parse_exif_timestamp(data.get('create_date')),
-            _str_or_none(data.get('exposure_time')),
-            _str_or_none(data.get('f_number')),
-            _safe_int(data.get('iso')),
-            _str_or_none(data.get('exposure_compensation')),
-            _safe_int(data.get('image_width')),
-            _safe_int(data.get('image_height')),
-            _safe_int(data.get('orientation')),
-            _safe_int(data.get('flash')),
-            _str_or_none(data.get('image_unique_id')),
-            _safe_int(data.get('shutter_count')),
-            _str_or_none(data.get('sub_sec_time_original')),
-            extracted_at,
-        ))
-        conn.commit()
+        get_connector().execute(
+            '''UPDATE OR INSERT INTO image_exif (
+                image_id, make, model, lens_model, focal_length, focal_length_35mm,
+                date_time_original, create_date, exposure_time, f_number, iso,
+                exposure_compensation, image_width, image_height, orientation, flash,
+                image_unique_id, shutter_count, sub_sec_time_original, extracted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            MATCHING (image_id)''',
+            (
+                image_id,
+                data.get('make'),
+                data.get('model'),
+                data.get('lens_model'),
+                data.get('focal_length'),
+                _safe_int(data.get('focal_length_35mm')),
+                _parse_exif_timestamp(data.get('date_time_original')),
+                _parse_exif_timestamp(data.get('create_date')),
+                _str_or_none(data.get('exposure_time')),
+                _str_or_none(data.get('f_number')),
+                _safe_int(data.get('iso')),
+                _str_or_none(data.get('exposure_compensation')),
+                _safe_int(data.get('image_width')),
+                _safe_int(data.get('image_height')),
+                _safe_int(data.get('orientation')),
+                _safe_int(data.get('flash')),
+                _str_or_none(data.get('image_unique_id')),
+                _safe_int(data.get('shutter_count')),
+                _str_or_none(data.get('sub_sec_time_original')),
+                extracted_at,
+            ),
+        )
         return True
     except Exception as e:
         logger.warning("upsert_image_exif failed for image_id %s: %s", image_id, e)
-        try: conn.rollback()
-        except Exception: pass
         return False
-    finally:
-        conn.close()
 
 
 def upsert_image_xmp(image_id: int, data: dict) -> bool:
@@ -5846,8 +5281,6 @@ def upsert_image_xmp(image_id: int, data: dict) -> bool:
     """
     if not image_id or not isinstance(data, dict):
         return False
-    conn = get_db()
-    c = conn.cursor()
     try:
         extracted_at = datetime.datetime.now()
         keywords_val = data.get('keywords')
@@ -5855,67 +5288,47 @@ def upsert_image_xmp(image_id: int, data: dict) -> bool:
             keywords_val = json.dumps(keywords_val) if keywords_val else None
         elif not isinstance(keywords_val, str):
             keywords_val = None
-        c.execute('''UPDATE OR INSERT INTO image_xmp (
-            image_id, rating, label, pick_status, burst_uuid, stack_id,
-            keywords, title, description, create_date, modify_date, extracted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        MATCHING (image_id)''', (
-            image_id,
-            _safe_int(data.get('rating')),
-            _str_or_none(data.get('label')),
-            _safe_int(data.get('pick_status')),
-            _str_or_none(data.get('burst_uuid')),
-            _str_or_none(data.get('stack_id')),
-            keywords_val,
-            _str_or_none(data.get('title')),
-            _str_or_none(data.get('description')),
-            _parse_exif_timestamp(data.get('create_date')),
-            _parse_exif_timestamp(data.get('modify_date')),
-            extracted_at,
-        ))
-        conn.commit()
+        get_connector().execute(
+            '''UPDATE OR INSERT INTO image_xmp (
+                image_id, rating, label, pick_status, burst_uuid, stack_id,
+                keywords, title, description, create_date, modify_date, extracted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            MATCHING (image_id)''',
+            (
+                image_id,
+                _safe_int(data.get('rating')),
+                _str_or_none(data.get('label')),
+                _safe_int(data.get('pick_status')),
+                _str_or_none(data.get('burst_uuid')),
+                _str_or_none(data.get('stack_id')),
+                keywords_val,
+                _str_or_none(data.get('title')),
+                _str_or_none(data.get('description')),
+                _parse_exif_timestamp(data.get('create_date')),
+                _parse_exif_timestamp(data.get('modify_date')),
+                extracted_at,
+            ),
+        )
         return True
     except Exception as e:
         logger.warning("upsert_image_xmp failed for image_id %s: %s", image_id, e)
-        try: conn.rollback()
-        except Exception: pass
         return False
-    finally:
-        conn.close()
 
 
 def get_image_exif(image_id: int) -> dict | None:
     """Get cached EXIF metadata for an image. Returns None if not found."""
     if not image_id:
         return None
-    if _get_db_engine() == "postgres":
-        return db_postgres.execute_select_one(
-            "SELECT * FROM image_exif WHERE image_id = %s", (image_id,))
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute("SELECT * FROM image_exif WHERE image_id = ?", (image_id,))
-        row = c.fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+    row = get_connector().query_one("SELECT * FROM image_exif WHERE image_id = ?", (image_id,))
+    return dict(row) if row else None
 
 
 def get_image_xmp(image_id: int) -> dict | None:
     """Get cached XMP metadata for an image. Returns None if not found."""
     if not image_id:
         return None
-    if _get_db_engine() == "postgres":
-        return db_postgres.execute_select_one(
-            "SELECT * FROM image_xmp WHERE image_id = %s", (image_id,))
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute("SELECT * FROM image_xmp WHERE image_id = ?", (image_id,))
-        row = c.fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+    row = get_connector().query_one("SELECT * FROM image_xmp WHERE image_id = ?", (image_id,))
+    return dict(row) if row else None
 
 
 def _safe_int(val):
@@ -5997,129 +5410,50 @@ def delete_image(file_path, delete_related: bool = True):
     if not file_path:
         return False, "No file path provided"
 
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one(
-            "SELECT id, stack_id, thumbnail_path, thumbnail_path_win FROM images WHERE file_path = %s",
-            (file_path,),
-        )
-        if not row:
-            return False, "Image not found in DB"
-        image_id = row["id"]
-        stack_id = row["stack_id"]
-        thumbnail_path = row["thumbnail_path"]
-        thumbnail_path_win = row["thumbnail_path_win"]
-        try:
-            with db_postgres.PGConnectionManager(commit=True) as conn:
-                with conn.cursor() as cur:
-                    if delete_related:
-                        cur.execute("DELETE FROM culling_picks WHERE image_id = %s", (image_id,))
-                        cur.execute("DELETE FROM file_paths WHERE image_id = %s", (image_id,))
-                    cur.execute("DELETE FROM images WHERE id = %s", (image_id,))
-                    if stack_id is not None:
-                        cur.execute("SELECT COUNT(*) FROM images WHERE stack_id = %s", (stack_id,))
-                        remaining = cur.fetchone()[0]
-                        if remaining == 0:
-                            cur.execute("DELETE FROM stacks WHERE id = %s", (stack_id,))
-                        else:
-                            cur.execute("SELECT best_image_id FROM stacks WHERE id = %s", (stack_id,))
-                            best_row = cur.fetchone()
-                            if best_row and best_row[0] == image_id:
-                                cur.execute(
-                                    "UPDATE stacks SET best_image_id = ("
-                                    " SELECT id FROM images WHERE stack_id = %s"
-                                    " ORDER BY score_general DESC NULLS LAST LIMIT 1"
-                                    ") WHERE id = %s",
-                                    (stack_id, stack_id),
-                                )
-        except Exception as exc:
-            return False, str(exc)
-        invalidate_folder_images_cache(os.path.dirname(file_path))
-        import platform as _plat
-        _local_thumb = thumbnail_path_win if _plat.system() == "Windows" else thumbnail_path
-        if _local_thumb:
-            try:
-                if os.path.exists(_local_thumb):
-                    os.remove(_local_thumb)
-            except Exception:
-                pass
-        return True, f"Removed DB record for: {file_path}"
-
-    conn = get_db()
-    c = conn.cursor()
+    row = get_connector().query_one(
+        "SELECT id, stack_id, thumbnail_path, thumbnail_path_win FROM images WHERE file_path = ?",
+        (file_path,),
+    )
+    if not row:
+        return False, "Image not found in DB"
+    image_id = row["id"]
+    stack_id = row["stack_id"]
+    thumbnail_path = row["thumbnail_path"]
+    thumbnail_path_win = row["thumbnail_path_win"]
     try:
-        c.execute("SELECT id, stack_id, thumbnail_path, thumbnail_path_win FROM images WHERE file_path = ?", (file_path,))
-        row = c.fetchone()
-        if not row:
-            return False, "Image not found in DB"
-
-        image_id = row["id"] if "id" in row.keys() else row[0]
-        stack_id = row["stack_id"] if "stack_id" in row.keys() else row[1]
-        thumbnail_path = row["thumbnail_path"] if "thumbnail_path" in row.keys() else row[2]
-        thumbnail_path_win = row["thumbnail_path_win"] if "thumbnail_path_win" in row.keys() else row[3]
-
-        # Remove dependent rows first (no FKs defined, so do it manually)
-        if delete_related:
-            try:
-                c.execute("DELETE FROM culling_picks WHERE image_id = ?", (image_id,))
-            except Exception:
-                pass
-            try:
-                c.execute("DELETE FROM resolved_paths WHERE image_id = ?", (image_id,))
-            except Exception:
-                pass
-            try:
-                c.execute("DELETE FROM file_paths WHERE image_id = ?", (image_id,))
-            except Exception:
-                pass
-
-        # Delete the image row
-        c.execute("DELETE FROM images WHERE id = ?", (image_id,))
-
-        # Stack cleanup: delete empty stacks and keep best_image_id valid
-        if stack_id is not None:
-            try:
-                c.execute("SELECT COUNT(*) FROM images WHERE stack_id = ?", (stack_id,))
-                remaining = c.fetchone()[0]
-
+        def _tx(tx):
+            if delete_related:
+                tx.execute("DELETE FROM culling_picks WHERE image_id = ?", (image_id,))
+                tx.execute("DELETE FROM file_paths WHERE image_id = ?", (image_id,))
+            tx.execute("DELETE FROM images WHERE id = ?", (image_id,))
+            if stack_id is not None:
+                cnt_row = tx.query_one("SELECT COUNT(*) AS cnt FROM images WHERE stack_id = ?", (stack_id,))
+                remaining = cnt_row["cnt"] if cnt_row else 0
                 if remaining == 0:
-                    c.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
+                    tx.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
                 else:
-                    # If this image was the cover, recalculate best_image_id
-                    c.execute("SELECT best_image_id FROM stacks WHERE id = ?", (stack_id,))
-                    best_row = c.fetchone()
-                    best_id = best_row[0] if best_row else None
-                    if best_id == image_id:
-                        c.execute(
-                            """
-                            UPDATE stacks SET best_image_id = (
-                                SELECT id FROM images
-                                WHERE stack_id = ?
-                                ORDER BY score_general DESC NULLS LAST
-                                FETCH FIRST 1 ROWS ONLY
-                            ) WHERE id = ?
-                            """,
+                    best_row = tx.query_one("SELECT best_image_id FROM stacks WHERE id = ?", (stack_id,))
+                    if best_row and best_row["best_image_id"] == image_id:
+                        tx.execute(
+                            """UPDATE stacks SET best_image_id = (
+                                SELECT id FROM images WHERE stack_id = ?
+                                ORDER BY score_general DESC NULLS LAST FETCH FIRST 1 ROWS ONLY
+                            ) WHERE id = ?""",
                             (stack_id, stack_id),
                         )
-            except Exception:
-                # Don't fail deletion just because stack repair fails
-                pass
-
-        conn.commit()
-        invalidate_folder_images_cache(os.path.dirname(file_path))
-
-        # Best-effort: remove thumbnail file using the caller's native path
-        import platform as _plat
-        _local_thumb = thumbnail_path_win if _plat.system() == "Windows" else thumbnail_path
-        if _local_thumb:
-            try:
-                if os.path.exists(_local_thumb):
-                    os.remove(_local_thumb)
+        get_connector().run_transaction(_tx)
+    except Exception as exc:
+        return False, str(exc)
+    invalidate_folder_images_cache(os.path.dirname(file_path))
+    import platform as _plat
+    _local_thumb = thumbnail_path_win if _plat.system() == "Windows" else thumbnail_path
+    if _local_thumb:
+        try:
+            if os.path.exists(_local_thumb):
+                os.remove(_local_thumb)
             except Exception:
                 pass
-
         return True, f"Removed DB record for: {file_path}"
-    finally:
-        conn.close()
 
 def backup_database(max_backups=5):
     """
@@ -6160,33 +5494,13 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
     Updates the metadata fields for a given image path.
     """
     try:
-        if _get_db_engine() == "postgres":
-            db_postgres.execute_write(
-                "UPDATE images SET keywords = %s, title = %s, description = %s,"
-                " rating = %s, label = %s WHERE file_path = %s",
-                (keywords, title, description, rating, label, file_path),
-            )
-            row = db_postgres.execute_select_one(
-                "SELECT id FROM images WHERE file_path = %s", (file_path,)
-            )
-            if row:
-                _sync_image_keywords(row["id"], keywords)
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute('''UPDATE images
-                             SET keywords = ?, title = ?, description = ?, rating = ?, label = ?
-                             WHERE file_path = ?''',
-                          (keywords, title, description, rating, label, file_path))
-                conn.commit()
-                # Must run after commit to avoid Firebird deadlock
-                c.execute("SELECT id FROM images WHERE file_path = ?", (file_path,))
-                row = c.fetchone()
-                if row:
-                    _sync_image_keywords(row[0], keywords)
-            finally:
-                conn.close()
+        get_connector().execute(
+            "UPDATE images SET keywords = ?, title = ?, description = ?, rating = ?, label = ? WHERE file_path = ?",
+            (keywords, title, description, rating, label, file_path),
+        )
+        row = get_connector().query_one("SELECT id FROM images WHERE file_path = ?", (file_path,))
+        if row:
+            _sync_image_keywords(row["id"], keywords)
 
         # Broadcast image update
         try:
@@ -6240,15 +5554,7 @@ def get_incomplete_records(limit: int | None = None):
     if limit is not None and limit > 0:
         query = query.strip() + f"\n        FETCH FIRST {int(limit)} ROWS ONLY"
 
-    if _get_db_engine() == "postgres":
-        return list(db_postgres.execute_select(_translate_fb_to_pg(query)))
-
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(query)
-    rows = c.fetchall()
-    conn.close()
-    return rows
+    return list(get_connector().query(query))
 
 def export_db_to_json(output_path, folder_path=None, keyword_filter=None, rating_filter=None,
                       label_filter=None, min_score_general=0, min_score_aesthetic=0,
@@ -6588,20 +5894,10 @@ def clear_stacks():
     Clears all stacks and resets stack_id in images.
     """
     try:
-        if _get_db_engine() == "postgres":
-            with db_postgres.PGConnectionManager(commit=True) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("DELETE FROM stacks")
-                    cur.execute("UPDATE images SET stack_id = NULL")
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute("DELETE FROM stacks")
-                c.execute("UPDATE images SET stack_id = NULL")
-                conn.commit()
-            finally:
-                conn.close()
+        def _tx(tx):
+            tx.execute("DELETE FROM stacks")
+            tx.execute("UPDATE images SET stack_id = NULL")
+        get_connector().run_transaction(_tx)
         event_manager.broadcast_threadsafe("stacks_cleared", {})
     except Exception as e:
         logging.error(f"Failed to clear stacks: {e}")
@@ -6612,25 +5908,11 @@ def create_stack(name, best_image_id=None):
     """
     stack_id = None
     try:
-        if _get_db_engine() == "postgres":
-            row = db_postgres.execute_write_returning(
-                "INSERT INTO stacks (name, best_image_id, created_at) VALUES (%s, %s, %s) RETURNING id",
-                (name, best_image_id, datetime.datetime.now()),
-            )
-            stack_id = row["id"] if row else None
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute(
-                    "INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
-                    (name, best_image_id, datetime.datetime.now()),
-                )
-                row = c.fetchone()
-                stack_id = row[0] if row else None
-                conn.commit()
-            finally:
-                conn.close()
+        rows = get_connector().execute_returning(
+            "INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
+            (name, best_image_id, datetime.datetime.now()),
+        )
+        stack_id = rows[0]["id"] if rows else None
         if stack_id:
             event_manager.broadcast_threadsafe("stack_created", {"stack_id": stack_id})
     except Exception as e:
@@ -6652,30 +5934,15 @@ def update_image_fields_batch(updates):
     if not updates:
         return
     try:
-        if _get_db_engine() == "postgres":
-            with db_postgres.PGConnectionManager(commit=True) as conn:
-                with conn.cursor() as cur:
-                    for image_id, fields in updates:
-                        if not isinstance(fields, dict):
-                            continue
-                        for fname, val in fields.items():
-                            if fname not in valid_fields:
-                                continue
-                            cur.execute(f"UPDATE images SET {fname} = %s WHERE id = %s", (val, image_id))
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                for image_id, fields in updates:
-                    if not isinstance(fields, dict):
+        def _tx(tx):
+            for image_id, fields in updates:
+                if not isinstance(fields, dict):
+                    continue
+                for fname, val in fields.items():
+                    if fname not in valid_fields:
                         continue
-                    for fname, val in fields.items():
-                        if fname not in valid_fields:
-                            continue
-                        c.execute(f"UPDATE images SET {fname} = ? WHERE id = ?", (val, image_id))
-                conn.commit()
-            finally:
-                conn.close()
+                    tx.execute(f"UPDATE images SET {fname} = ? WHERE id = ?", (val, image_id))
+        get_connector().run_transaction(_tx)
 
         # Keyword Sync (Dual Writing)
         for image_id, fields in updates:
@@ -6705,18 +5972,7 @@ def update_image_stack_batch(updates):
     updates: list of (stack_id, image_id) tuples
     """
     try:
-        if _get_db_engine() == "postgres":
-            with db_postgres.PGConnectionManager(commit=True) as conn:
-                with conn.cursor() as cur:
-                    cur.executemany("UPDATE images SET stack_id = %s WHERE id = %s", updates)
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
-                conn.commit()
-            finally:
-                conn.close()
+        get_connector().execute_many("UPDATE images SET stack_id = ? WHERE id = ?", list(updates))
 
         invalidate_folder_images_cache()
         for stack_id, image_id in updates:
@@ -6737,30 +5993,11 @@ def batch_update_cull_decisions(updates: list, policy_version: str = "1.0", batc
     if not updates:
         return
     try:
-        if _get_db_engine() == "postgres":
-            with db_postgres.PGConnectionManager(commit=True) as conn:
-                with conn.cursor() as cur:
-                    for i in range(0, len(updates), batch_size):
-                        batch = updates[i:i + batch_size]
-                        params = [(decision, policy_version, img_id) for img_id, decision, _ in batch]
-                        cur.executemany(
-                            "UPDATE images SET cull_decision = %s, cull_policy_version = %s WHERE id = %s",
-                            params,
-                        )
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                for i in range(0, len(updates), batch_size):
-                    batch = updates[i:i + batch_size]
-                    params = [(decision, policy_version, img_id) for img_id, decision, _ in batch]
-                    c.executemany(
-                        "UPDATE images SET cull_decision = ?, cull_policy_version = ? WHERE id = ?",
-                        params,
-                    )
-                conn.commit()
-            finally:
-                conn.close()
+        all_params = [(decision, policy_version, img_id) for img_id, decision, _ in updates]
+        get_connector().execute_many(
+            "UPDATE images SET cull_decision = ?, cull_policy_version = ? WHERE id = ?",
+            all_params,
+        )
 
         invalidate_folder_images_cache()
         for img_id, decision, file_path in updates:
@@ -6784,14 +6021,7 @@ def get_stacks():
         LEFT JOIN images i ON s.best_image_id = i.id
         ORDER BY s.id ASC
     """
-    if _get_db_engine() == "postgres":
-        return db_postgres.execute_select(sql)
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(sql)
-    rows = c.fetchall()
-    conn.close()
-    return rows
+    return list(get_connector().query(sql))
 
 
 def get_stack_context(image_id):
@@ -6799,42 +6029,14 @@ def get_stack_context(image_id):
     Get stack context for a single image.
     Returns dict with stack_id, stack_size, is_best, stack_name or None if not in stack.
     """
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one(
-            "SELECT stack_id FROM images WHERE id = %s", (image_id,)
-        )
-        if not row or not row["stack_id"]:
-            return None
-        stack_id = row["stack_id"]
-        stack_row = db_postgres.execute_select_one(
-            "SELECT s.name, s.best_image_id,"
-            " (SELECT COUNT(*) FROM images WHERE stack_id = s.id) as stack_size"
-            " FROM stacks s WHERE s.id = %s",
-            (stack_id,),
-        )
-        if not stack_row:
-            return None
-        return {
-            "stack_id": stack_id,
-            "stack_name": stack_row["name"],
-            "stack_size": stack_row["stack_size"],
-            "is_best": stack_row["best_image_id"] == image_id,
-        }
-
-    conn = get_db()
-    c = conn.cursor()
-
-    c.execute("SELECT stack_id FROM images WHERE id = ?", (image_id,))
-    row = c.fetchone()
-
+    row = get_connector().query_one("SELECT stack_id FROM images WHERE id = ?", (image_id,))
     if not row or not row['stack_id']:
-        conn.close()
         return None
 
     stack_id = row['stack_id']
 
     # Get stack info
-    c.execute("""
+    stack_row = get_connector().query_one("""
         SELECT
             s.name,
             s.best_image_id,
@@ -6842,8 +6044,6 @@ def get_stack_context(image_id):
         FROM stacks s
         WHERE s.id = ?
     """, (stack_id,))
-    stack_row = c.fetchone()
-    conn.close()
 
     if not stack_row:
         return None
@@ -6865,30 +6065,6 @@ def get_stack_contexts_batch(image_ids):
     if not image_ids:
         return {}
 
-    if _get_db_engine() == "postgres":
-        placeholders = ','.join(['%s'] * len(image_ids))
-        rows = db_postgres.execute_select(
-            f"""SELECT i.id as image_id, i.stack_id, s.name as stack_name, s.best_image_id,
-                       (SELECT COUNT(*) FROM images i2 WHERE i2.stack_id = s.id) as stack_size
-                FROM images i
-                LEFT JOIN stacks s ON i.stack_id = s.id
-                WHERE i.id IN ({placeholders})""",
-            list(image_ids),
-        )
-        result = {}
-        for row in rows:
-            if row["stack_id"]:
-                result[row["image_id"]] = {
-                    "stack_id": row["stack_id"],
-                    "stack_name": row["stack_name"],
-                    "stack_size": row["stack_size"],
-                    "is_best": row["best_image_id"] == row["image_id"],
-                }
-        return result
-
-    conn = get_db()
-    c = conn.cursor()
-
     # Query all images and their stack info in one go
     placeholders = ','.join(['?'] * len(image_ids))
     query = f"""
@@ -6902,9 +6078,7 @@ def get_stack_contexts_batch(image_ids):
         LEFT JOIN stacks s ON i.stack_id = s.id
         WHERE i.id IN ({placeholders})
     """
-    c.execute(query, image_ids)
-    rows = c.fetchall()
-    conn.close()
+    rows = list(get_connector().query(query, list(image_ids)))
 
     result = {}
     for row in rows:
@@ -6924,30 +6098,26 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
     Returns stacks with dynamic cover image based on sort criteria.
     Uses CTE with ROW_NUMBER() instead of correlated subquery for better performance.
     """
-    conn = get_db()
-    c = conn.cursor()
-    
     # Resolve folder_id if path provided
     folder_id = None
     if folder_path:
         folder_id = get_or_create_folder(folder_path)
         if not folder_id:
-            conn.close()
             return []
 
     # Map sort_by to column
     # If sort_by is invalid, default to score_general
-    valid_cols = ["created_at", "id", "score_general", "score_technical", "score_aesthetic", 
+    valid_cols = ["created_at", "id", "score_general", "score_technical", "score_aesthetic",
                   "score_spaq", "score_ava", "score_koniq", "score_paq2piq", "score_liqe"]
     if sort_by not in valid_cols:
         sort_by = "score_general"
-        
+
     agg_func = "MAX" if order.lower() == "desc" else "MIN"
     order_dir = order.upper()
-    
+
     # Use CTE with ROW_NUMBER() to compute cover images in a single pass
     # This avoids the N+1 correlated subquery problem
-    
+
     where_clause = ""
     params = []
     cte_where = ""
@@ -6957,16 +6127,16 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
         # Need 2 params: one for main WHERE clause, one for subquery
         params.append(folder_id)  # For main SELECT WHERE clause
         params.append(folder_id)  # For subquery WHERE clause
-        
+
     # db.py is called from both WSL and Windows; pick the SQL column
     # that matches the caller's environment so the returned cover_path is usable directly.
     import platform as _plat
     _thumb_col = "thumbnail_path_win" if _plat.system() == "Windows" else "thumbnail_path"
 
     query = f'''
-        SELECT 
-            s.id, 
-            s.name, 
+        SELECT
+            s.id,
+            s.name,
             COUNT(i.id) as image_count,
             {agg_func}(i.{sort_by}) as sort_val,
             (SELECT FIRST 1 COALESCE(NULLIF(i2.{_thumb_col}, ''), NULLIF(i2.thumbnail_path, ''), i2.file_path)
@@ -6979,9 +6149,8 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
         GROUP BY s.id, s.name
         ORDER BY sort_val {order_dir}
     '''
-    
-    c.execute(query, tuple(params))
-    rows = c.fetchall()
+
+    rows = list(get_connector().query(query, tuple(params)))
 
     # Path-prefix fallback: if folder_id filter returns 0 rows, retry with file_path LIKE (handles
     # folder_id mismatch, NULL folder_id, or WSL vs Windows path differences).
@@ -7010,95 +6179,62 @@ def get_stacks_for_display(folder_path=None, sort_by="score_general", order="des
                 GROUP BY s.id, s.name, rc.cover_path
                 ORDER BY sort_val {order_dir}
             '''
-            c.execute(query_fb, tuple(params_fb))
-            rows = c.fetchall()
+            rows = list(get_connector().query(query_fb, tuple(params_fb)))
         except Exception:
             pass
 
-    conn.close()
     return rows
 
 def get_images_in_stack(stack_id):
     """
     Returns all images in a stack.
     """
-    if _get_db_engine() == "postgres":
-        return db_postgres.execute_select(
-            "SELECT * FROM images WHERE stack_id = %s ORDER BY score_general DESC",
-            (stack_id,))
-    conn = get_db()
-    c = conn.cursor()
-    query = "SELECT * FROM images WHERE stack_id = ? ORDER BY score_general DESC"
-    c.execute(query, (stack_id,))
-    rows = c.fetchall()
-    conn.close()
-    return rows
+    return list(get_connector().query("SELECT * FROM images WHERE stack_id = ? ORDER BY score_general DESC", (stack_id,)))
 
 def get_stack_count():
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one("SELECT COUNT(*) AS cnt FROM stacks")
-        return row["cnt"] if row else 0
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM stacks")
-    count = c.fetchone()[0]
-    conn.close()
-    return count
+    row = get_connector().query_one("SELECT COUNT(*) AS cnt FROM stacks")
+    return row["cnt"] if row else 0
 
 def get_clustered_folders():
     """
     Returns a set of folders that have been clustered.
     """
-    if _get_db_engine() == "postgres":
-        rows = db_postgres.execute_select("SELECT folder_path FROM cluster_progress")
-        return {r["folder_path"] for r in rows}
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("SELECT folder_path FROM cluster_progress")
-        rows = c.fetchall()
-        return {row[0] for row in rows}
+        rows = list(get_connector().query("SELECT folder_path FROM cluster_progress"))
+        return {row["folder_path"] for row in rows}
     except Exception as e:
         logging.error(f"Error reading cluster progress: {e}")
         return set()
-    finally:
-        conn.close()
 
 def mark_folder_clustered(folder_path):
     """
     Marks a folder as successfully clustered.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("UPDATE OR INSERT INTO cluster_progress (folder_path, last_run) VALUES (?, ?) MATCHING (folder_path)",
-                  (folder_path, datetime.datetime.now()))
-        conn.commit()
+        get_connector().execute(
+            "UPDATE OR INSERT INTO cluster_progress (folder_path, last_run) VALUES (?, ?) MATCHING (folder_path)",
+            (folder_path, datetime.datetime.now())
+        )
         event_manager.broadcast_threadsafe("folder_updated", {"folder_path": folder_path})
     except Exception as e:
         logging.error(f"Failed to mark folder as clustered: {e}")
-    finally:
-        conn.close()
 
 def clear_cluster_progress():
     """
     Clears cluster progress and stacks.
     Also resets culling phase status from running to done to allow force re-run.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
         # Get all images with running culling phase, then reset them
-        c.execute(
+        rows = list(get_connector().query(
             """SELECT DISTINCT ips.image_id
                FROM IMAGE_PHASE_STATUS ips
                JOIN pipeline_phases pp ON ips.phase_id = pp.id
                WHERE pp.code = ? AND ips.status = ?""",
             ("culling", "running")
-        )
-        running_image_ids = [row[0] for row in c.fetchall()]
+        ))
+        running_image_ids = [row["image_id"] for row in rows]
         logging.info(f"[Force Rescan - All Folders] Found {len(running_image_ids)} images with running culling phase, resetting to done")
-        conn.close()
 
         # Reset each image's culling phase to done
         for image_id in running_image_ids:
@@ -7106,16 +6242,13 @@ def clear_cluster_progress():
             set_image_phase_status(image_id, "culling", "done")
 
         # Now clear stacks
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("DELETE FROM cluster_progress")
-        c.execute("DELETE FROM stacks")
-        c.execute("UPDATE images SET stack_id = NULL")
-        conn.commit()
+        def _tx(tx):
+            tx.execute("DELETE FROM cluster_progress")
+            tx.execute("DELETE FROM stacks")
+            tx.execute("UPDATE images SET stack_id = NULL")
+        get_connector().run_transaction(_tx)
     except Exception as e:
         logging.error(f"Failed to clear cluster progress: {e}")
-    finally:
-        conn.close()
 
 
 def clear_stacks_in_folder(folder_path):
@@ -7250,41 +6383,34 @@ def create_stacks_batch(stacks_data):
     Creates multiple stacks and updates associations in a single transaction.
     stacks_data: list of dicts { 'name': str, 'best_image_id': int, 'image_ids': [int] }
     """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        created_count = 0
-        timestamp = datetime.datetime.now()
-        
+    created_ids = []
+    timestamp = datetime.datetime.now()
+
+    def _tx(tx):
         for data in stacks_data:
             # Create Stack
-            c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
-                      (data['name'], data['best_image_id'], timestamp))
-            row = c.fetchone()
-            stack_id = row[0] if row else None
-            
+            ret = tx.execute_returning(
+                "INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
+                (data['name'], data['best_image_id'], timestamp)
+            )
+            stack_id = ret[0]["id"] if ret else None
+            created_ids.append(stack_id)
             # Update Images
-            image_ids = data['image_ids']
-            if image_ids:
-                # Batch update for this stack
-                # "UPDATE images SET stack_id = ? WHERE id = ?"
-                # We can use executemany if we flatten, but here we have varying IDs.
-                # "UPDATE images SET stack_id = ? WHERE id IN (...)" is better but sqlite limit.
-                # Let's use executemany with tuple list
-                updates = [(stack_id, img_id) for img_id in image_ids]
-                c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
-            
-            created_count += 1
+            if stack_id and data.get('image_ids'):
+                for img_id in data['image_ids']:
+                    tx.execute("UPDATE images SET stack_id = ? WHERE id = ?", (stack_id, img_id))
+
+    try:
+        get_connector().run_transaction(_tx)
+        created_count = len(stacks_data)
+        # Broadcast outside transaction
+        for stack_id in created_ids:
             if stack_id:
                 event_manager.broadcast_threadsafe("stack_created", {"stack_id": stack_id})
-            
-        conn.commit()
         return True, f"Created {created_count} stacks."
     except Exception as e:
         logging.error(f"Failed to batch create stacks: {e}")
         return False, str(e)
-    finally:
-        conn.close()
 
 # --- Manual Stack Operations ---
 
@@ -7458,41 +6584,15 @@ def set_stack_cover_image(stack_id, image_id):
         return False, "Stack ID and Image ID are required"
 
     try:
-        if _get_db_engine() == "postgres":
-            stack_row = db_postgres.execute_select_one(
-                "SELECT name FROM stacks WHERE id = %s", (stack_id,)
-            )
-            if not stack_row:
-                return False, f"Stack {stack_id} not found"
-            img_row = db_postgres.execute_select_one(
-                "SELECT file_name, stack_id FROM images WHERE id = %s", (image_id,)
-            )
-            if not img_row:
-                return False, f"Image {image_id} not found"
-            if img_row["stack_id"] != stack_id:
-                return False, f"Image {image_id} does not belong to stack {stack_id}"
-            db_postgres.execute_write(
-                "UPDATE stacks SET best_image_id = %s WHERE id = %s", (image_id, stack_id)
-            )
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute("SELECT name FROM stacks WHERE id = ?", (stack_id,))
-                stack_row = c.fetchone()
-                if not stack_row:
-                    return False, f"Stack {stack_id} not found"
-                c.execute("SELECT file_name, stack_id FROM images WHERE id = ?", (image_id,))
-                img_row = c.fetchone()
-                if not img_row:
-                    return False, f"Image {image_id} not found"
-                if img_row['stack_id'] != stack_id:
-                    return False, f"Image {image_id} does not belong to stack {stack_id}"
-                c.execute("UPDATE stacks SET best_image_id = ? WHERE id = ?", (image_id, stack_id))
-                conn.commit()
-            finally:
-                conn.close()
-
+        stack_row = get_connector().query_one("SELECT name FROM stacks WHERE id = ?", (stack_id,))
+        if not stack_row:
+            return False, f"Stack {stack_id} not found"
+        img_row = get_connector().query_one("SELECT file_name, stack_id FROM images WHERE id = ?", (image_id,))
+        if not img_row:
+            return False, f"Image {image_id} not found"
+        if img_row["stack_id"] != stack_id:
+            return False, f"Image {image_id} does not belong to stack {stack_id}"
+        get_connector().execute("UPDATE stacks SET best_image_id = ? WHERE id = ?", (image_id, stack_id))
         event_manager.broadcast_threadsafe("stack_updated", {"stack_id": stack_id})
         return True, f"Set '{img_row['file_name']}' as cover for '{stack_row['name']}'"
     except Exception as e:
@@ -7508,47 +6608,21 @@ def get_image_ids_by_paths(file_paths):
     if not file_paths:
         return []
 
-    if _get_db_engine() == "postgres":
-        ids = []
-        for path in file_paths:
-            row = db_postgres.execute_select_one(
-                "SELECT id FROM images WHERE file_path = %s", (path,))
-            if row:
-                ids.append(row['id'])
-            else:
-                basename = os.path.basename(path)
-                row = db_postgres.execute_select_one(
-                    "SELECT id FROM images WHERE file_name = %s", (basename,))
-                if row:
-                    logging.warning(f"Path lookup fallback used: {path} -> id {row['id']} (matched by filename)")
-                    ids.append(row['id'])
-        return ids
-
-    conn = get_db()
-    c = conn.cursor()
+    ids = []
     try:
-        # Need to handle path normalization and WSL/Windows path differences
-        ids = []
         for path in file_paths:
-            # Try exact match first
-            c.execute("SELECT id FROM images WHERE file_path = ?", (path,))
-            row = c.fetchone()
+            row = get_connector().query_one("SELECT id FROM images WHERE file_path = ?", (path,))
             if row:
-                ids.append(row['id'])
+                ids.append(row["id"])
             else:
-                # Try with basename match as fallback (less accurate but handles path issues)
                 basename = os.path.basename(path)
-                c.execute("SELECT id FROM images WHERE file_name = ?", (basename,))
-                row = c.fetchone()
+                row = get_connector().query_one("SELECT id FROM images WHERE file_name = ?", (basename,))
                 if row:
                     logging.warning(f"Path lookup fallback used: {path} -> id {row['id']} (matched by filename)")
-                    ids.append(row['id'])
-        return ids
+                    ids.append(row["id"])
     except Exception as e:
         logging.error(f"Failed to get image IDs by paths: {e}")
-        return []
-    finally:
-        conn.close()
+    return ids
 
 
 # --- Culling Session Management ---
@@ -7558,56 +6632,27 @@ def create_culling_session(folder_path, mode='automated'):
     Creates a new culling session for a folder.
     Returns session_id.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("""INSERT INTO culling_sessions 
-                     (folder_path, mode, status, created_at) 
-                     VALUES (?, ?, 'active', ?) RETURNING id""",
-                  (folder_path, mode, datetime.datetime.now()))
-        row = c.fetchone()
-        session_id = row[0] if row else None
-        conn.commit()
+        rows = get_connector().execute_returning(
+            "INSERT INTO culling_sessions (folder_path, mode, status, created_at) VALUES (?, ?, 'active', ?) RETURNING id",
+            (folder_path, mode, datetime.datetime.now()),
+        )
+        session_id = rows[0]["id"] if rows else None
         return session_id
     except Exception as e:
-        import sys
-        print(f"FATAL: Failed to create culling session: {e}", file=sys.stderr)
-        try:
-             print(f"SQL Code: {e.sql_code}", file=sys.stderr)
-             print(f"GDS Codes: {e.gds_codes}", file=sys.stderr)
-        except Exception: pass
         logging.error(f"Failed to create culling session: {e}")
         return None
-    finally:
-        conn.close()
 
 
 def get_culling_session(session_id):
     """Returns culling session details."""
-    if _get_db_engine() == "postgres":
-        return db_postgres.execute_select_one(
-            "SELECT * FROM culling_sessions WHERE id = %s", (session_id,))
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT * FROM culling_sessions WHERE id = ?", (session_id,))
-    row = c.fetchone()
-    conn.close()
+    row = get_connector().query_one("SELECT * FROM culling_sessions WHERE id = ?", (session_id,))
     return dict(row) if row else None
 
 
 def get_active_culling_sessions():
     """Returns all active (incomplete) culling sessions."""
-    if _get_db_engine() == "postgres":
-        return db_postgres.execute_select(
-            "SELECT * FROM culling_sessions WHERE status = 'active' ORDER BY created_at DESC")
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("""SELECT * FROM culling_sessions
-                 WHERE status = 'active'
-                 ORDER BY created_at DESC""")
-    rows = c.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    return [dict(r) for r in get_connector().query("SELECT * FROM culling_sessions WHERE status = 'active' ORDER BY created_at DESC")]
 
 
 def update_culling_session(session_id, **kwargs):
@@ -7623,22 +6668,9 @@ def update_culling_session(session_id, **kwargs):
         return False
 
     try:
-        if _get_db_engine() == "postgres":
-            set_clause = ', '.join([f"{k} = %s" for k in updates.keys()])
-            params = list(updates.values()) + [session_id]
-            db_postgres.execute_write(
-                f"UPDATE culling_sessions SET {set_clause} WHERE id = %s", params
-            )
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
-                params = list(updates.values()) + [session_id]
-                c.execute(f"UPDATE culling_sessions SET {set_clause} WHERE id = ?", params)
-                conn.commit()
-            finally:
-                conn.close()
+        set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+        params = list(updates.values()) + [session_id]
+        get_connector().execute(f"UPDATE culling_sessions SET {set_clause} WHERE id = ?", params)
         return True
     except Exception as e:
         logging.error(f"Failed to update culling session: {e}")
@@ -7666,60 +6698,32 @@ def add_images_to_culling_session(session_id, image_ids, group_assignments=None)
         return False
 
     now = datetime.datetime.now()
-    if _get_db_engine() == "postgres":
-        try:
-            added_count = 0
-            with db_postgres.PGConnectionManager(commit=True) as conn:
-                with conn.cursor() as cur:
-                    for img_id in image_ids:
-                        group_id = group_assignments.get(img_id) if group_assignments else None
-                        try:
-                            cur.execute(
-                                "INSERT INTO culling_picks"
-                                " (session_id, image_id, group_id, decision, auto_suggested, is_best_in_group, created_at)"
-                                " VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                                " ON CONFLICT (session_id, image_id) DO UPDATE"
-                                " SET group_id = EXCLUDED.group_id",
-                                (session_id, img_id, group_id, None, 0, 0, now),
-                            )
-                            added_count += 1
-                        except Exception as e:
-                            logging.error(f"Failed to add image {img_id} to session {session_id}: {e}")
-            logging.info(f"Added {added_count}/{len(image_ids)} images to culling session {session_id}")
-            return added_count > 0
-        except Exception as e:
-            logging.error(f"Failed to add images to culling session: {e}")
-            return False
-
-    conn = get_db()
-    c = conn.cursor()
     try:
         added_count = 0
-        for idx, img_id in enumerate(image_ids):
-            group_id = group_assignments.get(img_id) if group_assignments else None
 
-            # Use UPDATE OR INSERT for Firebird (equivalent to SQLite's INSERT OR IGNORE)
-            try:
-                c.execute("""UPDATE OR INSERT INTO culling_picks
-                             (session_id, image_id, group_id, decision, auto_suggested, is_best_in_group, created_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?)
-                             MATCHING (session_id, image_id)""",
-                          (session_id, img_id, group_id, None, 0, 0, now))
-                added_count += 1
-            except Exception as e:
-                logging.error(f"Failed to add image {img_id} to session {session_id}: {e}")
-                continue
-        conn.commit()
+        def _tx(tx):
+            nonlocal added_count
+            for img_id in image_ids:
+                group_id = group_assignments.get(img_id) if group_assignments else None
+                try:
+                    tx.execute(
+                        "UPDATE OR INSERT INTO culling_picks"
+                        " (session_id, image_id, group_id, decision, auto_suggested, is_best_in_group, created_at)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?)"
+                        " MATCHING (session_id, image_id)",
+                        (session_id, img_id, group_id, None, 0, 0, now),
+                    )
+                    added_count += 1
+                except Exception as e:
+                    logging.error(f"Failed to add image {img_id} to session {session_id}: {e}")
 
+        get_connector().run_transaction(_tx)
         logging.info(f"Added {added_count}/{len(image_ids)} images to culling session {session_id}")
         return added_count > 0
     except Exception as e:
         logging.error(f"Failed to add images to culling session: {e}")
-        import traceback
         logging.error(traceback.format_exc())
         return False
-    finally:
-        conn.close()
 
 
 def set_pick_decision(session_id, image_id, decision, auto_suggested=False):
@@ -7728,24 +6732,10 @@ def set_pick_decision(session_id, image_id, decision, auto_suggested=False):
     decision: 'pick', 'reject', 'maybe', or None (to clear)
     """
     try:
-        if _get_db_engine() == "postgres":
-            rowcount = db_postgres.execute_write(
-                "UPDATE culling_picks SET decision = %s, auto_suggested = %s"
-                " WHERE session_id = %s AND image_id = %s",
-                (decision, auto_suggested, session_id, image_id),
-            )
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute("""UPDATE culling_picks
-                             SET decision = ?, auto_suggested = ?
-                             WHERE session_id = ? AND image_id = ?""",
-                          (decision, auto_suggested, session_id, image_id))
-                conn.commit()
-                rowcount = c.rowcount
-            finally:
-                conn.close()
+        rowcount = get_connector().execute(
+            "UPDATE culling_picks SET decision = ?, auto_suggested = ? WHERE session_id = ? AND image_id = ?",
+            (decision, auto_suggested, session_id, image_id),
+        )
 
         if rowcount > 0:
             event_manager.broadcast_threadsafe("image_updated", {
@@ -7761,34 +6751,16 @@ def set_pick_decision(session_id, image_id, decision, auto_suggested=False):
 def set_best_in_group(session_id, image_id, group_id):
     """Marks an image as the best in its group."""
     try:
-        if _get_db_engine() == "postgres":
-            with db_postgres.PGConnectionManager(commit=True) as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE culling_picks SET is_best_in_group = %s"
-                        " WHERE session_id = %s AND group_id = %s",
-                        (0, session_id, group_id),
-                    )
-                    cur.execute(
-                        "UPDATE culling_picks SET is_best_in_group = %s, decision = 'pick', auto_suggested = %s"
-                        " WHERE session_id = %s AND image_id = %s",
-                        (1, 1, session_id, image_id),
-                    )
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute("""UPDATE culling_picks
-                             SET is_best_in_group = ?
-                             WHERE session_id = ? AND group_id = ?""",
-                          (0, session_id, group_id))
-                c.execute("""UPDATE culling_picks
-                             SET is_best_in_group = ?, decision = 'pick', auto_suggested = ?
-                             WHERE session_id = ? AND image_id = ?""",
-                          (1, 1, session_id, image_id))
-                conn.commit()
-            finally:
-                conn.close()
+        def _tx(tx):
+            tx.execute(
+                "UPDATE culling_picks SET is_best_in_group = ? WHERE session_id = ? AND group_id = ?",
+                (0, session_id, group_id),
+            )
+            tx.execute(
+                "UPDATE culling_picks SET is_best_in_group = ?, decision = 'pick', auto_suggested = ? WHERE session_id = ? AND image_id = ?",
+                (1, 1, session_id, image_id),
+            )
+        get_connector().run_transaction(_tx)
         return True
     except Exception as e:
         logging.error(f"Failed to set best in group: {e}")
@@ -7816,16 +6788,7 @@ def get_session_picks(session_id, decision_filter=None):
 
     query += " ORDER BY cp.group_id, i.score_general DESC"
 
-    if _get_db_engine() == "postgres":
-        pg_sql = _translate_fb_to_pg(query)
-        return db_postgres.execute_select(pg_sql, tuple(params))
-
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(query, params)
-    rows = c.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    return [dict(row) for row in get_connector().query(query, tuple(params))]
 
 
 def get_session_groups(session_id):
@@ -7843,15 +6806,7 @@ def get_session_groups(session_id):
         ORDER BY cp.group_id, i.score_general DESC
     """
 
-    if _get_db_engine() == "postgres":
-        rows = db_postgres.execute_select(
-            _translate_fb_to_pg(query), (session_id,))
-    else:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute(query, (session_id,))
-        rows = c.fetchall()
-        conn.close()
+    rows = list(get_connector().query(query, (session_id,)))
 
     # Group by group_id
     groups = {}
@@ -7878,60 +6833,22 @@ def get_session_groups(session_id):
 
 def get_session_stats(session_id):
     """Returns statistics for a culling session."""
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one(
-            """SELECT
-                   COUNT(*)                                                                          AS total,
-                   COUNT(*) FILTER (WHERE decision = 'pick')                                        AS picked,
-                   COUNT(*) FILTER (WHERE decision = 'reject')                                      AS rejected,
-                   COUNT(DISTINCT group_id) FILTER (WHERE group_id IS NOT NULL)                     AS groups,
-                   COUNT(DISTINCT group_id) FILTER (WHERE group_id IS NOT NULL AND decision IS NOT NULL) AS reviewed
-               FROM culling_picks WHERE session_id = %s""",
-            (session_id,),
-        )
-        total    = int(row["total"]    or 0)
-        picked   = int(row["picked"]   or 0)
-        rejected = int(row["rejected"] or 0)
-        groups   = int(row["groups"]   or 0)
-        reviewed = int(row["reviewed"] or 0)
-        return {
-            "total_images":    total,
-            "total_groups":    groups,
-            "reviewed_groups": reviewed,
-            "picked_count":    picked,
-            "rejected_count":  rejected,
-            "unreviewed":      total - picked - rejected,
-        }
+    con = get_connector()
 
-    conn = get_db()
-    c = conn.cursor()
-
-    c.execute("SELECT COUNT(*) FROM culling_picks WHERE session_id = ?", (session_id,))
-    total = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM culling_picks WHERE session_id = ? AND decision = 'pick'", (session_id,))
-    picked = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM culling_picks WHERE session_id = ? AND decision = 'reject'", (session_id,))
-    rejected = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(DISTINCT group_id) FROM culling_picks WHERE session_id = ? AND group_id IS NOT NULL", (session_id,))
-    groups = c.fetchone()[0]
-
+    total    = (con.query_one("SELECT COUNT(*) AS n FROM culling_picks WHERE session_id = ?", (session_id,)) or {}).get("n", 0) or 0
+    picked   = (con.query_one("SELECT COUNT(*) AS n FROM culling_picks WHERE session_id = ? AND decision = 'pick'", (session_id,)) or {}).get("n", 0) or 0
+    rejected = (con.query_one("SELECT COUNT(*) AS n FROM culling_picks WHERE session_id = ? AND decision = 'reject'", (session_id,)) or {}).get("n", 0) or 0
+    groups   = (con.query_one("SELECT COUNT(DISTINCT group_id) AS n FROM culling_picks WHERE session_id = ? AND group_id IS NOT NULL", (session_id,)) or {}).get("n", 0) or 0
     # Groups with at least one decision
-    c.execute("""SELECT COUNT(DISTINCT group_id) FROM culling_picks
-                 WHERE session_id = ? AND group_id IS NOT NULL AND decision IS NOT NULL""", (session_id,))
-    reviewed = c.fetchone()[0]
-
-    conn.close()
+    reviewed = (con.query_one("SELECT COUNT(DISTINCT group_id) AS n FROM culling_picks WHERE session_id = ? AND group_id IS NOT NULL AND decision IS NOT NULL", (session_id,)) or {}).get("n", 0) or 0
 
     return {
-        'total_images': total,
-        'total_groups': groups,
-        'reviewed_groups': reviewed,
-        'picked_count': picked,
-        'rejected_count': rejected,
-        'unreviewed': total - picked - rejected
+        'total_images': int(total),
+        'total_groups': int(groups),
+        'reviewed_groups': int(reviewed),
+        'picked_count': int(picked),
+        'rejected_count': int(rejected),
+        'unreviewed': int(total) - int(picked) - int(rejected),
     }
 
 
@@ -7941,19 +6858,7 @@ def clear_culling_picks(session_id):
     Used before re-importing groups from updated stacks.
     """
     try:
-        if _get_db_engine() == "postgres":
-            deleted = db_postgres.execute_write(
-                "DELETE FROM culling_picks WHERE session_id = %s", (session_id,)
-            )
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute("DELETE FROM culling_picks WHERE session_id = ?", (session_id,))
-                conn.commit()
-                deleted = c.rowcount
-            finally:
-                conn.close()
+        deleted = get_connector().execute("DELETE FROM culling_picks WHERE session_id = ?", (session_id,))
         logging.info(f"Cleared {deleted} picks from session {session_id}")
         return True
     except Exception as e:
@@ -7967,25 +6872,10 @@ def reset_culling_decisions(session_id):
     Used before re-running auto-pick.
     """
     try:
-        if _get_db_engine() == "postgres":
-            updated = db_postgres.execute_write(
-                "UPDATE culling_picks SET decision = NULL, auto_suggested = 0,"
-                " is_best_in_group = 0 WHERE session_id = %s",
-                (session_id,),
-            )
-        else:
-            conn = get_db()
-            c = conn.cursor()
-            try:
-                c.execute("""
-                    UPDATE culling_picks
-                    SET decision = NULL, auto_suggested = 0, is_best_in_group = 0
-                    WHERE session_id = ?
-                """, (session_id,))
-                conn.commit()
-                updated = c.rowcount
-            finally:
-                conn.close()
+        updated = get_connector().execute(
+            "UPDATE culling_picks SET decision = NULL, auto_suggested = 0, is_best_in_group = 0 WHERE session_id = ?",
+            (session_id,),
+        )
         logging.info(f"Reset {updated} decisions in session {session_id}")
         return True
     except Exception as e:
@@ -7999,71 +6889,37 @@ def get_image_culling_status(file_path):
     Returns dict with 'decision' ('pick', 'reject', 'maybe', or None) and 'session_id'.
     'pick' = Accepted, 'reject' = Rejected
     """
-    if _get_db_engine() == "postgres":
-        try:
-            row = db_postgres.execute_select_one(
-                "SELECT id FROM images WHERE file_path = %s", (file_path,)
-            )
-            if not row:
-                return None
-            image_id = row["id"]
-            pick_row = db_postgres.execute_select_one(
-                """SELECT cp.decision, cp.session_id, cp.is_best_in_group, cs.folder_path
-                   FROM culling_picks cp
-                   JOIN culling_sessions cs ON cp.session_id = cs.id
-                   WHERE cp.image_id = %s
-                   ORDER BY cs.created_at DESC
-                   LIMIT 1""",
-                (image_id,),
-            )
-            if not pick_row:
-                return None
-            return {
-                "decision":        pick_row["decision"],
-                "session_id":      pick_row["session_id"],
-                "is_best_in_group": pick_row["is_best_in_group"],
-                "folder_path":     pick_row["folder_path"],
-            }
-        except Exception as e:
-            logging.error(f"Failed to get culling status for {file_path}: {e}")
-            return None
-
-    conn = get_db()
-    c = conn.cursor()
     try:
+        con = get_connector()
         # First get image_id from file_path
-        c.execute("SELECT id FROM images WHERE file_path = ?", (file_path,))
-        row = c.fetchone()
+        row = con.query_one("SELECT id FROM images WHERE file_path = ?", (file_path,))
         if not row:
             return None
 
-        image_id = row[0]
+        image_id = row["id"]
 
         # Get most recent culling decision for this image
-        c.execute("""
-            SELECT cp.decision, cp.session_id, cp.is_best_in_group, cs.folder_path
-            FROM culling_picks cp
-            JOIN culling_sessions cs ON cp.session_id = cs.id
-            WHERE cp.image_id = ?
-            ORDER BY cs.created_at DESC
-            FETCH FIRST 1 ROWS ONLY
-        """, (image_id,))
-
-        row = c.fetchone()
-        if not row:
+        pick_row = con.query_one(
+            """SELECT cp.decision, cp.session_id, cp.is_best_in_group, cs.folder_path
+               FROM culling_picks cp
+               JOIN culling_sessions cs ON cp.session_id = cs.id
+               WHERE cp.image_id = ?
+               ORDER BY cs.created_at DESC
+               FETCH FIRST 1 ROWS ONLY""",
+            (image_id,),
+        )
+        if not pick_row:
             return None
 
         return {
-            'decision': row['decision'],
-            'session_id': row['session_id'],
-            'is_best_in_group': row['is_best_in_group'],
-            'folder_path': row['folder_path']
+            'decision': pick_row['decision'],
+            'session_id': pick_row['session_id'],
+            'is_best_in_group': pick_row['is_best_in_group'],
+            'folder_path': pick_row['folder_path'],
         }
     except Exception as e:
         logging.error(f"Failed to get culling status for {file_path}: {e}")
         return None
-    finally:
-        conn.close()
 
 
 def is_folder_keywords_processed(folder_path):
@@ -8071,109 +6927,84 @@ def is_folder_keywords_processed(folder_path):
     Checks if a folder is marked as fully processed for keywords.
     """
     folder_path = os.path.normpath(folder_path)
-    if _get_db_engine() == "postgres":
-        try:
-            row = db_postgres.execute_select_one(
-                "SELECT is_keywords_processed FROM folders WHERE path = %s", (folder_path,)
-            )
-            return bool(row and row["is_keywords_processed"])
-        except Exception as e:
-            logging.error(f"Error checking folder keyword status: {e}")
-            return False
-
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("SELECT is_keywords_processed FROM folders WHERE path = ?", (folder_path,))
-        row = c.fetchone()
-        return bool(row and row[0] == 1)
+        row = get_connector().query_one("SELECT is_keywords_processed FROM folders WHERE path = ?", (folder_path,))
+        return bool(row and row["is_keywords_processed"])
     except Exception as e:
         logging.error(f"Error checking folder keyword status: {e}")
         return False
-    finally:
-        conn.close()
 
 def check_and_update_folder_keywords_status(folder_path):
     """
     Checks if all images in a folder have keywords and updates the folder status.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
         folder_path = os.path.normpath(folder_path)
-        
+
         # 1. Get Folder ID
-        c.execute("SELECT id FROM folders WHERE path = ?", (folder_path,))
-        row = c.fetchone()
+        row = get_connector().query_one("SELECT id FROM folders WHERE path = ?", (folder_path,))
         if not row:
-             return # Folder not tracked yet? or just insert?
-             # If we are strictly checking, maybe we should insert? 
-             # But usually get_or_create_folder handles insertion.
-             # If it's missing, let's assume we can't mark it processed.
-        
-        folder_id = row[0]
+            return  # Folder not tracked yet? or just insert?
+            # If we are strictly checking, maybe we should insert?
+            # But usually get_or_create_folder handles insertion.
+            # If it's missing, let's assume we can't mark it processed.
+
+        folder_id = row["id"]
 
         # 2. Check for any images in this folder that have NO keywords
         # We check for NULL or Empty string
         # And we only care about images that are actually registered (e.g. have an ID)
-        
-        # We need to be careful: if a folder has NO images, is it processed? 
+
+        # We need to be careful: if a folder has NO images, is it processed?
         # Yes, effectively.
-        
+
         # Check count of *unprocessed* images
-        c.execute("""
-            SELECT COUNT(*) FROM images 
-            WHERE folder_id = ? 
+        cnt_row = get_connector().query_one("""
+            SELECT COUNT(*) AS cnt FROM images
+            WHERE folder_id = ?
             AND (keywords IS NULL OR keywords = '')
         """, (folder_id,))
-        
-        pending_count = c.fetchone()[0]
-        
+
+        pending_count = cnt_row["cnt"] if cnt_row else 0
+
         is_processed = 1 if pending_count == 0 else 0
-        
+
         # Update status
-        c.execute("UPDATE folders SET is_keywords_processed = ? WHERE id = ?", (is_processed, folder_id))
-        conn.commit()
+        get_connector().execute(
+            "UPDATE folders SET is_keywords_processed = ? WHERE id = ?",
+            (is_processed, folder_id)
+        )
         return is_processed == 1
-        
+
     except Exception as e:
         logging.error(f"Error updating folder keyword status: {e}")
         return False
-    finally:
-        conn.close()
 
 def get_stack_count_for_folder(folder_path):
     """
     Returns the number of stacks associated with images in a specific folder.
     Used to check if we can reuse existing stacks for culling.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
         # Normalize path
         norm_path = os.path.normpath(folder_path)
-        
+
         # Get folder_id
-        c.execute("SELECT id FROM folders WHERE path = ?", (norm_path,))
-        row = c.fetchone()
+        row = get_connector().query_one("SELECT id FROM folders WHERE path = ?", (norm_path,))
         if not row:
             return 0
-        folder_id = row[0]
-        
+        folder_id = row["id"]
+
         # Count stacks for images in this folder
-        query = """
-            SELECT COUNT(DISTINCT stack_id) 
-            FROM images 
+        cnt_row = get_connector().query_one("""
+            SELECT COUNT(DISTINCT stack_id) AS cnt
+            FROM images
             WHERE folder_id = ? AND stack_id IS NOT NULL
-        """
-        c.execute(query, (folder_id,))
-        row = c.fetchone()
-        return row[0] if row else 0
+        """, (folder_id,))
+        return cnt_row["cnt"] if cnt_row else 0
     except Exception as e:
         print(f"Error counting stacks for folder: {e}")
         return 0
-    finally:
-        conn.close()
 
 def _embedding_bytes_to_pg(embedding_bytes):
     """Convert raw float32 bytes to a numpy array suitable for pgvector."""
@@ -8658,25 +7489,11 @@ def get_phase_id(phase_code):
     if code in _phase_id_cache:
         return _phase_id_cache[code]
 
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one(
-            "SELECT id FROM pipeline_phases WHERE code = %s", (code,))
-        if row:
-            _phase_id_cache[code] = row["id"]
-            return row["id"]
-        return None
-
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute("SELECT id FROM pipeline_phases WHERE code = ?", (code,))
-        row = c.fetchone()
-        if row:
-            _phase_id_cache[code] = row[0]
-            return row[0]
-        return None
-    finally:
-        conn.close()
+    row = get_connector().query_one("SELECT id FROM pipeline_phases WHERE code = ?", (code,))
+    if row:
+        _phase_id_cache[code] = row["id"]
+        return row["id"]
+    return None
 
 
 def set_image_phase_status(image_id, phase_code, status,
@@ -8846,56 +7663,28 @@ def get_image_phase_statuses(image_id):
     Returns:
         dict: {phase_code: {status, executor_version, app_version, updated_at, attempt_count, last_error}}
     """
-    if _get_db_engine() == "postgres":
-        rows = db_postgres.execute_select(
-            "SELECT pp.code, ips.status, ips.executor_version, ips.app_version, "
-            "       ips.updated_at, ips.attempt_count, ips.last_error, ips.skip_reason, ips.skipped_by "
-            "FROM image_phase_status ips "
-            "JOIN pipeline_phases pp ON pp.id = ips.phase_id "
-            "WHERE ips.image_id = %s ORDER BY pp.sort_order",
-            (image_id,))
-        result = {}
-        for r in rows:
-            code = (r["code"] or "").strip()
-            result[code] = {
-                "status": (r["status"] or "not_started").strip(),
-                "executor_version": r["executor_version"],
-                "app_version": r["app_version"],
-                "updated_at": r["updated_at"],
-                "attempt_count": r["attempt_count"],
-                "last_error": r["last_error"],
-                "skip_reason": r["skip_reason"],
-                "skipped_by": r["skipped_by"],
-            }
-        return result
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute(
-            "SELECT pp.code, ips.status, ips.executor_version, ips.app_version, "
-            "       ips.updated_at, ips.attempt_count, ips.last_error, ips.skip_reason, ips.skipped_by "
-            "FROM image_phase_status ips "
-            "JOIN pipeline_phases pp ON pp.id = ips.phase_id "
-            "WHERE ips.image_id = ? "
-            "ORDER BY pp.sort_order",
-            (image_id,)
-        )
-        result = {}
-        for row in c.fetchall():
-            code = row[0].strip() if isinstance(row[0], str) else row[0]
-            result[code] = {
-                "status": row[1].strip() if row[1] else "not_started",
-                "executor_version": row[2],
-                "app_version": row[3],
-                "updated_at": row[4],
-                "attempt_count": row[5],
-                "last_error": row[6],
-                "skip_reason": row[7],
-                "skipped_by": row[8],
-            }
-        return result
-    finally:
-        conn.close()
+    rows = get_connector().query(
+        "SELECT pp.code, ips.status, ips.executor_version, ips.app_version, "
+        "       ips.updated_at, ips.attempt_count, ips.last_error, ips.skip_reason, ips.skipped_by "
+        "FROM image_phase_status ips "
+        "JOIN pipeline_phases pp ON pp.id = ips.phase_id "
+        "WHERE ips.image_id = ? ORDER BY pp.sort_order",
+        (image_id,)
+    )
+    result = {}
+    for r in rows:
+        code = (r["code"] or "").strip()
+        result[code] = {
+            "status": (r["status"] or "not_started").strip(),
+            "executor_version": r["executor_version"],
+            "app_version": r["app_version"],
+            "updated_at": r["updated_at"],
+            "attempt_count": r["attempt_count"],
+            "last_error": r["last_error"],
+            "skip_reason": r["skip_reason"],
+            "skipped_by": r["skipped_by"],
+        }
+    return result
 
 
 def get_all_phases(enabled_only=True):
@@ -8905,46 +7694,20 @@ def get_all_phases(enabled_only=True):
     Returns:
         list[dict]: [{id, code, name, description, sort_order, enabled}, ...]
     """
-    if _get_db_engine() == "postgres":
-        sql = ("SELECT id, code, name, description, sort_order, enabled, optional, default_skip "
-               "FROM pipeline_phases")
-        if enabled_only:
-            sql += " WHERE enabled = 1"
-        sql += " ORDER BY sort_order"
-        rows = db_postgres.execute_select(sql)
-        return [{
-            "id": r["id"],
-            "code": (r["code"] or "").strip(),
-            "name": (r["name"] or "").strip(),
-            "description": r["description"],
-            "sort_order": r["sort_order"],
-            "enabled": r["enabled"],
-            "optional": bool(r["optional"]),
-            "default_skip": bool(r["default_skip"]),
-        } for r in rows]
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        query = "SELECT id, code, name, description, sort_order, enabled, optional, default_skip FROM pipeline_phases"
-        if enabled_only:
-            query += " WHERE enabled = 1"
-        query += " ORDER BY sort_order"
-        c.execute(query)
-        result = []
-        for row in c.fetchall():
-            result.append({
-                "id": row[0],
-                "code": row[1].strip() if isinstance(row[1], str) else row[1],
-                "name": row[2].strip() if isinstance(row[2], str) else row[2],
-                "description": row[3],
-                "sort_order": row[4],
-                "enabled": row[5],
-                "optional": bool(row[6]),
-                "default_skip": bool(row[7]),
-            })
-        return result
-    finally:
-        conn.close()
+    query = "SELECT id, code, name, description, sort_order, enabled, optional, default_skip FROM pipeline_phases"
+    if enabled_only:
+        query += " WHERE enabled = 1"
+    query += " ORDER BY sort_order"
+    return [{
+        "id": r["id"],
+        "code": (r["code"] or "").strip(),
+        "name": (r["name"] or "").strip(),
+        "description": r["description"],
+        "sort_order": r["sort_order"],
+        "enabled": r["enabled"],
+        "optional": bool(r["optional"]),
+        "default_skip": bool(r["default_skip"]),
+    } for r in get_connector().query(query)]
 
 
 def _derive_folder_phase_status(total, done, running, failed, skipped):

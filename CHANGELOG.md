@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.23.0] - 2026-03-27
+
+### Added
+- **`tools/RunWebUILauncher/`** — C# launcher project (`RunWebUI`); build copies the executable to the repo root per `RunWebUILauncher.csproj`.
+- **Tests** (`tests/test_db_init_log_order.py`): Static check that `_init_db_impl` log markers stay in Phase 1 → Phase 2 / backfill order.
+
+### Changed
+- **DB** (`modules/db.py`): More query paths use `get_connector()`; `get_image_count` / `get_images_paginated` / related pagination helpers aligned with the connector; minor cleanup in filter builders.
+- **PostgreSQL** (`modules/db.py` `_translate_fb_to_pg`): Translate `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` to `OFFSET ? LIMIT ?` so paginated gallery SQL works on Postgres.
+- **Tests** (`tests/conftest.py`, `tests/test_stacks.py`): Updates for current DB/stack expectations.
+- **Git** (`.gitignore`): Ignore `TEST_*.fdb.*.bak` and `temp_test_stack/`.
+
+### Removed
+- **`modules/db_client/`** — local/HTTP client protocol and implementations; use `get_connector()` / `modules.db` instead.
+- **`musiq/`** stubs (`simple_musiq.py`, `tf_musiq.py`, `requirements.txt`) and thin re-export modules `modules/liqe_wrapper.py`, `modules/musiq_wrapper.py`, `modules/qalign.py`, `modules/topiq.py`.
+- Ad-hoc root scratch files (reports, patches, `db_append.py`, `tmp/verify_fix.py`, `reorganize_source_plan.md`, etc.).
+
+### Fixed
+- **PostgreSQL**: Paginated image listing using Firebird-style `OFFSET … FETCH NEXT …` now translates correctly for Postgres.
+
 ## [4.22.0] - 2026-03-26
 
 ### Added

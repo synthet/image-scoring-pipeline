@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>WebUILauncher</RootNamespace>
+    <AssemblyName>RunWebUI</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <Target Name="CopyLauncherToRepoRoot" AfterTargets="Build">
+    <Copy
+      SourceFiles="$(TargetPath)"
+      DestinationFolder="$(MSBuildThisFileDirectory)..\..\"
+      SkipUnchangedFiles="true" />
+  </Target>
+</Project>
