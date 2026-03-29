@@ -5451,9 +5451,9 @@ def delete_image(file_path, delete_related: bool = True):
         try:
             if os.path.exists(_local_thumb):
                 os.remove(_local_thumb)
-            except Exception:
-                pass
-        return True, f"Removed DB record for: {file_path}"
+        except Exception:
+            pass
+    return True, f"Removed DB record for: {file_path}"
 
 def backup_database(max_backups=5):
     """
