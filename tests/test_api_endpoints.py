@@ -95,6 +95,25 @@ def test_schema_returns_dict_with_api_name(monkeypatch):
     assert "endpoints" in data
 
 
+def test_diagnostics_returns_full_payload(monkeypatch):
+    from modules import diagnostics
+    monkeypatch.setattr(diagnostics, "get_diagnostics", lambda: {
+        "timestamp": "2024-03-24T00:00:00",
+        "system": {"os": "TestOS"},
+        "database": {"reachable": True},
+        "models": {"gpu_available": False},
+        "filesystem": {"free_space_gb": 100},
+        "config": {"debug": True}
+    })
+    with _build_client() as client:
+        response = client.get("/api/diagnostics")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["system"]["os"] == "TestOS"
+    assert "runners" in data
+    assert data["runners"]["scoring"] == "unavailable"
+
+
 # ---------------------------------------------------------------------------
 # Scoring endpoints
 # ---------------------------------------------------------------------------

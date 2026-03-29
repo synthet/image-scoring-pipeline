@@ -94,6 +94,9 @@ def test_selection_runner_enqueues_bird_species():
     # Should have created job phases for the follow-up job
     mock_db.create_job_phases.assert_called_once_with(500, ["bird_species"], first_phase_state="queued")
 
+    # Should mark bird_species as completed on the PARENT job so the UI shows it as fully done
+    mock_db.set_job_phase_state.assert_any_call(449, "bird_species", "completed")
+
     # Should have completed the parent job
     mock_db.update_job_status.assert_called_once_with(449, "completed")
 
@@ -122,3 +125,33 @@ def test_selection_runner_no_followup_when_no_remaining():
 
     # Should have completed the job
     mock_db.update_job_status.assert_called_once_with(449, "completed")
+
+
+def test_parent_job_bird_species_phase_marked_completed():
+    """Parent job's bird_species phase row is set to 'completed' so the UI shows the job fully done.
+
+    This is intentional UI-completeness behaviour: the real work happens in the child
+    follow-up job, but the parent's phase row must not stay 'pending' indefinitely.
+    """
+    from modules.selection_runner import SelectionRunner
+    from unittest.mock import call
+
+    runner = SelectionRunner()
+
+    phases = [
+        {"phase_code": "culling", "state": "completed", "started_at": "2026-03-24T00:00:00", "completed_at": "2026-03-24T00:01:00"},
+        {"phase_code": "bird_species", "state": "pending", "started_at": None, "completed_at": None},
+    ]
+
+    with patch("modules.selection_runner.db") as mock_db, \
+         patch("modules.selection_runner.event_manager"):
+        mock_db.get_job_phases.return_value = phases
+        mock_db.enqueue_job.return_value = (501, 1)
+
+        runner._complete_phase_and_advance(449, "/mnt/d/Photos/test", lambda msg: None)
+
+    phase_state_calls = mock_db.set_job_phase_state.call_args_list
+    assert call(449, "culling", "completed") in phase_state_calls, "culling must be marked completed on parent"
+    assert call(449, "bird_species", "completed") in phase_state_calls, (
+        "bird_species must be marked completed on parent job for UI visibility"
+    )

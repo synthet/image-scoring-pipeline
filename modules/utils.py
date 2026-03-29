@@ -203,6 +203,10 @@ def compute_file_hash(file_path, algorithm='sha256', chunk_size=8192):
         return None
 
 
+# Alias used by indexing_runner and any callers expecting the older name
+calculate_image_hash = compute_file_hash
+
+
 def resolve_file_path(db_path, image_id=None):
     """
     Unified path resolution: resolved_path first, then WSL conversion fallback.

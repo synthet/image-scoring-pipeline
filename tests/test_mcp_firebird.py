@@ -1,46 +1,62 @@
+"""
+Smoke tests for Firebird MCP helpers (optional FastMCP; tools still call db directly).
 
-import sys
+Requires Firebird and ``scoring_history_test.fdb`` (normal pytest setup).
+Skips if MCP SDK is missing or hits known pydantic/MCP import issues.
+"""
 import os
-import io
-import contextlib
+import sys
 
-# Add parent directory
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import pytest
 
-# Mock mcp to allow import if not present or to bypass decorators if needed
-# But since I want to test the actual logic, I effectively need to call the decorated functions.
-# FastMCP tools are usually callable.
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-try:
-    from modules import mcp_server_firebird
-    print("Successfully imported mcp_server_firebird")
-except ImportError as e:
-    print(f"Failed to import: {e}")
-    sys.exit(1)
+pytestmark = [pytest.mark.db, pytest.mark.firebird]
 
-def test_tools():
-    print("\n--- Testing list_tables ---")
+
+@pytest.fixture(scope="module")
+def mcp_fb():
     try:
-        tables = mcp_server_firebird.list_tables()
-        print(f"Found {len(tables)} tables")
-        if len(tables) > 0:
-            print(f"First 5: {tables[:5]}")
-    except Exception as e:
-        print(f"list_tables failed: {e}")
+        from modules import mcp_server_firebird as mod
+    except (ImportError, TypeError) as e:
+        pytest.skip(f"mcp_server_firebird import failed: {e}")
+    return mod
 
-    print("\n--- Testing get_firebird_version ---")
-    try:
-        ver = mcp_server_firebird.get_firebird_version()
-        print(f"Version: {ver}")
-    except Exception as e:
-        print(f"get_firebird_version failed: {e}")
 
-    print("\n--- Testing run_sql (SELECT) ---")
-    try:
-        res = mcp_server_firebird.run_sql("SELECT COUNT(*) FROM images")
-        print(f"Result: {res}")
-    except Exception as e:
-        print(f"run_sql failed: {e}")
+def test_mcp_module_loads(mcp_fb):
+    assert hasattr(mcp_fb, "list_tables")
+    assert hasattr(mcp_fb, "get_firebird_version")
+    assert hasattr(mcp_fb, "run_sql")
 
-if __name__ == "__main__":
-    test_tools()
+
+def test_list_tables_returns_user_tables(mcp_fb):
+    tables = mcp_fb.list_tables()
+    assert isinstance(tables, list)
+    if tables and isinstance(tables[0], str) and tables[0].startswith("Error:"):
+        pytest.skip(tables[0])
+    upper = {str(t).strip().upper() for t in tables}
+    assert "IMAGES" in upper, f"expected IMAGES in table list, got sample={list(upper)[:10]}"
+
+
+def test_get_firebird_version_non_error(mcp_fb):
+    ver = mcp_fb.get_firebird_version()
+    assert isinstance(ver, str)
+    assert ver.strip() != ""
+    if ver.startswith("Error:"):
+        pytest.skip(ver)
+
+
+def test_run_sql_select_images_count(mcp_fb):
+    res = mcp_fb.run_sql("SELECT COUNT(*) AS CNT FROM images")
+    assert isinstance(res, dict)
+    if res.get("status") == "error":
+        pytest.skip(res.get("message", res))
+    assert "data" in res
+    assert res.get("row_count", 0) >= 1
+    rows = res["data"]
+    assert len(rows) >= 1
+    row0 = rows[0]
+    keys_upper = {str(k).upper() for k in row0}
+    assert "CNT" in keys_upper, f"unexpected columns {list(row0.keys())}"

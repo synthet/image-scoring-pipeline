@@ -298,3 +298,66 @@ Potential additions to the MCP server:
 - Batch operations (bulk updates, exports)
 - Advanced analytics (trends, correlations)
 - Configuration templates and presets
+
+## Cursor Cloud specific instructions
+
+### Environment overview
+
+This is a Python 3.12 project using a virtualenv at `.venv/`. The main application is a **FastAPI + Gradio** server (`python webui.py`) on port 7860 backed by a **Firebird 5.0** SQL database.
+
+### Firebird 5.0 setup (required for the WebUI)
+
+Firebird 5.0 is installed at `/opt/firebird/`. Before starting the WebUI or running DB-dependent tests, the Firebird server must be running:
+
+```bash
+export LD_LIBRARY_PATH=/opt/firebird/lib:$LD_LIBRARY_PATH
+/opt/firebird/bin/firebird -a -d &
+```
+
+If the database file (`scoring_history.fdb`) does not exist, create it:
+
+```bash
+/opt/firebird/bin/isql -user sysdba -password masterkey <<< "CREATE DATABASE '/workspace/scoring_history.fdb' PAGE_SIZE 16384;"
+```
+
+### Starting the WebUI
+
+```bash
+source /workspace/.venv/bin/activate
+export LD_LIBRARY_PATH=/opt/firebird/lib:$LD_LIBRARY_PATH
+WEBUI_HOST=0.0.0.0 \
+FIREBIRD_CLIENT_LIBRARY=/opt/firebird/lib/libfbclient.so \
+FIREBIRD_USE_LOCAL_PATH=1 \
+python webui.py
+```
+
+Key env vars:
+- `FIREBIRD_USE_LOCAL_PATH=1` — uses embedded/local file access instead of TCP to a Windows host (critical in Cloud VMs)
+- `FIREBIRD_CLIENT_LIBRARY=/opt/firebird/lib/libfbclient.so` — points to the Firebird 5.0 client library
+- `WEBUI_HOST=0.0.0.0` — binds to all interfaces for browser access
+
+### Running tests
+
+```bash
+source /workspace/.venv/bin/activate
+python -m pytest -m "not gpu and not db and not ml and not firebird" --ignore=tests/test_probe.py
+```
+
+- `tests/test_probe.py` must be ignored — it executes DB calls at import time and crashes collection.
+- Some tests in `test_culling.py` and `test_db_consistency.py` are missing the `db`/`firebird` marker and will ERROR during collection; this is a pre-existing issue.
+- Some tests may be slow (e.g., `test_events.py::test_websocket_connection` can hang); use `timeout` if needed.
+
+### Linting
+
+```bash
+source /workspace/.venv/bin/activate
+ruff check
+```
+
+`ruff` is included in the pinned dependencies. There is no `ruff.toml` or `[tool.ruff]` config — it uses defaults. Pre-existing lint warnings (755+) are expected.
+
+### Gotchas
+
+- The base `requirements.txt` pins `tensorflow-cpu>=2.15.1,<2.16.0` which is **incompatible with Python 3.12**. Use `requirements/requirements_wsl_gpu.txt` (filtered to remove NVIDIA/CUDA packages) for installing deps on Python 3.12.
+- The DB migration in `_init_db_impl()` may log errors about missing columns (`CULL_DECISION`, `RATING`) when creating a fresh database. The server still starts and serves API requests.
+- No `config.json` ships with the repo — it is created at runtime. The app handles its absence gracefully.

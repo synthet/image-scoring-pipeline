@@ -1,6 +1,6 @@
 # Database Refactor: Remaining Next Steps
 
-## Current Status (as of 2026-03-11)
+## Current Status (as of 2026-03-26)
 - **Phase 1 (Integrity):** ✅ Complete.
 - **Phase 2 (Normalization):** ✅ Complete.
   - `update_image_field` now calls `_sync_image_keywords` for keyword updates.
@@ -8,12 +8,12 @@
 - **Phase 3 (Query Refactor):** ✅ Complete.
   - All 6 `keywords LIKE ?` locations replaced with `EXISTS` on `IMAGE_KEYWORDS`/`KEYWORDS_DIM`.
   - New `_add_keyword_filter()` helper centralizes the pattern.
+- **Phase 4 (Validation & Cleanup):** 🔲 Pending (see below).
 
 ---
 
-## Next Steps
+## Phase 4: Validation & Cleanup (current target)
 
-### Phase 4: Validation & Cleanup
 1. **Data Consistency Check:** Run scripts to ensure `IMAGES.KEYWORDS` data matches `IMAGE_KEYWORDS` entries.
 2. **Performance Benchmarking:** Verify that keyword search queries complete in <150ms with 50K+ images.
 3. **Keyword Discovery Optimization:** Change keyword cloud generation to query `KEYWORDS_DIM` directly instead of scanning the `IMAGES` table.
@@ -26,3 +26,14 @@
 2. **SQL Audit:** Run `SELECT COUNT(*) FROM IMAGE_KEYWORDS` to verify population.
 3. **XMP Coverage:** Run `SELECT COUNT(*) FROM images i LEFT JOIN image_xmp x ON i.id = x.image_id WHERE x.image_id IS NULL AND (i.rating IS NOT NULL OR i.keywords IS NOT NULL)` — should return 0.
 4. **Performance Test:** Execute a keyword search with 50,000+ images and measure latency improvements.
+
+---
+
+## Related: Firebird → Postgres Migration
+
+This schema refactor is **independent of but a prerequisite for** the Postgres migration.
+The normalized `IMAGE_KEYWORDS` / `KEYWORDS_DIM` / `IMAGE_XMP` tables already exist in the
+Postgres schema (`modules/db_postgres.py` `init_db()`).
+
+See [`FIREBIRD_POSTGRES_MIGRATION.md`](FIREBIRD_POSTGRES_MIGRATION.md) for migration status.
+Two bugs in `_translate_fb_to_pg()` must be fixed before Phase 2 dual-write can be activated.

@@ -20,11 +20,11 @@ from typing import Any, List, Dict, Optional
 # Add parent directory to path to import modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import mcp sdk
+# Import mcp sdk (TypeError: some pydantic/mcp combinations break MRO at import time)
 try:
     from mcp.server.fastmcp import FastMCP
     MCP_AVAILABLE = True
-except ImportError:
+except (ImportError, TypeError):
     MCP_AVAILABLE = False
 
 

@@ -48,6 +48,7 @@ def _init_webui_engines(clustering_runner=None):
         selection_runner=selection_runner,
         indexing_runner=indexing_runner,
         metadata_runner=metadata_runner,
+        enable_background_tick=True,
     )
     recovery_info = orchestrator.recover_interrupted_jobs()
     app_config["job_recovery"] = recovery_info
@@ -104,7 +105,7 @@ from modules.ui.security import (          # noqa: F401
 def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None, orchestrator=None, indexing_runner=None, metadata_runner=None):
     """Configures FastAPI endpoints for the Gradio app."""
 
-    from modules import api
+    from modules import api, api_db
     api.set_runners(
         scoring_runner, tagging_runner, clustering_runner, selection_runner, 
         orchestrator, bird_species_runner=_bird_species_runner,
@@ -113,6 +114,7 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
     api_router = api.create_api_router()
     fastapi_app.include_router(api_router)
     fastapi_app.include_router(api.create_public_api_router())
+    fastapi_app.include_router(api_db.router)
 
     @fastapi_app.on_event("shutdown")
     async def _shutdown_dispatcher():

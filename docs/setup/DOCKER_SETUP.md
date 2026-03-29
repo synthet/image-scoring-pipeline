@@ -78,60 +78,104 @@ This checks: WSL2 environment, Docker installation, service status, non-sudo acc
 
 ## Part 2: Running the Image Scoring Application
 
-### Quick Start
+### Architecture
 
-1. **Start Firebird**: Ensure the Firebird Server service is running on Windows (Port 3050).
-2. **Launch**: Double-click `run_webui_docker.bat` in the project root.
-3. **Access WebUI**: Open your browser to `http://localhost:7860`
+The Docker container runs the FastAPI + Gradio web UI and connects back to the Firebird database server already running on your Windows host. Image files are accessed via volume mounts.
 
-### Quick Test (After Installation)
+```mermaid
+flowchart LR
+    subgraph docker [Docker container]
+        webui["image-scoring-webui\nFastAPI + Gradio :7860"]
+    end
+    subgraph windows [Windows host]
+        fb["Firebird 5 Server\n:3050"]
+        fdb["SCORING_HISTORY.FDB"]
+        electron["Electron gallery"]
+    end
+    webui -->|"host.docker.internal:3050"| fb
+    electron -->|"localhost:3050"| fb
+    fb --> fdb
+    webui -->|"/mnt/d volume mount"| fdb
+```
+
+### Prerequisites
+
+- **Docker Desktop for Windows** with the WSL 2 backend enabled
+- **Firebird 5 Server** running on Windows (port 3050). The service must be started before the container.
+- **NVIDIA GPU + drivers 470+** (optional — required only for ML scoring)
+- Project cloned at `D:\Projects\image-scoring-backend`. If your path differs, see [Customising the FDB path](#customising-the-fdb-path) below.
+
+### First-time build
+
+Build the Docker image once (and again whenever `requirements/requirements_wsl_gpu.txt` changes):
 
 ```bash
-# Basic test
+docker compose build
+```
+
+### Customising the FDB path
+
+If your project is **not** at `D:\Projects\image-scoring-backend`, edit `FIREBIRD_WIN_DB_PATH` in `docker-compose.yml` to your actual path. Use **forward slashes** — backslashes are not YAML-safe:
+
+```yaml
+- FIREBIRD_WIN_DB_PATH=E:/MyProject/image-scoring-backend/SCORING_HISTORY.FDB
+```
+
+After changing this value run `docker compose down && docker compose up` (full recreate) so the new env var is picked up.
+
+### Running
+
+```bash
+# Foreground — logs stream to the terminal
+docker compose up
+
+# Background (detached)
+docker compose up -d
+```
+
+Access the WebUI at **http://localhost:7860**.
+
+### Stopping
+
+```bash
+docker compose down        # stops and removes the container (data is safe)
+```
+
+### Rebuilding after dependency changes
+
+```bash
+docker compose build && docker compose up
+```
+
+### Updating Python code without rebuilding
+
+The project root is live-mounted into the container (`.:/app`). Python source changes take effect on the next `docker compose restart webui` — no rebuild needed.
+
+### Key environment variables
+
+These are set in `docker-compose.yml` and control the container's behaviour:
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `FIREBIRD_WIN_DB_PATH` | `D:/Projects/.../SCORING_HISTORY.FDB` | Windows path to the FDB file (forward slashes) |
+| `FIREBIRD_CLIENT_LIBRARY` | `/app/FirebirdLinux/.../libfbclient.so` | Path to the bundled Linux Firebird client library |
+| `DOCKER_CONTAINER` | `1` | Tells the app it is running inside Docker |
+| `WEBUI_HOST` | `0.0.0.0` | Bind to all interfaces so port 7860 is reachable from Windows |
+
+### Quick test (after installation)
+
+```bash
+# Basic Docker sanity check
 docker run hello-world
 
-# Test GPU (if NVIDIA toolkit installed)
+# Test GPU access (if NVIDIA toolkit installed)
 docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu22.04 nvidia-smi
 
-# Run image-scoring with Docker Compose
+# Run the application
 docker compose up
 ```
 
-### Configuration
-
-#### Volume Mounts
-
-The `docker-compose.yml` file defaults to mounting:
-- `.` (Project Root) -> `/app`
-- `D:/` -> `/mnt/d`
-- `E:/` -> `/mnt/e`
-- `F:/` -> `/mnt/f`
-
-If your photos are on other drives, add them to the `volumes` section of `docker-compose.yml`.
-
-#### Architecture
-
-```mermaid
-graph TD
-  User[User] --> WebUI[Gradio WebUI - Docker Container]
-
-  subgraph WindowsHost["Windows Host"]
-    FB_Service[Firebird Server Service]
-    Photos[Photo drives - D:/, E:/, ...]
-  end
-
-  subgraph Container["Docker Container"]
-    App[Image Scoring App]
-    CUDA[CUDA 12.6 + cuDNN]
-    App --> CUDA
-  end
-
-  WebUI --> App
-  App -->|host.docker.internal:3050| FB_Service
-  App -->|Volume mounts| Photos
-```
-
-When the container starts, you should see logs indicating GPU detection (e.g., NVIDIA GeForce RTX).
+When the container starts you should see Firebird connectivity confirmed and then GPU detection in the logs (e.g., `NVIDIA GeForce RTX …`).
 
 ---
 
@@ -149,9 +193,10 @@ Complete Step 2 (post-installation) and restart WSL, or run `newgrp docker`.
 
 ### Firebird connection failed
 
-1. Verify Firebird is running on Windows.
+1. Verify the Firebird service is running on Windows (port 3050).
 2. Ensure Windows Firewall permits port 3050. Run `setup_firewall.bat` as Administrator.
-3. Ensure the database path in `modules/db.py` matches your actual Windows path.
+3. Check that `FIREBIRD_WIN_DB_PATH` in `docker-compose.yml` uses the correct path with **forward slashes** (e.g., `D:/Projects/image-scoring-backend/SCORING_HISTORY.FDB`).
+4. If you see `Docker: FIREBIRD_WIN_DB_PATH is not set` or `using computed path` in the container logs, the env var is wrong or was not applied. Fix the path and run `docker compose down && docker compose up` to recreate the container.
 
 ### No GPU detected
 

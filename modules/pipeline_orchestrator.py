@@ -18,7 +18,16 @@ class PipelineOrchestrator:
         PhaseCode.KEYWORDS
     ]
 
-    def __init__(self, scoring_runner, tagging_runner, selection_runner, indexing_runner=None, metadata_runner=None):
+    def __init__(
+        self,
+        scoring_runner,
+        tagging_runner,
+        selection_runner,
+        indexing_runner=None,
+        metadata_runner=None,
+        *,
+        enable_background_tick: bool = True,
+    ):
         self._runners = {
             PhaseCode.INDEXING.value: indexing_runner,
             PhaseCode.METADATA.value: metadata_runner,
@@ -36,8 +45,10 @@ class PipelineOrchestrator:
         self._last_recovery_info: Dict = {}
         
         self._stop_event = threading.Event()
-        self._thread = threading.Thread(target=self._run_loop, daemon=True)
-        self._thread.start()
+        self._thread: Optional[threading.Thread] = None
+        if enable_background_tick:
+            self._thread = threading.Thread(target=self._run_loop, daemon=True)
+            self._thread.start()
 
     def _run_loop(self):
         import time
@@ -48,7 +59,7 @@ class PipelineOrchestrator:
                 logger.error(f"PipelineOrchestrator tick error: {e}")
             self._stop_event.wait(2.0)
 
-    def start(self, folder_path: str, target_phases: List[str] = None, force_rerun: bool = False) -> int:
+    def start(self, folder_path: str, target_phases: List[str] = None, force_rerun: bool = False) -> Optional[int]:
         """Starts the pipeline for the given folder and persists phase plan. Returns root_job_id."""
         with self._lock:
             if self._active:
@@ -109,7 +120,8 @@ class PipelineOrchestrator:
             )
             db.create_job_phases(self.root_job_id, phase_plan)
             self._active = True
-            return self._start_next_phase()
+            self._start_next_phase()
+            return self.root_job_id
 
     def _start_next_phase(self) -> str:
         """Start the current running phase from persisted job_phases."""

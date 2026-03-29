@@ -204,11 +204,14 @@ class ScoringWorker(PipelineWorker):
     """
     Runs GPU Inference.
     """
-    def __init__(self, input_queue, output_queue, stop_event, scorer_instance):
+    def __init__(self, input_queue, output_queue, stop_event, scorer_instance, liqe_scorer=None):
         super().__init__("ScoringWorker", input_queue, output_queue, stop_event)
         self.scorer = scorer_instance # The actual loaded heavy model
-        from modules.liqe import LiqeScorer
-        self.liqe_scorer = LiqeScorer() # Keep LIQE loaded
+        if liqe_scorer is not None:
+            self.liqe_scorer = liqe_scorer
+        else:
+            from modules.liqe import LiqeScorer
+            self.liqe_scorer = LiqeScorer()
 
         
     def process(self, job: ImageJob):
@@ -316,11 +319,12 @@ class ResultWorker(PipelineWorker):
     Upserts to DB, cleans up, logs.
     Also handles writing metadata to NEF files (I/O bound).
     """
-    def __init__(self, input_queue, output_queue, stop_event, scorer_instance, progress_callback=None, item_finished_callback=None):
+    def __init__(self, input_queue, output_queue, stop_event, scorer_instance, progress_callback=None, item_finished_callback=None, folder_agg_dirty_ids=None):
         super().__init__("ResultWorker", input_queue, output_queue, stop_event) # Output queue unused
         self.progress_callback = progress_callback # func(str) -> log
         self.item_finished_callback = item_finished_callback # func() -> void
         self.scorer = scorer_instance
+        self._folder_agg_dirty_ids = folder_agg_dirty_ids
         
     def process(self, job: ImageJob):
         # 1. Handle Status
@@ -397,7 +401,15 @@ class ResultWorker(PipelineWorker):
                 if job.thumbnail_path:
                     job.result["thumbnail_path"] = job.thumbnail_path
                 
-                db.upsert_image(job.job_id, job.result)
+                if self._folder_agg_dirty_ids is not None:
+                    db.upsert_image(
+                        job.job_id,
+                        job.result,
+                        invalidate_agg=False,
+                        dirty_folder_ids=self._folder_agg_dirty_ids,
+                    )
+                else:
+                    db.upsert_image(job.job_id, job.result)
                 
                 # Resolve image_id for phase tracking (may have been created by upsert)
                 had_no_image_id = not job.image_id

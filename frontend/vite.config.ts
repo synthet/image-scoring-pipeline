@@ -20,6 +20,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/favicon.png': 'http://localhost:7860',
+      '/favicon.ico': 'http://localhost:7860',
       '/api': 'http://localhost:7860',
       '/public/api': 'http://localhost:7860',
       '/ws': {

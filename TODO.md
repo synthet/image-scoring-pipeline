@@ -75,10 +75,11 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 
 ### Firebird → PostgreSQL (FIREBIRD_POSTGRES_MIGRATION)
 
-- [ ] **[Python]** **[DB]** Phase 0: Schema baseline, versioned SQL migrations, migration runbook
-- [ ] **[Python]** **[DB]** Phase 1: Postgres + pgvector in Docker, full schema creation
-- [ ] **[Python]** **[DB]** Phase 2: Dual-write (Firebird primary, Postgres secondary), resumable backfill
-- [ ] **[Python]** **[DB]** Phase 3: Python cutover — backend-aware DB adapter, switch reads to Postgres
+- [x] **[Python]** **[DB]** Phase 0: Schema baseline, versioned SQL migrations, migration runbook — `alembic.ini`, `migrations/`, `docs/plans/database/FIREBIRD_POSTGRES_MIGRATION.md`
+- [x] **[Python]** **[DB]** Phase 1: Postgres + pgvector in Docker, full schema creation — `docker-compose.yml`, `modules/db_postgres.py` (17 tables, HNSW index), `scripts/python/migrate_firebird_to_postgres.py`
+- [x] **[Python]** **[DB]** Phase 2 infrastructure: dual-write worker thread + queue in `modules/db.py` (`_dual_write_worker`, `_enqueue_dual_write`, `FirebirdCursorProxy`); `db_connector/` transport abstraction (FirebirdConnector, PostgresConnector, ApiConnector)
+- [ ] **[Python]** **[DB]** Phase 2 activation: fix BUG 1 (`_translate_fb_to_pg` DATEDIFF division `\` → `/`, `db.py:~278`), fix BUG 2 (`FirebirdCursorProxy._translate_query` incomplete, `db.py:~145`), then set `database.dual_write: true` + run migration script
+- [ ] **[Python]** **[DB]** Phase 3: Python cutover — 60+ read functions already routed to Postgres via `_get_db_engine()`; activate by setting `"engine": "postgres"` after Phase 2 activation and parity verification
 - [ ] **[Electron]** Phase 4: DB provider abstraction in `electron/db.ts`, migrate from `node-firebird` to Postgres client
 
 ---

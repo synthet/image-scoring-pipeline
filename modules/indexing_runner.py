@@ -54,7 +54,9 @@ class IndexingRunner:
                 self.status_message = "Failed"
             finally:
                 self.is_running = False
-            if "Error" in self.status_message:
+            if self.status_message == "Failed":
+                pass
+            elif "Error" in self.status_message:
                 self.status_message = "Failed"
             elif not self.status_message.startswith("Done"):
                 self.status_message = "Done"
@@ -104,6 +106,16 @@ class IndexingRunner:
                 "input_path": input_path
             })
 
+        def fail_terminal(error_summary: str):
+            self.status_message = error_summary
+            if job_id:
+                db.update_job_status(job_id, "failed", "\n".join(self.log_history))
+                event_manager.broadcast_threadsafe("job_completed", {
+                    "job_id": job_id,
+                    "status": "failed",
+                    "error": error_summary,
+                })
+
         all_files = []
         
         if resolved_image_ids is not None:
@@ -114,17 +126,17 @@ class IndexingRunner:
                  log(f"Selector mode enabled. Matched {len(all_files)} images by ID.")
              except Exception as e:
                  log(f"Error fetching from DB: {e}")
-                 self.status_message = "Error DB"
+                 fail_terminal("Error DB")
                  return
         elif not input_path or not input_path.strip():
              log("Input path empty. Cannot index entire DB from scratch currently.")
-             self.status_message = "Error Path"
+             fail_terminal("Error Path")
              return
         elif os.path.exists(input_path):
              all_files = self.discover_files(input_path)
         else:
             log(f"Input path not found: {input_path}")
-            self.status_message = "Error Path"
+            fail_terminal("Error Path")
             return
 
         log(f"Found {len(all_files)} files to potentially index.")
@@ -202,6 +214,21 @@ class IndexingRunner:
                 )
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")
+
+        try:
+            if resolved_image_ids is not None:
+                seen_parents = set()
+                for fp in all_files:
+                    if not fp:
+                        continue
+                    parent = os.path.normpath(os.path.dirname(fp))
+                    if parent and parent not in seen_parents:
+                        seen_parents.add(parent)
+                        db.invalidate_folder_phase_aggregates(folder_path=parent)
+            elif input_path and os.path.isdir(input_path):
+                db.invalidate_folder_phase_aggregates(folder_path=input_path)
+        except Exception:
+            logger.exception("IndexingRunner: invalidate_folder_phase_aggregates after batch failed")
 
         if job_id:
             db.update_job_status(job_id, "completed")

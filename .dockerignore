@@ -1,33 +1,60 @@
 # Git
-.git
+.git/
 .gitignore
 
 # Python
-__pycache__
+__pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
-.venv*
-.pytest_cache
+# Virtualenvs (often multi-GB each — never needed in image; pip installs from requirements)
+.venv/
+.venv*/
+venv/
+**/venv/
+.pytest_cache/
+
+# Node (frontend build runs on host; image does not need node_modules)
+node_modules/
+**/node_modules/
 
 # Databases & Large Assets
 *.fdb
 *.db
+*.bak
 output/
 thumbnails/
 Firebird/
+# Bundled Linux client — large; compose bind-mounts repo so runtime still sees it on disk
 FirebirdLinux/
 temp_test*/
+temp_ddl_test/
+tmp/
+
+# ML / local data (huge; use bind mounts or download in-container — do not COPY into build context)
+models/
+backups/
+data/
+research_output/
 
 # IDE & Config
 .idea/
 .cursor/
 .vscode/
 .obsidian/
+.serena/
+.ruff_cache/
 image-scoring-backend.code-workspace
 secrets.json
 webui.lock
 
 # Logs
 *.log
+logs/
 test_output.log
+
+# Build artifacts (C# launcher — not used inside Linux webui image)
+tools/RunWebUILauncher/bin/
+tools/RunWebUILauncher/obj/
+RunWebUI.exe
