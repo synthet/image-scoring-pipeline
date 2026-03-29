@@ -205,6 +205,22 @@ def test_make_cache_key_includes_sample_cap_and_method_specific_params():
     )
     assert key_umap_small != key_umap_large
 
+    key_umap_lo = proj_mod._make_cache_key(
+        folder_path="/photos",
+        method="umap",
+        max_points=100,
+        n_neighbors=30,
+        min_dist=0.1,
+    )
+    key_umap_hi = proj_mod._make_cache_key(
+        folder_path="/photos",
+        method="umap",
+        max_points=100,
+        n_neighbors=30,
+        min_dist=0.8,
+    )
+    assert key_umap_lo != key_umap_hi
+
     key_tsne_a = proj_mod._make_cache_key(
         folder_path="/photos",
         method="tsne",
@@ -242,7 +258,9 @@ def test_embedding_map_cache_separated_by_sample_limit(monkeypatch):
     monkeypatch.setattr(db_mod, "get_embeddings_with_metadata", _fake_db)
     monkeypatch.setattr(proj_mod, "_project_umap", _fake_project_umap)
     monkeypatch.setattr(proj_mod, "_load_cache", lambda key: cache_store.get(key))
-    monkeypatch.setattr(proj_mod, "_save_cache", lambda key, data: cache_store.setdefault(key, data))
+    monkeypatch.setattr(
+        proj_mod, "_save_cache", lambda key, data: cache_store.setdefault(key, data)
+    )
 
     # Prime cache for sample_limit=3
     first = proj_mod.compute_embedding_map(method="umap", sample_limit=3)
