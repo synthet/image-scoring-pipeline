@@ -361,3 +361,5 @@ ruff check
 - The base `requirements.txt` pins `tensorflow-cpu>=2.15.1,<2.16.0` which is **incompatible with Python 3.12**. Use `requirements/requirements_wsl_gpu.txt` (filtered to remove NVIDIA/CUDA packages) for installing deps on Python 3.12.
 - The DB migration in `_init_db_impl()` may log errors about missing columns (`CULL_DECISION`, `RATING`) when creating a fresh database. The server still starts and serves API requests.
 - No `config.json` ships with the repo — it is created at runtime. The app handles its absence gracefully.
+- After installing Firebird, `/tmp/firebird/` files are owned by the `firebird` user. Run `sudo chmod -R 777 /tmp/firebird/` before using `isql` as a non-firebird user, or the client will fail with "Permission denied" on `fb_init`/`fb50_trace`.
+- `tests/test_exifread.py` may also fail collection if the `exifread` package is not installed; add `--ignore=tests/test_exifread.py` alongside `test_probe.py` when running the fast test subset.
