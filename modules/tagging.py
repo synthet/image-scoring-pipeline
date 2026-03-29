@@ -26,6 +26,7 @@ def propagate_tags(
     min_support_neighbors: int = None,
     write_mode: str = None,
     max_keywords: int = None,
+    focus_image_id: Optional[int] = None,
 ) -> Dict:
     """
     Propagate keywords from tagged images to untagged neighbors using embedding similarity.
@@ -44,6 +45,8 @@ def propagate_tags(
         min_support_neighbors: Minimum number of neighbors that must contain the keyword.
         write_mode: 'replace_missing_only' (default) or 'append'.
         max_keywords: Maximum keywords to propagate per image.
+        focus_image_id: With dry_run=True, preview suggestions for this image even if tagged;
+            excludes keywords already on the image. Omits duplicate processing if also untagged.
 
     Returns:
         Dict with 'propagated', 'skipped', 'total_untagged', and 'candidates' (dry_run only).
@@ -63,20 +66,23 @@ def propagate_tags(
 
     # Fetch data
     untagged, tagged = db.get_images_for_tag_propagation(folder_path=folder_path)
+    orig_untagged_count = len(untagged)
 
     result = {
         "propagated": 0,
         "skipped": 0,
-        "total_untagged": len(untagged),
+        "total_untagged": orig_untagged_count,
         "total_tagged": len(tagged),
     }
 
-    if not untagged:
-        logger.info("Tag propagation: no untagged images with embeddings found.")
-        return result
     if not tagged:
         logger.info("Tag propagation: no tagged images with embeddings found.")
-        result["skipped"] = len(untagged)
+        if untagged:
+            result["skipped"] = len(untagged)
+        return result
+
+    if not untagged and not (dry_run and focus_image_id):
+        logger.info("Tag propagation: no untagged images with embeddings found.")
         return result
 
     # Build tagged matrix once
@@ -99,67 +105,64 @@ def propagate_tags(
 
     candidates_list = []  # for dry-run reporting
 
+    def score_embedding(emb_bytes: bytes):
+        """Return (accepted list of (keyword, score), anchor_similarity) or None if skipped."""
+        query_vec = np.frombuffer(emb_bytes, dtype=np.float32)
+        query_norm = _normalize(query_vec)
+        sims = tagged_norm @ query_norm
+        top_k_idx = np.argsort(-sims)[:k]
+        top_sims = sims[top_k_idx]
+        if len(top_sims) == 0 or top_sims[0] < min_similarity:
+            return None
+        valid_mask = top_sims >= min_similarity
+        top_k_idx = top_k_idx[valid_mask]
+        top_sims = top_sims[valid_mask]
+        if len(top_k_idx) == 0:
+            return None
+        sim_total = top_sims.sum()
+        neighbor_kw = kw_matrix[top_k_idx]
+        weighted_scores = (top_sims[:, None] * neighbor_kw).sum(axis=0) / sim_total
+        support_counts = neighbor_kw.sum(axis=0)
+        accepted_local = []
+        for kw_idx, kw in enumerate(all_kw):
+            score = float(weighted_scores[kw_idx])
+            support = int(support_counts[kw_idx])
+            if score >= min_keyword_confidence and support >= min_support_neighbors:
+                accepted_local.append((kw, score))
+        if not accepted_local:
+            return None
+        accepted_local.sort(key=lambda x: -x[1])
+        accepted_local = accepted_local[:max_keywords]
+        return accepted_local, float(top_sims[0])
+
+    def append_candidate(img_id, file_path, accepted_pairs, anchor_sim):
+        new_keywords = [kw for kw, _ in accepted_pairs]
+        candidates_list.append({
+            "image_id": img_id,
+            "file_path": file_path,
+            "keywords": new_keywords,
+            "keyword_scores": [
+                {"keyword": kw, "confidence": round(float(sc), 4)} for kw, sc in accepted_pairs
+            ],
+            "top_neighbor_similarity": round(anchor_sim, 4),
+        })
+
+    work_untagged = list(untagged)
+    if focus_image_id is not None:
+        work_untagged = [t for t in work_untagged if t[0] != focus_image_id]
+
     try:
-        for img_id, file_path, emb_bytes in untagged:
-            query_vec = np.frombuffer(emb_bytes, dtype=np.float32)
-            query_norm = _normalize(query_vec)
-
-            # Cosine similarities to all tagged images
-            sims = tagged_norm @ query_norm  # shape: (num_tagged,)
-
-            # Top-k indices
-            top_k_idx = np.argsort(-sims)[:k]
-            top_sims = sims[top_k_idx]
-
-            # Anchor check: best neighbor must meet min_similarity
-            if top_sims[0] < min_similarity:
+        for img_id, file_path, emb_bytes in work_untagged:
+            scored = score_embedding(emb_bytes)
+            if scored is None:
                 result["skipped"] += 1
                 continue
-
-            # Filter neighbors below min_similarity
-            valid_mask = top_sims >= min_similarity
-            top_k_idx = top_k_idx[valid_mask]
-            top_sims = top_sims[valid_mask]
-
-            if len(top_k_idx) == 0:
-                result["skipped"] += 1
-                continue
-
-            # Weighted voting for each keyword
-            # keyword_score = sum(sim_i * has_keyword_i) / sum(sim_i)
-            sim_total = top_sims.sum()
-            neighbor_kw = kw_matrix[top_k_idx]  # (n_neighbors, n_keywords)
-            weighted_scores = (top_sims[:, None] * neighbor_kw).sum(axis=0) / sim_total  # (n_keywords,)
-
-            # Support count: how many neighbors have each keyword
-            support_counts = neighbor_kw.sum(axis=0)  # (n_keywords,)
-
-            # Apply thresholds
-            accepted = []
-            for kw_idx, kw in enumerate(all_kw):
-                score = float(weighted_scores[kw_idx])
-                support = int(support_counts[kw_idx])
-                if score >= min_keyword_confidence and support >= min_support_neighbors:
-                    accepted.append((kw, score))
-
-            if not accepted:
-                result["skipped"] += 1
-                continue
-
-            # Sort by score descending, cap at max_keywords
-            accepted.sort(key=lambda x: -x[1])
-            accepted = accepted[:max_keywords]
-            new_keywords = [kw for kw, _ in accepted]
-
+            accepted, anchor_sim = scored
             if dry_run:
-                candidates_list.append({
-                    "image_id": img_id,
-                    "file_path": file_path,
-                    "keywords": new_keywords,
-                    "top_neighbor_similarity": round(float(top_sims[0]), 4),
-                })
+                append_candidate(img_id, file_path, accepted, anchor_sim)
                 result["propagated"] += 1
             else:
+                new_keywords = [kw for kw, _ in accepted]
                 tags_str = ",".join(new_keywords)
                 if db.update_image_field(img_id, "keywords", tags_str):
                     result["propagated"] += 1
@@ -167,6 +170,29 @@ def propagate_tags(
                 else:
                     result["skipped"] += 1
                     logger.warning("Tag propagation update failed for image %d", img_id)
+
+        if dry_run and focus_image_id is not None:
+            focus_row = db.get_image_tag_propagation_focus(focus_image_id)
+            if focus_row:
+                emb, fp, img_folder, kw_csv = focus_row
+                ok_folder = True
+                if folder_path:
+                    norm_req = os.path.normpath(folder_path)
+                    ok_folder = bool(img_folder) and os.path.normpath(img_folder) == norm_req
+                if not ok_folder:
+                    logger.info(
+                        "Tag propagation focus_image_id=%s not in folder %s (image folder=%s)",
+                        focus_image_id, folder_path, img_folder,
+                    )
+                else:
+                    scored = score_embedding(emb)
+                    if scored:
+                        accepted, anchor_sim = scored
+                        existing = {x.strip().lower() for x in kw_csv.split(",") if x.strip()}
+                        accepted = [(kw, sc) for kw, sc in accepted if kw.strip().lower() not in existing]
+                        if accepted:
+                            append_candidate(focus_image_id, fp, accepted, anchor_sim)
+                            result["propagated"] += 1
 
     except Exception as e:
         logger.error("Tag propagation error: %s", e)

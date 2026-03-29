@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.24.0] - 2026-03-29
+
+### Added
+- **Tag propagation** (`modules/tagging.py`, `modules/api.py`, `modules/db.py`): Optional `focus_image_id` on propagate-tags requests — with `dry_run=True`, preview suggested keywords for a specific image even when it already has keywords; suggestions exclude keywords already on the image. Dry-run `candidates` entries include `keyword_scores` (per-keyword confidence). New `get_image_tag_propagation_focus()` for embedding, path, and keyword CSV lookup.
+- **PostgreSQL migrations** (`migrations/versions/0002_add_keywords_tables.py`): Alembic revision adding `keywords_dim` and `image_keywords` so the migration chain matches dual-write keyword tables.
+- **Tests** (`tests/test_translate_fb_to_pg.py`): Unit coverage for `_translate_fb_to_pg()` Firebird→PostgreSQL patterns (no database connection).
+
+### Fixed
+- **Dual-write** (`modules/db.py`): Skip enqueueing generic INSERT/UPDATE/DELETE that reference `image_embedding` for the async dual-write worker so embeddings continue to use dedicated pgvector update paths.
+
+### Changed
+- **TODO** (`TODO.md`): Phase 2 checklist — mark prior bug items resolved; note Alembic 0002 and embedding skip for dual-write readiness.
+
 ## [4.23.0] - 2026-03-27
 
 ### Added

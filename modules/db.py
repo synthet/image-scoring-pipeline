@@ -526,6 +526,10 @@ def _enqueue_dual_write(query: str, params=None, executemany=False):
         return
     q_upper = query.lstrip().upper()
     if q_upper.startswith("INSERT") or q_upper.startswith("UPDATE") or q_upper.startswith("DELETE"):
+        # Skip embedding writes — handled by dedicated code paths with proper
+        # pgvector type conversion (update_image_embedding / update_image_embeddings_batch).
+        if "image_embedding" in query.lower():
+            return
         _DUAL_WRITE_STATS["queued"] += 1
         _DUAL_WRITE_QUEUE.put((query, params, executemany))
 
@@ -7373,6 +7377,41 @@ def get_images_for_tag_propagation(folder_path=None):
     except Exception as e:
         logging.error("Error loading images for tag propagation: %s", e)
         return [], []
+    finally:
+        conn.close()
+
+
+def get_image_tag_propagation_focus(image_id: int):
+    """
+    Embedding, paths, and keyword CSV for one image (for dry-run preview on a
+    specific row, including already-tagged images).
+
+    Returns:
+        (embedding_bytes, file_path, folder_path_or_none, keywords_csv) or None
+        if the image has no embedding.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    try:
+        c.execute(
+            "SELECT i.image_embedding, i.file_path, f.path, "
+            "COALESCE((SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') "
+            "FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
+            "WHERE ik.image_id = i.id), COALESCE(i.keywords, '')) AS kw "
+            "FROM images i LEFT JOIN folders f ON f.id = i.folder_id WHERE i.id = ?",
+            (image_id,),
+        )
+        row = c.fetchone()
+        if not row or not row[0]:
+            return None
+        emb = bytes(row[0])
+        fp = row[1]
+        folder_path = row[2]
+        kw = row[3] if row[3] is not None else ""
+        return (emb, fp, folder_path, kw)
+    except Exception as e:
+        logging.error("get_image_tag_propagation_focus(%s): %s", image_id, e)
+        return None
     finally:
         conn.close()
 

@@ -706,6 +706,14 @@ class TagPropagationRequest(BaseModel):
         description="Maximum keywords to propagate per image.",
         example=10
     )
+    focus_image_id: Optional[int] = Field(
+        None,
+        description=(
+            "When set with dry_run=True, include propagation preview for this image even if "
+            "it already has keywords. Suggested keywords exclude ones already on the image."
+        ),
+        example=None,
+    )
 
     model_config = ConfigDict(json_schema_extra={
         "example": {
@@ -2017,7 +2025,8 @@ def create_api_router() -> APIRouter:
                 min_keyword_confidence=request.min_keyword_confidence,
                 min_support_neighbors=request.min_support_neighbors,
                 write_mode=request.write_mode,
-                max_keywords=request.max_keywords
+                max_keywords=request.max_keywords,
+                focus_image_id=request.focus_image_id,
             )
             return {
                 "success": True,
