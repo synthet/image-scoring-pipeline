@@ -183,3 +183,80 @@ def test_embedding_map_cache_hit(monkeypatch):
     # DB should NOT have been called — cache short-circuited
     assert not db_called["flag"]
     assert resp.json()["data"] == cached_data
+
+
+def test_make_cache_key_includes_sample_cap_and_method_specific_params():
+    """Cache keys vary by max_points and ignore min_dist for non-UMAP methods."""
+    import modules.projections as proj_mod
+
+    key_umap_small = proj_mod._make_cache_key(
+        folder_path="/photos",
+        method="umap",
+        max_points=100,
+        n_neighbors=30,
+        min_dist=0.1,
+    )
+    key_umap_large = proj_mod._make_cache_key(
+        folder_path="/photos",
+        method="umap",
+        max_points=200,
+        n_neighbors=30,
+        min_dist=0.1,
+    )
+    assert key_umap_small != key_umap_large
+
+    key_tsne_a = proj_mod._make_cache_key(
+        folder_path="/photos",
+        method="tsne",
+        max_points=100,
+        n_neighbors=30,
+        min_dist=0.1,
+    )
+    key_tsne_b = proj_mod._make_cache_key(
+        folder_path="/photos",
+        method="tsne",
+        max_points=100,
+        n_neighbors=30,
+        min_dist=0.8,
+    )
+    assert key_tsne_a == key_tsne_b
+
+
+def test_embedding_map_cache_separated_by_sample_limit(monkeypatch):
+    """Different sample_limit values should not collide in cache."""
+    import modules.db as db_mod
+    import modules.projections as proj_mod
+
+    rows = _fake_rows(8)
+    cache_store = {}
+    project_call_count = {"count": 0}
+
+    def _fake_db(**kw):
+        limit = kw.get("limit")
+        return rows[:limit]
+
+    def _fake_project_umap(vecs, n_neighbors, min_dist):
+        project_call_count["count"] += 1
+        return _fake_coords(len(vecs))
+
+    monkeypatch.setattr(db_mod, "get_embeddings_with_metadata", _fake_db)
+    monkeypatch.setattr(proj_mod, "_project_umap", _fake_project_umap)
+    monkeypatch.setattr(proj_mod, "_load_cache", lambda key: cache_store.get(key))
+    monkeypatch.setattr(proj_mod, "_save_cache", lambda key, data: cache_store.setdefault(key, data))
+
+    # Prime cache for sample_limit=3
+    first = proj_mod.compute_embedding_map(method="umap", sample_limit=3)
+    assert len(first["points"]) == 3
+    assert project_call_count["count"] == 1
+
+    # Same sample_limit should hit cache
+    again = proj_mod.compute_embedding_map(method="umap", sample_limit=3)
+    assert len(again["points"]) == 3
+    assert again["meta"]["cache_key"] == first["meta"]["cache_key"]
+    assert project_call_count["count"] == 1
+
+    # Different sample_limit must produce different key and recompute
+    second = proj_mod.compute_embedding_map(method="umap", sample_limit=5)
+    assert len(second["points"]) == 5
+    assert second["meta"]["cache_key"] != first["meta"]["cache_key"]
+    assert project_call_count["count"] == 2
