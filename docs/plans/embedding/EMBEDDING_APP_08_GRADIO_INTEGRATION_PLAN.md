@@ -73,6 +73,8 @@ graph TD
 
 ## Part 1: Bidirectional WebSocket Protocol
 
+**Status:** ✅ Completed (backend runtime command channel, dispatcher, correlation responses, and tests shipped).
+
 ### Python side -- upgrade `/ws/updates`
 
 The WebSocket endpoint in `webui.py:220-234` currently receives text but does nothing with it (`pass`). Upgrade it to parse JSON commands and dispatch to runners.

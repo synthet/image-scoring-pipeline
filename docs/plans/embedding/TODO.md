@@ -26,7 +26,7 @@ Backend tasks for embedding-based features. See [NEXT_STEPS.md](NEXT_STEPS.md) f
 
 ## Gradio/Electron Integration (Priority 3)
 
-- [ ] Bidirectional command/control channel (see [EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md](EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md))
+- [x] Bidirectional WebSocket command channel (see [EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md](EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md))
 - [ ] Headless orchestration path for embedding workflows (shared trigger/status/event surface)
 - [ ] "Similarity Search" tab or context menu in Gradio WebUI using `similar_search.py`
 
