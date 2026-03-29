@@ -26,6 +26,8 @@ High-level system design and project layout. → [technical/INDEX.md](technical/
 | [ARCHITECTURE.md](technical/ARCHITECTURE.md) | System architecture (components, data flow, deployment) |
 | [TECHNICAL_SUMMARY.md](technical/TECHNICAL_SUMMARY.md) | Technical summary with mermaid diagrams |
 | [PROJECT_STRUCTURE.md](technical/PROJECT_STRUCTURE.md) | Repository structure (merged, updated 2026-03-08) |
+| [architecture/DB_CONNECTOR.md](architecture/DB_CONNECTOR.md) | DB Connector transport layer — IConnector, FirebirdConnector, PostgresConnector, ApiConnector |
+| [architecture/microservices_proposal.md](architecture/microservices_proposal.md) | Abstraction layers roadmap (DbConnector ✅, DbClient ✅, API split, runner refactor) |
 
 ---
 

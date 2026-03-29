@@ -1,6 +1,6 @@
 # Embedding Features: Next Steps Roadmap
 
-This document summarizes the current implementation status and outlines the prioritized next steps for the 8 proposed embedding applications.
+This document summarizes the current implementation status and the **true remaining gaps** for the 8 proposed embedding applications.
 
 ## Status Overview
 
@@ -10,53 +10,42 @@ This document summarizes the current implementation status and outlines the prio
 | 02 | Near-Duplicate Detection | **Implemented** | `similar_search.py` (`find_near_duplicates`). |
 | 03 | Tag Propagation | **Implemented** | `tagging.py` (`propagate_tags`). |
 | 04 | Outlier Detection | **Implemented** | `similar_search.py` (`find_outliers`). |
-| 05 | 2D Embedding Map | **Planned** | Needs `umap-learn`, REST endpoint, and UI. |
-| 06 | Smart Stack Representative | **Partial** | Needs Centroid-based logic in `ClusteringEngine`. |
+| 05 | 2D Embedding Map | **Backend Implemented / UI Partial** | Projection service exists in `modules/projections.py`; API exposed at `GET /api/embedding_map`; coverage in `tests/test_api_embedding_map.py`. UI/Electron wiring may still be pending. |
+| 06 | Smart Stack Representative | **Implemented** | Centroid representative selection is implemented in `modules/clustering.py` (`_select_best_image`, `stack_representative_strategy`). |
 | 07 | "More Like This" UI | **Partial** | Search logic and REST API exist; UI wiring is still needed. |
-| 08 | Gradio Integration | **Planned** | Major architectural task (WebSockets, Headless). |
+| 08 | Gradio Integration | **Partial** | Backend APIs exist, but bidirectional control and orchestration work remain. |
 
 ---
 
-## Priority 1: Backend Infrastructure (Short Term)
+## Implementation Verification References
 
-### 1.1 Similarity API Exposure
-Completed in `modules/api.py`:
-- `GET /api/similarity/search` and compatibility alias `GET /api/similarity/similar`
-- `GET /api/similarity/duplicates`
-- `GET /api/outliers` and compatibility alias `GET /api/similarity/outliers`
+Use these code references as the source of truth when reviewing status:
+- `modules/projections.py` (2D projection compute + cache layer)
+- `modules/api.py` (`/api/embedding_map` route)
+- `tests/test_api_embedding_map.py` (API behavior and fallback/cache tests)
+- `modules/clustering.py` (`_select_best_image` centroid strategy)
 
-Next contract tasks:
-- Keep Electron-side API types in sync with the backend contract
-- Add UI wiring for similarity-driven workflows
-
-### 1.2 Clustering Refinement
-Update the `ClusteringEngine` in `modules/clustering.py`:
-- Add a configuration option for `stack_representative_strategy`.
-- Implement `centroid` strategy which calculates the mean embedding for a cluster and selects the image with the minimum cosine distance to that mean.
+Similarity REST routes (search, duplicates, outliers) are tracked in [TODO.md](TODO.md) under **API REST Endpoints**; request/response shapes are described in [API_CONTRACT.md](../../technical/API_CONTRACT.md).
 
 ---
 
-## Priority 2: 2D Exploratory Map (Medium Term)
+## Remaining Work (True Gaps Only)
 
-### 2.1 Dependencies
-Add `umap-learn` to the environment. Note that UMAP requires `numpy`, `scipy`, and `scikit-learn` (already present).
+### 1) Electron / Gradio UX Wiring
+- Connect existing similarity and embedding-map APIs to production UI flows.
+- Add user-facing interactions for map exploration and "more like this" actions.
+- Keep frontend contracts aligned with backend payloads.
 
-### 2.2 Computation & Caching
-Implement `modules/projections.py`:
-- Function to compute 2D coordinates for a batch of images using UMAP.
-- Layer a caching mechanism (disk-based) to store projections at the folder level to avoid re-computation.
+### 2) Bidirectional Control Channel
+- Implement or finalize a robust bi-directional channel (per App 08 plan) so Electron/Gradio can trigger embedding operations and receive live progress/events.
 
----
-
-## Priority 3: Architecture & UI Integration (Long Term)
-
-### 3.1 Headless Mode & WebSocket Relay
-As per [App 08](EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md), implement the bi-directional command channel to allow the Electron app to trigger embedding operations and receive real-time updates.
-
-### 3.2 Gradio Similarity Search
-Add a "Similarity Search" tab or context menu in the Gradio WebUI that uses the `similar_search.py` module to browse the collection visually.
+### 3) Headless Orchestration
+- Complete headless orchestration path for embedding-driven workflows (job triggering, status tracking, and event relay) so UI and automation use the same control surface.
 
 ---
 
-## Conclusion
-The groundwork for embeddings is largely solid. The immediate focus should be **API exposure** and **Smart Representative** logic to make the existing features actionable from the UI.
+## Notes
+
+- App 05 no longer needs to be treated as backend-planned: backend compute + endpoint + tests are in place.
+- App 06 centroid representative logic is implemented and should be tracked as complete on backend.
+- For App 06, `centroid` and `balanced` strategies use embeddings only when `_select_best_image` receives them (visual stack clustering); burst stack creation currently passes scores only, so those paths fall back to `score` until embeddings are supplied there.

@@ -3,23 +3,22 @@ set -e
 
 echo "Starting Docker Entrypoint Script..."
 
-# 1. Wait for Firebird host if specified
-if [ ! -z "$FIREBIRD_HOST" ]; then
-    echo "Waiting for Firebird host at $FIREBIRD_HOST:3050..."
-    # Simple check for port availability (using timeout and bash /dev/tcp)
-    MAX_RETRIES=30
-    COUNT=0
-    until timeout 1 bash -c "cat < /dev/tcp/$FIREBIRD_HOST/3050" 2>/dev/null || [ $COUNT -eq $MAX_RETRIES ]; do
-        echo "Still waiting for Firebird service..."
-        sleep 2
-        ((COUNT++))
-    done
-    
-    if [ $COUNT -eq $MAX_RETRIES ]; then
-        echo "Warning: Firebird host $FIREBIRD_HOST:3050 not reachable. Attempting to proceed anyway..."
-    else
-        echo "Firebird host is up."
-    fi
+# 1. Wait for Firebird on the Windows host (exposed as host.docker.internal)
+FB_HOST="${FIREBIRD_HOST:-host.docker.internal}"
+FB_PORT=3050
+echo "Waiting for Firebird at $FB_HOST:$FB_PORT..."
+MAX_RETRIES=30
+COUNT=0
+until bash -c ": > /dev/tcp/$FB_HOST/$FB_PORT" 2>/dev/null || [ $COUNT -eq $MAX_RETRIES ]; do
+    echo "Still waiting for Firebird..."
+    sleep 2
+    COUNT=$(( COUNT + 1 ))
+done
+
+if [ $COUNT -eq $MAX_RETRIES ]; then
+    echo "Warning: Firebird at $FB_HOST:$FB_PORT not reachable. Attempting to proceed anyway..."
+else
+    echo "Firebird is up."
 fi
 
 # 2. Run database migrations/initialization

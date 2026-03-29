@@ -19,7 +19,8 @@ def queue_db(tmp_path_factory):
     shutil.copy2(template, db_path)
 
     original_path = db.DB_PATH
-    db.DB_PATH = f"inet://127.0.0.1/{db_path}"
+    db.DB_PATH = os.path.abspath(db_path)
+    db.reset_init_db_state_for_tests()
     try:
         db.init_db()
     except Exception as exc:

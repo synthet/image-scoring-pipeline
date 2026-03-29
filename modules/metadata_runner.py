@@ -84,6 +84,16 @@ class MetadataRunner:
                 "input_path": input_path
             })
 
+        def fail_terminal(error_summary: str):
+            self.status_message = error_summary
+            if job_id:
+                db.update_job_status(job_id, "failed", "\n".join(self.log_history))
+                event_manager.broadcast_threadsafe("job_completed", {
+                    "job_id": job_id,
+                    "status": "failed",
+                    "error": error_summary,
+                })
+
         all_images = []
         
         if resolved_image_ids is not None:
@@ -94,7 +104,7 @@ class MetadataRunner:
                  log(f"Selector mode enabled. Matched {len(all_images)} images by ID.")
              except Exception as e:
                  log(f"Error fetching from DB: {e}")
-                 self.status_message = "Error DB"
+                 fail_terminal("Error DB")
                  return
         elif not input_path or not input_path.strip():
              log("Input path empty. Processing all missing metadata in DB...")
@@ -104,7 +114,7 @@ class MetadataRunner:
                  all_images = rows
              except Exception as e:
                  log(f"Error fetching from DB: {e}")
-                 self.status_message = "Error DB"
+                 fail_terminal("Error DB")
                  return
         elif os.path.isdir(input_path):
              all_images = db.get_images_by_folder(input_path)
@@ -115,7 +125,7 @@ class MetadataRunner:
                  all_images = [row]
              else:
                  log(f"Input path not found in DB: {input_path}")
-                 self.status_message = "Error Path"
+                 fail_terminal("Error Path")
                  return
 
         log(f"Found {len(all_images)} images to potentially process.")
@@ -213,6 +223,21 @@ class MetadataRunner:
                 )
                 
         log(f"Done. Processed: {processed_count}, Skipped: {skipped_count}")
+
+        try:
+            seen_parents = set()
+            for row in all_images:
+                fp = row.get("file_path")
+                if not fp:
+                    continue
+                parent = os.path.normpath(os.path.dirname(fp))
+                if parent and parent not in seen_parents:
+                    seen_parents.add(parent)
+                    db.invalidate_folder_phase_aggregates(folder_path=parent)
+            if not all_images and input_path and os.path.isdir(input_path):
+                db.invalidate_folder_phase_aggregates(folder_path=input_path)
+        except Exception:
+            logger.exception("MetadataRunner: invalidate_folder_phase_aggregates after batch failed")
 
         if job_id:
             db.update_job_status(job_id, "completed")

@@ -100,6 +100,7 @@ class _Runners:
                 scoring_runner=self.scoring,
                 tagging_runner=self.tagging,
                 selection_runner=self.selection,
+                enable_background_tick=True,
             )
         return self._orchestrator
 

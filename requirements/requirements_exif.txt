@@ -1,3 +1,5 @@
 # EXIF and metadata handling for NEF rating functionality
 pyexiv2>=0.7.11
 exifread>=2.3.2
+# Optional: scripts/python/verify_nef_testing_samples.py --exiftool (also needs exiftool CLI in PATH)
+PyExifTool>=0.5.0

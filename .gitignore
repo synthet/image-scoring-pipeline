@@ -98,6 +98,7 @@ research_output/
 *.jpg
 *.jpeg
 *.png
+!static/favicon.png
 *.gif
 *.bmp
 *.tiff
@@ -138,6 +139,8 @@ research_output/
 scoring_history.db
 SCORING_HISTORY.FDB
 TEST_*.fdb
+TEST_*.fdb.*.bak
+temp_test_stack/
 *.FDB
 *.fdb
 *.fbk

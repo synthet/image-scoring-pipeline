@@ -9,6 +9,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.23.0] - 2026-03-27
+
+### Added
+- **`tools/RunWebUILauncher/`** — C# launcher project (`RunWebUI`); build copies the executable to the repo root per `RunWebUILauncher.csproj`.
+- **Tests** (`tests/test_db_init_log_order.py`): Static check that `_init_db_impl` log markers stay in Phase 1 → Phase 2 / backfill order.
+
+### Changed
+- **DB** (`modules/db.py`): More query paths use `get_connector()`; `get_image_count` / `get_images_paginated` / related pagination helpers aligned with the connector; minor cleanup in filter builders.
+- **PostgreSQL** (`modules/db.py` `_translate_fb_to_pg`): Translate `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` to `OFFSET ? LIMIT ?` so paginated gallery SQL works on Postgres.
+- **Tests** (`tests/conftest.py`, `tests/test_stacks.py`): Updates for current DB/stack expectations.
+- **Git** (`.gitignore`): Ignore `TEST_*.fdb.*.bak` and `temp_test_stack/`.
+
+### Removed
+- **`modules/db_client/`** — local/HTTP client protocol and implementations; use `get_connector()` / `modules.db` instead.
+- **`musiq/`** stubs (`simple_musiq.py`, `tf_musiq.py`, `requirements.txt`) and thin re-export modules `modules/liqe_wrapper.py`, `modules/musiq_wrapper.py`, `modules/qalign.py`, `modules/topiq.py`.
+- Ad-hoc root scratch files (reports, patches, `db_append.py`, `tmp/verify_fix.py`, `reorganize_source_plan.md`, etc.).
+
+### Fixed
+- **PostgreSQL**: Paginated image listing using Firebird-style `OFFSET … FETCH NEXT …` now translates correctly for Postgres.
+
+## [4.22.0] - 2026-03-26
+
+### Added
+- **DB connector** (`modules/db_connector/`): `IConnector` / `ITransaction` with Firebird, PostgreSQL, and HTTP (`ApiConnector`) backends; `database.engine` selects implementation; Firebird-dialect SQL with per-backend translation.
+- **DB client** (`modules/db_client/`): `DbClientProtocol` with local (delegates to `modules.db`) and HTTP (`DbClientHttp`) implementations for decoupling pipeline code from monolith imports.
+- **Database API** (`modules/api_db.py`, `modules/ui/app.py`): FastAPI router `/api/db` — `GET /ping`, `POST /query` (reads + optional writes via `X-DB-Write-Token` / `database.query_token`), `POST /transaction`; mounted with the WebUI app.
+- **Engines** (`modules/engines/`): `IScoringEngine`, `ILiqeScorer`, `ITaggingEngine`, `IClusteringEngine` protocols plus mock implementations for unit tests.
+- **Scripts** (`scripts/python/`): NEF testing samples manifest, download, verify, and URL/readme helpers for sample RAW workflows.
+- **Docs** (`docs/architecture/DB_CONNECTOR.md`, `docs/architecture/microservices_proposal.md`): Connector design and microservices notes.
+- **Docker refresh** (`docker_refresh_webui.bat`): Convenience script for rebuilding/refreshing the WebUI container stack.
+- **Tests**: `tests/support/` fakes, `tests/test_db_connector.py`, `tests/test_db_leaks.py`, `tests/test_job_dispatcher_fakes.py`, `tests/test_mock_pipeline.py`, `tests/test_pipeline_orchestrator_fakes.py`, `tests/test_postgres_integration.py`, `tests/test_runner_early_fail_terminal_job_status.py`, `tests/test_scoring_runner_mock_engine.py`, `tests/test_testing_samples_integration.py`, `tests/test_testing_samples_smoke.py`, plus broader updates to existing suites.
+
+### Changed
+- **DB** (`modules/db.py`): Widespread integration with the connector layer and related query/exec paths; continued Firebird/Postgres/dual-write behavior aligned with `get_connector()`.
+- **API** (`modules/api.py`): Wiring and guarded SQL query endpoint behavior documented alongside DB API controls (`database.enable_api_db_query`, row limits, write policy).
+- **Pipeline / runners** (`modules/engine.py`, `modules/scoring.py`, `modules/tagging.py`, `modules/clustering.py`, `modules/similar_search.py`, `modules/indexing_runner.py`, `modules/metadata_runner.py`, `modules/pipeline.py`, `modules/pipeline_orchestrator.py`, `modules/job_dispatcher.py`): Use injectable engines and connector-aware DB access where applicable.
+- **Postgres** (`modules/db_postgres.py`): Extensions for connector-aligned usage.
+- **Docker** (`Dockerfile`, `.dockerignore`): Image and ignore rules updated for current build layout.
+- **Frontend / static** (`frontend/`, `static/app/`, `scripts/python/generate_favicon.py`): Favicon and SPA asset refresh; `frontend/vite.config.ts` tweaks.
+- **Docs** (`docs/INDEX.md`, `docs/plans/database/*`, `docs/testing/TEST_STATUS.md`): Index and migration/test planning updates.
+- **Misc** (`cli.py`, `pytest.ini`, `requirements/requirements_exif.txt`, `modules/mcp_server_firebird.py`, `modules/ui/app.py`, `docker_rebuild.bat`, `RunWebUI.exe`, `TODO.md`): Small tooling and dependency adjustments.
+
+### Fixed
+- **Tests** (`tests/conftest.py`, `tests/test_resolved_paths.py`, `tests/test_stacks.py`, `tests/test_mcp_firebird.py`, and related): Stability and path/DB fixes for CI and local runs.
+
+## [4.21.0] - 2026-03-26
+
+### Added
+- **WebUI open** (`modules/webui_open.py`, `launch.py`, `webui.py`): After the server is listening, optionally open the React UI in the default browser or an Electron shell — set `WEBUI_OPEN_UI=browser|electron` or pass `--webui-open=` through `launch.py` (stripped before `webui.py`). Electron resolves a sibling `image-scoring-gallery` / `electron-image-scoring` or `WEBUI_ELECTRON_GALLERY_DIR`; WSL browser open uses `cmd.exe start` when available.
+- **Docker launcher** (`run_webui_docker.bat`): `cd` to script directory; default `WEBUI_OPEN_UI=browser`; if port 7860 already answers, open UI and exit; require local image `image-scoring:latest` (see `docker_rebuild.bat`); `docker compose up -d`, wait for readiness, open browser or Electron, then `docker compose logs -f`.
+- **Scripts** (`docker_rebuild.bat`): Full `docker compose` down, `--no-cache` build, and foreground stack start (Postgres volume preserved).
+- **Favicon** (`webui.py`): `GET /favicon.png` and `GET /favicon.ico` at site root; Gradio `/app` uses `static/favicon.png`; SPA `index.html` shells point at `/favicon.png`.
+- **Git** (`.gitignore`): Exception `!static/favicon.png` so the bundled PNG favicon is versioned despite `*.png` ignores.
+
+### Changed
+- **`static/favicon.ico`**: Refreshed root icon asset.
+
+## [4.20.0] - 2026-03-26
+
+### Added
+- **Docker Compose** (`docker-compose.yml`): Bundled PostgreSQL service (`pgvector/pgvector:pg17`) with healthcheck and named volume; WebUI service now depends on postgres being healthy; `POSTGRES_*` env vars wired through to the webui container.
+- **DB Postgres** (`modules/db_postgres.py`): `execute_write()` and `execute_write_returning()` write helpers; `keywords_dim` and `image_keywords` tables added to PostgreSQL schema initialization.
+- **DB** (`modules/db.py`): `FirebirdConnectionFailed` exception class and `_humanize_firebird_connect_error()` — environment-aware, actionable error messages for Docker, WSL, network, auth, and local-file failure scenarios; `RAND()` → `RANDOM()` and `LIST()` → `STRING_AGG()` SQL translation rules; PostgreSQL read routing for `get_folder_by_id`, `get_images_by_folder`, and `get_nef_paths_for_research`.
+- **Utils** (`modules/utils.py`): `calculate_image_hash` alias for `compute_file_hash` (backwards compatibility for callers expecting the older name).
+- **Scripts**: `scripts/powershell/Compact-WslVhdx.ps1` and `scripts/powershell/Move-WslToD.ps1` for WSL VHD maintenance.
+- **Tests** (`tests/test_db_engine_switch.py`): 8 new unit tests covering `_translate_fb_to_pg()` — `RAND()`, `LIST()`, `FETCH FIRST`, `SELECT FIRST`, `DATEDIFF`, placeholder-in-string-literal safety, and upsert translation.
+
+### Fixed
+- **IndexingRunner** (`modules/indexing_runner.py`): Status message logic corrected — an already-`"Failed"` status no longer falls through to the `"Error"` substring check, preventing a spurious double assignment.
+
+### Removed
+- `docker-compose.postgres.yml` — merged into the default `docker-compose.yml`.
+
+## [4.19.0] - 2026-03-25
+
+### Added
+- **Docker / Firebird** (`modules/db.py`): `FIREBIRD_WIN_DB_PATH` environment variable so the container uses the real Windows path to `SCORING_HISTORY.FDB` instead of a bogus `\app\...` mapping; logs a warning when running in Docker without it.
+- **PostgreSQL** (`modules/db_postgres.py`): `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` environment overrides (still defaults to `config.json` when unset).
+- **Docker image** (`Dockerfile`): `LD_LIBRARY_PATH` includes the bundled Linux Firebird client under `FirebirdLinux/`.
+- **Dependencies** (`requirements/requirements_wsl_gpu.txt`): `psycopg2-binary` and `pgvector` for optional Postgres / dual-write stacks.
+
+### Changed
+- **Docker Compose** (`docker-compose.yml`): Default stack is WebUI-only; bundled PostgreSQL service and `depends_on` removed — use an external Postgres (or host install) with env/config when needed. Sets `WEBUI_HOST`, `FIREBIRD_WIN_DB_PATH`, and `FIREBIRD_CLIENT_LIBRARY`; trims extra drive mounts to `D:/` by default (documented for customization).
+- **Docker entrypoint** (`scripts/docker_entrypoint.sh`): Always waits for Firebird on `FIREBIRD_HOST` (default `host.docker.internal`) port 3050 before starting the app; portable retry loop without `timeout`.
+- **Launcher** (`launch.py`): Skips Windows Firebird process detection and auto-start when `DOCKER_CONTAINER` is set.
+
+### Fixed
+- **Docs** (`docs/setup/DOCKER_SETUP.md`): Rewritten for the Windows Firebird + volume-mount architecture, FDB path customization, env reference, and troubleshooting.
+
+## [4.18.0] - 2026-03-24
+
+### Added
+- **Diagnostics module** (`modules/diagnostics.py`): New `get_diagnostics()` collector — OS info, Python version, CPU/memory (via `psutil`), DB path/reachability/size, GPU/framework detection, free disk space, and masked config summary.
+- **API** (`modules/api.py`): `GET /api/diagnostics` endpoint returning `DiagnosticsResponse` with system, database, models, filesystem, config, and runner availability fields.
+- **Gradio status page** (`modules/ui/status_gradio.py`): New **Diagnostics** section in the `/app` operator dashboard — four panels (System, Database, Models, Filesystem) rendered as inline tables; updates on the existing poll cycle.
+- **Frontend** (`frontend/src/pages/DiagnosticsPage.tsx`, `frontend/src/App.tsx`, `frontend/src/components/layout/Shell.tsx`): New `/diagnostics` React page wired into routing and the top nav bar.
+- **DB** (`modules/db.py`): PostgreSQL read-routing for 12+ major query functions — `get_all_folders`, `get_job`, `get_queued_jobs`, `get_job_phases`, `get_jobs`, `get_all_images`, `get_image_details`, `get_incomplete_records`, `get_embeddings_for_search`, `get_embeddings_with_metadata`, `get_image_phase_statuses`, `get_all_phases`; `_DUAL_WRITE_STATS` counter dict for queue telemetry.
+- **DB Postgres** (`modules/db_postgres.py`): Full Firebird schema parity — all tables (`folders`, `stacks`, `jobs`, `job_phases`, `job_steps`, `images`, `file_paths`, `image_exif`, `image_xmp`, `pipeline_phases`, `image_phase_status`, `culling_sessions`, `culling_picks`, `keywords`, `image_keywords`, `stack_cache`), complete column sets, unique indexes, and FK constraints; `execute_select` / `execute_select_one` convenience helpers; corrected default connection config (`image_scoring` / `postgres`).
+- **SQL Translation** (`modules/db.py` `_translate_fb_to_pg`): Handles `UPDATE OR INSERT … MATCHING` → `ON CONFLICT DO UPDATE`, `SELECT FIRST n` → `LIMIT n`, `DATEDIFF(SECOND FROM … TO …)` → `EXTRACT(EPOCH …)`, `ROWS ?` → `LIMIT ?`, `FETCH FIRST n ROWS ONLY` → `LIMIT n`.
+- **Alembic migrations**: `alembic.ini` and `migrations/` folder with initial schema migration (`0001_initial_schema.py`) for managing Postgres schema via Alembic.
+- **Scripts**: `scripts/powershell/Backup-Postgres.ps1` — automated PostgreSQL backup via `pg_dump`; `scripts/python/verify_postgres_parity.py` — row-count and spot-check parity verification between Firebird and Postgres.
+- **Migration** (`scripts/python/migrate_firebird_to_postgres.py`): `--clear-target` flag to wipe the target Postgres DB before migration (with `TRUNCATE CASCADE`); added `job_phases`, `job_steps`, and `stack_cache` to migration order; expanded `reset_sequences` to cover `job_phases`, `job_steps`, `culling_picks`, `pipeline_phases`, `image_phase_status`.
+- **MCP config** (`mcp_config.json`): `imgscore-py-postgres` server entry for direct Postgres MCP access (disabled by default).
+
+### Fixed
+- **Migration runner** (`scripts/run_migration.py`): Replaced broken Unicode emoji characters with ASCII `[OK]` / `[FAIL]` / `[WARN]` status indicators.
+- **WebUI** (`webui.py`): Suppress TensorFlow Python-level deprecation warnings (`TF_ENABLE_DEPRECATION_WARNINGS`, `DeprecationWarning` filters); replace debug emoji with `[DEBUG]` ASCII prefix.
+- **Tests**: `tests/test_api_endpoints.py` — new `test_diagnostics_returns_full_payload` covering the `/api/diagnostics` endpoint; `tests/test_selection_runner_phases.py` — added assertion that `set_job_phase_state` marks `bird_species` completed on the parent job; `tests/test_migrate_firebird_to_postgres.py` — comprehensive new test suite for the Firebird→Postgres migration script.
+
 ## [4.17.0] - 2026-03-23
 
 ### Added

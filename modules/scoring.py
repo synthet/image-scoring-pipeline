@@ -1,6 +1,7 @@
 import os
 import threading
 import json
+import logging
 from modules import db, thumbnails
 from modules.engine import BatchImageProcessor
 import sys
@@ -8,27 +9,40 @@ from pathlib import Path
 from modules import pipeline
 from modules.events import event_manager, broadcast_run_log_line
 from modules import score_normalization as snorm
-from modules.phases import normalize_phase_codes
+from modules.phases import PhaseCode, normalize_phase_codes
 
 # Ensure paths are set up to import scripts
 project_root = Path(__file__).resolve().parent.parent
 if str(project_root / "scripts" / "python") not in sys.path:
     sys.path.insert(0, str(project_root / "scripts" / "python"))
 
+logger = logging.getLogger(__name__)
+
 try:
     from run_all_musiq_models import MultiModelMUSIQ
+    try:
+        from modules.engines.base import IScoringEngine
+
+        IScoringEngine.register(MultiModelMUSIQ)
+    except Exception:
+        pass
 except ImportError:
     print("Warning: Could not import MultiModelMUSIQ for version info")
+
     class MultiModelMUSIQ:
         VERSION = "0.0.0"
 
 class ScoringRunner:
     """
     Runs scoring in a local thread using modules.engine.
+
+    scoring_engine: optional pre-built scorer (e.g. MockScoringEngine for tests).
+    liqe_scorer: optional LIQE backend; None uses default LiqeScorer in the pipeline worker.
     """
-    def __init__(self):
-        # We hold the shared scorer here to persist it across runs
-        self.shared_scorer = None
+    def __init__(self, scoring_engine=None, liqe_scorer=None):
+        # We hold the shared scorer here to persist it across runs (None = lazy MultiModelMUSIQ)
+        self.shared_scorer = scoring_engine
+        self.liqe_scorer = liqe_scorer
         # We keep a ref to the current processor to stop it
         self.current_processor = None
         
@@ -119,7 +133,7 @@ class ScoringRunner:
              target_phases = [PhaseCode.SCORING]
         normalized_target_phases = normalize_phase_codes(target_phases)
         
-        # Checking/Loading Models
+        # Checking/Loading Models (skip when a scorer was injected via constructor)
         if self.shared_scorer is None:
             log("Initializing models first (this happens once)...")
             try:
@@ -142,6 +156,8 @@ class ScoringRunner:
                 self.status_message = "Error loading models"
                 db.update_job_status(job_id, "failed", msg)
                 return
+        else:
+            log("Using injected scoring engine (no lazy model load).")
 
         def on_progress(cur, tot):
             self.current_count = cur
@@ -158,6 +174,7 @@ class ScoringRunner:
             scorer=self.shared_scorer,
             progress_callback=on_progress,
             target_phases=normalized_target_phases,
+            liqe_scorer=self.liqe_scorer,
         )
         self.current_processor = processor
         

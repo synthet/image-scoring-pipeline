@@ -19,6 +19,7 @@ Options:
   --fdb-password PASS   Firebird password (default: masterkey)
   --batch-size N        Rows per batch (default: 500)
   --skip-table TABLE    Skip a specific table (can be repeated)
+  --clear-target        Clear selected target tables before migration
   --dry-run             Print counts without inserting
 """
 
@@ -36,13 +37,15 @@ from pgvector.psycopg2 import register_vector
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Tables to migrate, in dependency order (parents before children)
+# Tables to migrate, in FK dependency order (parents before children)
 TABLES_ORDER = [
     "jobs",
     "folders",
     "stacks",
     "images",
     "file_paths",
+    "job_phases",       # depends on jobs
+    "job_steps",        # depends on jobs
     "image_exif",
     "image_xmp",
     "cluster_progress",
@@ -50,14 +53,16 @@ TABLES_ORDER = [
     "culling_picks",
     "pipeline_phases",
     "image_phase_status",
+    "stack_cache",      # depends on stacks + images + folders
 ]
 
 
 def get_tables_for_validation():
     """
-    Validate against the complete active pipeline table set.
-    This intentionally ignores --skip-table so a partial migration cannot
-    incorrectly report success.
+    Tables to compare in validate_migration (full active pipeline set).
+
+    Intentionally ignores --skip-table so a partial migration cannot report success
+    when Firebird and Postgres counts still differ on skipped tables.
     """
     return TABLES_ORDER
 
@@ -146,7 +151,7 @@ def migrate_table(fb_conn, pg_conn, table_name, batch_size=500, dry_run=False):
     pg_cur.execute(f"SELECT COUNT(*) FROM {table_name}")
     existing_count = pg_cur.fetchone()[0]
     if existing_count > 0:
-        logger.info("  PostgreSQL %s already has %d rows — skipping (use --clear-target to overwrite)", table_name, existing_count)
+        logger.info("  PostgreSQL %s already has %d rows — skipping (pass --clear-target to clear before migration)", table_name, existing_count)
         return 0
 
     # Fetch all rows from Firebird
@@ -216,7 +221,9 @@ def reset_sequences(pg_conn):
     pg_cur = pg_conn.cursor()
     tables_with_id = [
         "jobs", "folders", "stacks", "images",
-        "culling_sessions", "pipeline_phases",
+        "job_phases", "job_steps",
+        "culling_sessions", "culling_picks",
+        "pipeline_phases", "image_phase_status",
     ]
     for table in tables_with_id:
         try:
@@ -230,6 +237,15 @@ def reset_sequences(pg_conn):
             logger.info("  Reset sequence for %s to %d", table, max_id)
         except Exception as e:
             logger.warning("  Could not reset sequence for %s: %s", table, e)
+    pg_conn.commit()
+
+
+def clear_target_tables(pg_conn, tables):
+    """Truncate all target tables in one statement, resetting sequences."""
+    pg_cur = pg_conn.cursor()
+    table_list = ", ".join(tables)
+    logger.info("Truncating target tables: %s", table_list)
+    pg_cur.execute(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE")
     pg_conn.commit()
 
 
@@ -257,7 +273,51 @@ def validate_migration(fb_conn, pg_conn, tables):
     return all_ok
 
 
-def main():
+def _resolve_postgres_config(db_cfg, env, args):
+    """Resolve PostgreSQL settings with explicit precedence.
+
+    Precedence:
+      1) CLI args
+      2) Environment variables
+      3) database.postgres.*
+      4) legacy database.* flat keys (temporary fallback with warning)
+      5) hardcoded defaults
+    """
+    postgres_cfg = db_cfg.get("postgres", {}) or {}
+
+    def _pick(cli_value, env_key, nested_key, legacy_key, default):
+        if cli_value is not None:
+            return cli_value
+        if env.get(env_key) is not None:
+            return env[env_key]
+        if postgres_cfg.get(nested_key) is not None:
+            return postgres_cfg[nested_key]
+        if db_cfg.get(legacy_key) is not None:
+            logger.warning(
+                "Using legacy database.%s for PostgreSQL config fallback. "
+                "Please migrate to database.postgres.%s.",
+                legacy_key,
+                nested_key,
+            )
+            return db_cfg[legacy_key]
+        return default
+
+    pg_host = _pick(args.pg_host, "POSTGRES_HOST", "host", "host", "localhost")
+    pg_port = _pick(args.pg_port, "POSTGRES_PORT", "port", "port", 5432)
+    pg_db = _pick(args.pg_db, "POSTGRES_DB", "dbname", "dbname", "musiq")
+    pg_user = _pick(args.pg_user, "POSTGRES_USER", "user", "user", "musiq")
+    pg_password = _pick(args.pg_password, "POSTGRES_PASSWORD", "password", "password", "musiq")
+
+    try:
+        pg_port = int(pg_port)
+    except (TypeError, ValueError):
+        logger.warning("Invalid PostgreSQL port %r; using default 5432", pg_port)
+        pg_port = 5432
+
+    return pg_host, pg_port, pg_db, pg_user, pg_password
+
+
+def build_parser():
     parser = argparse.ArgumentParser(description="Migrate Firebird DB to PostgreSQL")
     parser.add_argument("--fdb-path", default=None, help="Path to Firebird .fdb file")
     parser.add_argument("--fdb-user", default="sysdba", help="Firebird username")
@@ -269,7 +329,17 @@ def main():
     parser.add_argument("--pg-password", default=None, help="PostgreSQL password")
     parser.add_argument("--batch-size", default=500, type=int, help="Rows per batch")
     parser.add_argument("--skip-table", action="append", default=[], help="Skip a table")
+    parser.add_argument(
+        "--clear-target",
+        action="store_true",
+        help="Clear selected target tables before migration",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Count rows without inserting")
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     # Resolve paths from project root
@@ -290,14 +360,10 @@ def main():
     )
 
     # PostgreSQL settings
-    pg_host = args.pg_host or os.environ.get("POSTGRES_HOST") or db_cfg.get("host", "localhost")
-    pg_port = args.pg_port or int(os.environ.get("POSTGRES_PORT") or db_cfg.get("port", 5432))
-    pg_db = args.pg_db or os.environ.get("POSTGRES_DB") or db_cfg.get("dbname", "musiq")
-    pg_user = args.pg_user or os.environ.get("POSTGRES_USER") or db_cfg.get("user", "musiq")
-    pg_password = (
-        args.pg_password
-        or os.environ.get("POSTGRES_PASSWORD")
-        or db_cfg.get("password", "musiq")
+    pg_host, pg_port, pg_db, pg_user, pg_password = _resolve_postgres_config(
+        db_cfg=db_cfg,
+        env=os.environ,
+        args=args,
     )
 
     logger.info("Firebird source: %s (user=%s)", fdb_path, fdb_user)
@@ -317,9 +383,17 @@ def main():
     validation_tables = get_tables_for_validation()
 
     if args.dry_run:
+        if args.clear_target:
+            logger.info("DRY RUN — --clear-target ignored, no data will be modified")
         logger.info("DRY RUN — no data will be inserted")
         validate_migration(fb_conn, pg_conn, validation_tables)
         return
+
+    if args.clear_target:
+        logger.info("--clear-target enabled: clearing target tables before migration")
+        clear_target_tables(pg_conn, tables)
+    else:
+        logger.info("--clear-target not provided: existing target data will be preserved; non-empty tables are skipped")
 
     # Migrate each table
     total = 0

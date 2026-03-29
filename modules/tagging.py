@@ -4,7 +4,6 @@ import logging
 import threading
 import queue
 from PIL import Image
-from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration
 from typing import List, Dict, Optional, Tuple
 from modules import db, thumbnails, xmp
 from modules.events import event_manager
@@ -211,6 +210,8 @@ class KeywordScorer:
         """Lazy load the model."""
         if self.model is None:
             try:
+                from transformers import CLIPModel, CLIPProcessor
+
                 logger.info(f"Loading CLIP model: {self.model_name}...")
                 self.model = CLIPModel.from_pretrained(self.model_name).to(self.device)
                 self.processor = CLIPProcessor.from_pretrained(self.model_name)
@@ -270,6 +271,8 @@ class CaptionGenerator:
     def load_model(self):
         if self.model is None:
             try:
+                from transformers import BlipForConditionalGeneration, BlipProcessor
+
                 logger.info(f"Loading BLIP model: {self.model_name}...")
                 self.processor = BlipProcessor.from_pretrained(self.model_name)
                 self.model = BlipForConditionalGeneration.from_pretrained(self.model_name).to(self.device)
@@ -297,9 +300,12 @@ class CaptionGenerator:
 class TaggingRunner:
     """
     Runs tagging in a local thread, yielding logs.
+
+    tagging_engine: optional ITaggingEngine (e.g. MockTaggingEngine); when set, CLIP/BLIP are not loaded.
     """
-    def __init__(self):
+    def __init__(self, tagging_engine=None):
         self.stop_event = threading.Event()
+        self.tagging_engine = tagging_engine
         self.scorer = None
         self.captioner = None
         
@@ -378,29 +384,42 @@ class TaggingRunner:
                 "job_type": "tagging", 
                 "input_path": input_path
             })
-        
-        # Initialize Scorer
-        if not self.scorer:
-            try:
-                log("Loading CLIP model (this may take a while)...")
-                self.scorer = KeywordScorer()
-                self.scorer.load_model()
-                log("Model loaded.")
-            except Exception as e:
-                log(f"Error loading model: {e}")
-                self.status_message = "Error loading model"
-                return
 
-        if generate_captions and not self.captioner:
-            try:
-                log("Loading Captioning model (BLIP)...")
-                self.captioner = CaptionGenerator()
-                self.captioner.load_model()
-                log("Captioning model loaded.")
-            except Exception as e:
-                log(f"Error loading captioning model: {e}")
-                self.status_message = "Error loading captioning model"
-                return
+        def fail_terminal(error_summary: str):
+            self.status_message = error_summary
+            if job_id:
+                db.update_job_status(job_id, "failed", "\n".join(self.log_history))
+                event_manager.broadcast_threadsafe("job_completed", {
+                    "job_id": job_id,
+                    "status": "failed",
+                    "error": error_summary,
+                })
+        
+        # Initialize Scorer (skipped when a tagging engine was injected)
+        if self.tagging_engine is None:
+            if not self.scorer:
+                try:
+                    log("Loading CLIP model (this may take a while)...")
+                    self.scorer = KeywordScorer()
+                    self.scorer.load_model()
+                    log("Model loaded.")
+                except Exception as e:
+                    log(f"Error loading model: {e}")
+                    fail_terminal("Error loading model")
+                    return
+
+            if generate_captions and not self.captioner:
+                try:
+                    log("Loading Captioning model (BLIP)...")
+                    self.captioner = CaptionGenerator()
+                    self.captioner.load_model()
+                    log("Captioning model loaded.")
+                except Exception as e:
+                    log(f"Error loading captioning model: {e}")
+                    fail_terminal("Error loading captioning model")
+                    return
+        else:
+            log("Using injected tagging engine (no CLIP/BLIP load).")
 
         log("Scanning for images...")
         all_images = []
@@ -410,7 +429,7 @@ class TaggingRunner:
                  rows = db.get_all_images(limit=-1)
              except Exception as e:
                  log(f"Error fetching from DB: {e}")
-                 self.status_message = "Error DB"
+                 fail_terminal("Error DB")
                  return
              if not resolved_image_ids:
                  log("No images matched selectors.")
@@ -434,7 +453,7 @@ class TaggingRunner:
                  rows = db.get_all_images(limit=-1)
              except Exception as e:
                  log(f"Error fetching from DB: {e}")
-                 self.status_message = "Error DB"
+                 fail_terminal("Error DB")
                  return
              all_images = [row for row in rows]
         elif os.path.isdir(input_path):
@@ -443,7 +462,7 @@ class TaggingRunner:
              all_images = db.get_images_by_folder(input_path)
         else:
             log(f"Input path not found or not a directory: {input_path}")
-            self.status_message = "Error Path"
+            fail_terminal("Error Path")
             return
 
         # Filtering logic for phase policy
@@ -506,13 +525,22 @@ class TaggingRunner:
                         inference_path = thumb_path
 
                 # Run inference
-                tags = self.scorer.predict(inference_path, keywords=custom_keywords)
-                caption = ""
-                title = ""
-                if generate_captions:
-                    caption = self.captioner.generate(inference_path)
-                    import textwrap
-                    title = textwrap.shorten(caption, width=50, placeholder="...")
+                if self.tagging_engine is not None:
+                    tags = self.tagging_engine.predict_keywords(inference_path, custom_keywords)
+                    caption = ""
+                    title = ""
+                    if generate_captions:
+                        caption = self.tagging_engine.generate_caption(inference_path)
+                        import textwrap
+                        title = textwrap.shorten(caption, width=50, placeholder="...")
+                else:
+                    tags = self.scorer.predict(inference_path, keywords=custom_keywords)
+                    caption = ""
+                    title = ""
+                    if generate_captions:
+                        caption = self.captioner.generate(inference_path)
+                        import textwrap
+                        title = textwrap.shorten(caption, width=50, placeholder="...")
 
                 # Update DB and Write Metadata
                 if tags or caption:

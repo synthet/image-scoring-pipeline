@@ -38,7 +38,8 @@ def test_db(tmp_path_factory):
     shutil.copy2(template, db_path)
 
     original_path = db.DB_PATH
-    db.DB_PATH = f"inet://127.0.0.1/{db_path}"
+    db.DB_PATH = os.path.abspath(db_path)
+    db.reset_init_db_state_for_tests()
 
     try:
         db.init_db()
@@ -267,8 +268,8 @@ class TestFolderPhaseSummary:
         summary_list = db.get_folder_phase_summary(base_root, force_refresh=True)
         summary = {r['code']: r for r in summary_list}
         
-        # Implementation returns 'partial' if ANY is running, not 'running' itself
-        assert summary[PhaseCode.SCORING.value]['status'] == 'partial'
+        # Active work: running_count > 0 maps to status 'running' (see get_folder_phase_summary)
+        assert summary[PhaseCode.SCORING.value]['status'] == 'running'
 
         # failed when no done/skipped/running exists and at least one failed
         fail_folder = base_root + "_failed"
@@ -336,8 +337,7 @@ class TestComplexTransitions:
         db.set_image_phase_status(img1, PhaseCode.SCORING, PhaseStatus.RUNNING)
         
         summary = {r['code']: r for r in db.get_folder_phase_summary(folder, force_refresh=True)}
-        # 'running' (partial) should dominate over 'failed' for a folder summary
-        assert summary[PhaseCode.SCORING.value]['status'] == 'partial'
+        assert summary[PhaseCode.SCORING.value]['status'] == 'running'
         
         # Finish one
         db.set_image_phase_status(img1, PhaseCode.SCORING, PhaseStatus.DONE)
