@@ -25,6 +25,8 @@ Use these code references as the source of truth when reviewing status:
 - `tests/test_api_embedding_map.py` (API behavior and fallback/cache tests)
 - `modules/clustering.py` (`_select_best_image` centroid strategy)
 
+Similarity REST routes (search, duplicates, outliers) are tracked in [TODO.md](TODO.md) under **API REST Endpoints**; request/response shapes are described in [API_CONTRACT.md](../../technical/API_CONTRACT.md).
+
 ---
 
 ## Remaining Work (True Gaps Only)
@@ -46,3 +48,4 @@ Use these code references as the source of truth when reviewing status:
 
 - App 05 no longer needs to be treated as backend-planned: backend compute + endpoint + tests are in place.
 - App 06 centroid representative logic is implemented and should be tracked as complete on backend.
+- For App 06, `centroid` and `balanced` strategies use embeddings only when `_select_best_image` receives them (visual stack clustering); burst stack creation currently passes scores only, so those paths fall back to `score` until embeddings are supplied there.

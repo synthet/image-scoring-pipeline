@@ -16,6 +16,8 @@ Backend tasks for embedding-based features. See [NEXT_STEPS.md](NEXT_STEPS.md) f
 - [x] Add `stack_representative_strategy` config option to `ClusteringEngine`
 - [x] Implement centroid strategy (mean embedding → select closest image) in `modules/clustering.py` (`_select_best_image`)
 
+`centroid` / `balanced` apply when that call receives per-image embedding features (visual stacks). Burst stack creation passes scores only today, so representative selection there stays on `score` until embeddings are wired into that path.
+
 ## 2D Embedding Map (Priority 2)
 
 - [x] Implement `modules/projections.py` (UMAP/t-SNE 2D coords + folder-level cache)
