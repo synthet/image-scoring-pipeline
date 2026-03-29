@@ -346,6 +346,7 @@ def init_db():
             cur.execute("CREATE INDEX IF NOT EXISTS idx_images_hash ON images(image_hash);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_images_burst_uuid ON images(burst_uuid);")
             cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_images_image_uuid ON images(image_uuid) WHERE image_uuid IS NOT NULL;")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_images_file_path ON images(file_path);")
             # HNSW cosine index for fast similarity search
             cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_images_embedding_hnsw
