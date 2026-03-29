@@ -40,7 +40,7 @@ def test_db():
     os.makedirs(temp_dir, exist_ok=True)
     
     unique_id = uuid.uuid4().hex[:8]
-    test_db_path = os.path.abspath(f"TEST_stacks_{unique_id}.fdb")
+    test_db_path = os.path.join(temp_dir, f"TEST_stacks_{unique_id}.fdb")
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     seed = os.path.join(project_root, "scoring_history_test.fdb")
     if not os.path.exists(seed):
@@ -77,8 +77,10 @@ def test_db():
         try: 
             if db._local.conn: db._local.conn.close()
         except: pass
-        try: os.remove(test_db_path)
-        except: pass
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
         pytest.fail(f"Failed to initialize DB schema: {e}")
          
     yield
@@ -106,10 +108,10 @@ def test_db():
                 else:
                     print(f"Warning: Could not delete test DB {test_db_path}")
 
-    # Clean up temp dir if empty
     try:
-        os.rmdir(temp_dir)
-    except: pass
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    except Exception:
+        pass
 
 def _create_test_images():
     """Insert test images with known scores for testing."""
