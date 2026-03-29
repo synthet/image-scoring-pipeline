@@ -36,14 +36,24 @@ def _ensure_cache_dir():
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _make_cache_key(folder_path, method, n_neighbors, min_dist):
-    """Cache key excludes count so we can check cache before DB query."""
+def _make_cache_key(folder_path, method, max_points, n_neighbors, min_dist):
+    """
+    Build a deterministic cache key for projection inputs.
+
+    Method-specific params are normalised so non-relevant parameters do not
+    perturb the cache key.
+    """
+    normalized_method = (method or "umap").lower()
+    method_params = {"n_neighbors": n_neighbors}
+    if normalized_method == "umap":
+        method_params["min_dist"] = min_dist
+
     payload = json.dumps(
         {
             "folder_path": folder_path,
-            "method": method,
-            "n_neighbors": n_neighbors,
-            "min_dist": min_dist,
+            "method": normalized_method,
+            "max_points": max_points,
+            "method_params": method_params,
         },
         sort_keys=True,
     )
@@ -168,7 +178,13 @@ def compute_embedding_map(
 
     from modules import db
 
-    cache_key = _make_cache_key(folder_path, method, n_neighbors, min_dist)
+    cache_key = _make_cache_key(
+        folder_path=folder_path,
+        method=method,
+        max_points=max_points,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+    )
     if not refresh:
         cached = _load_cache(cache_key)
         if cached:
