@@ -22,5 +22,5 @@ Backend tasks for embedding-based features. See [NEXT_STEPS.md](NEXT_STEPS.md) f
 
 ## Gradio Integration (Priority 3)
 
-- [ ] Bidirectional WebSocket command channel (see [EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md](EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md))
+- [x] Bidirectional WebSocket command channel (see [EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md](EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md))
 - [ ] "Similarity Search" tab or context menu in Gradio WebUI using `similar_search.py`

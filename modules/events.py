@@ -59,6 +59,14 @@ class EventManager:
                 logger.error(f"Failed to send message to client: {e}")
                 self.disconnect(connection)
 
+    async def send_to(self, websocket: WebSocket, message: Dict[str, Any]):
+        """Send a JSON-serializable message to a specific WebSocket client."""
+        try:
+            await websocket.send_text(json.dumps(message))
+        except Exception as e:
+            logger.error(f"Failed to send unicast message to client: {e}")
+            self.disconnect(websocket)
+
     def broadcast_threadsafe(self, event_type: str, data: Any = None):
         """
         Broadcasts an event from a separate thread.

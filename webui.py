@@ -2,6 +2,7 @@ import os
 import platform
 import warnings
 import logging
+import json
 from contextlib import asynccontextmanager
 import gradio as gr
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -11,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 from modules.ui import app as app_module
 from modules.events import event_manager
+from modules.command_dispatcher import command_dispatcher
 
 # Suppress TensorFlow logging (C++ level)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -280,6 +282,11 @@ def main():
         app, runner, tagging_runner, clustering_runner, selection_runner, 
         orchestrator, indexing_runner=indexing_runner, metadata_runner=metadata_runner
     )
+    command_dispatcher.set_runners(
+        scoring_runner=runner,
+        tagging_runner=tagging_runner,
+        clustering_runner=clustering_runner,
+    )
     
     # Mount MCP SSE endpoints (if enabled) onto the final app instance.
     # MUST be mounted BEFORE Gradio to avoid being shadowed by Gradio's catch-all route at /
@@ -299,10 +306,22 @@ def main():
         try:
             while True:
                 # Keep connection alive and listen for any incoming messages (though we mainly push)
-                # We can also handle simple pings or subscription requests here if needed
                 data = await websocket.receive_text()
-                # Echo back or handle commands if necessary
-                pass 
+                try:
+                    message = json.loads(data)
+                except json.JSONDecodeError:
+                    await event_manager.send_to(
+                        websocket,
+                        {
+                            "type": "command_response",
+                            "request_id": None,
+                            "success": False,
+                            "data": {},
+                            "error": "Malformed JSON payload",
+                        },
+                    )
+                    continue
+                await command_dispatcher.handle(websocket, message)
         except WebSocketDisconnect:
             event_manager.disconnect(websocket)
         except Exception as e:
