@@ -3148,10 +3148,6 @@ function initLazyFullResolution() {
                 // Gradio thumbnail URLs have format: /file=<path> or /api/...<path>
                 const srcPath = extractPathFromSrc(img.src);
                 
-                // #region agent log
-                // fetch removed
-                // #endregion
-                
                 if (srcPath && srcPath !== path) {
                     path = srcPath;
                     console.log('Extracted path from img src:', path);
@@ -3299,10 +3295,6 @@ function initLazyFullResolution() {
         if (!img || monitoredImages.has(img)) return;
         monitoredImages.add(img);
         
-        // #region agent log
-        // fetch removed
-        // #endregion
-        
         // Create observer for this specific image
         const imgObserver = new MutationObserver((mutations) => {
             mutations.forEach(mutation => {
@@ -3311,10 +3303,6 @@ function initLazyFullResolution() {
                     
                     // Skip if this is the same src we just processed
                     if (newSrc === lastProcessedSrc) return;
-                    
-                    // #region agent log
-                    // fetch removed
-                    // #endregion
                     
                     lastProcessedSrc = newSrc;
                     handlePreviewChange();
@@ -3367,10 +3355,6 @@ function initLazyFullResolution() {
         if (!previewImg) return;
 
         if (e.key === 'ArrowRight') {
-            // #region agent log
-            // fetch removed
-            // #endregion
-            
             // Find "Next" button in gallery and click it
             const nextBtns = document.querySelectorAll('.gallery button[aria-label="Next"], .gallery button.next-btn, .gallery button[title="Next"]');
             for (const btn of nextBtns) {
@@ -3380,10 +3364,6 @@ function initLazyFullResolution() {
                 }
             }
         } else if (e.key === 'ArrowLeft') {
-            // #region agent log
-            // fetch removed
-            // #endregion
-            
             // Find "Previous" button in gallery and click it
             const prevBtns = document.querySelectorAll('.gallery button[aria-label="Previous"], .gallery button.prev-btn, .gallery button[title="Previous"]');
             for (const btn of prevBtns) {

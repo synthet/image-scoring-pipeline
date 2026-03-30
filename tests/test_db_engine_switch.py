@@ -1,6 +1,8 @@
 from unittest.mock import MagicMock, patch
 import os
+from types import SimpleNamespace
 
+from modules import config
 from modules import db
 
 
@@ -9,6 +11,24 @@ def _mock_config(engine="firebird", dual_write=False):
         "engine": engine,
         "dual_write": dual_write,
     }
+
+
+def test_get_database_engine_explicit(monkeypatch):
+    monkeypatch.setattr(
+        config,
+        "get_config_section",
+        lambda section: {"engine": "POSTGRES"} if section == "database" else {},
+    )
+    assert config.get_database_engine() == "postgres"
+
+
+def test_get_database_engine_omitted_under_pytest(monkeypatch):
+    monkeypatch.setattr(
+        config,
+        "get_config_section",
+        lambda section: {} if section == "database" else {},
+    )
+    assert config.get_database_engine() == "firebird"
 
 
 def test_get_db_firebird_default_engine(monkeypatch):
@@ -71,8 +91,11 @@ def test_get_db_postgres_primary_and_qmark_rows(monkeypatch):
         "get_config_section",
         lambda name: _mock_config(engine="postgres", dual_write=True),
     )
-    monkeypatch.setattr(db.db_postgres, "get_pg_connection", lambda: fake_pg_conn)
-    monkeypatch.setattr(db.db_postgres, "release_pg_connection", lambda conn: release_calls.append(conn))
+    fake_pg_mod = SimpleNamespace(
+        get_pg_connection=lambda: fake_pg_conn,
+        release_pg_connection=lambda conn: release_calls.append(conn),
+    )
+    monkeypatch.setattr(db, "db_postgres", fake_pg_mod)
 
     conn = db.get_db()
     assert isinstance(conn, db.PostgresConnectionProxy)

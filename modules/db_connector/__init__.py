@@ -35,8 +35,9 @@ ApiConnector       — HTTP proxy        (``database.engine = "api"``)
 
 Factory configuration
 ---------------------
-Set ``database.engine`` in config.json.  The singleton is created lazily on
-the first call to ``get_connector()``.  Use ``reset_connector()`` in tests.
+Set ``database.engine`` in config.json (see :func:`modules.config.get_database_engine`).
+The singleton is created lazily on the first call to ``get_connector()``.
+Use ``reset_connector()`` in tests.
 """
 from modules.db_connector.protocol import IConnector, ITransaction
 from modules.db_connector.factory import get_connector, reset_connector

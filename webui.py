@@ -3,6 +3,9 @@ import platform
 import warnings
 import logging
 import json
+import faulthandler
+import signal
+import sys
 from contextlib import asynccontextmanager
 import gradio as gr
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -64,6 +67,18 @@ def main():
     except Exception as e:
         print(f"Error configuring logging: {e}")
         debug_mode = False
+
+    # Dump all Python thread stacks to stderr (fatal errors + optional signal).
+    faulthandler.enable(all_threads=True)
+    if getattr(signal, "SIGUSR1", None) is not None:
+
+        def _thread_dump_on_sigusr1(_signum, _frame):
+            print("\n=== Python thread dump (SIGUSR1) ===", file=sys.stderr, flush=True)
+            faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+            print("=== end thread dump ===\n", file=sys.stderr, flush=True)
+
+        signal.signal(signal.SIGUSR1, _thread_dump_on_sigusr1)
+        print("Thread dump: send SIGUSR1 to dump stacks (e.g. kill -USR1 <pid> in WSL/Linux).")
 
     # Cache platform check
     is_windows = platform.system() == "Windows"

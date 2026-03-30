@@ -139,9 +139,9 @@ class FirebirdCursorProxy:
         return getattr(self._cur, name)
 
     def _translate_query(self, query: str):
-        # Basic replacements for common SQLite patterns
-        query = query.replace('substr(', 'substring(')
-        query = query.replace('length(', 'char_length(')
+        # No-op for Firebird — queries are native Firebird SQL.
+        # Full translation for PostgreSQL happens in _translate_fb_to_pg()
+        # which the dual-write worker calls on dequeue.
         return query
 
 
@@ -184,8 +184,6 @@ class PostgresCursorProxy:
         return names
 
     def _translate_query(self, query: str) -> str:
-        query = query.replace('substr(', 'substring(')
-        query = query.replace('length(', 'char_length(')
         return _translate_fb_to_pg(query)
 
     def __getattr__(self, name):
@@ -305,6 +303,10 @@ def _translate_fb_to_pg(query: str) -> str:
 
     # 3e – Firebird LIST(expr, sep) → PostgreSQL STRING_AGG(expr, sep)
     query = re.sub(r'\bLIST\s*\(', 'STRING_AGG(', query, flags=re.IGNORECASE)
+
+    # 3f – Function name normalization (Firebird aliases → standard SQL)
+    query = query.replace('substr(', 'substring(')
+    query = query.replace('length(', 'char_length(')
 
     # 4 – ? → %s (skip content inside single-quoted string literals)
     parts = query.split("'")
@@ -545,7 +547,7 @@ def get_dual_write_stats() -> dict:
 def init_dual_write():
     global _DUAL_WRITE_ENABLED, _DUAL_WRITE_THREAD
     db_cfg = config.get_config_section("database")
-    engine = str(db_cfg.get("engine", "firebird") or "firebird").strip().lower()
+    engine = config.get_database_engine()
     dual_write_requested = bool(db_cfg.get("dual_write", False))
     _DUAL_WRITE_ENABLED = (engine == "firebird") and dual_write_requested
 
@@ -992,8 +994,7 @@ def get_db():
         "win_path": None,
     }
     try:
-        db_cfg = config.get_config_section("database")
-        engine = str(db_cfg.get("engine", "firebird") or "firebird").strip().lower()
+        engine = config.get_database_engine()
 
         if engine == "postgres":
             if not db_postgres:
@@ -1057,10 +1058,8 @@ def connection():
 
 
 def _get_db_engine() -> str:
-    """Return the configured DB engine: 'firebird' (default) or 'postgres'."""
-    return str(
-        config.get_config_section("database").get("engine", "firebird") or "firebird"
-    ).strip().lower()
+    """Return the configured DB engine (``firebird``, ``postgres``, or other explicit value)."""
+    return config.get_database_engine()
 
 
 def get_connector():
@@ -1394,9 +1393,6 @@ def get_filtered_paths(rating_filter=None, label_filter=None, keyword_filter=Non
     """
     Returns a list of file_paths matching the filters (No pagination).
     """
-    conn = get_db()
-    c = conn.cursor()
-    
     query = "SELECT file_path FROM images"
     params = []
     conditions = []
@@ -1512,11 +1508,23 @@ def init_db():
     try:
         conn = get_db()
         conn.close()
-        # Initialize/Migrate Schema
-        _init_db_impl()
+        # Initialize/Migrate Schema — Firebird uses RDB$ catalog DDL; Postgres has a dedicated path.
+        if _get_db_engine() == "postgres":
+            if not db_postgres:
+                raise RuntimeError("database.engine is postgres but modules.db_postgres is unavailable")
+            db_postgres.init_db()
+            seed_pipeline_phases()
+        else:
+            _init_db_impl()
         _db_initialized = True
     except Exception as e:
-        logging.error(f"Firebird connection failed: {e}. Please run migrate_to_firebird.py first.")
+        if _get_db_engine() == "postgres":
+            logging.error("PostgreSQL initialization failed: %s", e)
+        else:
+            logging.error(
+                "Firebird connection failed: %s. Please run migrate_to_firebird.py first.",
+                e,
+            )
         raise
 
 def _table_exists(cursor, table_name):
@@ -3138,28 +3146,22 @@ def resolve_windows_path(image_id, wsl_path, verify=True):
 
     if image_id is None:
         return windows_path
-    
-    conn = get_db()
-    c = conn.cursor()
+
     try:
-        # Check existing 'WIN' path
-        c.execute("SELECT id FROM file_paths WHERE image_id = ? AND path_type = 'WIN'", (image_id,))
-        row = c.fetchone()
-        
+        row = get_connector().query_one(
+            "SELECT id FROM file_paths WHERE image_id = ? AND path_type = 'WIN'", (image_id,))
         if row:
-             c.execute("UPDATE file_paths SET path = ?, is_verified = ?, verification_date = ?, last_seen = ? WHERE id = ?", 
-                       (windows_path, is_verified, verification_date, now, row[0]))
+            get_connector().execute(
+                "UPDATE file_paths SET path = ?, is_verified = ?, verification_date = ?, last_seen = ? WHERE id = ?",
+                (windows_path, is_verified, verification_date, now, row["id"]))
         else:
-             c.execute("INSERT INTO file_paths (image_id, path, path_type, is_verified, verification_date, last_seen) VALUES (?, ?, 'WIN', ?, ?, ?)",
-                       (image_id, windows_path, is_verified, verification_date, now))
-                       
-        conn.commit()
+            get_connector().execute(
+                "INSERT INTO file_paths (image_id, path, path_type, is_verified, verification_date, last_seen) VALUES (?, ?, 'WIN', ?, ?, ?)",
+                (image_id, windows_path, is_verified, verification_date, now))
         return windows_path
     except Exception as e:
         logging.error(f"Failed to resolve path for image {image_id}: {e}")
         return None
-    finally:
-        conn.close()
 
 
 def get_resolved_path(image_id, verified_only=True):
@@ -3179,31 +3181,23 @@ def verify_resolved_path(image_id):
     """
     import platform
     import os
-    
+
     if platform.system() != 'Windows':
         return False
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, path FROM file_paths WHERE image_id = ? AND path_type = 'WIN'", (image_id,))
-    row = c.fetchone()
-    
+
+    row = get_connector().query_one(
+        "SELECT id, path FROM file_paths WHERE image_id = ? AND path_type = 'WIN'", (image_id,))
     if not row:
-        conn.close()
         return False
-    
-    rp_id = row[0]
-    windows_path = row[1]
+
+    rp_id = row["id"]
+    windows_path = row["path"]
     now = datetime.datetime.now()
-    
     exists = os.path.exists(windows_path)
-    
-    # Update status
-    c.execute("UPDATE file_paths SET is_verified = ?, verification_date = ?, last_seen = ? WHERE id = ?",
-              (1 if exists else 0, now if exists else None, now, rp_id))
-    
-    conn.commit()
-    conn.close()
+
+    get_connector().execute(
+        "UPDATE file_paths SET is_verified = ?, verification_date = ?, last_seen = ? WHERE id = ?",
+        (1 if exists else 0, now if exists else None, now, rp_id))
     return exists
 
 def get_resolved_paths_batch(image_ids):
@@ -3215,30 +3209,18 @@ def get_resolved_paths_batch(image_ids):
     if not image_ids:
         return {}
 
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        placeholders = ','.join(['?'] * len(image_ids))
-        # Get path AND verification status
-        query = f"SELECT image_id, path FROM file_paths WHERE image_id IN ({placeholders}) AND path_type = 'WIN' AND is_verified = 1"
-        
-        c.execute(query, tuple(image_ids))
-        rows = c.fetchall()
-        
-        result = {}
-        for row in rows:
-            img_id = row[0]
-            path = row[1]
-            
-            # Additional Validation:
-            # Ensure path is truly Windows format (backslashes)
-            # Mixed separators can cause "file not found" in some Windows APIs
-            if path and '/' not in path:
-                result[img_id] = path
-            
-        return result
-    finally:
-        conn.close()
+    placeholders = ','.join(['?'] * len(image_ids))
+    query = f"SELECT image_id, path FROM file_paths WHERE image_id IN ({placeholders}) AND path_type = 'WIN' AND is_verified = 1"
+    rows = get_connector().query(query, tuple(image_ids))
+
+    result = {}
+    for row in rows:
+        path = row["path"]
+        # Ensure path is truly Windows format (backslashes)
+        # Mixed separators can cause "file not found" in some Windows APIs
+        if path and '/' not in path:
+            result[row["image_id"]] = path
+    return result
 
 def get_folder_by_id(folder_id):
     row = get_connector().query_one("SELECT path FROM folders WHERE id = ?", (folder_id,))
@@ -3390,42 +3372,32 @@ def get_or_create_folder(folder_path, _depth=0):
         # We assume this won't be too deep (max 10-20 levels typically)
         parent_id = get_or_create_folder(parent_path, _depth=_depth+1)
 
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("SELECT id, parent_id FROM folders WHERE path = ?", (folder_path,))
-        row = c.fetchone()
+        row = get_connector().query_one("SELECT id, parent_id FROM folders WHERE path = ?", (folder_path,))
         if row:
             # Check if parent_id needs update (if it was created without parent before)
-            # Only update if we have a valid parent_id and it's missing in DB
-            curr_pid = row[1]
+            curr_pid = row["parent_id"]
             if parent_id and curr_pid != parent_id:
-                # Update parent linkage
-                c.execute("UPDATE folders SET parent_id = ? WHERE id = ?", (parent_id, row[0]))
-                conn.commit()
-            return row[0]
-        
-        c.execute("INSERT INTO folders (path, parent_id, created_at) VALUES (?, ?, ?) RETURNING id", 
-                  (folder_path, parent_id, datetime.datetime.now()))
-        row = c.fetchone()
-        conn.commit()
-        created_id = row[0] if row else None
+                get_connector().execute("UPDATE folders SET parent_id = ? WHERE id = ?", (parent_id, row["id"]))
+            return row["id"]
+
+        rows = get_connector().execute_returning(
+            "INSERT INTO folders (path, parent_id, created_at) VALUES (?, ?, ?) RETURNING id",
+            (folder_path, parent_id, datetime.datetime.now()))
+        created_id = rows[0]["id"] if rows else None
         if created_id:
             invalidate_folder_phase_aggregates(folder_id=created_id)
         return created_id
     except Exception as e:
-        # Race condition or error?
-        # Retry select
+        # Race condition or error — retry select
         try:
-             c.execute("SELECT id FROM folders WHERE path = ?", (folder_path,))
-             row = c.fetchone()
-             if row: return row[0]
-        except Exception: pass
-        
+            row = get_connector().query_one("SELECT id FROM folders WHERE path = ?", (folder_path,))
+            if row:
+                return row["id"]
+        except Exception:
+            pass
         logging.error(f"Error getting/creating folder {folder_path}: {e}")
         return None
-    finally:
-        conn.close()
 
 def rebuild_folder_cache():
     """
@@ -3433,101 +3405,52 @@ def rebuild_folder_cache():
     """
     invalidate_folder_images_cache()
     print("Rebuilding folder cache with hierarchy...")
-    conn = get_db()
-    c = conn.cursor()
-    
+
     # 1. Get all unique folder paths from images
-    c.execute("SELECT DISTINCT file_path FROM images")
-    rows = c.fetchall()
-    conn.close() # Close mainly to avoid long read block if we write later (though we re-open in loop: inefficient but safe)
-    
+    rows = get_connector().query("SELECT DISTINCT file_path FROM images")
+
     unique_dirs = set()
     for row in rows:
-        if row[0]:
-            unique_dirs.add(os.path.dirname(row[0]))
-            
+        fp = row["file_path"]
+        if fp:
+            unique_dirs.add(os.path.dirname(fp))
+
     sorted_dirs = sorted(list(unique_dirs))
-    
+
     # 2. Iterate and create folders (recursive logic in get_or_create_folder handles hierarchy)
-    # We use a separate cache map to avoid slamming DB for get_or_create if we ran this often,
-    # but get_or_create_folder handles logic.
-    # To optimize: maybe just call get_or_create_folder for each unique dir.
-    
     print(f"Found {len(sorted_dirs)} unique image directories. Processing hierarchy...")
-    
-    folder_map = {} # path -> id
-    
+
+    folder_map = {}  # path -> id
     for d in sorted_dirs:
-        # This will create d and all its parents
         fid = get_or_create_folder(d)
         if fid:
             folder_map[d] = fid
-            
+
     # 3. Update images folder_id
     print("Updating image folder_ids...")
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Batch update? 
-    # doing one by one is slow for 100k images.
-    # Logic: update by folder path.
-    # "UPDATE images SET folder_id = ? WHERE file_path LIKE ?" (too risky with partial matches?)
-    # "UPDATE images SET folder_id = ? WHERE substr(file_path, 1, len(dir)) = dir ?" No.
-    # Best: Iterate unique dirs, and update all images in that dir.
-    # Since we know the dir path, we can do:
-    # UPDATE images SET folder_id = <fid> WHERE file_path LIKE <dir> || '%';
-    # AND verify dirname matches?
-    # Or just iterate images?
-    # Iterate images might be 100k updates.
-    # Iterate folders is 1k updates.
-    # Let's try folder based update.
-    
-    count = 0
-    for d, fid in folder_map.items():
-        # Ensure path ends with separator for like query to contain it
-        # BUT wait, file_path includes filename.
-        # "D:\Photos\Img.jpg" dirname is "D:\Photos"
-        # We want UPDATE images SET folder_id=? WHERE file_path logic.
-        # We can't express "dirname(file_path) == d" easily in SQL.
-        # BUT we can iterate images with NO folder_id or ALL images?
-        pass
+    img_rows = get_connector().query("SELECT id, file_path FROM images")
 
-    # Fallback: Loop images again?
-    # Or rely on python.
-    # Let's simple-loop images. 
-    # To speed up: SELECT id, file_path, folder_id FROM images WHERE folder_id IS NULL OR folder_id = 0?
-    # Or force update all.
-    
-    c.execute("SELECT id, file_path FROM images")
-    img_rows = c.fetchall()
-    
     batch = []
-    
+    count = 0
     for row in img_rows:
-        img_id = row[0]
-        path = row[1]
-        if not path: continue
-        
-        d = os.path.dirname(path)
-        # Normalize
-        d = os.path.normpath(d)
-        
+        img_id = row["id"]
+        path = row["file_path"]
+        if not path:
+            continue
+        d = os.path.normpath(os.path.dirname(path))
         fid = folder_map.get(d)
         if fid:
             batch.append((fid, img_id))
-            
+
         if len(batch) >= 1000:
-            c.executemany("UPDATE images SET folder_id = ? WHERE id = ?", batch)
+            get_connector().execute_many("UPDATE images SET folder_id = ? WHERE id = ?", batch)
             count += len(batch)
             batch = []
-            
+
     if batch:
-        c.executemany("UPDATE images SET folder_id = ? WHERE id = ?", batch)
+        get_connector().execute_many("UPDATE images SET folder_id = ? WHERE id = ?", batch)
         count += len(batch)
-            
-    conn.commit()
-    conn.close()
-    
+
     msg = f"Folder cache rebuild complete. Processed {len(sorted_dirs)} folders, updated {count} images."
     print(msg)
     return msg
@@ -3824,8 +3747,6 @@ def get_images_with_keyword(folder_path=None, keyword="birds", resolved_image_id
     Scope priority: resolved_image_ids > folder_path > all DB images.
     Used by BirdSpeciesRunner to restrict processing to images tagged with 'birds'.
     """
-    conn = get_db()
-    c = conn.cursor()
     conditions = []
     params = []
 
@@ -3842,7 +3763,6 @@ def get_images_with_keyword(folder_path=None, keyword="birds", resolved_image_id
     resolved_ids_set = None
     if resolved_image_ids is not None:
         if not resolved_image_ids:
-            conn.close()
             return []
         if len(resolved_image_ids) <= 900:
             placeholders = ",".join("?" * len(resolved_image_ids))
@@ -3854,15 +3774,12 @@ def get_images_with_keyword(folder_path=None, keyword="birds", resolved_image_id
         norm_path = os.path.normpath(folder_path)
         folder_id = get_or_create_folder(norm_path)
         if not folder_id:
-            conn.close()
             return []
         conditions.append("images.folder_id = ?")
         params.append(folder_id)
 
     where = "WHERE " + " AND ".join(conditions)
-    c.execute(f"SELECT * FROM images {where} ORDER BY file_name", tuple(params))
-    rows = c.fetchall()
-    conn.close()
+    rows = get_connector().query(f"SELECT * FROM images {where} ORDER BY file_name", tuple(params))
     result = [dict(row) for row in rows]
     if resolved_ids_set is not None:
         result = [r for r in result if r["id"] in resolved_ids_set]
@@ -4692,56 +4609,46 @@ def upsert_job_step(job_id, phase_code, step_code, step_name, status="pending",
 
 def get_job_stage_images(job_id, phase_code, offset=0, limit=50):
     """Return work items (images + their phase status) for a specific job+stage."""
-    conn = get_db()
-    c = conn.cursor()
     try:
-        # Get the phase_id from pipeline_phases
-        c.execute("SELECT id FROM pipeline_phases WHERE code = ?", (phase_code,))
-        phase_row = c.fetchone()
+        phase_row = get_connector().query_one(
+            "SELECT id FROM pipeline_phases WHERE code = ?", (phase_code,))
         if not phase_row:
             return {"items": [], "total": 0}
-        phase_id = phase_row[0]
+        phase_id = phase_row["id"]
 
-        # Count total
-        c.execute(
-            "SELECT COUNT(*) FROM image_phase_status ips "
+        count_row = get_connector().query_one(
+            "SELECT COUNT(*) AS cnt FROM image_phase_status ips "
             "JOIN images i ON ips.image_id = i.id "
             "WHERE ips.job_id = ? AND ips.phase_id = ?",
-            (job_id, phase_id),
-        )
-        total = c.fetchone()[0] or 0
+            (job_id, phase_id))
+        total = (count_row["cnt"] if count_row else 0) or 0
 
-        # Fetch page
-        c.execute(
+        rows = get_connector().query(
             "SELECT i.id, i.file_path, i.file_name, ips.status, ips.started_at, ips.finished_at, ips.last_error "
             "FROM image_phase_status ips "
             "JOIN images i ON ips.image_id = i.id "
             "WHERE ips.job_id = ? AND ips.phase_id = ? "
             "ORDER BY i.id "
-            "ROWS ? TO ?",
-            (job_id, phase_id, offset + 1, offset + limit),
-        )
-        rows = c.fetchall()
+            "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
+            (job_id, phase_id, offset, limit))
         items = []
         for r in rows:
-            started = r[4]
-            finished = r[5]
+            started = r.get("started_at")
+            finished = r.get("finished_at")
             duration_ms = None
             if started and finished:
                 duration_ms = int((finished - started).total_seconds() * 1000)
             items.append({
-                "image_id": r[0],
-                "image_path": r[1] or "",
-                "filename": r[2] or (r[1] or "").rsplit("/", 1)[-1].rsplit("\\", 1)[-1],
-                "status": r[3] or "pending",
+                "image_id": r["id"],
+                "image_path": r.get("file_path") or "",
+                "filename": r.get("file_name") or (r.get("file_path") or "").rsplit("/", 1)[-1].rsplit("\\", 1)[-1],
+                "status": r.get("status") or "pending",
                 "duration_ms": duration_ms,
-                "error": r[6],
+                "error": r.get("last_error"),
             })
         return {"items": items, "total": total}
     except Exception:
         return {"items": [], "total": 0}
-    finally:
-        conn.close()
 
 
 def get_next_running_job_phase(job_id):
@@ -5387,18 +5294,11 @@ def get_stack_ids_for_image_ids(image_ids):
     """
     if not image_ids:
         return {}
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        placeholders = ",".join("?" * len(image_ids))
-        c.execute(
-            f"SELECT id, stack_id FROM images WHERE id IN ({placeholders}) AND stack_id IS NOT NULL",
-            tuple(image_ids),
-        )
-        rows = c.fetchall()
-        return {r[0]: r[1] for r in rows}
-    finally:
-        conn.close()
+    placeholders = ",".join("?" * len(image_ids))
+    rows = get_connector().query(
+        f"SELECT id, stack_id FROM images WHERE id IN ({placeholders}) AND stack_id IS NOT NULL",
+        tuple(image_ids))
+    return {r["id"]: r["stack_id"] for r in rows}
 
 
 def delete_image(file_path, delete_related: bool = True):
@@ -5578,24 +5478,19 @@ def export_db_to_json(output_path, folder_path=None, keyword_filter=None, rating
     Returns (success, message)
     """
     import json
-    
-    conn = get_db()
-    c = conn.cursor()
-    
+
     conditions, params = _build_export_where_clause(
         rating_filter, label_filter, keyword_filter,
         min_score_general, min_score_aesthetic, min_score_technical,
         date_range, folder_path
     )
-    
+
     query = "SELECT * FROM images"
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY id"
-    c.execute(query, params)
-    rows = c.fetchall()
-    conn.close()
-    
+    rows = get_connector().query(query, tuple(params) if params else None)
+
     data = []
     for row in rows:
         item = dict(row)
@@ -5633,12 +5528,14 @@ def export_db_to_json(output_path, folder_path=None, keyword_filter=None, rating
 
 def get_available_columns():
     """Returns list of all available columns in the images table."""
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'IMAGES'")
-    columns = [row[0].strip().lower() for row in c.fetchall()]
-    conn.close()
-    return columns
+    if _get_db_engine() == "postgres":
+        rows = get_connector().query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'images' ORDER BY ordinal_position")
+        return [row["column_name"] for row in rows]
+    # Firebird: query system catalog
+    rows = get_connector().query(
+        "SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = 'IMAGES'")
+    return [row["rdb$field_name"].strip().lower() for row in rows]
 
 
 def _build_export_where_clause(rating_filter=None, label_filter=None, keyword_filter=None,
@@ -5737,48 +5634,36 @@ def export_db_to_csv(output_path, columns=None, rating_filter=None, label_filter
     ]
     
     columns_to_export = columns if columns else default_columns
-    
-    conn = get_db()
-    c = conn.cursor()
-    
+
     try:
-        # Build column list (filter to existing columns) — Firebird-compatible
         existing_cols = set(get_available_columns())
         valid_columns = [col for col in columns_to_export if col in existing_cols]
-        
+
         if not valid_columns:
             return False, "No valid columns to export"
-        
-        # Build WHERE clause from filters
+
         conditions, params = _build_export_where_clause(
             rating_filter, label_filter, keyword_filter,
             min_score_general, min_score_aesthetic, min_score_technical,
             date_range, folder_path
         )
-        
-        # Build query
+
         query = f"SELECT {', '.join(valid_columns)} FROM images"
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY id"
-        
-        c.execute(query, params)
-        rows = c.fetchall()
-        conn.close()
-        
-        # Write CSV
+
+        rows = get_connector().query(query, tuple(params) if params else None)
+
         with open(output_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            # Header
             writer.writerow(valid_columns)
-            # Data
             for row in rows:
-                writer.writerow(list(row))
-        
+                writer.writerow([row.get(col) for col in valid_columns])
+
         return True, f"Successfully exported {len(rows)} records to {output_path}"
-        
+
     except Exception as e:
-        conn.close()
         return False, f"CSV export failed: {e}"
 
 
@@ -5819,75 +5704,59 @@ def export_db_to_excel(output_path, columns=None, rating_filter=None, label_filt
     ]
     
     columns_to_export = columns if columns else default_columns
-    
-    conn = get_db()
-    c = conn.cursor()
-    
+
     try:
-        # Build column list (filter to existing columns) — Firebird-compatible
         existing_cols = set(get_available_columns())
         valid_columns = [col for col in columns_to_export if col in existing_cols]
-        
+
         if not valid_columns:
             return False, "No valid columns to export"
-        
-        # Build WHERE clause from filters
+
         conditions, params = _build_export_where_clause(
             rating_filter, label_filter, keyword_filter,
             min_score_general, min_score_aesthetic, min_score_technical,
             date_range, folder_path
         )
-        
-        # Build query
+
         query = f"SELECT {', '.join(valid_columns)} FROM images"
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY id"
-        
-        c.execute(query, params)
-        rows = c.fetchall()
-        conn.close()
-        
+
+        rows = get_connector().query(query, tuple(params) if params else None)
+
         # Create workbook
         wb = Workbook()
         ws = wb.active
         ws.title = "Image Scores"
-        
-        # Header styling
+
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-        
-        # Write header
+
         for col_idx, col_name in enumerate(valid_columns, 1):
             cell = ws.cell(row=1, column=col_idx, value=col_name)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal='center')
-        
-        # Write data
+
         for row_idx, row in enumerate(rows, 2):
-            for col_idx, value in enumerate(row, 1):
-                ws.cell(row=row_idx, column=col_idx, value=value)
-        
-        # Auto-adjust column widths (approximate)
+            for col_idx, col_name in enumerate(valid_columns, 1):
+                ws.cell(row=row_idx, column=col_idx, value=row.get(col_name))
+
         for col_idx, col_name in enumerate(valid_columns, 1):
             max_length = len(col_name)
-            for row in rows[:100]:  # Sample first 100 rows
-                val = row[col_idx - 1]
+            for row in rows[:100]:
+                val = row.get(col_name)
                 if val:
                     max_length = max(max_length, min(len(str(val)), 50))
             ws.column_dimensions[chr(64 + col_idx) if col_idx <= 26 else 'A'].width = max_length + 2
-        
-        # Freeze header row
+
         ws.freeze_panes = 'A2'
-        
-        # Save
         wb.save(output_path)
-        
+
         return True, f"Successfully exported {len(rows)} records to {output_path}"
-        
+
     except Exception as e:
-        conn.close()
         return False, f"Excel export failed: {e}"
 
 
@@ -6271,115 +6140,96 @@ def clear_stacks_in_folder(folder_path):
     """
     import os
     folder_path = os.path.normpath(folder_path)
-    
-    conn = get_db()
-    c = conn.cursor()
+
     try:
-        # 1. Get folder_id for this folder
-        c.execute("SELECT id FROM folders WHERE path = ?", (folder_path,))
-        folder_row = c.fetchone()
-        
-        if not folder_row:
-            # No folder entry - might be using file paths directly
-            # Try matching by file_path prefix
-            c.execute("""
-                SELECT DISTINCT stack_id FROM images 
-                WHERE file_path LIKE ? AND stack_id IS NOT NULL
-            """, (folder_path + '%',))
-        else:
-            folder_id = folder_row[0]
-            # 2. Get stack_ids for images in this folder
-            c.execute("""
-                SELECT DISTINCT stack_id FROM images 
-                WHERE folder_id = ? AND stack_id IS NOT NULL
-            """, (folder_id,))
-        
-        affected_stacks = [row[0] for row in c.fetchall()]
-        
-        if not affected_stacks:
-            # No stacks in this folder
-            c.execute("DELETE FROM cluster_progress WHERE folder_path = ?", (folder_path,))
-            conn.commit()
-            return True, f"No stacks found in folder: {folder_path}"
-        
-        # 3. Set stack_id = NULL for images in this folder
-        if folder_row:
-            c.execute("UPDATE images SET stack_id = NULL WHERE folder_id = ?", (folder_id,))
-        else:
-            c.execute("UPDATE images SET stack_id = NULL WHERE file_path LIKE ?", (folder_path + '%',))
-        
-        updated_count = c.rowcount
-        
-        # 4. Delete stacks that are now empty
-        deleted_stacks = 0
-        for stack_id in affected_stacks:
-            c.execute("SELECT COUNT(*) FROM images WHERE stack_id = ?", (stack_id,))
-            remaining = c.fetchone()[0]
-            if remaining == 0:
-                c.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
-                deleted_stacks += 1
+        def _tx(tx):
+            folder_row = tx.query_one("SELECT id FROM folders WHERE path = ?", (folder_path,))
+
+            if not folder_row:
+                stack_rows = tx.query("""
+                    SELECT DISTINCT stack_id FROM images
+                    WHERE file_path LIKE ? AND stack_id IS NOT NULL
+                """, (folder_path + '%',))
             else:
-                # Recalculate best_image_id for stacks that still have images
-                c.execute("""
-                    UPDATE stacks SET best_image_id = (
-                        SELECT id FROM images 
-                        WHERE stack_id = ? 
-                        ORDER BY score_general DESC NULLS LAST 
-                        FETCH FIRST 1 ROWS ONLY
-                    ) WHERE id = ?
-                """, (stack_id, stack_id))
-        
-        # 5. Remove folder from cluster_progress
-        c.execute("DELETE FROM cluster_progress WHERE folder_path = ?", (folder_path,))
+                f_id = folder_row["id"]
+                stack_rows = tx.query("""
+                    SELECT DISTINCT stack_id FROM images
+                    WHERE folder_id = ? AND stack_id IS NOT NULL
+                """, (f_id,))
 
-        # 6. Get image IDs in folder with running culling phase
-        if folder_row:
-            folder_id = folder_row[0]
-            c.execute(
-                """SELECT i.id
-                   FROM images i
-                   JOIN IMAGE_PHASE_STATUS ips ON i.id = ips.image_id
-                   JOIN pipeline_phases pp ON ips.phase_id = pp.id
-                   WHERE i.folder_id = ? AND pp.code = ? AND ips.status = ?""",
-                (folder_id, "culling", "running")
-            )
-            running_image_ids = [row[0] for row in c.fetchall()]
-        else:
-            c.execute(
-                """SELECT DISTINCT i.id
-                   FROM images i
-                   JOIN IMAGE_PHASE_STATUS ips ON i.id = ips.image_id
-                   JOIN pipeline_phases pp ON ips.phase_id = pp.id
-                   WHERE i.file_path LIKE ? AND pp.code = ? AND ips.status = ?""",
-                (folder_path + '%', "culling", "running")
-            )
-            running_image_ids = [row[0] for row in c.fetchall()]
+            affected_stacks = [r["stack_id"] for r in stack_rows]
 
-        if running_image_ids:
-            logging.info(f"[Force Rescan] Found {len(running_image_ids)} images with running culling phase, resetting to done")
+            if not affected_stacks:
+                tx.execute("DELETE FROM cluster_progress WHERE folder_path = ?", (folder_path,))
+                return 0, 0, []
 
-        conn.commit()
+            if folder_row:
+                updated_count = tx.execute("UPDATE images SET stack_id = NULL WHERE folder_id = ?", (folder_row["id"],))
+            else:
+                updated_count = tx.execute("UPDATE images SET stack_id = NULL WHERE file_path LIKE ?", (folder_path + '%',))
 
-        # Reset each image's culling phase to done
+            deleted_stacks = 0
+            for sid in affected_stacks:
+                cnt_row = tx.query_one("SELECT COUNT(*) AS cnt FROM images WHERE stack_id = ?", (sid,))
+                remaining = cnt_row["cnt"] if cnt_row else 0
+                if remaining == 0:
+                    tx.execute("DELETE FROM stacks WHERE id = ?", (sid,))
+                    deleted_stacks += 1
+                else:
+                    tx.execute("""
+                        UPDATE stacks SET best_image_id = (
+                            SELECT id FROM images
+                            WHERE stack_id = ?
+                            ORDER BY score_general DESC NULLS LAST
+                            FETCH FIRST 1 ROWS ONLY
+                        ) WHERE id = ?
+                    """, (sid, sid))
+
+            tx.execute("DELETE FROM cluster_progress WHERE folder_path = ?", (folder_path,))
+
+            if folder_row:
+                run_rows = tx.query(
+                    """SELECT i.id
+                       FROM images i
+                       JOIN IMAGE_PHASE_STATUS ips ON i.id = ips.image_id
+                       JOIN pipeline_phases pp ON ips.phase_id = pp.id
+                       WHERE i.folder_id = ? AND pp.code = ? AND ips.status = ?""",
+                    (folder_row["id"], "culling", "running"))
+            else:
+                run_rows = tx.query(
+                    """SELECT DISTINCT i.id
+                       FROM images i
+                       JOIN IMAGE_PHASE_STATUS ips ON i.id = ips.image_id
+                       JOIN pipeline_phases pp ON ips.phase_id = pp.id
+                       WHERE i.file_path LIKE ? AND pp.code = ? AND ips.status = ?""",
+                    (folder_path + '%', "culling", "running"))
+            running_image_ids = [r["id"] for r in run_rows]
+
+            if running_image_ids:
+                logging.info(f"[Force Rescan] Found {len(running_image_ids)} images with running culling phase, resetting to done")
+
+            return updated_count, deleted_stacks, running_image_ids
+
+        updated_count, deleted_stacks, running_image_ids = get_connector().run_transaction(_tx)
+
+        if not updated_count and not deleted_stacks and not running_image_ids:
+            return True, f"No stacks found in folder: {folder_path}"
+
         for image_id in running_image_ids:
             logging.debug(f"[Force Rescan] Resetting culling phase for image {image_id} from running to done")
             set_image_phase_status(image_id, "culling", "done")
-        
-        # Invalidate cache so subsequent get_images_by_folder returns fresh stack_id
+
         invalidate_folder_images_cache(folder_path)
-        # Broadcast updates
         event_manager.broadcast_threadsafe("folder_updated", {"folder_path": folder_path})
         event_manager.broadcast_threadsafe("stacks_cleared", {"folder_path": folder_path})
-        
+
         msg = f"Cleared {deleted_stacks} stacks, updated {updated_count} images in folder: {folder_path}"
         logging.info(msg)
         return True, msg
-        
+
     except Exception as e:
         logging.error(f"Failed to clear stacks in folder {folder_path}: {e}")
         return False, str(e)
-    finally:
-        conn.close()
 
 
 def create_stacks_batch(stacks_data):
@@ -6425,54 +6275,47 @@ def create_stack_from_images(image_ids, name=None):
     """
     if not image_ids or len(image_ids) < 2:
         return False, "Need at least 2 images to create a stack"
-    
-    conn = get_db()
-    c = conn.cursor()
+
     try:
-        # Validate images exist and get the best one
-        placeholders = ','.join(['?'] * len(image_ids))
-        c.execute(f"SELECT id, score_general FROM images WHERE id IN ({placeholders})", tuple(image_ids))
-        rows = c.fetchall()
-        
-        if len(rows) != len(image_ids):
-            return False, f"Some images not found. Expected {len(image_ids)}, found {len(rows)}"
-        
-        # Find best image (highest score_general)
-        best_id = None
-        best_score = -1
-        for row in rows:
-            score = row['score_general'] if row['score_general'] else 0
-            if score > best_score:
-                best_score = score
-                best_id = row['id']
-        
-        # Auto-generate name if not provided
-        if not name:
-            # Count existing stacks for unique naming
-            c.execute("SELECT COUNT(*) FROM stacks")
-            stack_count = c.fetchone()[0]
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
-            name = f"Stack {timestamp} #{stack_count + 1:03d}"
-        
-        # Create the stack
-        c.execute("INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
-                  (name, best_id, datetime.datetime.now()))
-        row = c.fetchone()
-        stack_id = row[0] if row else None
-        
-        # Update all images to belong to this stack
-        updates = [(stack_id, img_id) for img_id in image_ids]
-        c.executemany("UPDATE images SET stack_id = ? WHERE id = ?", updates)
-        
-        conn.commit()
+        def _tx(tx):
+            nonlocal name
+            placeholders = ','.join(['?'] * len(image_ids))
+            rows = tx.query(f"SELECT id, score_general FROM images WHERE id IN ({placeholders})", tuple(image_ids))
+            if len(rows) != len(image_ids):
+                raise ValueError(f"Some images not found. Expected {len(image_ids)}, found {len(rows)}")
+
+            best_id = None
+            best_score = -1
+            for r in rows:
+                score = r["score_general"] if r.get("score_general") else 0
+                if score > best_score:
+                    best_score = score
+                    best_id = r["id"]
+
+            if not name:
+                cnt_row = tx.query_one("SELECT COUNT(*) AS cnt FROM stacks")
+                stack_count = cnt_row["cnt"] if cnt_row else 0
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+                name = f"Stack {timestamp} #{stack_count + 1:03d}"
+
+            ins_rows = tx.execute_returning(
+                "INSERT INTO stacks (name, best_image_id, created_at) VALUES (?, ?, ?) RETURNING id",
+                (name, best_id, datetime.datetime.now()))
+            sid = ins_rows[0]["id"] if ins_rows else None
+
+            updates = [(sid, img_id) for img_id in image_ids]
+            tx.execute_many("UPDATE images SET stack_id = ? WHERE id = ?", updates)
+            return sid
+
+        stack_id = get_connector().run_transaction(_tx)
         if stack_id:
             event_manager.broadcast_threadsafe("stack_created", {"stack_id": stack_id})
         return True, stack_id
+    except ValueError as e:
+        return False, str(e)
     except Exception as e:
         logging.error(f"Failed to create stack from images: {e}")
         return False, str(e)
-    finally:
-        conn.close()
 
 
 def remove_images_from_stack(image_ids):
@@ -6483,49 +6326,45 @@ def remove_images_from_stack(image_ids):
     """
     if not image_ids:
         return False, "No images specified"
-    
-    conn = get_db()
-    c = conn.cursor()
+
     try:
-        # Get the stack IDs affected (to check for cleanup later)
-        placeholders = ','.join(['?'] * len(image_ids))
-        c.execute(f"SELECT DISTINCT stack_id FROM images WHERE id IN ({placeholders}) AND stack_id IS NOT NULL", 
-                  tuple(image_ids))
-        affected_stacks = [row[0] for row in c.fetchall()]
-        
-        # Remove from stacks
-        c.execute(f"UPDATE images SET stack_id = NULL WHERE id IN ({placeholders})", tuple(image_ids))
-        removed_count = c.rowcount
-        
-        # Cleanup: delete empty stacks or recalculate best_image_id for remaining stacks
-        deleted_stacks = 0
-        for stack_id in affected_stacks:
-            c.execute("SELECT COUNT(*) FROM images WHERE stack_id = ?", (stack_id,))
-            remaining = c.fetchone()[0]
-            if remaining == 0:
-                c.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
-                deleted_stacks += 1
-            else:
-                # Recalculate best_image_id from remaining images
-                c.execute("""
-                    UPDATE stacks SET best_image_id = (
-                        SELECT id FROM images 
-                        WHERE stack_id = ? 
-                        ORDER BY score_general DESC NULLS LAST 
-                        FETCH FIRST 1 ROWS ONLY
-                    ) WHERE id = ?
-                """, (stack_id, stack_id))
-                event_manager.broadcast_threadsafe("stack_updated", {"stack_id": stack_id})
-        
-        conn.commit()
-        
-        # Broadcast updates
+        def _tx(tx):
+            placeholders = ','.join(['?'] * len(image_ids))
+            aff_rows = tx.query(
+                f"SELECT DISTINCT stack_id FROM images WHERE id IN ({placeholders}) AND stack_id IS NOT NULL",
+                tuple(image_ids))
+            affected_stacks = [r["stack_id"] for r in aff_rows]
+
+            removed_count = tx.execute(
+                f"UPDATE images SET stack_id = NULL WHERE id IN ({placeholders})", tuple(image_ids))
+
+            deleted_stacks = 0
+            for sid in affected_stacks:
+                cnt_row = tx.query_one("SELECT COUNT(*) AS cnt FROM images WHERE stack_id = ?", (sid,))
+                remaining = cnt_row["cnt"] if cnt_row else 0
+                if remaining == 0:
+                    tx.execute("DELETE FROM stacks WHERE id = ?", (sid,))
+                    deleted_stacks += 1
+                else:
+                    tx.execute("""
+                        UPDATE stacks SET best_image_id = (
+                            SELECT id FROM images
+                            WHERE stack_id = ?
+                            ORDER BY score_general DESC NULLS LAST
+                            FETCH FIRST 1 ROWS ONLY
+                        ) WHERE id = ?
+                    """, (sid, sid))
+                    event_manager.broadcast_threadsafe("stack_updated", {"stack_id": sid})
+            return removed_count, deleted_stacks
+
+        removed_count, deleted_stacks = get_connector().run_transaction(_tx)
+
         for img_id in image_ids:
             event_manager.broadcast_threadsafe("image_updated", {
                 "image_id": img_id,
                 "updates": {"stack_id": None}
             })
-            
+
         msg = f"Removed {removed_count} images from stacks"
         if deleted_stacks > 0:
             msg += f", deleted {deleted_stacks} empty stack(s)"
@@ -6533,8 +6372,6 @@ def remove_images_from_stack(image_ids):
     except Exception as e:
         logging.error(f"Failed to remove images from stack: {e}")
         return False, str(e)
-    finally:
-        conn.close()
 
 
 def dissolve_stack(stack_id):
@@ -6544,33 +6381,25 @@ def dissolve_stack(stack_id):
     """
     if not stack_id:
         return False, "No stack specified"
-    
-    conn = get_db()
-    c = conn.cursor()
+
     try:
-        # Count images in stack for message
-        c.execute("SELECT COUNT(*) FROM images WHERE stack_id = ?", (stack_id,))
-        image_count = c.fetchone()[0]
-        
-        # Get stack name for message
-        c.execute("SELECT name FROM stacks WHERE id = ?", (stack_id,))
-        row = c.fetchone()
-        stack_name = row['name'] if row else f"Stack #{stack_id}"
-        
-        # Remove stack_id from all images
-        c.execute("UPDATE images SET stack_id = NULL WHERE stack_id = ?", (stack_id,))
-        
-        # Delete the stack record
-        c.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
-        
-        conn.commit()
+        def _tx(tx):
+            cnt_row = tx.query_one("SELECT COUNT(*) AS cnt FROM images WHERE stack_id = ?", (stack_id,))
+            image_count = cnt_row["cnt"] if cnt_row else 0
+
+            name_row = tx.query_one("SELECT name FROM stacks WHERE id = ?", (stack_id,))
+            stack_name = name_row["name"] if name_row else f"Stack #{stack_id}"
+
+            tx.execute("UPDATE images SET stack_id = NULL WHERE stack_id = ?", (stack_id,))
+            tx.execute("DELETE FROM stacks WHERE id = ?", (stack_id,))
+            return stack_name, image_count
+
+        stack_name, image_count = get_connector().run_transaction(_tx)
         event_manager.broadcast_threadsafe("stack_deleted", {"stack_id": stack_id})
         return True, f"Dissolved '{stack_name}' ({image_count} images ungrouped)"
     except Exception as e:
         logging.error(f"Failed to dissolve stack: {e}")
         return False, str(e)
-    finally:
-        conn.close()
 
 
 def set_stack_cover_image(stack_id, image_id):
@@ -7285,16 +7114,13 @@ def get_images_missing_embeddings(folder_path=None, limit=None):
     Columns: id, file_path, thumbnail_path, thumbnail_path_win (for path resolution in WSL).
     Optionally filter by folder_path and cap with limit.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
         if folder_path:
             norm = os.path.normpath(folder_path)
-            c.execute("SELECT id FROM folders WHERE path = ?", (norm,))
-            frow = c.fetchone()
+            frow = get_connector().query_one("SELECT id FROM folders WHERE path = ?", (norm,))
             if not frow:
                 return []
-            folder_id = frow[0]
+            folder_id = frow["id"]
             query = """
                 SELECT id, file_path, thumbnail_path, thumbnail_path_win
                 FROM images
@@ -7315,13 +7141,10 @@ def get_images_missing_embeddings(folder_path=None, limit=None):
             query += " FETCH FIRST ? ROWS ONLY"
             params.append(limit)
 
-        c.execute(query, tuple(params))
-        return c.fetchall()
+        return list(get_connector().query(query, tuple(params)))
     except Exception as e:
         logger.error("Error loading images missing embeddings: %s", e)
         return []
-    finally:
-        conn.close()
 
 
 def get_images_for_tag_propagation(folder_path=None):
@@ -7428,13 +7251,11 @@ def list_folder_paths_with_missing_keywords(require_embedding: bool = False):
     Returns:
         List of (folder_path, untagged_image_count) sorted by count desc, then path.
     """
-    conn = get_db()
-    c = conn.cursor()
     embed_clause = ""
     if require_embedding:
         embed_clause = " AND i.image_embedding IS NOT NULL "
     query = (
-        "SELECT f.path, COUNT(*) "
+        "SELECT f.path, COUNT(*) AS cnt "
         "FROM images i "
         "JOIN folders f ON f.id = i.folder_id "
         "WHERE NOT EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
@@ -7445,19 +7266,16 @@ def list_folder_paths_with_missing_keywords(require_embedding: bool = False):
         "ORDER BY COUNT(*) DESC, f.path"
     )
     try:
-        c.execute(query)
-        rows = []
-        for row in c.fetchall():
-            path = row[0]
-            cnt = int(row[1] or 0)
+        result = []
+        for row in get_connector().query(query):
+            path = row.get("path")
+            cnt = int(row.get("cnt") or 0)
             if path:
-                rows.append((str(path), cnt))
-        return rows
+                result.append((str(path), cnt))
+        return result
     except Exception as e:
         logging.error("list_folder_paths_with_missing_keywords: %s", e)
         return []
-    finally:
-        conn.close()
 
 
 # ===========================================================================
@@ -7475,40 +7293,29 @@ def seed_pipeline_phases():
     """
     from modules.phases import SEED_PHASES
 
-    conn = get_db()
-    c = conn.cursor()
     try:
-        # Fix any broken rows accidentally inserted as "PhaseCode.INDEXING"
-        c.execute("UPDATE pipeline_phases SET code = REPLACE(code, 'PhaseCode.', '') WHERE code LIKE 'PhaseCode.%'")
-        
-        for phase in SEED_PHASES:
-            # Python 3.11 Enums render as Enum.MEMBER by default in string context, so use .value
-            code = phase["code"].value if hasattr(phase["code"], "value") else str(phase["code"])
-            # Check if already exists
-            c.execute("SELECT id FROM pipeline_phases WHERE code = ?", (code,))
-            existing = c.fetchone()
-            if existing is None:
-                c.execute(
-                    "INSERT INTO pipeline_phases (code, name, description, sort_order, enabled, optional, default_skip) "
-                    "VALUES (?, ?, ?, ?, 1, ?, ?)",
-                    (code, phase["name"], phase.get("description", ""), phase["sort_order"],
-                     1 if phase.get("optional") else 0, 1 if phase.get("default_skip") else 0)
-                )
-            else:
-                c.execute(
-                    "UPDATE pipeline_phases SET optional = ?, default_skip = ? WHERE code = ?",
-                    (1 if phase.get("optional") else 0, 1 if phase.get("default_skip") else 0, code)
-                )
-        conn.commit()
+        def _tx(tx):
+            # Fix any broken rows accidentally inserted as "PhaseCode.INDEXING"
+            tx.execute("UPDATE pipeline_phases SET code = REPLACE(code, 'PhaseCode.', '') WHERE code LIKE 'PhaseCode.%'")
+
+            for phase in SEED_PHASES:
+                code = phase["code"].value if hasattr(phase["code"], "value") else str(phase["code"])
+                existing = tx.query_one("SELECT id FROM pipeline_phases WHERE code = ?", (code,))
+                if existing is None:
+                    tx.execute(
+                        "INSERT INTO pipeline_phases (code, name, description, sort_order, enabled, optional, default_skip) "
+                        "VALUES (?, ?, ?, ?, 1, ?, ?)",
+                        (code, phase["name"], phase.get("description", ""), phase["sort_order"],
+                         1 if phase.get("optional") else 0, 1 if phase.get("default_skip") else 0))
+                else:
+                    tx.execute(
+                        "UPDATE pipeline_phases SET optional = ?, default_skip = ? WHERE code = ?",
+                        (1 if phase.get("optional") else 0, 1 if phase.get("default_skip") else 0, code))
+
+        get_connector().run_transaction(_tx)
         logger.info("Pipeline phases seeded successfully.")
     except Exception as e:
         logger.error("Failed to seed pipeline phases: %s", e)
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-    finally:
-        conn.close()
     # Clear cache so it's rebuilt on next access
     _phase_id_cache.clear()
 
@@ -7782,25 +7589,21 @@ def get_folder_phase_summary(folder_path, force_refresh=False):
     if not base_folder_id:
         return []
 
-    conn = get_db()
-    c = conn.cursor()
     try:
         if not force_refresh:
-            c.execute(
+            cache_row = get_connector().query_one(
                 "SELECT phase_agg_dirty, phase_agg_json FROM folders WHERE id = ?",
-                (base_folder_id,)
-            )
-            cache_row = c.fetchone()
-            if cache_row and (cache_row[0] or 0) == 0 and cache_row[1]:
+                (base_folder_id,))
+            if cache_row and (cache_row.get("phase_agg_dirty") or 0) == 0 and cache_row.get("phase_agg_json"):
                 try:
-                    return json.loads(cache_row[1])
+                    return json.loads(cache_row["phase_agg_json"])
                 except Exception:
                     pass
 
         path_like_unix = target_path + "/%"
         path_like_win = target_path + "\\%"
 
-        c.execute(
+        rows = get_connector().query(
             """
             SELECT
                 pp.code,
@@ -7830,25 +7633,24 @@ def get_folder_phase_summary(folder_path, force_refresh=False):
             GROUP BY pp.code, pp.name, pp.sort_order, pp.optional
             ORDER BY pp.sort_order
             """,
-            (target_path, path_like_unix, path_like_win)
-        )
+            (target_path, path_like_unix, path_like_win))
 
         result = []
         scoring_done = False
-        for row in c.fetchall():
-            code = row[0].strip() if isinstance(row[0], str) else row[0]
-            name = row[1].strip() if isinstance(row[1], str) else row[1]
-            sort_order = row[2]
-            total = row[3] or 0
-            done = row[4] or 0
-            failed = row[5] or 0
-            running = row[6] or 0
-            queued = row[7] or 0
-            paused = row[8] or 0
-            cancel_requested = row[9] or 0
-            restarting = row[10] or 0
-            skipped = row[11] or 0
-            is_optional = bool(row[12])
+        for row in rows:
+            code = row["code"].strip() if isinstance(row["code"], str) else row["code"]
+            name = row["name"].strip() if isinstance(row["name"], str) else row["name"]
+            sort_order = row["sort_order"]
+            total = row["total_images"] or 0
+            done = row["done_count"] or 0
+            failed = row["failed_count"] or 0
+            running = row["running_count"] or 0
+            queued = row["queued_count"] or 0
+            paused = row["paused_count"] or 0
+            cancel_requested = row["cancel_requested_count"] or 0
+            restarting = row["restarting_count"] or 0
+            skipped = row["skipped_count"] or 0
+            is_optional = bool(row["optional"])
 
             advance_ready = done + skipped if is_optional else done
             if total == 0:
@@ -7897,25 +7699,17 @@ def get_folder_phase_summary(folder_path, force_refresh=False):
                 "advance_ready": advance_ready == total if total > 0 else False,
             })
 
-        # Cache the computed result — deadlock here must not discard the result
+        # Cache the computed result (non-fatal if this fails)
         try:
-            c.execute(
+            get_connector().execute(
                 "UPDATE folders SET phase_agg_dirty = 0, phase_agg_updated_at = ?, phase_agg_json = ?, is_fully_scored = ? WHERE id = ?",
-                (datetime.datetime.now(), json.dumps(result), 1 if scoring_done else 0, base_folder_id)
-            )
-            conn.commit()
+                (datetime.datetime.now(), json.dumps(result), 1 if scoring_done else 0, base_folder_id))
         except Exception as cache_err:
             logger.debug("get_folder_phase_summary cache write failed for '%s' (non-fatal): %s", folder_path, cache_err)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
         return result
     except Exception as e:
         logger.error("get_folder_phase_summary failed for '%s': %s", folder_path, e)
         return []
-    finally:
-        conn.close()
 
 
 def get_all_folder_phase_summaries_bulk():
@@ -7927,23 +7721,18 @@ def get_all_folder_phase_summaries_bulk():
     where slightly stale is far better than N individual expensive queries.
     """
     from modules import utils
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute("SELECT path, phase_agg_json FROM folders WHERE phase_agg_json IS NOT NULL")
-        result = {}
-        for row in c.fetchall():
-            wsl_path = row[0]
-            local_path = utils.convert_path_to_local(wsl_path) if hasattr(utils, 'convert_path_to_local') else wsl_path
-            if not local_path:
-                continue
-            try:
-                result[os.path.normpath(local_path)] = json.loads(row[1])
-            except Exception:
-                pass
-        return result
-    finally:
-        conn.close()
+    rows = get_connector().query("SELECT path, phase_agg_json FROM folders WHERE phase_agg_json IS NOT NULL")
+    result = {}
+    for row in rows:
+        wsl_path = row["path"]
+        local_path = utils.convert_path_to_local(wsl_path) if hasattr(utils, 'convert_path_to_local') else wsl_path
+        if not local_path:
+            continue
+        try:
+            result[os.path.normpath(local_path)] = json.loads(row["phase_agg_json"])
+        except Exception:
+            pass
+    return result
 
 
 
@@ -7975,21 +7764,15 @@ def set_folder_phase_status(folder_path, phase_code, status, reason=None, actor=
     path_like_unix = target_path + "/%"
     path_like_win = target_path + "\\%"
 
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute(
-            """
-            SELECT i.id
-            FROM images i
-            JOIN folders f ON f.id = i.folder_id
-            WHERE f.path = ? OR f.path LIKE ? OR f.path LIKE ?
-            """,
-            (target_path, path_like_unix, path_like_win)
-        )
-        image_ids = [row[0] for row in c.fetchall()]
-    finally:
-        conn.close()
+    rows = get_connector().query(
+        """
+        SELECT i.id
+        FROM images i
+        JOIN folders f ON f.id = i.folder_id
+        WHERE f.path = ? OR f.path LIKE ? OR f.path LIKE ?
+        """,
+        (target_path, path_like_unix, path_like_win))
+    image_ids = [row["id"] for row in rows]
 
     for image_id in image_ids:
         set_image_phase_status(
@@ -8027,38 +7810,32 @@ def backfill_index_meta_for_folder(folder_path):
     path_like_unix = target_path + "/%"
     path_like_win = target_path + "\\%"
 
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute(
-            """
-            SELECT i.id
-            FROM images i
-            JOIN folders f ON f.id = i.folder_id
-            WHERE f.path = ? OR f.path LIKE ? OR f.path LIKE ?
-            AND EXISTS (
-                SELECT 1 FROM image_phase_status ips
-                JOIN pipeline_phases pp ON pp.id = ips.phase_id
-                WHERE ips.image_id = i.id AND pp.code = 'scoring' AND ips.status = 'done'
-            )
-            AND (
-                NOT EXISTS (
-                    SELECT 1 FROM image_phase_status ips2
-                    JOIN pipeline_phases pp2 ON pp2.id = ips2.phase_id
-                    WHERE ips2.image_id = i.id AND pp2.code = 'indexing' AND ips2.status = 'done'
-                )
-                OR NOT EXISTS (
-                    SELECT 1 FROM image_phase_status ips3
-                    JOIN pipeline_phases pp3 ON pp3.id = ips3.phase_id
-                    WHERE ips3.image_id = i.id AND pp3.code = 'metadata' AND ips3.status = 'done'
-                )
-            )
-            """,
-            (target_path, path_like_unix, path_like_win)
+    rows = get_connector().query(
+        """
+        SELECT i.id
+        FROM images i
+        JOIN folders f ON f.id = i.folder_id
+        WHERE f.path = ? OR f.path LIKE ? OR f.path LIKE ?
+        AND EXISTS (
+            SELECT 1 FROM image_phase_status ips
+            JOIN pipeline_phases pp ON pp.id = ips.phase_id
+            WHERE ips.image_id = i.id AND pp.code = 'scoring' AND ips.status = 'done'
         )
-        image_ids = [row[0] for row in c.fetchall()]
-    finally:
-        conn.close()
+        AND (
+            NOT EXISTS (
+                SELECT 1 FROM image_phase_status ips2
+                JOIN pipeline_phases pp2 ON pp2.id = ips2.phase_id
+                WHERE ips2.image_id = i.id AND pp2.code = 'indexing' AND ips2.status = 'done'
+            )
+            OR NOT EXISTS (
+                SELECT 1 FROM image_phase_status ips3
+                JOIN pipeline_phases pp3 ON pp3.id = ips3.phase_id
+                WHERE ips3.image_id = i.id AND pp3.code = 'metadata' AND ips3.status = 'done'
+            )
+        )
+        """,
+        (target_path, path_like_unix, path_like_win))
+    image_ids = [row["id"] for row in rows]
 
     for image_id in image_ids:
         set_image_phase_status(image_id, "indexing", "done")
@@ -8084,41 +7861,35 @@ def backfill_index_meta_global(limit=None, dry_run=False):
     Returns:
         int: number of images that would be or were updated.
     """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute(
-            """
-            SELECT i.id
-            FROM images i
-            WHERE EXISTS (
-                SELECT 1 FROM image_phase_status ips
-                JOIN pipeline_phases pp ON pp.id = ips.phase_id
-                WHERE ips.image_id = i.id
-                  AND LOWER(TRIM(pp.code)) = 'scoring'
-                  AND LOWER(TRIM(ips.status)) = 'done'
-            )
-            AND (
-                NOT EXISTS (
-                    SELECT 1 FROM image_phase_status ips2
-                    JOIN pipeline_phases pp2 ON pp2.id = ips2.phase_id
-                    WHERE ips2.image_id = i.id
-                      AND LOWER(TRIM(pp2.code)) = 'indexing'
-                      AND LOWER(TRIM(ips2.status)) = 'done'
-                )
-                OR NOT EXISTS (
-                    SELECT 1 FROM image_phase_status ips3
-                    JOIN pipeline_phases pp3 ON pp3.id = ips3.phase_id
-                    WHERE ips3.image_id = i.id
-                      AND LOWER(TRIM(pp3.code)) = 'metadata'
-                      AND LOWER(TRIM(ips3.status)) = 'done'
-                )
-            )
-            """
+    rows = get_connector().query(
+        """
+        SELECT i.id
+        FROM images i
+        WHERE EXISTS (
+            SELECT 1 FROM image_phase_status ips
+            JOIN pipeline_phases pp ON pp.id = ips.phase_id
+            WHERE ips.image_id = i.id
+              AND LOWER(TRIM(pp.code)) = 'scoring'
+              AND LOWER(TRIM(ips.status)) = 'done'
         )
-        image_ids = [row[0] for row in c.fetchall()]
-    finally:
-        conn.close()
+        AND (
+            NOT EXISTS (
+                SELECT 1 FROM image_phase_status ips2
+                JOIN pipeline_phases pp2 ON pp2.id = ips2.phase_id
+                WHERE ips2.image_id = i.id
+                  AND LOWER(TRIM(pp2.code)) = 'indexing'
+                  AND LOWER(TRIM(ips2.status)) = 'done'
+            )
+            OR NOT EXISTS (
+                SELECT 1 FROM image_phase_status ips3
+                JOIN pipeline_phases pp3 ON pp3.id = ips3.phase_id
+                WHERE ips3.image_id = i.id
+                  AND LOWER(TRIM(pp3.code)) = 'metadata'
+                  AND LOWER(TRIM(ips3.status)) = 'done'
+            )
+        )
+        """)
+    image_ids = [row["id"] for row in rows]
 
     if isinstance(limit, int) and limit > 0:
         image_ids = image_ids[:limit]
@@ -8131,13 +7902,7 @@ def backfill_index_meta_global(limit=None, dry_run=False):
         set_image_phase_status(image_id, "metadata", "done")
 
     if image_ids:
-        conn = get_db()
-        c = conn.cursor()
-        try:
-            c.execute("UPDATE folders SET phase_agg_dirty = 1")
-            conn.commit()
-        finally:
-            conn.close()
+        get_connector().execute("UPDATE folders SET phase_agg_dirty = 1")
 
     return len(image_ids)
 
@@ -8165,33 +7930,31 @@ def repair_stuck_running_ips(hours=2, phase_code=None, dry_run=False):
         "likely lost job_id in worker queue. Re-run this phase if needed."
     )
 
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        sql = """
-            SELECT ips.id
-            FROM image_phase_status ips
-            JOIN pipeline_phases pp ON pp.id = ips.phase_id
-            WHERE LOWER(TRIM(ips.status)) IN ('running', 'queued')
-              AND (
-                  (ips.updated_at IS NOT NULL AND ips.updated_at < ?)
-                  OR (ips.updated_at IS NULL AND ips.started_at IS NOT NULL AND ips.started_at < ?)
-              )
-        """
-        params = [threshold, threshold]
-        if phase_code:
-            sql += " AND LOWER(TRIM(pp.code)) = ?"
-            params.append(str(phase_code).strip().lower())
+    sql = """
+        SELECT ips.id
+        FROM image_phase_status ips
+        JOIN pipeline_phases pp ON pp.id = ips.phase_id
+        WHERE LOWER(TRIM(ips.status)) IN ('running', 'queued')
+          AND (
+              (ips.updated_at IS NOT NULL AND ips.updated_at < ?)
+              OR (ips.updated_at IS NULL AND ips.started_at IS NOT NULL AND ips.started_at < ?)
+          )
+    """
+    params = [threshold, threshold]
+    if phase_code:
+        sql += " AND LOWER(TRIM(pp.code)) = ?"
+        params.append(str(phase_code).strip().lower())
 
-        c.execute(sql, tuple(params))
-        ids = [row[0] for row in c.fetchall()]
+    rows = get_connector().query(sql, tuple(params))
+    ids = [row["id"] for row in rows]
 
-        if dry_run:
-            return {"matched": len(ids), "updated": 0}
+    if dry_run:
+        return {"matched": len(ids), "updated": 0}
 
+    def _tx(tx):
         now = _dt.datetime.now()
         for ips_id in ids:
-            c.execute(
+            tx.execute(
                 """
                 UPDATE image_phase_status
                 SET status = 'failed',
@@ -8201,16 +7964,12 @@ def repair_stuck_running_ips(hours=2, phase_code=None, dry_run=False):
                     job_id = NULL
                 WHERE id = ?
                 """,
-                (msg, now, now, ips_id),
-            )
-
+                (msg, now, now, ips_id))
         if ids:
-            c.execute("UPDATE folders SET phase_agg_dirty = 1")
-        conn.commit()
+            tx.execute("UPDATE folders SET phase_agg_dirty = 1")
 
-        return {"matched": len(ids), "updated": len(ids)}
-    finally:
-        conn.close()
+    get_connector().run_transaction(_tx)
+    return {"matched": len(ids), "updated": len(ids)}
 
 
 def repair_legacy_keywords_junction(limit=None, dry_run=False):
@@ -8226,25 +7985,16 @@ def repair_legacy_keywords_junction(limit=None, dry_run=False):
     Returns:
         dict: matched, synced
     """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        # Select images with keywords IS NOT NULL but no junction rows.
-        # This includes images with an empty-string BLOB (keywords='') which should be
-        # normalized to NULL. Eagerly convert BLOB to str while connection is open.
-        c.execute(
-            """
-            SELECT i.id, i.keywords
-            FROM images i
-            WHERE i.keywords IS NOT NULL
-            AND NOT EXISTS (
-                SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id
-            )
-            """
+    rows = get_connector().query(
+        """
+        SELECT i.id, i.keywords
+        FROM images i
+        WHERE i.keywords IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id
         )
-        pairs = [(row[0], str(row[1]) if row[1] is not None else None) for row in c.fetchall()]
-    finally:
-        conn.close()
+        """)
+    pairs = [(row["id"], str(row["keywords"]) if row.get("keywords") is not None else None) for row in rows]
 
     if isinstance(limit, int) and limit > 0:
         pairs = pairs[:limit]
@@ -8256,25 +8006,11 @@ def repair_legacy_keywords_junction(limit=None, dry_run=False):
     nulled = 0
     for image_id, keywords_str in pairs:
         if not keywords_str or not keywords_str.strip():
-            # Empty BLOB — normalize to NULL (no keywords to sync)
             try:
-                c2 = None
-                conn2 = get_db()
-                c2 = conn2.cursor()
-                c2.execute("UPDATE images SET keywords = NULL WHERE id = ?", (image_id,))
-                conn2.commit()
+                get_connector().execute("UPDATE images SET keywords = NULL WHERE id = ?", (image_id,))
                 nulled += 1
             except Exception as e:
                 logger.warning("repair_legacy_keywords_junction: null-cleanup image %s: %s", image_id, e)
-                try:
-                    conn2.rollback()
-                except Exception:
-                    pass
-            finally:
-                try:
-                    conn2.close()
-                except Exception:
-                    pass
         else:
             try:
                 _sync_image_keywords(image_id, keywords_str, source="repair_legacy_keywords_junction")
@@ -8288,34 +8024,31 @@ def repair_legacy_keywords_junction(limit=None, dry_run=False):
 def repair_culling_ips_failed_has_data(dry_run=False):
     """
     Repair GAP-C: culling IPS is 'failed' but the image has a stack_id / embedding.
-    This happens when a job was force-failed by the repair script but the work 
+    This happens when a job was force-failed by the repair script but the work
     actually completed. Since data is present, the accurate state is 'done'.
 
     Returns:
         dict: matched, repaired
     """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute(
-            """
-            SELECT ips.id
-            FROM image_phase_status ips
-            JOIN pipeline_phases pp ON pp.id = ips.phase_id
-            JOIN images i ON i.id = ips.image_id
-            WHERE LOWER(TRIM(pp.code)) = 'culling'
-              AND LOWER(TRIM(ips.status)) = 'failed'
-              AND (i.stack_id IS NOT NULL OR i.image_embedding IS NOT NULL)
-            """
-        )
-        ids = [row[0] for row in c.fetchall()]
-        
-        if dry_run:
-            return {"matched": len(ids), "repaired": 0}
+    rows = get_connector().query(
+        """
+        SELECT ips.id
+        FROM image_phase_status ips
+        JOIN pipeline_phases pp ON pp.id = ips.phase_id
+        JOIN images i ON i.id = ips.image_id
+        WHERE LOWER(TRIM(pp.code)) = 'culling'
+          AND LOWER(TRIM(ips.status)) = 'failed'
+          AND (i.stack_id IS NOT NULL OR i.image_embedding IS NOT NULL)
+        """)
+    ids = [row["id"] for row in rows]
 
+    if dry_run:
+        return {"matched": len(ids), "repaired": 0}
+
+    def _tx(tx):
         now = datetime.datetime.now()
         for ips_id in ids:
-            c.execute(
+            tx.execute(
                 """
                 UPDATE image_phase_status
                 SET status = 'done',
@@ -8324,15 +8057,12 @@ def repair_culling_ips_failed_has_data(dry_run=False):
                     updated_at = ?
                 WHERE id = ?
                 """,
-                (now, now, ips_id),
-            )
-        
+                (now, now, ips_id))
         if ids:
-            c.execute("UPDATE folders SET phase_agg_dirty = 1")
-        conn.commit()
-        return {"matched": len(ids), "repaired": len(ids)}
-    finally:
-        conn.close()
+            tx.execute("UPDATE folders SET phase_agg_dirty = 1")
+
+    get_connector().run_transaction(_tx)
+    return {"matched": len(ids), "repaired": len(ids)}
 
 
 def backfill_keywords_ips_done(dry_run=False):
@@ -8343,44 +8073,29 @@ def backfill_keywords_ips_done(dry_run=False):
     Returns:
         dict: matched, created
     """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        # Find images that have junction rows but no IPS row for 'keywords'
-        c.execute(
-            """
-            SELECT DISTINCT ik.image_id
-            FROM image_keywords ik
-            WHERE NOT EXISTS (
-                SELECT 1 FROM image_phase_status ips
-                JOIN pipeline_phases pp ON pp.id = ips.phase_id
-                WHERE ips.image_id = ik.image_id
-                  AND LOWER(TRIM(pp.code)) = 'keywords'
-            )
-            """
+    rows = get_connector().query(
+        """
+        SELECT DISTINCT ik.image_id
+        FROM image_keywords ik
+        WHERE NOT EXISTS (
+            SELECT 1 FROM image_phase_status ips
+            JOIN pipeline_phases pp ON pp.id = ips.phase_id
+            WHERE ips.image_id = ik.image_id
+              AND LOWER(TRIM(pp.code)) = 'keywords'
         )
-        ids = [row[0] for row in c.fetchall()]
+        """)
+    ids = [row["image_id"] for row in rows]
 
-        if dry_run:
-            return {"matched": len(ids), "created": 0}
+    if dry_run:
+        return {"matched": len(ids), "created": 0}
 
-    finally:
-        conn.close()
-
-    # Reuse set_image_phase_status for convenience (handles phase lookup/upsert)
     count = 0
     for image_id in ids:
         set_image_phase_status(image_id, "keywords", "done")
         count += 1
-    
+
     if ids:
-        conn = get_db()
-        c = conn.cursor()
-        try:
-            c.execute("UPDATE folders SET phase_agg_dirty = 1")
-            conn.commit()
-        finally:
-            conn.close()
+        get_connector().execute("UPDATE folders SET phase_agg_dirty = 1")
 
     return {"matched": len(ids), "created": count}
 
@@ -8412,53 +8127,38 @@ def _sync_image_keywords(image_id, keywords_str, source="auto", confidence=1.0):
     Dual-write sync: Parses the legacy keywords CSV string and updates the normalized
     IMAGE_KEYWORDS and KEYWORDS_DIM tables.
     """
-    if not image_id: return
-    
-    conn = get_db()
-    c = conn.cursor()
+    if not image_id:
+        return
+
     try:
-        # Clear existing keywords for this image
-        c.execute("DELETE FROM image_keywords WHERE image_id = ?", (image_id,))
-        
-        if not keywords_str:
-            conn.commit()
-            return
+        def _tx(tx):
+            tx.execute("DELETE FROM image_keywords WHERE image_id = ?", (image_id,))
 
-        # Split and clean keywords
-        kws = [k.strip() for k in keywords_str.split(',') if k.strip()]
-        if not kws:
-            conn.commit()
-            return
-            
-        for kw in kws:
-            kw_norm = kw.lower()
-            
-            # Upsert into KEYWORDS_DIM
-            c.execute("SELECT keyword_id FROM keywords_dim WHERE keyword_norm = ?", (kw_norm,))
-            row = c.fetchone()
-            if row:
-                kw_id = row[0]
-            else:
-                c.execute(
-                    "INSERT INTO keywords_dim (keyword_norm, keyword_display) VALUES (?, ?) RETURNING keyword_id",
-                    (kw_norm, kw)
-                )
-                kw_id = c.fetchone()[0]
-                
-            # Insert into IMAGE_KEYWORDS
-            c.execute(
-                "UPDATE OR INSERT INTO image_keywords (image_id, keyword_id, source, confidence) VALUES (?, ?, ?, ?) MATCHING (image_id, keyword_id)",
-                (image_id, kw_id, source, confidence)
-            )
+            if not keywords_str:
+                return
 
-        conn.commit()
+            kws = [k.strip() for k in keywords_str.split(',') if k.strip()]
+            if not kws:
+                return
+
+            for kw in kws:
+                kw_norm = kw.lower()
+                row = tx.query_one("SELECT keyword_id FROM keywords_dim WHERE keyword_norm = ?", (kw_norm,))
+                if row:
+                    kw_id = row["keyword_id"]
+                else:
+                    ins = tx.execute_returning(
+                        "INSERT INTO keywords_dim (keyword_norm, keyword_display) VALUES (?, ?) RETURNING keyword_id",
+                        (kw_norm, kw))
+                    kw_id = ins[0]["keyword_id"]
+
+                tx.execute(
+                    "UPDATE OR INSERT INTO image_keywords (image_id, keyword_id, source, confidence) VALUES (?, ?, ?, ?) MATCHING (image_id, keyword_id)",
+                    (image_id, kw_id, source, confidence))
+
+        get_connector().run_transaction(_tx)
     except Exception as e:
-        import logging
         logging.warning(f"_sync_image_keywords failed for image {image_id}: {e}")
-        try: conn.rollback()
-        except: pass
-    finally:
-        conn.close()
 
 def _backfill_keywords():
     """One-time migration to move BLOB keywords to the normalized tables."""

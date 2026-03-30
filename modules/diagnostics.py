@@ -36,24 +36,36 @@ def get_diagnostics() -> Dict[str, Any]:
         system_info["memory_info"] = "psutil not available"
 
     # 2. Database Information
+    engine = config.get_database_engine()
     db_info = {
-        "type": "Firebird",
-        "path": os.environ.get("FIREBIRD_DATABASE", "SCORING_HISTORY.FDB"),
+        "type": engine.capitalize(),
         "reachable": False,
         "size_mb": 0,
     }
     
+    if engine == "postgres":
+        pg_conf = config.get_config_section("database").get("postgres", {})
+        db_info["path"] = f"{pg_conf.get('host')}:{pg_conf.get('port')}/{pg_conf.get('dbname')}"
+    else:
+        db_info["path"] = os.environ.get("FIREBIRD_DATABASE", "SCORING_HISTORY.FDB")
+
     try:
         conn = db.get_db()
         db_info["reachable"] = True
         conn.close()
         
-        db_path = db_info["path"]
-        if os.path.exists(db_path):
-            db_info["size_mb"] = round(os.path.getsize(db_path) / (1024**2), 2)
-            db_info["last_modified"] = datetime.datetime.fromtimestamp(
-                os.path.getmtime(db_path)
-            ).isoformat()
+        # Metadata for local files (Firebird/SQLite)
+        if engine == "firebird" or engine == "sqlite":
+            db_path = db_info["path"]
+            if os.path.exists(db_path):
+                db_info["size_mb"] = round(os.path.getsize(db_path) / (1024**2), 2)
+                db_info["last_modified"] = datetime.datetime.fromtimestamp(
+                    os.path.getmtime(db_path)
+                ).isoformat()
+        else:
+            # For Postgres, we might want to query DB size, but for now leave as 0
+            # or just skip file stats
+            db_info["last_modified"] = datetime.datetime.now().isoformat() # Placeholder for now
     except Exception as e:
         db_info["error"] = str(e)
 

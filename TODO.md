@@ -80,8 +80,8 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 - [x] **[Python]** **[DB]** Phase 2 infrastructure: dual-write worker thread + queue in `modules/db.py` (`_dual_write_worker`, `_enqueue_dual_write`, `FirebirdCursorProxy`); `db_connector/` transport abstraction (FirebirdConnector, PostgresConnector, ApiConnector)
 - [x] **[Python]** **[DB]** Phase 2 bug fixes: BUG 1 (DATEDIFF division already uses `/` — was fixed in prior commit), BUG 2 (`FirebirdCursorProxy._translate_query` only needs SQLite→Firebird; full FB→PG translation handled by `_dual_write_worker` via `_translate_fb_to_pg()` — not a bug)
 - [x] **[Python]** **[DB]** Phase 2 blockers: Alembic migration for `keywords_dim`/`image_keywords` (`0002`), `image_embedding` skip filter in `_enqueue_dual_write`
-- [ ] **[Python]** **[DB]** Phase 2 activation: set `database.dual_write: true` + run migration script + soak test
-- [ ] **[Python]** **[DB]** Phase 3: Python cutover — 60+ read functions already routed to Postgres via `_get_db_engine()`; activate by setting `"engine": "postgres"` after Phase 2 activation and parity verification
+- [x] **[Python]** **[DB]** Phase 2 activation: set `database.dual_write: true` + run migration script + soak test
+- [x] **[Python]** **[DB]** Phase 3: Python cutover — 60+ read functions already routed to Postgres via `_get_db_engine()`; activate by setting `"engine": "postgres"` after Phase 2 activation and parity verification
 - [ ] **[Electron]** Phase 4: DB provider abstraction in `electron/db.ts`, migrate from `node-firebird` to Postgres client
 
 ---

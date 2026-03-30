@@ -14,13 +14,14 @@ echo   Rebuilds Vite SPA to static/app, rebuilds webui image,
 echo   recreates webui container. Postgres data volume is kept
 echo   (no docker compose down -v).
 echo.
-echo   Prerequisites: Docker Desktop, Node/npm on PATH,
-echo   Windows Firebird for container — see run_firebird.bat.
+echo   Prerequisites: Docker Desktop, Node/npm on PATH.
+echo   DB: compose Postgres service (pgvector). Legacy Firebird: run_firebird.bat if needed.
 echo.
 echo   Optional environment variables:
 echo     SKIP_FRONTEND_BUILD=1   skip npm (Python/static unchanged)
 echo     DOCKER_BUILD_NO_CACHE=1   full rebuild layers (avoid unless needed)
 echo     FRONTEND_CI=1             run npm ci before npm run build
+echo     WEBUI_READY_TIMEOUT_SEC=N  max seconds to wait for http://localhost:7860 (default 360)
 echo   Docker: Dockerfile uses BuildKit cache mounts for apt and pip — normal
 echo   builds reuse downloaded packages. Ensure DOCKER_BUILDKIT=1 (Docker Desktop default).
 echo ========================================================
@@ -85,8 +86,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [INFO] Waiting for WebUI at http://localhost:7860 ...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$uri='http://localhost:7860'; $max=90; for ($i=0; $i -lt $max; $i++) { try { Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null; exit 0 } catch { Start-Sleep -Seconds 1 } }; Write-Host '[ERROR] WebUI did not become ready in time.'; exit 1"
+if not defined WEBUI_READY_TIMEOUT_SEC set "WEBUI_READY_TIMEOUT_SEC=360"
+echo [INFO] Waiting for WebUI at http://localhost:7860 (up to %WEBUI_READY_TIMEOUT_SEC%s; first boot after rebuild is often slow^) ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$uri='http://localhost:7860/api/health'; $max=$env:WEBUI_READY_TIMEOUT_SEC; if ($max -notmatch '^\d+$' -or [int]$max -lt 60) { $max=360 }; $max=[int]$max; for ($i=0; $i -lt $max; $i++) { try { Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null; exit 0 } catch { Start-Sleep -Seconds 1 } }; Write-Host '[ERROR] WebUI did not become ready in time.'; exit 1"
 if errorlevel 1 (
     echo [ERROR] Timeout waiting for WebUI. Check: docker compose logs webui
     pause

@@ -81,6 +81,7 @@ logs/
 *~
 
 # Debug and verification scripts (dev artifacts)
+dumps/
 debug_*.py
 debug_*.txt
 debug_*.html

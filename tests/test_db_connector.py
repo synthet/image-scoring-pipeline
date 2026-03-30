@@ -114,14 +114,14 @@ class TestFactory:
         assert isinstance(conn, ApiConnector)
         assert conn._base_url == "http://localhost:7860"
 
-    def test_unknown_engine_falls_back_to_firebird(self):
+    def test_unknown_engine_falls_back_to_postgres(self):
         from modules.db_connector import get_connector
-        from modules.db_connector.firebird import FirebirdConnector
+        from modules.db_connector.postgres import PostgresConnector
 
         with self._patch_engine("sqlite"):
             conn = get_connector()
 
-        assert isinstance(conn, FirebirdConnector)
+        assert isinstance(conn, PostgresConnector)
 
     def test_singleton(self):
         from modules.db_connector import get_connector
@@ -499,11 +499,8 @@ class TestPostgresConnector:
     def test_query_delegates_to_execute_select(self):
         from modules.db_connector.postgres import PostgresConnector
 
-        fake_pg = ModuleType("db_postgres")
-        mock_sel = MagicMock(return_value=[{"id": 1}])
-        fake_pg.execute_select = mock_sel
         try:
-            with patch.dict(sys.modules, {"modules.db_postgres": fake_pg}):
+            with patch("modules.db_postgres.execute_select", return_value=[{"id": 1}]) as mock_sel:
                 pc = PostgresConnector()
                 with patch("modules.db_connector.postgres._translate", side_effect=lambda s: s):
                     rows = pc.query("SELECT * FROM images WHERE id = ?", (1,))
@@ -516,11 +513,8 @@ class TestPostgresConnector:
     def test_execute_delegates_to_execute_write(self):
         from modules.db_connector.postgres import PostgresConnector
 
-        fake_pg = ModuleType("db_postgres")
-        mock_w = MagicMock(return_value=2)
-        fake_pg.execute_write = mock_w
         try:
-            with patch.dict(sys.modules, {"modules.db_postgres": fake_pg}):
+            with patch("modules.db_postgres.execute_write", return_value=2) as mock_w:
                 pc = PostgresConnector()
                 with patch("modules.db_connector.postgres._translate", side_effect=lambda s: s):
                     count = pc.execute("UPDATE images SET rating = ? WHERE id = ?", (5, 1))

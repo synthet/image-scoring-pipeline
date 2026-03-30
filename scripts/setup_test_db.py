@@ -2,6 +2,10 @@ import os
 import sys
 import time
 
+# Firebird-only helper for scoring_history_test.fdb — ignore database.engine in config
+# (e.g. when the main app uses PostgreSQL).
+os.environ["IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP"] = "1"
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from modules import db
 

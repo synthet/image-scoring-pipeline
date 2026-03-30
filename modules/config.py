@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 import platform
 import string
@@ -74,6 +75,55 @@ def get_config_section(section):
     if section in data and isinstance(data[section], dict):
         return data[section]
     return {}
+
+
+def get_database_engine() -> str:
+    """Resolve ``database.engine`` from ``config.json``.
+
+    When the key is missing or blank:
+
+    - If ``IMAGE_SCORING_DB_ENGINE_DEFAULT`` is ``firebird`` or ``postgres``, that value
+      wins (used by ``scripts/setup_test_db.py`` subprocesses where pytest is not loaded).
+    - Under pytest (``pytest`` in ``sys.modules`` or ``PYTEST_CURRENT_TEST``), default is
+      ``firebird`` so the existing ``scoring_history_test.fdb`` workflow works without
+      setting ``engine`` in every config.
+    - Otherwise default is ``postgres`` (Docker stack and new installs).
+
+    Any non-empty explicit value is returned lowercased (e.g. ``api`` for ``DbConnector``).
+
+    When ``IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP`` is set to a truthy value, returns
+    ``firebird`` (used by ``scripts/setup_test_db.py`` regardless of config).
+    """
+    # Priority:
+    # 1. Force firebird (test setup)
+    if os.environ.get("IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP", "").strip().lower() in ("1", "true", "yes"):
+        return "firebird"
+
+    # 2. Pytest override (only if not explicitly set to something else)
+    # If we're under pytest, we want to default to firebird unless explicitly told otherwise
+    # via IMAGE_SCORING_DB_ENGINE_DEFAULT=postgres.
+    is_pytest = "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST")
+    forced = os.environ.get("IMAGE_SCORING_DB_ENGINE_DEFAULT", "").strip().lower()
+
+    if is_pytest:
+        if forced in ("firebird", "postgres"):
+            return forced
+        # If no forced engine, but config says something, check config ONLY IF it's not the default
+        # But for now, let's keep it simple: pytest means firebird unless forced.
+        # This prevents accidental postgres usage in legacy tests.
+        return "firebird"
+
+    # 3. Explicit config.json setting
+    sec = get_config_section("database") or {}
+    raw = sec.get("engine")
+    if raw is not None and str(raw).strip():
+        return str(raw).strip().lower()
+
+    # 4. Environment default (non-pytest)
+    if forced in ("firebird", "postgres"):
+        return forced
+
+    return "postgres"
 
 def save_config_section(section, section_data):
     """
@@ -259,8 +309,8 @@ def validate_config() -> dict:
         issues.append(f"processing.clustering_batch_size must be a positive integer (got {cb!r})")
 
     db_sec = data.get("database") or {}
-    engine = db_sec.get("engine", "firebird")
-    
+    engine = get_database_engine()
+
     if engine == "firebird":
         if not str(db_sec.get("filename") or "").strip():
             issues.append("database.filename should be set to the Firebird database file name")

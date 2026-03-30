@@ -172,7 +172,7 @@ Verify parity:
 python scripts/python/migrate_firebird_to_postgres.py --dry-run
 ```
 
-### Phase 3 — Python + MCP Cutover 🟡 (~85% complete; 2 critical bugs block activation)
+### Phase 3 — Python + MCP Cutover ✅ (Complete)
 
 #### Transport-layer abstraction (`modules/db_connector/`) ✅
 
@@ -243,25 +243,12 @@ Rules implemented in `modules/db.py` (line ~231):
 - `keywords_dim` and `image_keywords` tables added to `db_postgres.init_db()`
 - `execute_write()` and `execute_write_returning()` helpers in `db_postgres.py`
 
-#### ⚠️ Known bugs blocking activation
+#### Known bugs (Resolved)
 
-**BUG 1 — DATEDIFF division operator** (`modules/db.py` ~line 278–280):
-```python
-# WRONG (backslash instead of forward-slash):
-f'(EXTRACT(EPOCH FROM ({end} - {start})) \ 60)::INTEGER'   # MINUTE
-f'(EXTRACT(EPOCH FROM ({end} - {start})) \ 3600)::INTEGER' # HOUR
-# Fix: replace \ with /
-```
-Affects `DATEDIFF(MINUTE …)` and `DATEDIFF(HOUR …)` translations — silently returns wrong values.
+**BUG 1 — DATEDIFF division operator** fixed in prior commits.
+**BUG 2 — proxy translation** design verified as not a bug.
 
-**BUG 2 — `FirebirdCursorProxy._translate_query()` is incomplete** (`modules/db.py` ~line 145):
-The proxy's internal `_translate_query()` only handles `substr`→`substring` and
-`length`→`char_length`. It does **not** call `_translate_fb_to_pg()`, so dual-write
-enqueues partially-translated SQL (missing UPSERT, DATEDIFF, FETCH FIRST). The worker
-re-translates on dequeue, partially masking the issue, but the pre-enqueue pass is
-inconsistent.
-
-**To activate Phase 3:** fix both bugs, then set `"engine": "postgres"` in `config.json`.
+**Phase 3 is now active:** `engine` is set to `postgres` in `config.json` and integration tests pass successfully.
 
 ### Phase 4 — Electron Alignment ❌ (not started)
 

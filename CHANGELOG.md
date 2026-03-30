@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-03-30
+
+### Breaking
+
+- **Default database engine** (`modules/config.py`, `modules/db_connector/factory.py`): When `database.engine` is omitted in `config.json`, non-pytest runs now default to **postgres** (Docker / new installs) instead of Firebird. Pytest and env overrides (`IMAGE_SCORING_DB_ENGINE_DEFAULT`, `IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP`) keep Firebird-oriented test and setup flows. **Existing Firebird-only deployments must set `"engine": "firebird"` explicitly** (or use the documented env overrides).
+- **Unknown `database.engine` values** fall back to **postgres** (previously Firebird).
+
+### Added
+
+- **`get_database_engine()`** (`modules/config.py`): Single place to resolve the active engine with pytest vs production and env precedence (see docstring).
+- **WebUI** (`webui.py`): `faulthandler` enabled for all threads; on Unix, `SIGUSR1` dumps Python thread stacks to stderr for diagnosing hangs.
+- **Tests** (`tests/test_db_engine_switch.py`): Coverage for `get_database_engine()` when config is explicit vs omitted under pytest.
+
+### Changed
+
+- **DB** (`modules/db.py`): Postgres as primary uses `db_postgres.init_db()` and `seed_pipeline_phases()`; Firebird keeps `_init_db_impl()`; wider routing through `get_connector()` for queries and executes; configured engine reads via `get_database_engine()`.
+- **Diagnostics** (`modules/diagnostics.py`): Database section reports the resolved engine; Postgres shows host/port/dbname; file size / `last_modified` for local DB files (Firebird/SQLite) only.
+- **Firebird → Postgres migration** (`scripts/python/migrate_firebird_to_postgres.py`): `keywords_dim` / `image_keywords` in table order; Windows `fbclient.dll` discovery under `Firebird/`; column listing compatible with dict cursors.
+- **Example config** (`config.example.json`): Example `database.engine` and Postgres credentials aligned with a typical compose stack.
+- **Docker refresh** (`docker_refresh_webui.bat`): Readiness probe uses `/api/health`; `WEBUI_READY_TIMEOUT_SEC` (default 360); help text for Postgres-first workflow.
+- **Docs** (`docs/plans/database/FIREBIRD_POSTGRES_MIGRATION.md`, `docs/technical/MCP_DEBUGGING_TOOLS.md`): Updates.
+- **Tests** (`tests/test_db_connector.py`): Factory unknown-engine expectation and Postgres connector patch style.
+- **TODO** (`TODO.md`): Phase 2 activation and Phase 3 Python cutover items marked complete.
+- **Git** (`.gitignore`): Ignore `dumps/`.
+
+### Removed
+
+- **Gradio assets** (`modules/ui/assets.py`): Dead agent-log placeholder blocks in embedded JS.
+
+### Fixed
+
+- **Test DB setup** (`scripts/setup_test_db.py`): Sets `IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP` so Firebird test database creation is unaffected when main config defaults to Postgres.
+
 ## [4.24.0] - 2026-03-29
 
 ### Added

@@ -54,6 +54,8 @@ TABLES_ORDER = [
     "pipeline_phases",
     "image_phase_status",
     "stack_cache",      # depends on stacks + images + folders
+    "keywords_dim",
+    "image_keywords",
 ]
 
 
@@ -80,9 +82,20 @@ def get_pg_conn(host, port, dbname, user, password):
 def get_fb_conn(fdb_path, user, password):
     try:
         from firebird.driver import connect as fb_connect
+        from firebird.driver import driver_config
     except ImportError:
         logger.error("firebird-driver not installed. Run: pip install firebird-driver")
         sys.exit(1)
+
+    if os.name == "nt":
+        # Ensure we have an absolute path to the project root
+        project_root = Path(__file__).resolve().parent.parent.parent
+        fb_dll = project_root / "Firebird" / "fbclient.dll"
+        if fb_dll.exists():
+            logger.info("  Found Firebird client DLL at %s", fb_dll)
+            driver_config.fb_client_library.value = str(fb_dll)
+        else:
+            logger.warning("  Firebird client DLL not found at %s. Falling back to default search.", fb_dll)
 
     return fb_connect(str(fdb_path), user=user, password=password, charset="UTF8")
 
@@ -104,7 +117,13 @@ def get_pg_columns(pg_cur, table_name):
         "WHERE table_schema = 'public' AND table_name = %s ORDER BY ordinal_position",
         (table_name.lower(),),
     )
-    return [row[0] for row in pg_cur.fetchall()]
+    cols = []
+    for row in pg_cur.fetchall():
+        if hasattr(row, "keys"):
+            cols.append(row["column_name"])
+        else:
+            cols.append(row[0])
+    return cols
 
 
 def table_exists_fb(fb_cur, table_name):
@@ -126,151 +145,164 @@ def table_exists_pg(pg_cur, table_name):
 def migrate_table(fb_conn, pg_conn, table_name, batch_size=500, dry_run=False):
     """Migrate a single table from Firebird to PostgreSQL."""
     fb_cur = fb_conn.cursor()
-    pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    pg_cur = pg_conn.cursor()
 
-    if not table_exists_fb(fb_cur, table_name):
-        logger.info("  Firebird table %s does not exist — skipping", table_name)
-        return 0
+    try:
+        if not table_exists_fb(fb_cur, table_name):
+            logger.info("  Firebird table %s does not exist — skipping", table_name)
+            return 0
 
-    if not table_exists_pg(pg_cur, table_name):
-        logger.warning("  PostgreSQL table %s does not exist — skipping (run init_db first)", table_name)
-        return 0
+        # Get column intersection (only migrate columns that exist in both)
+        fb_cols = get_fb_columns(fb_cur, table_name)
+        pg_cols = get_pg_columns(pg_cur, table_name)
+        pg_cols_set = set(pg_cols)
 
-    # Get column intersection (only migrate columns that exist in both)
-    fb_cols = get_fb_columns(fb_cur, table_name)
-    pg_cols = get_pg_columns(pg_cur, table_name)
-    pg_cols_set = set(pg_cols)
+        # Columns to migrate: present in Firebird AND PostgreSQL
+        common_cols = [c for c in fb_cols if c in pg_cols_set]
+        if not common_cols:
+            logger.warning("  No common columns for %s — skipping", table_name)
+            return 0
 
-    # Columns to migrate: present in Firebird AND PostgreSQL
-    common_cols = [c for c in fb_cols if c in pg_cols_set]
-    if not common_cols:
-        logger.warning("  No common columns for %s — skipping", table_name)
-        return 0
+        # Check current PG row count
+        pg_cur.execute(f"SELECT COUNT(*) FROM {table_name}")
+        existing_count = pg_cur.fetchone()[0]
+        if existing_count > 0:
+            logger.info("  PostgreSQL %s already has %d rows — skipping (pass --clear-target to clear before migration)", table_name, existing_count)
+            return 0
 
-    # Check current PG row count
-    pg_cur.execute(f"SELECT COUNT(*) FROM {table_name}")
-    existing_count = pg_cur.fetchone()[0]
-    if existing_count > 0:
-        logger.info("  PostgreSQL %s already has %d rows — skipping (pass --clear-target to clear before migration)", table_name, existing_count)
-        return 0
+        # Fetch all rows from Firebird
+        fb_select_cols = ", ".join(common_cols)
+        fb_cur.execute(f"SELECT {fb_select_cols} FROM {table_name}")
 
-    # Fetch all rows from Firebird
-    fb_select_cols = ", ".join(common_cols)
-    fb_cur.execute(f"SELECT {fb_select_cols} FROM {table_name}")
+        is_embedding_table = table_name == "images"
+        embedding_col_idx = common_cols.index("image_embedding") if (is_embedding_table and "image_embedding" in common_cols) else -1
 
-    is_embedding_table = table_name == "images"
-    embedding_col_idx = common_cols.index("image_embedding") if (is_embedding_table and "image_embedding" in common_cols) else -1
+        total_inserted = 0
+        batch = []
 
-    total_inserted = 0
-    batch = []
+        def flush_batch(batch):
+            if not batch or dry_run:
+                return
+            placeholders = ", ".join(["%s"] * len(common_cols))
+            insert_sql = (
+                f"INSERT INTO {table_name} ({', '.join(common_cols)}) "
+                f"VALUES ({placeholders}) ON CONFLICT DO NOTHING"
+            )
+            pg_cur.executemany(insert_sql, batch)
+            pg_conn.commit()
 
-    def flush_batch(batch):
-        if not batch or dry_run:
-            return
-        placeholders = ", ".join(["%s"] * len(common_cols))
-        insert_sql = (
-            f"INSERT INTO {table_name} ({', '.join(common_cols)}) "
-            f"VALUES ({placeholders}) ON CONFLICT DO NOTHING"
-        )
-        pg_cur.executemany(insert_sql, batch)
-        pg_conn.commit()
+        while True:
+            rows = fb_cur.fetchmany(batch_size)
+            if not rows:
+                break
 
-    while True:
-        rows = fb_cur.fetchmany(batch_size)
-        if not rows:
-            break
+            for row in rows:
+                converted = list(row)
 
-        for row in rows:
-            converted = list(row)
+                # Convert embedding: Firebird BLOB bytes → numpy array for pgvector
+                if embedding_col_idx >= 0:
+                    emb = converted[embedding_col_idx]
+                    if emb is not None:
+                        try:
+                            emb_bytes = bytes(emb)
+                            converted[embedding_col_idx] = np.frombuffer(emb_bytes, dtype=np.float32)
+                        except Exception as e:
+                            logger.warning("    Could not convert embedding for row: %s", e)
+                            converted[embedding_col_idx] = None
 
-            # Convert embedding: Firebird BLOB bytes → numpy array for pgvector
-            if embedding_col_idx >= 0:
-                emb = converted[embedding_col_idx]
-                if emb is not None:
-                    try:
-                        emb_bytes = bytes(emb)
-                        converted[embedding_col_idx] = np.frombuffer(emb_bytes, dtype=np.float32)
-                    except Exception as e:
-                        logger.warning("    Could not convert embedding for row: %s", e)
-                        converted[embedding_col_idx] = None
+                # Convert Firebird BLOBs and Booleans
+                for i, val in enumerate(converted):
+                    if isinstance(val, bool):
+                        # Fix for smallint columns in Postgres rejecting bools
+                        converted[i] = 1 if val else 0
+                    elif hasattr(val, "read"):
+                        try:
+                            converted[i] = val.read()
+                        except Exception:
+                            converted[i] = None
 
-            # Convert Firebird BLOBs to strings for text columns
-            for i, val in enumerate(converted):
-                if hasattr(val, "read"):
-                    try:
-                        converted[i] = val.read()
-                    except Exception:
-                        converted[i] = None
+                batch.append(tuple(converted))
 
-            batch.append(tuple(converted))
+            flush_batch(batch)
+            total_inserted += len(batch)
+            batch = []
+            logger.info("  %s: %d rows migrated...", table_name, total_inserted)
 
+        # Flush any remaining
         flush_batch(batch)
         total_inserted += len(batch)
-        batch = []
-        logger.info("  %s: %d rows migrated...", table_name, total_inserted)
 
-    # Flush any remaining
-    flush_batch(batch)
-    total_inserted += len(batch)
-
-    return total_inserted
+        return total_inserted
+    finally:
+        fb_cur.close()
+        pg_cur.close()
 
 
 def reset_sequences(pg_conn):
     """Reset PostgreSQL SERIAL sequences to MAX(id) + 1 for each table."""
     pg_cur = pg_conn.cursor()
-    tables_with_id = [
-        "jobs", "folders", "stacks", "images",
-        "job_phases", "job_steps",
-        "culling_sessions", "culling_picks",
-        "pipeline_phases", "image_phase_status",
-    ]
-    for table in tables_with_id:
-        try:
-            pg_cur.execute(f"SELECT MAX(id) FROM {table}")
-            row = pg_cur.fetchone()
-            max_id = row[0] if row and row[0] else 0
-            pg_cur.execute(
-                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), %s, true)",
-                (max(max_id, 1),),
-            )
-            logger.info("  Reset sequence for %s to %d", table, max_id)
-        except Exception as e:
-            logger.warning("  Could not reset sequence for %s: %s", table, e)
-    pg_conn.commit()
+    try:
+        tables_with_id = [
+            "jobs", "folders", "stacks", "images",
+            "job_phases", "job_steps",
+            "culling_sessions", "culling_picks",
+            "pipeline_phases", "image_phase_status",
+            "keywords_dim",
+        ]
+        for table in tables_with_id:
+            try:
+                pg_cur.execute(f"SELECT MAX(id) FROM {table}")
+                row = pg_cur.fetchone()
+                max_id = row[0] if row and row[0] else 0
+                pg_cur.execute(
+                    f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), %s, true)",
+                    (max(max_id, 1),),
+                )
+                logger.info("  Reset sequence for %s to %d", table, max_id)
+            except Exception as e:
+                logger.warning("  Could not reset sequence for %s: %s", table, e)
+        pg_conn.commit()
+    finally:
+        pg_cur.close()
 
 
 def clear_target_tables(pg_conn, tables):
     """Truncate all target tables in one statement, resetting sequences."""
     pg_cur = pg_conn.cursor()
-    table_list = ", ".join(tables)
-    logger.info("Truncating target tables: %s", table_list)
-    pg_cur.execute(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE")
-    pg_conn.commit()
+    try:
+        table_list = ", ".join(tables)
+        logger.info("Truncating target tables: %s", table_list)
+        pg_cur.execute(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE")
+        pg_conn.commit()
+    finally:
+        pg_cur.close()
 
 
 def validate_migration(fb_conn, pg_conn, tables):
-    """Compare row counts between Firebird and PostgreSQL."""
+    """Compare row counts between Firebird and PostgreSQL for all tables."""
     fb_cur = fb_conn.cursor()
     pg_cur = pg_conn.cursor()
-    logger.info("\nValidation:")
-    all_ok = True
-    for table in tables:
-        if not table_exists_fb(fb_cur, table):
-            continue
-        fb_cur.execute(f"SELECT COUNT(*) FROM {table}")
-        fb_count = fb_cur.fetchone()[0]
-        try:
+    try:
+        all_match = True
+        logger.info("Validating row counts:")
+        for table in tables:
+            if not table_exists_fb(fb_cur, table):
+                continue
+            fb_cur.execute(f"SELECT COUNT(*) FROM {table}")
+            fb_count = fb_cur.fetchone()[0]
+
             pg_cur.execute(f"SELECT COUNT(*) FROM {table}")
             pg_count = pg_cur.fetchone()[0]
-        except Exception:
-            pg_count = "ERROR"
 
-        status = "OK" if fb_count == pg_count else "MISMATCH"
-        if status == "MISMATCH":
-            all_ok = False
-        logger.info("  %-30s FB=%6d  PG=%6s  %s", table, fb_count, pg_count, status)
-    return all_ok
+            status = "MATCH" if fb_count == pg_count else "MISMATCH"
+            if fb_count != pg_count:
+                all_match = False
+            logger.info("  %s: FB=%d, PG=%d [%s]", table.ljust(20), fb_count, pg_count, status)
+
+        return all_match
+    finally:
+        fb_cur.close()
+        pg_cur.close()
 
 
 def _resolve_postgres_config(db_cfg, env, args):
@@ -395,29 +427,50 @@ def main():
     else:
         logger.info("--clear-target not provided: existing target data will be preserved; non-empty tables are skipped")
 
-    # Migrate each table
-    total = 0
-    for table in tables:
-        logger.info("Migrating table: %s", table)
-        count = migrate_table(fb_conn, pg_conn, table, args.batch_size, args.dry_run)
-        logger.info("  %s: %d rows migrated", table, count)
-        total += count
+    role_cur = pg_conn.cursor()
+    try:
+        logger.info("Disabling foreign key checks (setting session_replication_role = replica)...")
+        role_cur.execute("SET session_replication_role = 'replica'")
+        role_cur.close()
 
-    logger.info("Total rows migrated: %d", total)
+        # Migrate each table
+        total = 0
+        try:
+            for table in tables:
+                logger.info("Migrating table: %s", table)
+                count = migrate_table(fb_conn, pg_conn, table, args.batch_size, args.dry_run)
+                logger.info("  %s: %d rows migrated", table, count)
+                total += count
+        except Exception as e:
+            logger.error("Migration loop failed: %s", e)
+            pg_conn.rollback() # Crucial: clears transaction error so finally can run SQL
+            raise
 
-    # Reset sequences
-    logger.info("Resetting PostgreSQL sequences...")
-    reset_sequences(pg_conn)
+        logger.info("Total rows migrated: %d", total)
 
-    # Validate
-    all_ok = validate_migration(fb_conn, pg_conn, validation_tables)
-    if all_ok:
-        logger.info("\nMigration complete — all row counts match!")
-    else:
-        logger.warning("\nMigration complete with mismatches — review above")
+        # Reset sequences
+        logger.info("Resetting PostgreSQL sequences...")
+        reset_sequences(pg_conn)
 
-    fb_conn.close()
-    pg_conn.close()
+        # Validate
+        all_ok = validate_migration(fb_conn, pg_conn, validation_tables)
+        if all_ok:
+            logger.info("\nMigration complete — all row counts match!")
+        else:
+            logger.warning("\nMigration complete with mismatches — review above")
+
+    finally:
+        logger.info("Restoring foreign key checks (setting session_replication_role = origin)...")
+        # Use a fresh cursor or ensure previous one is usable
+        restore_cur = pg_conn.cursor()
+        try:
+            restore_cur.execute("SET session_replication_role = 'origin'")
+            pg_conn.commit()
+        finally:
+            restore_cur.close()
+
+        fb_conn.close()
+        pg_conn.close()
 
 
 if __name__ == "__main__":

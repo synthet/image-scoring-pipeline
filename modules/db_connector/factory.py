@@ -1,10 +1,10 @@
 """
 DbConnector factory — returns the appropriate IConnector implementation.
 
-Reads ``database.engine`` from config.json:
-    ``"firebird"``  (default) → FirebirdConnector  (direct Firebird TCP)
-    ``"postgres"``             → PostgresConnector  (psycopg2 pool)
-    ``"api"``                  → ApiConnector       (HTTP proxy)
+Reads ``database.engine`` from config.json (see :func:`modules.config.get_database_engine`):
+    ``"postgres"``  (default when key omitted, except under pytest) → PostgresConnector
+    ``"firebird"``  → FirebirdConnector  (direct Firebird TCP)
+    ``"api"``       → ApiConnector       (HTTP proxy)
 
 Config keys used:
     database.engine       — "firebird" | "postgres" | "api"
@@ -47,10 +47,9 @@ def get_connector():
 
         try:
             from modules import config
-            db_cfg = config.get_config_section("database") or {}
-            engine = str(db_cfg.get("engine", "firebird") or "firebird").strip().lower()
+            engine = config.get_database_engine()
         except Exception:
-            engine = "firebird"
+            engine = "postgres"
 
         if engine == "postgres":
             from modules.db_connector.postgres import PostgresConnector
@@ -70,14 +69,17 @@ def get_connector():
             logger.info("DbConnector: using ApiConnector → %s", api_url)
             _instance = ApiConnector(base_url=api_url, write_token=write_token)
 
-        else:
-            if engine != "firebird":
-                logger.warning(
-                    "Unknown database.engine=%r; falling back to 'firebird'", engine
-                )
+        elif engine == "firebird":
             from modules.db_connector.firebird import FirebirdConnector
             logger.info("DbConnector: using FirebirdConnector")
             _instance = FirebirdConnector()
+
+        else:
+            logger.warning(
+                "Unknown database.engine=%r; falling back to 'postgres'", engine
+            )
+            from modules.db_connector.postgres import PostgresConnector
+            _instance = PostgresConnector()
 
         return _instance
 
