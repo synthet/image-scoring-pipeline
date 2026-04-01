@@ -50,7 +50,7 @@ class TestIConnectorProtocol:
         from modules.db_connector.protocol import IConnector
 
         class _Incomplete:
-            type = 'firebird'
+            type = 'postgres'
             def query(self, sql, params=None): return []
             # missing all other methods
 
@@ -77,23 +77,24 @@ class TestFactory:
         cfg = {"engine": engine, "api_url": "http://localhost:7860"}
         return patch("modules.config.get_config_section", return_value=cfg)
 
-    def test_default_returns_firebird(self):
+    def test_default_returns_postgres(self):
         from modules.db_connector import get_connector, reset_connector
-        from modules.db_connector.firebird import FirebirdConnector
+        from modules.db_connector.postgres import PostgresConnector
 
         with patch("modules.config.get_config_section", return_value={}):
             conn = get_connector()
 
-        assert isinstance(conn, FirebirdConnector)
+        assert isinstance(conn, PostgresConnector)
 
-    def test_engine_firebird(self):
+    def test_engine_firebird_maps_to_postgres(self):
+        """Legacy 'firebird' engine config should map to PostgresConnector."""
         from modules.db_connector import get_connector
-        from modules.db_connector.firebird import FirebirdConnector
+        from modules.db_connector.postgres import PostgresConnector
 
         with self._patch_engine("firebird"):
             conn = get_connector()
 
-        assert isinstance(conn, FirebirdConnector)
+        assert isinstance(conn, PostgresConnector)
 
     def test_engine_postgres(self):
         from modules.db_connector import get_connector
@@ -125,9 +126,9 @@ class TestFactory:
 
     def test_singleton(self):
         from modules.db_connector import get_connector
-        from modules.db_connector.firebird import FirebirdConnector
+        from modules.db_connector.postgres import PostgresConnector
 
-        with self._patch_engine("firebird"):
+        with self._patch_engine("postgres"):
             a = get_connector()
             b = get_connector()
 
@@ -135,19 +136,19 @@ class TestFactory:
 
     def test_reset_clears_singleton(self):
         from modules.db_connector import get_connector, reset_connector
-        from modules.db_connector.firebird import FirebirdConnector
         from modules.db_connector.postgres import PostgresConnector
+        from modules.db_connector.api import ApiConnector
 
-        with self._patch_engine("firebird"):
+        with self._patch_engine("postgres"):
             a = get_connector()
 
         reset_connector()
 
-        with self._patch_engine("postgres"):
+        with self._patch_engine("api"):
             b = get_connector()
 
-        assert isinstance(a, FirebirdConnector)
-        assert isinstance(b, PostgresConnector)
+        assert isinstance(a, PostgresConnector)
+        assert isinstance(b, ApiConnector)
 
     def test_thread_safety(self):
         """Multiple threads calling get_connector() must all get the same instance."""
@@ -162,7 +163,7 @@ class TestFactory:
             except Exception as e:
                 errors.append(e)
 
-        with self._patch_engine("firebird"):
+        with self._patch_engine("postgres"):
             threads = [threading.Thread(target=_worker) for _ in range(10)]
             for t in threads:
                 t.start()
@@ -175,179 +176,9 @@ class TestFactory:
 
 
 # ---------------------------------------------------------------------------
-# FirebirdConnector (mocked)
+# FirebirdConnector tests removed — Firebird decommissioned (2026-03).
+# See tests/archive_firebird/ for the original tests.
 # ---------------------------------------------------------------------------
-
-class _FakeRow:
-    """Minimal RowWrapper-like stub: dict(row) yields the given data."""
-    def __init__(self, data: dict) -> None:
-        self._data = data
-    def __iter__(self):
-        return iter(self._data.items())
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return list(self._data.values())[key]
-        return self._data[key]
-
-
-class TestFirebirdConnector:
-    """FirebirdConnector with a mocked db.get_db() connection."""
-
-    def _make_row(self, data: dict) -> _FakeRow:
-        return _FakeRow(data)
-
-    def _mock_conn(self):
-        conn = MagicMock()
-        return conn
-
-    def test_query_returns_list_of_dicts(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        row = self._make_row({"id": 1, "name": "test"})
-        cursor = MagicMock()
-        cursor.fetchall.return_value = [row]
-        cursor.description = [("id",), ("name",)]
-
-        conn = self._mock_conn()
-        conn.cursor.return_value = cursor
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "_get_conn", return_value=conn):
-            result = fc.query("SELECT * FROM images WHERE id = ?", (1,))
-
-        assert result == [{"id": 1, "name": "test"}]
-        cursor.execute.assert_called_once_with("SELECT * FROM images WHERE id = ?", (1,))
-        conn.close.assert_called_once()
-
-    def test_query_one_returns_first_row(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        row = self._make_row({"id": 42})
-        cursor = MagicMock()
-        cursor.fetchone.return_value = row
-
-        conn = self._mock_conn()
-        conn.cursor.return_value = cursor
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "_get_conn", return_value=conn):
-            result = fc.query_one("SELECT * FROM images WHERE id = ?", (42,))
-
-        assert result == {"id": 42}
-
-    def test_query_one_returns_none_when_empty(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        cursor = MagicMock()
-        cursor.fetchone.return_value = None
-
-        conn = self._mock_conn()
-        conn.cursor.return_value = cursor
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "_get_conn", return_value=conn):
-            result = fc.query_one("SELECT * FROM images WHERE id = ?", (999,))
-
-        assert result is None
-
-    def test_execute_commits_and_returns_rowcount(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        cursor = MagicMock()
-        cursor.affected_rows = 3
-
-        conn = self._mock_conn()
-        conn.cursor.return_value = cursor
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "_get_conn", return_value=conn):
-            count = fc.execute("UPDATE images SET rating = ? WHERE id = ?", (5, 1))
-
-        assert count == 3
-        conn.commit.assert_called_once()
-        conn.close.assert_called_once()
-
-    def test_execute_rollbacks_on_exception(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        cursor = MagicMock()
-        cursor.execute.side_effect = RuntimeError("DB error")
-
-        conn = self._mock_conn()
-        conn.cursor.return_value = cursor
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "_get_conn", return_value=conn):
-            with pytest.raises(RuntimeError, match="DB error"):
-                fc.execute("UPDATE images SET rating = ? WHERE id = ?", (5, 1))
-
-        conn.rollback.assert_called_once()
-        conn.close.assert_called_once()
-
-    def test_execute_returning_returns_rows(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        row = self._make_row({"id": 10})
-        cursor = MagicMock()
-        cursor.description = [("id",)]
-        cursor.fetchall.return_value = [row]
-
-        conn = self._mock_conn()
-        conn.cursor.return_value = cursor
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "_get_conn", return_value=conn):
-            result = fc.execute_returning(
-                "INSERT INTO jobs (status) VALUES (?) RETURNING id", ("queued",)
-            )
-
-        assert result == [{"id": 10}]
-        conn.commit.assert_called_once()
-
-    def test_run_transaction_commits_on_success(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        cursor = MagicMock()
-        cursor.fetchall.return_value = []
-        cursor.description = None
-
-        conn = self._mock_conn()
-        conn.cursor.return_value = cursor
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "_get_conn", return_value=conn):
-            result = fc.run_transaction(lambda tx: "done")
-
-        assert result == "done"
-        conn.commit.assert_called_once()
-        conn.rollback.assert_not_called()
-
-    def test_run_transaction_rollbacks_on_exception(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        conn = self._mock_conn()
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "_get_conn", return_value=conn):
-            with pytest.raises(ValueError, match="oops"):
-                fc.run_transaction(lambda tx: (_ for _ in ()).throw(ValueError("oops")))
-
-        conn.rollback.assert_called_once()
-        conn.commit.assert_not_called()
-
-    def test_check_connection_returns_true_on_success(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "query", return_value=[{"1": 1}]):
-            assert fc.check_connection() is True
-
-    def test_check_connection_returns_false_on_error(self):
-        from modules.db_connector.firebird import FirebirdConnector
-
-        fc = FirebirdConnector()
-        with patch.object(fc, "query", side_effect=Exception("no db")):
-            assert fc.check_connection() is False
 
 
 # ---------------------------------------------------------------------------

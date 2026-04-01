@@ -1,5 +1,6 @@
 @echo off
 REM Populate missing embeddings in DB. Runs in WSL with same env as WebUI.
+REM Docs: docs/technical/EMBEDDINGS.md  |  Legacy alias: run_populate_missing_embeddings.bat
 REM Get project root (parent of scripts)
 for %%I in ("%~dp0..\..") do set "PROJECT_ROOT=%%~fI"
 REM Convert to WSL path

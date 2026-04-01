@@ -2,12 +2,12 @@
 DbConnector factory — returns the appropriate IConnector implementation.
 
 Reads ``database.engine`` from config.json (see :func:`modules.config.get_database_engine`):
-    ``"postgres"``  (default when key omitted, except under pytest) → PostgresConnector
-    ``"firebird"``  → FirebirdConnector  (direct Firebird TCP)
+    ``"postgres"``  (default) → PostgresConnector
     ``"api"``       → ApiConnector       (HTTP proxy)
+    ``"firebird"``  → DEPRECATED, maps to PostgresConnector with a warning
 
 Config keys used:
-    database.engine       — "firebird" | "postgres" | "api"
+    database.engine       — "postgres" | "api" (legacy "firebird" accepted)
     database.api_url      — base URL for ApiConnector (default: http://localhost:7860)
     database.query_token  — sent as X-DB-Write-Token on ApiConnector mutating requests
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Type alias (avoid importing concrete classes at module level to allow
 # lazy imports inside the factory function)
-_ConnectorType = Union["FirebirdConnector", "PostgresConnector", "ApiConnector"]  # type: ignore[name-defined]
+_ConnectorType = Union["PostgresConnector", "ApiConnector"]  # type: ignore[name-defined]
 
 _instance: _ConnectorType | None = None
 _lock = threading.Lock()
@@ -70,9 +70,14 @@ def get_connector():
             _instance = ApiConnector(base_url=api_url, write_token=write_token)
 
         elif engine == "firebird":
-            from modules.db_connector.firebird import FirebirdConnector
-            logger.info("DbConnector: using FirebirdConnector")
-            _instance = FirebirdConnector()
+            # Legacy: Firebird has been decommissioned (2026-03).
+            # Map to PostgresConnector for backward compatibility with old configs.
+            logger.warning(
+                "database.engine='firebird' is deprecated; mapping to PostgresConnector. "
+                "Update config.json to set engine='postgres'."
+            )
+            from modules.db_connector.postgres import PostgresConnector
+            _instance = PostgresConnector()
 
         else:
             logger.warning(

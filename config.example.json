@@ -39,10 +39,6 @@
   "culling_input_path": "/path/to/your/photos",
   "database": {
     "engine": "postgres",
-    "filename": "scoring_history.fdb",
-    "user": "sysdba",
-    "password": "masterkey",
-    "dual_write": false,
     "postgres": {
       "host": "127.0.0.1",
       "port": 5432,

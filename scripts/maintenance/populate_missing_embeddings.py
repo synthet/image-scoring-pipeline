@@ -6,8 +6,12 @@ Finds images with NULL image_embedding, computes MobileNetV2 embeddings via
 ClusteringEngine, and writes them to the DB. Used by similar search, tag
 propagation, and diversity/MMR.
 
-Must be run in WSL with ~/.venvs/tf (same env as the webapp). Use
-scripts/maintenance/run_populate_embeddings.bat for one-click execution.
+Execution:
+  - WSL: source ~/.venvs/tf and run this file from the repo root (see project rules).
+  - Windows: canonical launcher is scripts/maintenance/run_populate_embeddings.bat
+    (passes args through). Legacy alias: run_populate_missing_embeddings.bat.
+
+See docs/technical/EMBEDDINGS.md for model semantics, schema notes, and multi-vector guidance.
 """
 # Suppress TF logging before any TF import
 import os as _os
@@ -77,11 +81,31 @@ def main():
         action="store_true",
         help="Report count and paths only, do not write to DB",
     )
+    parser.add_argument(
+        "--resume-after-id",
+        type=int,
+        default=None,
+        metavar="ID",
+        help="Only include rows with id > ID (stable resume after interruption; ordered by id)",
+    )
     args = parser.parse_args()
 
     db.init_db()
 
-    rows = db.get_images_missing_embeddings(folder_path=args.folder, limit=args.limit)
+    from modules.clustering import CLUSTER_VERSION
+    from modules.similar_search import EMBEDDING_DIM
+
+    logger.info(
+        "Embedding backfill: MobileNetV2 (ImageNet GAP), dim=%s, CLUSTER_VERSION=%s",
+        EMBEDDING_DIM,
+        CLUSTER_VERSION,
+    )
+
+    rows = db.get_images_missing_embeddings(
+        folder_path=args.folder,
+        limit=args.limit,
+        min_id_exclusive=args.resume_after_id,
+    )
     total = len(rows)
     logger.info("Found %d images with missing embeddings.", total)
 

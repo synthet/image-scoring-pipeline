@@ -63,7 +63,7 @@ def _search_similar_images_numpy(example_image_id, query_vec, limit, folder_path
     candidates = db.get_embeddings_for_search(folder_path=folder_path, limit=None)
     if not candidates:
         return {
-            "error": "No embeddings available for similarity search; run clustering to populate embeddings.",
+            "error": "No embeddings available for similarity search; run culling/clustering or scripts/maintenance/populate_missing_embeddings.py (see docs/technical/EMBEDDINGS.md).",
         }
     q = query_vec.astype(np.float32, copy=False)
     q = _normalize(q.reshape(1, -1))[0]

@@ -1,7 +1,7 @@
 # Refined Cross-Repo Migration Plan: Firebird -> PostgreSQL + pgvector
 
-Date: 2026-03-08  
-Status: Draft (Refined)  
+Date: 2026-03-08 (updated 2026-04-01)  
+Status: **Decommissioning Complete** — Firebird infrastructure removed; system fully PostgreSQL-native.  
 Scope: image-scoring + electron-image-scoring coordinated migration
 
 ## Summary
@@ -103,7 +103,7 @@ Use the same key names as `modules/config.py` validation and `modules/db_postgre
 - Electron IPC workflows pass after provider switch.
 - Only then allow Firebird retirement.
 
-## Current Implementation Status (2026-03-26)
+## Current Implementation Status (2026-03-31)
 
 ### Phase 0 — Schema baseline ✅
 - Migration plan: this document
@@ -116,15 +116,13 @@ Use the same key names as `modules/config.py` validation and `modules/db_postgre
 - `scripts/python/migrate_firebird_to_postgres.py` — chunked, resumable bulk migration with `--dry-run` and `--batch-size` flags
 - `scripts/powershell/Setup-PostgresDocker.ps1` — helper to start the container
 
-### Phase 2 — Dual-Write ⚠️ (infrastructure complete; not yet activated)
+### Phase 2 — Dual-Write ✅ (superseded)
 
-The dual-write plumbing lives in `modules/db.py`:
-- `FirebirdCursorProxy` calls `_enqueue_dual_write()` on every `execute` / `executemany`
-- A background worker thread (`_dual_write_worker`) drains the queue into Postgres via `db_postgres.PGConnectionManager`
-- `init_dual_write()` starts the worker when `engine="firebird"` AND `dual_write=true`
-- `get_dual_write_stats()` returns `{queued, success, fail, queue_depth, enabled}` for monitoring
+The dual-write plumbing in `modules/db.py` (`FirebirdCursorProxy`, `_dual_write_worker`,
+`init_dual_write()`, `get_dual_write_stats()`) is retained for rollback scenarios but is
+**no longer active** — Phase 3 runs Postgres as the sole primary engine.
 
-> **Known limitation:** worker failures are logged and discarded — no retry queue, no dead-letter. Silent data divergence is possible under Postgres errors.
+> **Status:** Infrastructure complete but superseded by Phase 3 cutover. Dual-write is auto-disabled when `engine=postgres`.
 
 **To activate dual-write** (set `dual_write: true` in `config.json` and start Postgres Docker):
 
@@ -185,9 +183,19 @@ See [`docs/architecture/DB_CONNECTOR.md`](../../architecture/DB_CONNECTOR.md) fo
 | `"postgres"` | `PostgresConnector` | wraps psycopg2 pool; auto-translates via `_translate_fb_to_pg()` |
 | `"api"` | `ApiConnector` | HTTP proxy to `/api/db/query`; for remote workers |
 
-Five functions were migrated to the connector as proof-of-concept: `get_image_by_hash`,
-`get_image_details`, `update_image_field`, `create_job`, `enqueue_job`.
-Full migration of remaining functions in `db.py` is a follow-on task.
+~128 public functions in `db.py` now use `get_connector()` for all database access.
+The remaining 8 functions use legacy `get_db()` / `connection()` paths:
+
+| Function | Reason for legacy path |
+|---|---|
+| `execute_readonly_sql_for_api` | SQL bridge — receives raw SQL from Electron IPC; engine-aware by design |
+| `execute_write_sql_for_api` | SQL bridge — same |
+| `validate_readonly_sql_for_api` | Validation helper — no DB access |
+| `validate_write_sql_for_api` | Validation helper — no DB access |
+| `init_db` | Bootstrap — must be engine-aware |
+| `reset_init_db_state_for_tests` | Test infrastructure |
+| `update_job_status` | Uses `connection()` context manager (routes correctly; connector migration deferred) |
+| `set_image_phase_status` | Uses `connection()` context manager (routes correctly; connector migration deferred) |
 
 #### Read/write routing via `_get_db_engine()` (~60 functions)
 
@@ -248,12 +256,41 @@ Rules implemented in `modules/db.py` (line ~231):
 **BUG 1 — DATEDIFF division operator** fixed in prior commits.
 **BUG 2 — proxy translation** design verified as not a bug.
 
-**Phase 3 is now active:** `engine` is set to `postgres` in `config.json` and integration tests pass successfully.
+**Phase 3 is now active:** `engine` is set to `postgres` in `config.json`.
+All `_get_db_engine()` routing branches have been eliminated — no function in `db.py` directly
+checks engine type anymore (except the 2 SQL bridge functions that receive raw Firebird SQL
+from Electron clients and translate on the fly).
 
-### Phase 4 — Electron Alignment ❌ (not started)
+### Phase 4 — Electron Alignment ✅ (Complete)
 
-Requires Phase 3 cutover to be stable. Then migrate `electron/db.ts` from `node-firebird`
-to a Postgres client (e.g. `pg` or `postgres`).
+Completed 2026-03-30:
+- `electron/db/provider.ts` provides a connector abstraction (`PostgresConnector`, `ApiConnector`)
+- `node-firebird` dependency removed; `pg` (node-postgres) is the production driver
+- Legacy `engine: "firebird"` config values automatically map to the Postgres connector
+- All Firebird-specific runtime assumptions removed (port checks, auto-start server, Firebird SQL syntax)
+- Firebird MCP server entry removed from `.cursor/mcp.json`
+
+### Phase 5 — Cleanup & Decommissioning ✅ (Complete)
+
+Completed 2026-04-01:
+- **Binary Cleanup**: Deleted `SCORING_HISTORY.FDB`, `SCORING_HISTORY_TEST.FDB`, and `template.fdb` (~1.4GB disk space reclaimed).
+- **Client Removal**: Deleted bundled `Firebird/` (Windows) and `FirebirdLinux/` client libraries.
+- **Script Archiving**: Moved `migrate_to_firebird.py`, `check_firebird.py`, and `reset_firebird_sequences.py` to `scripts/archive_firebird/`.
+- **Logic Decommissioning**: 
+    - Removed `FirebirdCursorProxy` and dual-write worker/queue from `modules/db.py`.
+    - Removed `FirebirdConnector` implementation; updated factory to map legacy `firebird` engine to `PostgresConnector` with a deprecation warning.
+    - Cleaned `modules/mcp_server.py` of Firebird driver imports and non-standard SQL keywords (e.g., `STARTING WITH`).
+- **Config Cleanup**: Removed legacy Firebird keys from `config.json` and `mcp_config.json`.
+
+---
+
+## Remaining Debt
+
+### SQL Translation Layer
+The `_translate_fb_to_pg()` function in `modules/db.py` remains active. It allows the PostgreSQL-native system to support legacy Firebird-dialect SQL while running on PostgreSQL. 
+- **Risk**: Low (Stable and tested).
+- **Benefit**: Maintains compatibility with Electron IPC calls without requiring a massive coordinated SQL rewrite.
+- **Future**: Should be removed once all ~60 DB-interacting functions are audited and converted to native PostgreSQL syntax (`%s` placeholders, standard SQL functions).
 
 ---
 

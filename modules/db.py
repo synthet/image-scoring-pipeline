@@ -106,43 +106,7 @@ class RowWrapper:
         return d
 
 
-class FirebirdCursorProxy:
-    """Proxies a Firebird cursor to provide sqlite3-compatible fetch methods and dual-write."""
-    def __init__(self, fb_cur):
-        self._cur = fb_cur
-    
-    def execute(self, query, params=None):
-        query = self._translate_query(query)
-        _enqueue_dual_write(query, params, executemany=False)
-        if params:
-            return self._cur.execute(query, params)
-        return self._cur.execute(query)
-    
-    def executemany(self, query, params):
-        query = self._translate_query(query)
-        _enqueue_dual_write(query, params, executemany=True)
-        return self._cur.executemany(query, params)
-
-    def fetchone(self):
-        row = self._cur.fetchone()
-        if row is None: return None
-        col_names = [d[0].lower() for d in self._cur.description]
-        return RowWrapper(col_names, row)
-
-    def fetchall(self):
-        rows = self._cur.fetchall()
-        if not rows: return []
-        col_names = [d[0].lower() for d in self._cur.description]
-        return [RowWrapper(col_names, r) for r in rows]
-        
-    def __getattr__(self, name):
-        return getattr(self._cur, name)
-
-    def _translate_query(self, query: str):
-        # No-op for Firebird — queries are native Firebird SQL.
-        # Full translation for PostgreSQL happens in _translate_fb_to_pg()
-        # which the dual-write worker calls on dequeue.
-        return query
+# NOTE: FirebirdCursorProxy removed — Firebird has been decommissioned (2026-03).
 
 
 class PostgresCursorProxy:
@@ -190,11 +154,9 @@ class PostgresCursorProxy:
         return getattr(self._cur, name)
 
 
-# --- Dual Write Queue ---
-_DUAL_WRITE_QUEUE = queue.Queue()
-_DUAL_WRITE_ENABLED = False  # Updated during module load
-_DUAL_WRITE_THREAD = None
-_DUAL_WRITE_STATS = {"queued": 0, "success": 0, "fail": 0}
+# NOTE: Dual-write infrastructure removed — Firebird has been decommissioned (2026-03).
+# The _translate_fb_to_pg() function below is still used by PostgresCursorProxy and
+# the PostgresConnector to translate legacy Firebird-dialect SQL to PostgreSQL.
 
 # ---------------------------------------------------------------------------
 # Firebird → PostgreSQL SQL translation helpers
@@ -354,10 +316,9 @@ def execute_readonly_sql_for_api(
     *,
     max_rows: int = 5000,
 ) -> list[dict]:
-    """Run a validated read-only query for the Electron HTTP DB bridge (Firebird ``?`` params).
+    """Run a validated read-only query for the Electron HTTP DB bridge (legacy ``?`` params).
 
-    Uses the active engine (``_get_db_engine()``). For PostgreSQL, applies
-    ``_translate_fb_to_pg`` so clients can send the same SQL as for Firebird.
+    Applies ``_translate_fb_to_pg`` so clients can send legacy-dialect SQL.
     """
     err = validate_readonly_sql_for_api(sql)
     if err:
@@ -431,10 +392,10 @@ def validate_write_sql_for_api(query: str) -> str | None:
 
 
 def execute_write_sql_for_api(sql: str, params: list | None = None) -> list[dict]:
-    """Run INSERT/UPDATE/DELETE for the Electron HTTP DB bridge (Firebird ``?`` params).
+    """Run INSERT/UPDATE/DELETE for the Electron HTTP DB bridge (legacy ``?`` params).
 
     Commits on success. Returns result rows when the statement produces a cursor description
-    (e.g. INSERT ... RETURNING, Firebird RETURNING), else an empty list.
+    (e.g. INSERT ... RETURNING), else an empty list.
     """
     err = validate_write_sql_for_api(sql)
     if err:
@@ -491,104 +452,11 @@ def execute_write_sql_for_api(sql: str, params: list | None = None) -> list[dict
             pass
 
 
-def _dual_write_worker():
-    if not db_postgres:
-        return
-    while True:
-        try:
-            item = _DUAL_WRITE_QUEUE.get()
-            if item is None:
-                break
-            query, params, is_many = item
-
-            pg_query = _translate_fb_to_pg(query)
-
-            with db_postgres.PGConnectionManager(commit=True) as pg_conn:
-                with pg_conn.cursor() as cur:
-                    try:
-                        if is_many:
-                            cur.executemany(pg_query, params)
-                        else:
-                            if params:
-                                cur.execute(pg_query, params)
-                            else:
-                                cur.execute(pg_query)
-                        _DUAL_WRITE_STATS["success"] += 1
-                    except Exception as e:
-                        _DUAL_WRITE_STATS["fail"] += 1
-                        logger.warning("Dual-write query failed on Postgres: %s | Query: %s", e, pg_query)
-            _DUAL_WRITE_QUEUE.task_done()
-        except Exception as e:
-            logger.error("Error in dual-write worker loop: %s", e)
-
-
-def _enqueue_dual_write(query: str, params=None, executemany=False):
-    global _DUAL_WRITE_ENABLED
-    if not _DUAL_WRITE_ENABLED:
-        return
-    q_upper = query.lstrip().upper()
-    if q_upper.startswith("INSERT") or q_upper.startswith("UPDATE") or q_upper.startswith("DELETE"):
-        # Skip embedding writes — handled by dedicated code paths with proper
-        # pgvector type conversion (update_image_embedding / update_image_embeddings_batch).
-        if "image_embedding" in query.lower():
-            return
-        _DUAL_WRITE_STATS["queued"] += 1
-        _DUAL_WRITE_QUEUE.put((query, params, executemany))
-
-
 def get_dual_write_stats() -> dict:
-    """Return dual-write queue statistics: queued, success, fail counts and current queue depth."""
-    return {
-        **_DUAL_WRITE_STATS,
-        "queue_depth": _DUAL_WRITE_QUEUE.qsize(),
-        "enabled": _DUAL_WRITE_ENABLED,
-    }
+    """Legacy stub — dual-write has been removed (Firebird decommissioned 2026-03)."""
+    return {"queued": 0, "success": 0, "fail": 0, "queue_depth": 0, "enabled": False}
 
-def init_dual_write():
-    global _DUAL_WRITE_ENABLED, _DUAL_WRITE_THREAD
-    db_cfg = config.get_config_section("database")
-    engine = config.get_database_engine()
-    dual_write_requested = bool(db_cfg.get("dual_write", False))
-    _DUAL_WRITE_ENABLED = (engine == "firebird") and dual_write_requested
-
-    if engine == "postgres" and dual_write_requested:
-        logger.info("database.engine=postgres: dual_write flag ignored (single primary write mode)")
-
-    if _DUAL_WRITE_ENABLED and _DUAL_WRITE_THREAD is None and db_postgres:
-        logger.info("Starting dual-write worker thread for PostgreSQL")
-        _DUAL_WRITE_THREAD = threading.Thread(target=_dual_write_worker, daemon=True, name="DualWriteWorker")
-        _DUAL_WRITE_THREAD.start()
-
-# Initialize the dual write thread on module load
-init_dual_write()
-
-class FirebirdConnectionProxy:
-    """Proxies a Firebird connection to provide sqlite3-compatible interface."""
-    def __init__(self, fb_conn):
-        self._conn = fb_conn
-        self.row_factory = sqlite3.Row # Emulation flag
-    
-    def cursor(self):
-        return FirebirdCursorProxy(self._conn.cursor())
-        
-    def commit(self):
-        try:
-            self._conn.commit()
-        except AttributeError:
-            pass
-        
-    def rollback(self):
-        try:
-            self._conn.rollback()
-        except AttributeError:
-            pass
-        
-    def close(self):
-        if self._conn:
-            self._conn.close()
-        
-    def __getattr__(self, name):
-        return getattr(self._conn, name)
+# NOTE: FirebirdConnectionProxy removed — Firebird has been decommissioned (2026-03).
 
 
 class PostgresConnectionProxy:
@@ -3593,19 +3461,16 @@ def delete_folder_cache_entry(folder_path: str, delete_descendants: bool = True)
     seen = set()
     candidates = [p for p in candidates if not (p in seen or seen.add(p))]
 
-    conn = get_db()
-    c = conn.cursor()
-    try:
+    def _tx(tx):
         # Find starting folder IDs
         start_ids: list[int] = []
         start_paths: list[str] = []
         for cand in candidates:
             try:
-                c.execute("SELECT id, path FROM folders WHERE path = ?", (cand,))
-                row = c.fetchone()
+                row = tx.query_one("SELECT id, path FROM folders WHERE path = ?", (cand,))
                 if row:
-                    start_ids.append(int(row[0]))
-                    start_paths.append(str(row[1]))
+                    start_ids.append(int(row["id"]))
+                    start_paths.append(str(row["path"]))
             except Exception:
                 continue
 
@@ -3628,10 +3493,9 @@ def delete_folder_cache_entry(folder_path: str, delete_descendants: bool = True)
 
             # Collect their paths
             placeholders = ",".join(["?"] * len(batch_ids))
-            c.execute(f"SELECT id, path FROM folders WHERE id IN ({placeholders})", tuple(batch_ids))
-            for r in c.fetchall() or []:
+            for r in tx.query(f"SELECT id, path FROM folders WHERE id IN ({placeholders})", tuple(batch_ids)):
                 try:
-                    _p = str(r[1])
+                    _p = str(r["path"])
                     if _p not in paths_to_delete:
                         paths_to_delete.append(_p)
                 except Exception:
@@ -3641,11 +3505,10 @@ def delete_folder_cache_entry(folder_path: str, delete_descendants: bool = True)
                 continue
 
             # Find children
-            c.execute(f"SELECT id FROM folders WHERE parent_id IN ({placeholders})", tuple(batch_ids))
-            child_rows = c.fetchall() or []
+            child_rows = tx.query(f"SELECT id FROM folders WHERE parent_id IN ({placeholders})", tuple(batch_ids))
             for r in child_rows:
                 try:
-                    cid = int(r[0])
+                    cid = int(r["id"])
                     if cid not in ids_to_delete and cid not in queue:
                         queue.append(cid)
                 except Exception:
@@ -3656,46 +3519,45 @@ def delete_folder_cache_entry(folder_path: str, delete_descendants: bool = True)
 
         # Clear image folder_id references first (avoid dangling references)
         placeholders = ",".join(["?"] * len(ids_to_delete))
-        c.execute(f"UPDATE images SET folder_id = NULL WHERE folder_id IN ({placeholders})", tuple(ids_to_delete))
+        tx.execute(f"UPDATE images SET folder_id = NULL WHERE folder_id IN ({placeholders})", tuple(ids_to_delete))
 
         # Best-effort cleanup for cluster_progress rows
         try:
             if paths_to_delete:
                 cp_ph = ",".join(["?"] * len(paths_to_delete))
-                c.execute(f"DELETE FROM cluster_progress WHERE folder_path IN ({cp_ph})", tuple(paths_to_delete))
+                tx.execute(f"DELETE FROM cluster_progress WHERE folder_path IN ({cp_ph})", tuple(paths_to_delete))
         except Exception:
             pass
 
         # Delete folders (children first to be safe if FK constraints are added later)
         for fid in reversed(ids_to_delete):
-            c.execute("DELETE FROM folders WHERE id = ?", (fid,))
+            tx.execute("DELETE FROM folders WHERE id = ?", (fid,))
 
-        conn.commit()
-        
-        # Broadcast folder deletions
+        return {"ids_deleted": ids_to_delete, "paths_deleted": paths_to_delete}
+
+    try:
+        result = get_connector().run_transaction(_tx)
+        if isinstance(result, dict) and "success" in result:
+            return result  # Early exit (not found)
+
+        ids_deleted = result["ids_deleted"]
+        paths_deleted = result["paths_deleted"]
+
+        # Broadcast folder deletions (outside transaction)
         try:
             from modules.events import event_manager
-            for path in paths_to_delete:
+            for path in paths_deleted:
                 event_manager.broadcast_threadsafe("folder_deleted", {"path": path})
         except Exception: pass
 
         return {
             "success": True,
-            "message": f"Deleted {len(ids_to_delete)} folder cache record(s).",
-            "deleted_folders": len(ids_to_delete),
+            "message": f"Deleted {len(ids_deleted)} folder cache record(s).",
+            "deleted_folders": len(ids_deleted),
         }
     except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
         logging.error(f"delete_folder_cache_entry failed for {folder_path}: {e}")
         return {"success": False, "message": f"Error deleting folder cache entry: {e}", "deleted_folders": 0}
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
 
 _folder_images_cache = {}
 _FOLDER_CACHE_TTL = 30  # seconds
@@ -3854,15 +3716,12 @@ def set_job_execution_cursor(job_id, current_phase=None, next_phase_index=None, 
 
 
 def update_job_status(job_id, status, log=None, current_phase=None, next_phase_index=None, runner_state=None):
-    with connection() as conn:
-        c = conn.cursor()
-
-        c.execute("SELECT status, current_phase, next_phase_index, runner_state FROM jobs WHERE id = ?", (job_id,))
-        row = c.fetchone()
+    def _tx(tx):
+        row = tx.query_one("SELECT status, current_phase, next_phase_index, runner_state FROM jobs WHERE id = ?", (job_id,))
         if not row:
             raise ValueError(f"Job not found: {job_id}")
 
-        old_status = (row[0] or "pending").strip().lower()
+        old_status = (row["status"] or "pending").strip().lower()
         new_status = (status or "").strip().lower()
 
         allowed_next = JOB_ALLOWED_TRANSITIONS.get(old_status)
@@ -3870,49 +3729,44 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
             raise ValueError(f"Invalid job status transition: {old_status} -> {new_status} (job_id={job_id})")
 
         final_log = log
-        if final_log is None:
-            final_log = None
-
         # Keep existing cursor values unless caller explicitly overrides
-        final_phase = current_phase if current_phase is not None else row[1]
-        final_next_idx = next_phase_index if next_phase_index is not None else row[2]
-        final_runner_state = runner_state if runner_state is not None else row[3]
+        final_phase = current_phase if current_phase is not None else row["current_phase"]
+        final_next_idx = next_phase_index if next_phase_index is not None else row["next_phase_index"]
+        final_runner_state = runner_state if runner_state is not None else row["runner_state"]
 
         now = datetime.datetime.now()
         if new_status == "running":
-            c.execute(
+            tx.execute(
                 "UPDATE jobs SET status = ?, started_at = COALESCE(started_at, ?), log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
                 (new_status, now, final_log, final_phase, final_next_idx, final_runner_state, job_id),
             )
         elif new_status in JOB_TERMINAL_STATES:
-            c.execute(
+            tx.execute(
                 "UPDATE jobs SET status = ?, finished_at = ?, completed_at = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
                 (new_status, now, now, final_log, final_phase, final_next_idx, final_runner_state, job_id),
             )
         else:
-            c.execute(
+            tx.execute(
                 "UPDATE jobs SET status = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
                 (new_status, final_log, final_phase, final_next_idx, final_runner_state, job_id),
             )
 
         # Keep job_phases state in sync for phase-bound jobs
         try:
-            c.execute("SELECT COUNT(*) FROM job_phases WHERE job_id = ?", (job_id,))
-            n_phases = c.fetchone()[0]
+            count_row = tx.query_one("SELECT COUNT(*) AS cnt FROM job_phases WHERE job_id = ?", (job_id,))
+            n_phases = int(count_row["cnt"]) if count_row else 0
 
-            c.execute("SELECT phase_id, job_type FROM jobs WHERE id = ?", (job_id,))
-            job_row = c.fetchone()
+            job_row = tx.query_one("SELECT phase_id, job_type FROM jobs WHERE id = ?", (job_id,))
             phase_code = None
             if job_row:
-                if job_row[0]:
-                    c.execute("SELECT code FROM pipeline_phases WHERE id = ?", (job_row[0],))
-                    phase_row = c.fetchone()
-                    if phase_row:
-                        phase_code = phase_row[0]
-                if not phase_code and job_row[1] != "pipeline":
-                    phase_code = job_row[1]
-                if not phase_code and job_row[1] == "pipeline":
-                    phase_code = get_next_running_job_phase(job_id)
+                if job_row["phase_id"]:
+                    p_row = tx.query_one("SELECT code FROM pipeline_phases WHERE id = ?", (job_row["phase_id"],))
+                    if p_row:
+                        phase_code = p_row["code"]
+                if not phase_code and job_row["job_type"] != "pipeline":
+                    phase_code = job_row["job_type"]
+                if not phase_code and job_row["job_type"] == "pipeline":
+                    phase_code = get_next_running_job_phase(job_id, tx=tx)
 
             phase_state_map = {
                 "queued": "queued",
@@ -3929,9 +3783,9 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
             phase_state = phase_state_map.get(new_status, "running")
 
             if n_phases > 1:
-                multi = _resolve_multi_phase_job_phases_sync_code(job_id, new_status)
+                multi = _resolve_multi_phase_job_phases_sync_code(job_id, new_status, tx=tx)
                 if multi == "__bulk_completed__":
-                    c.execute(
+                    tx.execute(
                         "UPDATE job_phases SET state = 'completed', completed_at = ?, error_message = NULL WHERE job_id = ?",
                         (now, job_id),
                     )
@@ -3941,6 +3795,7 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
                         multi,
                         phase_state,
                         error_message=log if new_status in {"failed", "interrupted"} else None,
+                        tx=tx,
                     )
             elif phase_code:
                 set_job_phase_state(
@@ -3948,11 +3803,15 @@ def update_job_status(job_id, status, log=None, current_phase=None, next_phase_i
                     phase_code,
                     phase_state,
                     error_message=log if new_status in {"failed", "interrupted"} else None,
+                    tx=tx,
                 )
         except Exception as e:
             logger.debug("update_job_status: failed to sync job_phases for job %s: %s", job_id, e)
 
-        conn.commit()
+        return old_status, new_status, final_phase, final_next_idx, final_runner_state
+
+    old_status, new_status, final_phase, final_next_idx, final_runner_state = get_connector().run_transaction(_tx)
+
 
     event_type = "state-change"
     severity = "info"
@@ -4406,7 +4265,7 @@ def resume_job_phases(job_id):
     )]
 
 
-def set_job_phase_state(job_id, phase_code, state, error_message=None):
+def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
     """Update state metadata for one phase of a job and auto-advance next pending phase."""
     allowed = {
         "pending": {"queued", "running", "skipped", "canceled", "failed"},
@@ -4478,22 +4337,25 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None):
                 )
         return True
 
+    if tx:
+        return _tx(tx)
     result = get_connector().run_transaction(_tx)
     if result is None:
         return None
-    return get_job_phases(job_id)
+    return get_job_phases(job_id, tx=tx)
 
 
-def get_job_phases(job_id):
+def get_job_phases(job_id, tx=None):
     """Get ordered phase plan/status rows for a job."""
-    return [dict(r) for r in get_connector().query(
+    conn = tx if tx else get_connector()
+    return [dict(r) for r in conn.query(
         "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
         "FROM job_phases WHERE job_id = ? ORDER BY phase_order",
         (job_id,),
     )]
 
 
-def _resolve_multi_phase_job_phases_sync_code(job_id, new_status):
+def _resolve_multi_phase_job_phases_sync_code(job_id, new_status, tx=None):
     """For jobs with multiple job_phases rows, pick which phase row mirrors ``jobs.status``.
 
     Single-phase jobs return None so callers keep using ``job_type`` as the phase code.
@@ -4503,7 +4365,7 @@ def _resolve_multi_phase_job_phases_sync_code(job_id, new_status):
         "__bulk_completed__" — mark every phase row completed (job finished successfully).
         str — a ``phase_code`` to pass to ``set_job_phase_state``.
     """
-    phases = get_job_phases(job_id)
+    phases = get_job_phases(job_id, tx=tx)
     if not phases or len(phases) <= 1:
         return None
     st = (new_status or "").strip().lower()
@@ -4651,9 +4513,10 @@ def get_job_stage_images(job_id, phase_code, offset=0, limit=50):
         return {"items": [], "total": 0}
 
 
-def get_next_running_job_phase(job_id):
+def get_next_running_job_phase(job_id, tx=None):
     """Return current running phase for a job, if any."""
-    row = get_connector().query_one(
+    conn = tx if tx else get_connector()
+    row = conn.query_one(
         "SELECT phase_code FROM job_phases WHERE job_id = ? AND state = 'running' ORDER BY phase_order FETCH FIRST 1 ROWS ONLY",
         (job_id,),
     )
@@ -6847,25 +6710,18 @@ def _embedding_bytes_to_pg(embedding_bytes):
 
 def update_image_embedding(image_id, embedding_bytes):
     """Store a raw float32 embedding blob for an image."""
-    if _get_db_engine() == "postgres":
-        try:
+    try:
+        conn = get_connector()
+        if conn.type == 'postgres':
             vec = _embedding_bytes_to_pg(embedding_bytes) if embedding_bytes is not None else None
             db_postgres.execute_write(
                 "UPDATE images SET image_embedding = %s WHERE id = %s",
                 (vec, image_id),
             )
-        except Exception as e:
-            print(f"Error updating embedding for image {image_id}: {e}")
-        return
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute("UPDATE images SET image_embedding = ? WHERE id = ?", (embedding_bytes, image_id))
-        conn.commit()
+        else:
+            conn.execute("UPDATE images SET image_embedding = ? WHERE id = ?", (embedding_bytes, image_id))
     except Exception as e:
         print(f"Error updating embedding for image {image_id}: {e}")
-    finally:
-        conn.close()
 
 
 def update_image_embeddings_batch(pairs):
@@ -6874,29 +6730,24 @@ def update_image_embeddings_batch(pairs):
     """
     if not pairs:
         return
-    if _get_db_engine() == "postgres":
-        try:
-            with db_postgres.PGConnectionManager(commit=True) as conn:
-                with conn.cursor() as cur:
+    try:
+        conn = get_connector()
+        if conn.type == 'postgres':
+            with db_postgres.PGConnectionManager(commit=True) as pg_conn:
+                with pg_conn.cursor() as cur:
                     for image_id, embedding_bytes in pairs:
                         vec = _embedding_bytes_to_pg(embedding_bytes) if embedding_bytes is not None else None
                         cur.execute(
                             "UPDATE images SET image_embedding = %s WHERE id = %s",
                             (vec, image_id),
                         )
-        except Exception as e:
-            print(f"Error batch-updating embeddings: {e}")
-        return
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        for image_id, embedding_bytes in pairs:
-            c.execute("UPDATE images SET image_embedding = ? WHERE id = ?", (embedding_bytes, image_id))
-        conn.commit()
+        else:
+            def _tx(tx):
+                for image_id, embedding_bytes in pairs:
+                    tx.execute("UPDATE images SET image_embedding = ? WHERE id = ?", (embedding_bytes, image_id))
+            conn.run_transaction(_tx)
     except Exception as e:
         print(f"Error batch-updating embeddings: {e}")
-    finally:
-        conn.close()
 
 
 def _pg_vec_to_bytes(vec) -> "bytes | None":
@@ -6909,58 +6760,45 @@ def _pg_vec_to_bytes(vec) -> "bytes | None":
 
 def get_image_embedding(image_id):
     """Return the raw embedding bytes for an image, or None."""
-    if _get_db_engine() == "postgres":
-        row = db_postgres.execute_select_one(
-            "SELECT image_embedding FROM images WHERE id = %s", (image_id,)
-        )
-        return _pg_vec_to_bytes(row["image_embedding"]) if row else None
-    conn = get_db()
-    c = conn.cursor()
     try:
-        c.execute("SELECT image_embedding FROM images WHERE id = ?", (image_id,))
-        row = c.fetchone()
-        if row and row[0]:
-            return bytes(row[0])
+        conn = get_connector()
+        if conn.type == 'postgres':
+            row = db_postgres.execute_select_one(
+                "SELECT image_embedding FROM images WHERE id = %s", (image_id,)
+            )
+            return _pg_vec_to_bytes(row["image_embedding"]) if row else None
+        row = conn.query_one("SELECT image_embedding FROM images WHERE id = ?", (image_id,))
+        if row and row.get("image_embedding"):
+            return bytes(row["image_embedding"])
         return None
     except Exception as e:
         print(f"Error getting embedding for image {image_id}: {e}")
         return None
-    finally:
-        conn.close()
 
 def get_image_embeddings_batch(image_ids: list[int]) -> dict[int, bytes]:
     """Return a dictionary mapping image_id to raw embedding bytes for the given sequence of image IDs."""
     if not image_ids:
         return {}
 
-    if _get_db_engine() == "postgres":
-        placeholders = ','.join(['%s'] * len(image_ids))
-        rows = db_postgres.execute_select(
+    try:
+        conn = get_connector()
+        if conn.type == 'postgres':
+            placeholders = ','.join(['%s'] * len(image_ids))
+            rows = db_postgres.execute_select(
+                f"SELECT id, image_embedding FROM images WHERE id IN ({placeholders})",
+                tuple(image_ids),
+            )
+            return {r["id"]: _pg_vec_to_bytes(r["image_embedding"]) for r in rows if r["image_embedding"] is not None}
+
+        placeholders = ','.join(['?'] * len(image_ids))
+        rows = conn.query(
             f"SELECT id, image_embedding FROM images WHERE id IN ({placeholders})",
             tuple(image_ids),
         )
-        return {r["id"]: _pg_vec_to_bytes(r["image_embedding"]) for r in rows if r["image_embedding"] is not None}
-
-    conn = get_db()
-    c = conn.cursor()
-    embeddings = {}
-    try:
-        # For small lists typical in a stack, generic IN clause works fine.
-        placeholders = ','.join(['?'] * len(image_ids))
-        query = f"SELECT id, image_embedding FROM images WHERE id IN ({placeholders})"
-        c.execute(query, tuple(image_ids))
-        for row in c.fetchall():
-            uid = row['id']
-            # Accessing column by index or name
-            emb = row['image_embedding'] if 'image_embedding' in row.keys() else row[1]
-            if emb:
-                embeddings[uid] = bytes(emb)
-        return embeddings
+        return {r["id"]: bytes(r["image_embedding"]) for r in rows if r.get("image_embedding") is not None}
     except Exception as e:
         logger.error(f"Error getting batch embeddings: {e}")
-        return embeddings
-    finally:
-        conn.close()
+        return {}
 
 
 def get_embeddings_for_search(folder_path=None, limit=None):
@@ -6973,54 +6811,25 @@ def get_embeddings_for_search(folder_path=None, limit=None):
             norm = os.path.normpath(folder_path)
             sql = ("SELECT i.id, i.file_path, i.image_embedding FROM images i "
                    "JOIN folders f ON f.id = i.folder_id "
-                   "WHERE i.image_embedding IS NOT NULL AND f.path = %s")
+                   "WHERE i.image_embedding IS NOT NULL AND f.path = ?")
             params: list = [norm]
         else:
             sql = "SELECT i.id, i.file_path, i.image_embedding FROM images i WHERE i.image_embedding IS NOT NULL"
             params = []
         if limit:
-            sql += " LIMIT %s"
+            sql += " ROWS ?"
             params.append(limit)
-        rows = db_postgres.execute_select(sql, tuple(params) if params else None)
+        conn = get_connector()
+        if conn.type == 'postgres':
+            # pgvector returns numpy arrays; convert via db_postgres to get proper bytes
+            import psycopg2.extras
+            pg_sql = _translate_fb_to_pg(sql)
+            with db_postgres.PGConnectionManager() as pg_conn:
+                with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(pg_sql, tuple(params) if params else None)
+                    return [(r["id"], r["file_path"], bytes(r["image_embedding"])) for r in cur.fetchall()]
+        rows = conn.query(sql, tuple(params) if params else None)
         return [(r["id"], r["file_path"], bytes(r["image_embedding"])) for r in rows]
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        if folder_path:
-            norm = os.path.normpath(folder_path)
-            c.execute("SELECT id FROM folders WHERE path = ?", (norm,))
-            frow = c.fetchone()
-            if not frow:
-                return []
-            folder_id = frow[0]
-            query = """
-                SELECT id, file_path, image_embedding
-                FROM images
-                WHERE image_embedding IS NOT NULL AND folder_id = ?
-            """
-            params = [folder_id]
-        else:
-            query = """
-                SELECT id, file_path, image_embedding
-                FROM images
-                WHERE image_embedding IS NOT NULL
-            """
-            params = []
-
-        if limit:
-            query += " ROWS ?"
-            params.append(limit)
-
-        c.execute(query, tuple(params))
-        results = []
-        for row in c.fetchall():
-            results.append((row[0], row[1], bytes(row[2])))
-        return results
-    except Exception as e:
-        print(f"Error loading embeddings for search: {e}")
-        return []
-    finally:
-        conn.close()
 
 
 def get_embeddings_with_metadata(folder_path=None, limit=None):
@@ -7038,7 +6847,7 @@ def get_embeddings_with_metadata(folder_path=None, limit=None):
             sql = ("SELECT i.id, i.file_path, i.image_embedding, i.thumbnail_path, "
                    "       i.label, i.rating, i.score_general FROM images i "
                    "JOIN folders f ON f.id = i.folder_id "
-                   "WHERE i.image_embedding IS NOT NULL AND f.path = %s")
+                   "WHERE i.image_embedding IS NOT NULL AND f.path = ?")
             params: list = [norm]
         else:
             sql = ("SELECT i.id, i.file_path, i.image_embedding, i.thumbnail_path, "
@@ -7046,9 +6855,25 @@ def get_embeddings_with_metadata(folder_path=None, limit=None):
                    "WHERE i.image_embedding IS NOT NULL")
             params = []
         if limit:
-            sql += " LIMIT %s"
+            sql += " ROWS ?"
             params.append(limit)
-        rows = db_postgres.execute_select(sql, tuple(params) if params else None)
+        conn = get_connector()
+        if conn.type == 'postgres':
+            import psycopg2.extras
+            pg_sql = _translate_fb_to_pg(sql)
+            with db_postgres.PGConnectionManager() as pg_conn:
+                with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(pg_sql, tuple(params) if params else None)
+                    return [{
+                        "image_id": r["id"],
+                        "file_path": r["file_path"],
+                        "embedding": bytes(r["image_embedding"]),
+                        "thumbnail_path": r["thumbnail_path"],
+                        "label": r["label"],
+                        "rating": r["rating"],
+                        "score_general": float(r["score_general"]) if r["score_general"] is not None else None,
+                    } for r in cur.fetchall()]
+        rows = conn.query(sql, tuple(params) if params else None)
         return [{
             "image_id": r["id"],
             "file_path": r["file_path"],
@@ -7058,84 +6883,43 @@ def get_embeddings_with_metadata(folder_path=None, limit=None):
             "rating": r["rating"],
             "score_general": float(r["score_general"]) if r["score_general"] is not None else None,
         } for r in rows]
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        if folder_path:
-            norm = os.path.normpath(folder_path)
-            c.execute("SELECT id FROM folders WHERE path = ?", (norm,))
-            frow = c.fetchone()
-            if not frow:
-                return []
-            folder_id = frow[0]
-            query = """
-                SELECT id, file_path, image_embedding,
-                       thumbnail_path, label, rating, score_general
-                FROM images
-                WHERE image_embedding IS NOT NULL AND folder_id = ?
-            """
-            params = [folder_id]
-        else:
-            query = """
-                SELECT id, file_path, image_embedding,
-                       thumbnail_path, label, rating, score_general
-                FROM images
-                WHERE image_embedding IS NOT NULL
-            """
-            params = []
-
-        if limit:
-            query += " ROWS ?"
-            params.append(limit)
-
-        c.execute(query, tuple(params))
-        results = []
-        for row in c.fetchall():
-            results.append({
-                "image_id": row[0],
-                "file_path": row[1],
-                "embedding": bytes(row[2]),
-                "thumbnail_path": row[3],
-                "label": row[4],
-                "rating": row[5],
-                "score_general": float(row[6]) if row[6] is not None else None,
-            })
-        return results
-    except Exception as e:
-        logger.error("Error loading embeddings with metadata: %s", e)
-        return []
-    finally:
-        conn.close()
 
 
-def get_images_missing_embeddings(folder_path=None, limit=None):
+def get_images_missing_embeddings(folder_path=None, limit=None, min_id_exclusive=None):
     """
     Return image rows with image_embedding IS NULL.
     Columns: id, file_path, thumbnail_path, thumbnail_path_win (for path resolution in WSL).
-    Optionally filter by folder_path and cap with limit.
+    Optionally filter by folder_path, cap with limit, and resume with min_id_exclusive (id > value).
+    Rows are ordered by id ascending for stable checkpointing.
     """
     try:
+        id_resume = ""
+        resume_params: list = []
+        if min_id_exclusive is not None:
+            id_resume = " AND id > ?"
+            resume_params.append(int(min_id_exclusive))
+
         if folder_path:
             norm = os.path.normpath(folder_path)
             frow = get_connector().query_one("SELECT id FROM folders WHERE path = ?", (norm,))
             if not frow:
                 return []
             folder_id = frow["id"]
-            query = """
+            query = f"""
                 SELECT id, file_path, thumbnail_path, thumbnail_path_win
                 FROM images
-                WHERE image_embedding IS NULL AND folder_id = ?
+                WHERE image_embedding IS NULL AND folder_id = ?{id_resume}
                 ORDER BY id
             """
-            params = [folder_id]
+            params = [folder_id] + resume_params
         else:
-            query = """
+            query = f"""
                 SELECT id, file_path, thumbnail_path, thumbnail_path_win
                 FROM images
-                WHERE image_embedding IS NULL
+                WHERE image_embedding IS NULL{id_resume}
                 ORDER BY id
             """
-            params = []
+            params = list(resume_params)
 
         if limit:
             query += " FETCH FIRST ? ROWS ONLY"
@@ -7155,19 +6939,17 @@ def get_images_for_tag_propagation(folder_path=None):
 
     Optional folder_path narrows scope to a single folder.
     """
-    conn = get_db()
-    c = conn.cursor()
     try:
+        conn = get_connector()
         folder_filter = ""
-        params = []
+        params: list = []
         if folder_path:
             norm = os.path.normpath(folder_path)
-            c.execute("SELECT id FROM folders WHERE path = ?", (norm,))
-            frow = c.fetchone()
+            frow = conn.query_one("SELECT id FROM folders WHERE path = ?", (norm,))
             if not frow:
                 return [], []
-            folder_filter = " AND folder_id = ?"
-            params.append(frow[0])
+            folder_filter = " AND i.folder_id = ?"
+            params.append(frow["id"])
 
         # Untagged images with embeddings.
         # Phase 2/3 migration: prefer normalized IMAGE_KEYWORDS; keep legacy
@@ -7176,10 +6958,8 @@ def get_images_for_tag_propagation(folder_path=None):
             "SELECT i.id, i.file_path, i.image_embedding FROM images i "
             "WHERE i.image_embedding IS NOT NULL "
             "AND NOT EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
-            "AND (i.keywords IS NULL OR i.keywords = '')" + folder_filter.replace("folder_id", "i.folder_id")
+            "AND (i.keywords IS NULL OR i.keywords = '')" + folder_filter
         )
-        c.execute(q_untagged, tuple(params))
-        untagged = [(row[0], row[1], bytes(row[2])) for row in c.fetchall()]
 
         # Tagged images with embeddings. Build keyword CSV from normalized
         # tables when possible, otherwise fall back to legacy IMAGES.KEYWORDS.
@@ -7191,17 +6971,34 @@ def get_images_for_tag_propagation(folder_path=None):
             "FROM images i "
             "WHERE i.image_embedding IS NOT NULL "
             "AND (EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
-            "OR (i.keywords IS NOT NULL AND i.keywords != ''))" + folder_filter.replace("folder_id", "i.folder_id")
+            "OR (i.keywords IS NOT NULL AND i.keywords != ''))" + folder_filter
         )
-        c.execute(q_tagged, tuple(params))
-        tagged = [(row[0], row[1], bytes(row[2]), row[3]) for row in c.fetchall()]
 
+        if conn.type == 'postgres':
+            # pgvector requires direct cursor for proper binary embedding access
+            import psycopg2.extras
+            pg_untagged = _translate_fb_to_pg(q_untagged)
+            pg_tagged = _translate_fb_to_pg(q_tagged)
+            pg_params = tuple(params) if params else None
+            with db_postgres.PGConnectionManager() as pg_conn:
+                with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(pg_untagged, pg_params)
+                    untagged = [(r["id"], r["file_path"], bytes(r["image_embedding"])) for r in cur.fetchall()]
+                    cur.execute(pg_tagged, pg_params)
+                    tagged = [(r["id"], r["file_path"], bytes(r["image_embedding"]), r["keywords_csv"]) for r in cur.fetchall()]
+            return untagged, tagged
+
+        # Firebird / other connector path
+        p = tuple(params) if params else None
+        untagged_rows = conn.query(q_untagged, p)
+        untagged = [(r["id"], r["file_path"], bytes(r["image_embedding"])) for r in untagged_rows]
+        tagged_rows = conn.query(q_tagged, p)
+        tagged = [(r["id"], r["file_path"], bytes(r["image_embedding"]), r["keywords_csv"]) for r in tagged_rows]
         return untagged, tagged
     except Exception as e:
         logging.error("Error loading images for tag propagation: %s", e)
         return [], []
-    finally:
-        conn.close()
+
 
 
 def get_image_tag_propagation_focus(image_id: int):
@@ -7350,17 +7147,6 @@ def set_image_phase_status(image_id, phase_code, status,
 
     Increments attempt_count on reruns (done/failed/skipped → running).
     Sets started_at on 'running', finished_at on terminal states.
-
-    Args:
-        image_id:         Image PK.
-        phase_code:       str or PhaseCode enum value.
-        status:           One of: not_started, running, done, skipped, failed.
-        app_version:      Application version string.
-        executor_version: Executor/model version string.
-        job_id:           FK to jobs.id.
-        error:            Error message string (for failed status).
-        skip_reason:      Optional skip reason (for skipped status).
-        skipped_by:       Optional actor id/name that skipped phase.
     """
     from modules.phases import PhaseStatus
 
@@ -7370,116 +7156,95 @@ def set_image_phase_status(image_id, phase_code, status,
         return
 
     now = datetime.datetime.now()
-    folder_id = None
 
-    with connection() as conn:
-        c = conn.cursor()
-        try:
-            # Check existing row
-            c.execute(
-                "SELECT id, status, attempt_count FROM image_phase_status "
-                "WHERE image_id = ? AND phase_id = ?",
-                (image_id, phase_id)
+    def _tx(tx):
+        # Check existing row
+        existing = tx.query_one(
+            "SELECT id, status, attempt_count FROM image_phase_status "
+            "WHERE image_id = ? AND phase_id = ?",
+            (image_id, phase_id)
+        )
+
+        if existing:
+            row_id = existing["id"]
+            old_status = (existing["status"] or "not_started").strip()
+            attempt_count = existing["attempt_count"] or 0
+
+            # Guard: running → running is not allowed (duplicate job protection)
+            if old_status == PhaseStatus.RUNNING and status == PhaseStatus.RUNNING:
+                logger.warning(
+                    "set_image_phase_status: running→running guard triggered "
+                    "(img=%s, phase=%s) — skipping duplicate update", image_id, phase_code
+                )
+                return None
+
+            # Increment attempt on rerun transitions
+            if status == PhaseStatus.RUNNING and old_status in (
+                PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED
+            ):
+                attempt_count += 1
+
+            # Build UPDATE
+            fields = ["status = ?", "updated_at = ?", "attempt_count = ?"]
+            params = [status, now, attempt_count]
+
+            if status == PhaseStatus.RUNNING:
+                fields.append("started_at = ?")
+                params.append(now)
+            elif status in (PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED):
+                fields.append("finished_at = ?")
+                params.append(now)
+
+            if app_version is not None:
+                fields.append("app_version = ?")
+                params.append(app_version)
+            if executor_version is not None:
+                fields.append("executor_version = ?")
+                params.append(executor_version)
+            if job_id is not None:
+                fields.append("job_id = ?")
+                params.append(job_id)
+            if error is not None:
+                fields.append("last_error = ?")
+                params.append(error)
+            elif status == PhaseStatus.DONE:
+                fields.append("last_error = NULL")
+
+            if status == PhaseStatus.SKIPPED:
+                fields.append("skip_reason = ?")
+                params.append(skip_reason)
+                fields.append("skipped_by = ?")
+                params.append(skipped_by)
+            elif status == PhaseStatus.RUNNING:
+                fields.append("skip_reason = NULL")
+                fields.append("skipped_by = NULL")
+
+            params.append(row_id)
+            tx.execute(f"UPDATE image_phase_status SET {', '.join(fields)} WHERE id = ?", params)
+        else:
+            # INSERT new row
+            started = now if status == PhaseStatus.RUNNING else None
+            finished = now if status in (PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED) else None
+
+            tx.execute(
+                "INSERT INTO image_phase_status "
+                "(image_id, phase_id, status, app_version, executor_version, "
+                " job_id, attempt_count, last_error, started_at, finished_at, updated_at, skip_reason, skipped_by) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (image_id, phase_id, status, app_version, executor_version,
+                 job_id, 0, error, started, finished, now,
+                 skip_reason if status == PhaseStatus.SKIPPED else None,
+                 skipped_by if status == PhaseStatus.SKIPPED else None)
             )
-            existing = c.fetchone()
 
-            if existing:
-                row_id = existing[0]
-                old_status = existing[1].strip() if existing[1] else "not_started"
-                attempt_count = existing[2] or 0
+        frow = tx.query_one("SELECT folder_id FROM images WHERE id = ?", (image_id,))
+        return frow["folder_id"] if frow else None
 
-                # Guard: running → running is not allowed (duplicate job protection)
-                if old_status == PhaseStatus.RUNNING and status == PhaseStatus.RUNNING:
-                    logger.warning(
-                        "set_image_phase_status: running→running guard triggered "
-                        "(img=%s, phase=%s) — skipping duplicate update", image_id, phase_code
-                    )
-                    return
-
-                old_enum = PhaseStatus(old_status) if old_status in {x.value for x in PhaseStatus} else None
-                new_enum = PhaseStatus(status) if status in {x.value for x in PhaseStatus} else None
-                if old_enum and new_enum and old_enum != new_enum:
-                    from modules.phases import ALLOWED_TRANSITIONS
-                    allowed = ALLOWED_TRANSITIONS.get(old_enum, set())
-                    if new_enum not in allowed:
-                        raise ValueError(f"Invalid image phase transition: {old_status} -> {status} (img={image_id}, phase={phase_code})")
-
-                # Increment attempt on rerun transitions
-                if status == PhaseStatus.RUNNING and old_status in (
-                    PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED
-                ):
-                    attempt_count += 1
-
-                # Build UPDATE
-                fields = ["status = ?", "updated_at = ?", "attempt_count = ?"]
-                params = [status, now, attempt_count]
-
-                if status == PhaseStatus.RUNNING:
-                    fields.append("started_at = ?")
-                    params.append(now)
-                elif status in (PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED):
-                    fields.append("finished_at = ?")
-                    params.append(now)
-
-                if app_version is not None:
-                    fields.append("app_version = ?")
-                    params.append(app_version)
-                if executor_version is not None:
-                    fields.append("executor_version = ?")
-                    params.append(executor_version)
-                if job_id is not None:
-                    fields.append("job_id = ?")
-                    params.append(job_id)
-                if error is not None:
-                    fields.append("last_error = ?")
-                    params.append(error)
-                elif status == PhaseStatus.DONE:
-                    # Clear error on success
-                    fields.append("last_error = NULL")
-
-                if status == PhaseStatus.SKIPPED:
-                    fields.append("skip_reason = ?")
-                    params.append(skip_reason)
-                    fields.append("skipped_by = ?")
-                    params.append(skipped_by)
-                elif status == PhaseStatus.RUNNING:
-                    # Explicit rerun clears prior skip metadata
-                    fields.append("skip_reason = NULL")
-                    fields.append("skipped_by = NULL")
-
-                params.append(row_id)
-                c.execute(
-                    f"UPDATE image_phase_status SET {', '.join(fields)} WHERE id = ?",
-                    tuple(params)
-                )
-            else:
-                # INSERT new row
-                started = now if status == PhaseStatus.RUNNING else None
-                finished = now if status in (
-                    PhaseStatus.DONE, PhaseStatus.FAILED, PhaseStatus.SKIPPED
-                ) else None
-
-                c.execute(
-                    "INSERT INTO image_phase_status "
-                    "(image_id, phase_id, status, app_version, executor_version, "
-                    " job_id, attempt_count, last_error, started_at, finished_at, updated_at, skip_reason, skipped_by) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (image_id, phase_id, status, app_version, executor_version,
-                     job_id, 0, error, started, finished, now, skip_reason if status == PhaseStatus.SKIPPED else None, skipped_by if status == PhaseStatus.SKIPPED else None)
-                )
-
-            c.execute("SELECT folder_id FROM images WHERE id = ?", (image_id,))
-            frow = c.fetchone()
-            folder_id = frow[0] if frow else None
-
-            conn.commit()
-        except Exception as e:
-            logger.error("set_image_phase_status failed (img=%s, phase=%s): %s",
-                         image_id, phase_code, e)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
+    try:
+        folder_id = get_connector().run_transaction(_tx)
+    except Exception as e:
+        logger.error("set_image_phase_status failed (img=%s, phase=%s): %s", image_id, phase_code, e)
+        folder_id = None
 
     phase_text = phase_code.value if hasattr(phase_code, "value") else str(phase_code)
     event_type = "progress" if status == PhaseStatus.RUNNING else "state-change"

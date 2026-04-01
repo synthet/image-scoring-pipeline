@@ -14,6 +14,7 @@ def _mock_config(engine="firebird", dual_write=False):
 
 
 def test_get_database_engine_explicit(monkeypatch):
+    monkeypatch.setenv("IMAGE_SCORING_DB_ENGINE_DEFAULT", "postgres")
     monkeypatch.setattr(
         config,
         "get_config_section",
@@ -86,6 +87,7 @@ def test_get_db_postgres_primary_and_qmark_rows(monkeypatch):
     fake_pg_conn = FakePGConn()
     release_calls = []
 
+    monkeypatch.setenv("IMAGE_SCORING_DB_ENGINE_DEFAULT", "postgres")
     monkeypatch.setattr(
         db.config,
         "get_config_section",
@@ -147,6 +149,7 @@ def test_dual_write_mode_gating(monkeypatch):
     queued = []
     monkeypatch.setattr(db._DUAL_WRITE_QUEUE, "put", lambda item: queued.append(item))
 
+    monkeypatch.setenv("IMAGE_SCORING_DB_ENGINE_DEFAULT", "postgres")
     monkeypatch.setattr(
         db.config,
         "get_config_section",
@@ -157,6 +160,7 @@ def test_dual_write_mode_gating(monkeypatch):
     db._enqueue_dual_write("INSERT INTO images(file_name) VALUES (?)", ("a.jpg",))
     assert queued == []
 
+    monkeypatch.setenv("IMAGE_SCORING_DB_ENGINE_DEFAULT", "firebird")
     monkeypatch.setattr(
         db.config,
         "get_config_section",

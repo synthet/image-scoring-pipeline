@@ -108,10 +108,8 @@ def get_database_engine() -> str:
     if is_pytest:
         if forced in ("firebird", "postgres"):
             return forced
-        # If no forced engine, but config says something, check config ONLY IF it's not the default
-        # But for now, let's keep it simple: pytest means firebird unless forced.
-        # This prevents accidental postgres usage in legacy tests.
-        return "firebird"
+        # Previously we forced firebird here. Now we fall through to the config/default.
+        pass
 
     # 3. Explicit config.json setting
     sec = get_config_section("database") or {}

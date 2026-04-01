@@ -1,11 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "mcp__image-scoring__check_database_health",
-      "mcp__firebird-admin__list_tables",
-      "mcp__firebird-admin__get_table_schema",
-      "mcp__firebird-admin__run_sql",
-      "Read(//d/Projects/image-scoring/modules/*.py)",
+      "mcp__imgscore-py-stdio__check_database_health",
+      "Read(//d/Projects/image-scoring-backend/modules/*.py)",
       "Read(<ELECTRON_IMAGE_SCORING_PATH>/**)",
       "Read(<ELECTRON_IMAGE_SCORING_PATH>/mcp-server/**)",
       "Read(//d/Projects/**)",
@@ -32,6 +29,7 @@
       "Bash(python -c \":*)",
       "Bash(python -c \"from mcp.types import ToolAnnotations; print\\(ToolAnnotations.__doc__\\); print\\(ToolAnnotations.model_fields.keys\\(\\)\\)\")",
       "WebFetch(domain:127.0.0.1)",
+      "WebFetch(domain:localhost)",
       "Bash(python -m pytest)",
       "Bash(python -c \"import py_compile; py_compile.compile\\(''modules/db.py'', doraise=True\\); py_compile.compile\\(''modules/mcp_server.py'', doraise=True\\); print\\(''Both files compile OK''\\)\")",
       "Bash(python -c \"from modules.db import _add_keyword_filter; print\\(''_add_keyword_filter imported successfully''\\)\")",
@@ -50,5 +48,8 @@
       "c:\\Users\\owner\\.gemini\\antigravity",
       "<ELECTRON_IMAGE_SCORING_PATH>"
     ]
-  }
+  },
+  "disabledMcpjsonServers": [
+    "imgscore-py-firebird"
+  ]
 }

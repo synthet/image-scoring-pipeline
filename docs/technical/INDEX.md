@@ -17,6 +17,7 @@ Existing features and implementation docs only. Plans and proposals → [plans/I
 | Document | Description |
 |----------|-------------|
 | [DB_SCHEMA.md](DB_SCHEMA.md) | Firebird database schema (tables, columns, relationships) |
+| [EMBEDDINGS.md](EMBEDDINGS.md) | MobileNetV2 `image_embedding`, pgvector, backfill scripts, multi-model notes |
 | [DB_RECOVERY_FROM_CORRUPTION.md](DB_RECOVERY_FROM_CORRUPTION.md) | Recovery procedures for database corruption |
 | [FIREBIRD_WINDOWS_TEMPDIR.md](FIREBIRD_WINDOWS_TEMPDIR.md) | Windows `TempDirectories` / `fb_sort_*` sort errors (335544675) |
 | [migrate_thumbnail_paths_project_rename.py](../../scripts/maintenance/migrate_thumbnail_paths_project_rename.py) | After renaming the repo folder: fix `THUMBNAIL_PATH`, `THUMBNAIL_PATH_WIN`, `SCORES_JSON` in `IMAGES` |

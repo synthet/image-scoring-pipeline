@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-03-31
+
+### Breaking
+
+- **Firebird connector removed** (`modules/db_connector/firebird.py`): The Python backend no longer ships a native Firebird `IConnector`. `database.engine: "firebird"` is **deprecated** and is mapped to `PostgresConnector` with a log warning — update configs to `"postgres"` and use PostgreSQL (see migration docs). Operators who required Firebird-only Python access must stay on **v5.x** or run the Electron gallery against Firebird separately.
+- **Firebird maintenance scripts removed** from the default tree: `run_firebird.bat`, `scripts/check_firebird.py`, `scripts/migrate_to_firebird.py`, `scripts/reset_firebird_sequences.py` (historical copies may live under `scripts/archive_firebird/`). Firebird-focused pytest modules under `tests/` were removed or archived under `tests/archive_firebird/`.
+
+### Added
+
+- **`docs/technical/EMBEDDINGS.md`**: Image embedding workflow (MobileNetV2 / culling), Postgres `vector(1280)` notes, backfill commands, schema rationale, and multi-model vector checklist.
+- **Embedding backfill resume**: `get_images_missing_embeddings(..., min_id_exclusive=)` and `populate_missing_embeddings.py --resume-after-id` for stable checkpointing after interruptions.
+- **`scripts/python/verify_db_parity.py`**: DB parity verification helper (companion to `verify_postgres_parity.py` updates).
+- **`scripts/maintenance/run_populate_missing_embeddings.bat`**: Thin forwarder to the canonical `run_populate_embeddings.bat` launcher name.
+
+### Changed
+
+- **`modules/db.py`**, **`modules/mcp_server.py`**, **`modules/db_connector/*`**: Postgres-first paths, factory behavior, and MCP tooling aligned with Firebird decommission.
+- **`modules/similar_search.py`**: Adjustments for current connector / DB usage.
+- **Docs and agent metadata** (`AGENTS.md`, `CLAUDE.md`, `docs/plans/database/FIREBIRD_POSTGRES_MIGRATION.md`, `docs/technical/INDEX.md`, `.agent/*`, `mcp_config.json`, `config.example.json`): Reflect PostgreSQL-primary operation and updated MCP guidance.
+
+### Fixed
+
+- **Docs**: Canonical Windows launcher for embedding backfill is `scripts/maintenance/run_populate_embeddings.bat`; corrected the 4.0.0 changelog line that referenced a non-existent `.bat` filename.
+
 ## [5.0.0] - 2026-03-30
 
 ### Breaking
@@ -503,7 +527,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Pipeline Tab**: New unified Pipeline tab replacing Folder Tree, Scoring, Keywords, Selection, Stacks, and Culling tabs. Single workflow view with folder tree, phase stepper, action bar, and job monitor (`modules/ui/tabs/pipeline.py`).
 - **Pipeline Orchestrator**: New `modules/pipeline_orchestrator.py` to coordinate pipeline phases and runner integration.
-- **Embedding Population Scripts**: Added `scripts/maintenance/populate_missing_embeddings.py` and `run_populate_missing_embeddings.bat` for backfilling embeddings.
+- **Embedding Population Scripts**: Added `scripts/maintenance/populate_missing_embeddings.py` and `run_populate_embeddings.bat` for backfilling embeddings (see script docstring for the canonical launcher name).
 - **Design Documentation**: Added `docs/plans/UI_PIPELINE_REDESIGN.md` and mockups for the pipeline-centric UI.
 - **Tag Propagation Tests**: Added `tests/test_tag_propagation.py`.
 

@@ -6,7 +6,7 @@ This document describes the AI agents and MCP (Model Context Protocol) server in
 
 The Image Scoring project provides an MCP server that enables AI agents (like Cursor IDE's AI assistant) to interact with the application for debugging, monitoring, and analysis tasks:
 
-- **Query and analyze** the Firebird database
+- **Query and analyze** the PostgreSQL database (primary) or legacy Firebird database
 - **Monitor** scoring and tagging jobs
 - **Diagnose** errors and system issues
 - **Track** performance metrics
@@ -15,7 +15,7 @@ The Image Scoring project provides an MCP server that enables AI agents (like Cu
 
 ## MCP servers (Image Scoring)
 
-The same FastMCP app exposes **28** tools; Cursor can attach it in two ways (separate `mcpServers` entries).
+The same FastMCP app exposes **43** tools; Cursor can attach it in two ways (separate `mcpServers` entries).
 
 **Unique server names:** Each repo’s `.cursor/mcp.json` uses a workspace prefix so keys do not collide when Cursor merges configs: **`imgscore-py-*`** (Python / `image-scoring` workspace), **`imgscore-el-*`** (`electron-image-scoring` workspace). Shared tools such as Playwright or Firebird use the same prefix (`imgscore-py-playwright`, `imgscore-el-firebird`, …).
 
@@ -24,6 +24,7 @@ The same FastMCP app exposes **28** tools; Cursor can attach it in two ways (sep
 Server key meanings:
 
 - **`imgscore-py-stdio`**: **Python** workspace — **stdio** with `cwd` / `PYTHONPATH` = `${workspaceFolder}`.
+- **`imgscore-py-postgres`**: **PostgreSQL** administration — use `toolbox.exe --prebuilt postgres` to manage the DB.
 - **`imgscore-el-stdio`**: **Electron** workspace — **stdio** with `cwd` / `PYTHONPATH` = sibling **image-scoring** (fixed path).
 - **`imgscore-py-sse`** / **`imgscore-el-sse`**: same WebUI **SSE** URL (`/mcp/sse`); use the key from the workspace you have open. Enables **`execute_code`** when `ENABLE_MCP_EXECUTE_CODE=1`.
 
@@ -92,7 +93,7 @@ ENABLE_MCP_SERVER=1 python webui.py
 
 ## Available Tools
 
-The MCP server registers **28** tools (see [`modules/mcp_server.py`](modules/mcp_server.py)). Summary:
+The MCP server registers **43** tools (see [`modules/mcp_server.py`](modules/mcp_server.py)). Summary:
 
 ### Diagnostic
 
@@ -102,6 +103,8 @@ The MCP server registers **28** tools (see [`modules/mcp_server.py`](modules/mcp
 | `check_database_health` | Data integrity (orphans, duplicates, inconsistencies) |
 | `get_model_status` | GPU / PyTorch / TensorFlow / model load status |
 | `diagnose_phase_consistency` | Per-image vs folder phase status mismatches |
+| `get_migration_parity` | Firebird↔Postgres parity snapshot (when applicable) |
+| `verify_environment` | Host, Python, and key dependency sanity check |
 
 ### Data query
 
@@ -120,6 +123,8 @@ The MCP server registers **28** tools (see [`modules/mcp_server.py`](modules/mcp
 | `get_failed_images` | Missing key scores (general, technical, spaq, koniq, …) |
 | `get_incomplete_images` | Broader “incomplete” rows (scores, rating, label) |
 | `validate_file_paths` | Spot-check files on disk |
+| `summarize_directory` | File counts and sizes under a folder path |
+| `search_missing_sidecars` | NEF files missing companion XMP in a directory |
 
 ### Performance & jobs
 
@@ -128,8 +133,20 @@ The MCP server registers **28** tools (see [`modules/mcp_server.py`](modules/mcp
 | `get_performance_metrics` | Job duration, throughput, success rate (recent window) |
 | `get_runner_status` | Scoring / tagging / clustering / selection runners |
 | `get_recent_jobs` | Job history |
+| `get_job_details` | Single job/run by id (`jobs.id`, same as API workflow `run_id`) |
+| `get_job_phases` | Phase plan/status rows for a job |
+| `get_job_stage_images` | Per-image work items for a job+phase (`include_steps` optional) |
 | `get_pipeline_stats` | Runner + dispatcher + queue config snapshot |
 | `run_processing_job` | Start scoring, tagging, or clustering job (requires runners; WebUI/SSE typical for scoring/tagging) |
+
+### HTTP, engine, embeddings, stacks
+
+| Tool | Description |
+|------|-------------|
+| `probe_backend_http` | Time a GET to a relative WebUI path (e.g. `/api/scope/tree`) |
+| `get_database_engine_info` | Configured engine, connector, safe connection targets, ping |
+| `get_embedding_stats` | Images with vs without embeddings; optional folder filter |
+| `check_stack_invariants` | Singleton stacks, orphan stack references, empty stacks |
 
 ### Config & logs
 
@@ -146,10 +163,19 @@ The MCP server registers **28** tools (see [`modules/mcp_server.py`](modules/mcp
 |------|-------------|
 | `get_folder_tree` | Folders with image counts |
 | `get_stacks_summary` | Stack/cluster summary |
+| `get_gallery_status` | Gallery UI wiring status when exposed by WebUI |
 | `search_similar_images` | Embedding cosine similarity to an example image |
 | `find_near_duplicates` | Near-duplicate pairs in a folder |
 | `propagate_tags` | Propagate keywords to neighbors (supports `dry_run`) |
 | `find_outliers` | Atypical images via embedding stats |
+
+### Maintenance (writes)
+
+| Tool | Description |
+|------|-------------|
+| `rebase_file_paths` | Batch-update image paths by root prefix (`dry_run` default) |
+| `set_image_metadata` | Update rating/label for an image path |
+| `prune_missing_files` | Drop DB rows for files missing on disk (`dry_run` default) |
 
 ### Execute code (SSE + opt-in)
 
@@ -219,7 +245,7 @@ The MCP server registers **28** tools (see [`modules/mcp_server.py`](modules/mcp
 ## Important Notes
 
 - **Database Tools**: Most tools require database access. If database is unavailable, they return a clear error message.
-- **Non-DB tools**: `get_model_status` does not require a DB connection. `get_pipeline_stats` mostly uses config + in-process runners (partial without DB). `validate_config` runs structural checks without DB; when the DB is initialized, the MCP tool adds `database_reachable`.
+- **Non-DB tools**: `get_model_status`, `probe_backend_http`, `get_database_engine_info`, and `verify_environment` do not require a DB for their main output. `get_pipeline_stats` mostly uses config + in-process runners (partial without DB). `validate_config` runs structural checks without DB; when the DB is initialized, the MCP tool adds `database_reachable`.
 - **Safety**: `execute_sql` only allows SELECT queries. Dangerous operations are blocked.
 - **Performance**: Some tools (like `validate_file_paths`) can be slow on large datasets. Use `limit` parameter.
 - **Real-time**: `get_runner_status` and `get_pipeline_stats` show current state, others query historical data.
@@ -237,7 +263,8 @@ All tools are available when:
 - **[Agent Coordination](docs/technical/AGENT_COORDINATION.md)** - Integration and coordination guide for AI agents
 - **[MCP Tools Reference](.agent/mcp_tools_reference.md)** - Quick reference guide for AI agents
 - **[MCP Debugging Tools](docs/technical/MCP_DEBUGGING_TOOLS.md)** - Detailed documentation
-- **[DB Schema](docs/technical/DB_SCHEMA.md)** - Firebird database schema reference
+- **[DB Schema](docs/technical/DB_SCHEMA.md)** - Database schema reference
+- **[Migration Plan](docs/plans/database/FIREBIRD_POSTGRES_MIGRATION.md)** - Firebird→PostgreSQL migration status
 - **[AI Edit Spec](.agent/ai_edit_spec.md)** - Guidelines for AI agents editing code
 
 ## Example Agent Interactions
@@ -278,8 +305,8 @@ Agent: "How fast is the system processing images?"
 ### Database Tools Return Errors
 
 1. Verify database is initialized: Check `get_model_status` (non-DB tool)
-2. Check database connection settings in config
-3. Ensure Firebird database is accessible
+2. Check database connection settings in config (`database.engine`, `database.postgres.*`)
+3. Ensure PostgreSQL is running (`docker compose up -d`) or Firebird is accessible (legacy mode)
 
 ### Tools Not Appearing in Cursor
 
@@ -303,9 +330,9 @@ Potential additions to the MCP server:
 
 ### Environment overview
 
-This is a Python 3.12 project using a virtualenv at `.venv/`. The main application is a **FastAPI + Gradio** server (`python webui.py`) on port 7860 backed by a **Firebird 5.0** SQL database.
+This is a Python 3.12 project using a virtualenv at `.venv/`. The main application is a **FastAPI + Gradio** server (`python webui.py`) on port 7860 backed by **PostgreSQL + pgvector** (primary, local Docker on port 5432). A legacy **Firebird 5.0** database is retained for Electron frontend compatibility (Phase 4 migration pending).
 
-### Firebird 5.0 setup (required for the WebUI)
+### Firebird 5.0 setup (required for legacy/Electron compatibility only)
 
 Firebird 5.0 is installed at `/opt/firebird/`. Before starting the WebUI or running DB-dependent tests, the Firebird server must be running:
 

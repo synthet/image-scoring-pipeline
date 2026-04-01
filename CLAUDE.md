@@ -6,10 +6,10 @@ AI-powered image scoring, tagging, and clustering engine using MUSIQ, LIQE, BLIP
 
 | Project | Path | Role |
 |---------|------|------|
-| **Python Backend** (this) | `https://github.com/synthet/image-scoring` | AI scoring engine, FastAPI server, Firebird DB schema owner |
+| **Python Backend** (this) | `https://github.com/synthet/image-scoring` | AI scoring engine, FastAPI server, PostgreSQL DB schema owner |
 | **Electron Frontend** | `https://github.com/synthet/electron-image-scoring` | Desktop UI, IPC query layer, React/Vite |
 
-This project is the **schema authority** — all DDL migrations live in `modules/db.py`. The Electron app queries the same Firebird database but does not modify schema.
+This project is the **schema authority** — DDL is managed via `modules/db_postgres.py` (PostgreSQL) and Alembic migrations. The legacy Firebird schema in `modules/db.py` (`_init_db_impl()`) is retained for reference and Electron compatibility (Phase 4 migration pending).
 
 ## Architecture
 
@@ -31,7 +31,7 @@ Phase status values: `not_started | running | done | skipped | failed`
 
 | Module | Role |
 |--------|------|
-| `modules/db.py` | Schema authority; all DDL migrations in `_init_db_impl()` |
+| `modules/db.py` | Database abstraction layer; engine routing (`_get_db_engine()`), Firebird→PG SQL translation |
 | `modules/api.py` | FastAPI REST endpoints for scoring, tagging, clustering jobs |
 | `modules/engine.py` | Batch processor; producer-consumer pipeline orchestrator |
 | `modules/pipeline.py` | Low-level pipeline primitives |
@@ -61,12 +61,14 @@ Phase status values: `not_started | running | done | skipped | failed`
 ### Environment
 
 - **Hybrid:** Windows host + WSL 2 for GPU/ML workloads
-- **DB:** Firebird SQL (`SCORING_HISTORY.FDB`), accessed via TCP (port 3050) — never via direct file access between Windows and WSL
+- **DB (primary):** PostgreSQL + pgvector (local Docker, port 5432) — set `database.engine: "postgres"` in `config.json`
+- **DB (legacy):** Firebird SQL (`SCORING_HISTORY.FDB`, port 3050) — still used by Electron frontend; Python backend has fully cut over to PostgreSQL (Phase 3 complete)
 - **WebUI:** FastAPI on port 7860; `/ui/` serves the React SPA (primary product UI), `/app` is a minimal Gradio operator status page (threads, profiling, runners, log tail)
 
 ## Key Files
 
-- `modules/db.py` — Schema authority, all DDL migrations in `_init_db_impl()`
+- `modules/db.py` — DB abstraction layer, engine routing, Firebird→PG SQL translation
+- `modules/db_postgres.py` — PostgreSQL schema, connection pool, DDL init
 - `modules/api.py` — FastAPI REST endpoints (scoring, tagging, clustering jobs)
 - `modules/engine.py` — Scoring pipeline orchestrator
 - `modules/config.py` — Configuration management
@@ -102,7 +104,7 @@ Tests live in `tests/`. Markers defined in `pytest.ini`:
 | Marker | Meaning |
 |--------|---------|
 | `gpu` | Requires CUDA GPU |
-| `db` | Requires Firebird database connection |
+| `db` | Requires database connection (PostgreSQL or Firebird) |
 | `ml` | Requires ML dependencies (TF, PyTorch, pyiqa) |
 | `wsl` | Must run in WSL/Linux |
 | `network` | Requires outbound network |
@@ -113,14 +115,16 @@ Skip hardware-dependent tests with: `python -m pytest -m "not gpu and not db and
 
 ## Electron Frontend Integration Points
 
-- **Shared DB:** `SCORING_HISTORY.FDB` (Firebird), queried by [db.ts](https://github.com/synthet/electron-image-scoring/blob/master/electron/db.ts)
+- **Shared DB (current):** Electron still reads `SCORING_HISTORY.FDB` (Firebird) via `node-firebird` — Phase 4 migration to PostgreSQL is pending
 - **REST API:** Electron calls `http://localhost:7860` for scoring/tagging/clustering jobs (WebUI port)
 - **IPC contract:** Electron expects specific column names and result shapes from DB queries — do not rename columns without updating `electron/db.ts`
-- **Dual-write:** When modifying keyword or metadata write paths, ensure both `modules/db.py` and `electron/db.ts` stay in sync
+- **Migration note:** The Python backend now writes exclusively to PostgreSQL. Until Electron Phase 4 is complete, Electron will not see new writes unless re-enabled via `dual_write` or migrated to Postgres
 
 ## Schema Migration Pattern
 
-All migrations in `_init_db_impl()` follow this pattern:
+**PostgreSQL (primary):** Use Alembic migrations in `migrations/versions/`. Run `alembic upgrade head` to apply.
+
+**Firebird (legacy):** All migrations in `_init_db_impl()` follow this pattern:
 ```python
 try:
     cur.execute("ALTER TABLE ...")
@@ -152,8 +156,9 @@ val = get_config_value("scoring.force_rescore_default", default=False)
 ## Documentation
 
 - `docs/README.md` — Full documentation index
-- `docs/technical/DB_SCHEMA.md` — Firebird schema reference
+- `docs/technical/DB_SCHEMA.md` — Database schema reference
 - `docs/technical/DB_SCHEMA_REFACTOR_PLAN.md` — Schema refactor spec
+- `docs/plans/database/FIREBIRD_POSTGRES_MIGRATION.md` — Migration plan and status
 - `docs/technical/ARCHITECTURE.md` — Architecture overview
 - `docs/technical/API_CONTRACT.md` — REST API contract
 - `.agent/PROJECT_GUIDE.md` — Agent workflow guide

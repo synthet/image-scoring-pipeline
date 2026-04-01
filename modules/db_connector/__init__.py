@@ -1,9 +1,10 @@
 """
 db_connector — transport-layer abstraction for database access.
 
-Provides a unified IConnector interface that hides Firebird / PostgreSQL /
-HTTP-proxy differences from callers.  SQL is written in Firebird dialect
-(``?`` placeholders); each connector implementation translates as needed.
+Provides a unified IConnector interface that hides PostgreSQL /
+HTTP-proxy differences from callers.  SQL may use legacy ``?``
+placeholders; the PostgresConnector translates them to ``%s`` via
+``_translate_fb_to_pg`` internally.
 
 Usage::
 
@@ -29,9 +30,11 @@ Usage::
 
 Implementations
 ---------------
-FirebirdConnector  — direct Firebird TCP (``database.engine = "firebird"``)
 PostgresConnector  — psycopg2 pool    (``database.engine = "postgres"``)
 ApiConnector       — HTTP proxy        (``database.engine = "api"``)
+
+Note: FirebirdConnector was removed in 2026-03 (Firebird decommissioned).
+Legacy ``engine = "firebird"`` config values are mapped to PostgresConnector.
 
 Factory configuration
 ---------------------

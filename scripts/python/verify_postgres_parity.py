@@ -47,6 +47,8 @@ TABLES = [
     "pipeline_phases",
     "image_phase_status",
     "stack_cache",
+    "keywords_dim",
+    "image_keywords",
 ]
 
 
@@ -56,6 +58,16 @@ def get_fb_conn(fdb_path: str, user: str, password: str):
     except ImportError:
         logger.error("firebird-driver not installed. Run: pip install firebird-driver")
         sys.exit(1)
+
+    # Windows Firebird client resolution
+    if os.name == 'nt':
+        project_root = Path(__file__).resolve().parents[2]
+        bundled_dll = project_root / "Firebird" / "fbclient.dll"
+        if bundled_dll.exists():
+            driver_config.fb_client_library.value = str(bundled_dll)
+            logger.info("  Found Firebird client DLL at %s", bundled_dll)
+        else:
+            logger.warning("  Bundled Firebird client DLL NOT found at %s", bundled_dll)
 
     db_cfg = config.get_config_section("database")
     host = db_cfg.get("host", "localhost")

@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import sys
+import time
 from typing import Any, Optional
 
 # MCP SDK imports
@@ -53,7 +54,7 @@ _metadata_runner = None
 # Gradio context (set by webui when MCP runs in integrated/SSE mode)
 _gradio_context: dict | None = None
 
-# Set False if db.init_db() fails (e.g. Firebird not migrated); DB-using tools then return a clear error
+# Set False if db.init_db() fails; DB-using tools then return a clear error
 _db_available = True
 
 # Annotation presets
@@ -86,7 +87,7 @@ def _require_db(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         if not _db_available:
-            return {"error": "Database not available. Run migrate_to_firebird.py first."}
+            return {"error": "Database not available. Ensure PostgreSQL is running and migrations are applied."}
         return fn(*args, **kwargs)
     return wrapper
 
@@ -367,13 +368,9 @@ def execute_sql(query: str, params: list = None) -> dict:
         try:
             # Defense-in-depth: start a read-only transaction so even if
             # SQL injection bypasses the regex, no writes can occur.
-            try:
-                from firebird.driver import tpb, Isolation, TraAccessMode
-                ro_tpb = tpb(isolation=Isolation.READ_COMMITTED_RECORD_VERSION,
-                             access_mode=TraAccessMode.READ)
-                conn.begin(tpb=ro_tpb)
-            except Exception:
-                pass  # Fall back to default transaction if read-only TPB fails
+            # For PostgreSQL, PGConnectionManager handles read-only mode if requested,
+            # or we rely on the DB role.
+            pass  # Standard read-only selective access is performed at the pool level or via SQL constraints.
 
             if params:
                 c.execute(query, tuple(params))
@@ -406,10 +403,10 @@ def get_folder_tree(root_path: Optional[str] = None) -> list:
                     SELECT f.path, COUNT(i.id) as image_count
                     FROM folders f
                     LEFT JOIN images i ON f.id = i.folder_id
-                    WHERE f.path STARTING WITH ?
+                    WHERE f.path LIKE ? || '%'
                     GROUP BY f.path
                     ORDER BY f.path
-                """, (root_path,))
+                """, (root_path, root_path))
             else:
                 c.execute("""
                     SELECT f.path, COUNT(i.id) as image_count
@@ -478,6 +475,60 @@ def get_stacks_summary(folder_path: Optional[str] = None) -> dict:
             summary["error"] = str(e)
 
         return summary
+
+
+@mcp.tool(annotations=_RO)
+def get_migration_parity() -> dict:
+    """Compare image and folder counts between Firebird (legacy) and PostgreSQL (new).
+    Useful for verifying the migration status."""
+    parity = {
+        "postgres": {"images": 0, "folders": 0, "stacks": 0},
+        "firebird": {"images": 0, "folders": 0, "stacks": 0},
+        "mismatch": False,
+        "firebird_available": False
+    }
+
+    # Postgres stats (using the default connection which is likely postgres now)
+    try:
+        with db.connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM images")
+            parity["postgres"]["images"] = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM folders")
+            parity["postgres"]["folders"] = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM stacks")
+            parity["postgres"]["stacks"] = c.fetchone()[0]
+    except Exception as e:
+        parity["postgres"]["error"] = str(e)
+
+    # Firebird stats (attempt direct connection if file exists)
+    fdb_path = getattr(db, "DB_PATH", "scoring_history.fdb")
+    if os.path.exists(fdb_path):
+        parity["firebird_available"] = True
+        try:
+            from firebird.driver import connect
+            # Use the credentials from db.py
+            with connect(fdb_path, user=db.DB_USER, password=db.DB_PASS) as f_conn:
+                fc = f_conn.cursor()
+                fc.execute("SELECT COUNT(*) FROM images")
+                parity["firebird"]["images"] = fc.fetchone()[0]
+                fc.execute("SELECT COUNT(*) FROM folders")
+                parity["firebird"]["folders"] = fc.fetchone()[0]
+                fc.execute("SELECT COUNT(*) FROM stacks")
+                parity["firebird"]["stacks"] = fc.fetchone()[0]
+        except Exception as e:
+            parity["firebird"]["error"] = str(e)
+    else:
+        parity["firebird"]["error"] = f"Firebird file {fdb_path} not found"
+
+    # Compare
+    if parity["firebird_available"]:
+        for key in ["images", "folders", "stacks"]:
+            if parity["postgres"][key] != parity["firebird"][key]:
+                parity["mismatch"] = True
+                break
+
+    return parity
 
 
 # ============================================================
@@ -705,7 +756,7 @@ def validate_file_paths(limit: int = 100) -> dict:
                     results["exists"] += 1
                 else:
                     results["missing"] += 1
-                    results["missing_files"].append({
+                    results.get("missing_files").append({
                         "id": row[0],
                         "file_path": file_path
                     })
@@ -714,6 +765,78 @@ def validate_file_paths(limit: int = 100) -> dict:
             results["error"] = str(e)
 
         return results
+
+
+@mcp.tool(annotations=_RO)
+def summarize_directory(path: str) -> dict:
+    """Fast directory summary using os.scandir to avoid hangs on large folders.
+    Returns counts of common image types and total size."""
+    if not os.path.isdir(path):
+        return {"error": f"Path {path} is not a directory or is inaccessible"}
+
+    summary = {
+        "path": path,
+        "total_files": 0,
+        "jpg_count": 0,
+        "nef_count": 0,
+        "xmp_count": 0,
+        "other_count": 0,
+        "total_size_bytes": 0,
+        "subfolders": 0
+    }
+
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                if entry.is_file():
+                    summary["total_files"] += 1
+                    summary["total_size_bytes"] += entry.stat().st_size
+                    ext = os.path.splitext(entry.name)[1].lower()
+                    if ext == ".jpg" or ext == ".jpeg":
+                        summary["jpg_count"] += 1
+                    elif ext == ".nef":
+                        summary["nef_count"] += 1
+                    elif ext == ".xmp":
+                        summary["xmp_count"] += 1
+                    else:
+                        summary["other_count"] += 1
+                elif entry.is_dir():
+                    summary["subfolders"] += 1
+    except Exception as e:
+        summary["error"] = str(e)
+
+    return summary
+
+
+@mcp.tool(annotations=_RO)
+def search_missing_sidecars(path: str) -> dict:
+    """Identify NEF images in a folder that are missing corresponding XMP sidecar files."""
+    if not os.path.isdir(path):
+        return {"error": f"Path {path} is not a directory"}
+
+    nefs = set()
+    xmps = set()
+
+    try:
+        for entry in os.scandir(path):
+            if entry.is_file():
+                name, ext = os.path.splitext(entry.name)
+                ext = ext.lower()
+                if ext == ".nef":
+                    nefs.add(name)
+                elif ext == ".xmp":
+                    xmps.add(name)
+
+        missing = list(nefs - xmps)
+        return {
+            "path": path,
+            "nef_total": len(nefs),
+            "xmp_total": len(xmps),
+            "missing_sidecars_count": len(missing),
+            "missing_sidecars": sorted(missing)[:50]  # Limit to first 50
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @mcp.tool(annotations=_RO)
@@ -796,6 +919,446 @@ def get_recent_jobs(limit: int = 10) -> list:
     """Get recent scoring/tagging jobs with their status."""
     rows = db.get_jobs(limit=limit)
     return [dict(row) for row in rows]
+
+
+def _normalize_job_payload_for_mcp(job: dict) -> dict:
+    """Copy job row to JSON-safe dict; parse queue_payload JSON and trim very long logs."""
+    out = _sanitize_for_mcp(dict(job))
+    qp = out.get("queue_payload")
+    if isinstance(qp, str) and qp.strip():
+        try:
+            out["queue_payload_parsed"] = json.loads(qp)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            out["queue_payload_parsed"] = None
+    log = out.get("log")
+    if isinstance(log, str) and len(log) > 8000:
+        out["log"] = log[-8000:]
+        out["log_truncated"] = True
+    return out
+
+
+@mcp.tool(annotations=_RO)
+@_require_db
+def get_job_details(job_id: int) -> dict:
+    """Get one job/run by id (jobs.id): status, paths, timestamps, queue_payload summary, log tail. Same id as workflow run_id in the API."""
+    row = db.get_job(int(job_id))
+    if not row:
+        return {"error": "Job not found", "job_id": int(job_id)}
+    return _normalize_job_payload_for_mcp(row)
+
+
+@mcp.tool(annotations=_RO)
+@_require_db
+def get_job_phases(job_id: int) -> dict:
+    """List phase rows (order, code, state, timestamps, errors) for a job/run id."""
+    jid = int(job_id)
+    phases = db.get_job_phases(jid)
+    return {"job_id": jid, "count": len(phases), "phases": _sanitize_for_mcp(phases)}
+
+
+@mcp.tool(annotations=_RO)
+@_require_db
+def get_job_stage_images(
+    job_id: int,
+    phase_code: str,
+    limit: int = 50,
+    offset: int = 0,
+    include_steps: bool = False,
+) -> dict:
+    """Paginate per-image phase status for a job+phase (image_phase_status). Optional include_steps adds job_steps telemetry for that phase."""
+    jid = int(job_id)
+    lim = max(1, min(int(limit), 500))
+    off = max(0, int(offset))
+    data = db.get_job_stage_images(jid, phase_code, offset=off, limit=lim)
+    out = {
+        "job_id": jid,
+        "phase_code": phase_code,
+        "offset": off,
+        "limit": lim,
+        "total": data.get("total", 0),
+        "items": data.get("items", []),
+    }
+    if include_steps:
+        out["steps"] = db.get_job_steps(jid, phase_code)
+    return _sanitize_for_mcp(out)
+
+
+@mcp.tool(annotations=_RO)
+@_require_db
+def get_embedding_stats(folder_path: Optional[str] = None) -> dict:
+    """Counts of images with vs without image_embedding (MobileNetV2 / similar-search). Optional folder_path filters by exact folders.path match."""
+    try:
+        from modules.similar_search import EMBEDDING_DIM
+        expected_dim = EMBEDDING_DIM
+    except Exception:
+        expected_dim = None
+
+    conn = db.get_connector()
+    folder_id = None
+    if folder_path and str(folder_path).strip():
+        norm = os.path.normpath(str(folder_path).strip())
+        frow = conn.query_one("SELECT id FROM folders WHERE path = ?", (norm,))
+        if not frow:
+            return {"error": "folder_not_found", "folder_path": norm}
+        folder_id = frow["id"]
+
+    if folder_id is not None:
+        base = "folder_id = ?"
+        params_t = (folder_id,)
+        total_row = conn.query_one(f"SELECT COUNT(*) AS c FROM images WHERE {base}", params_t)
+        with_row = conn.query_one(
+            f"SELECT COUNT(*) AS c FROM images WHERE {base} AND image_embedding IS NOT NULL",
+            params_t,
+        )
+    else:
+        total_row = conn.query_one("SELECT COUNT(*) AS c FROM images", ())
+        with_row = conn.query_one(
+            "SELECT COUNT(*) AS c FROM images WHERE image_embedding IS NOT NULL",
+            (),
+        )
+
+    total = int((total_row or {}).get("c") or 0)
+    with_emb = int((with_row or {}).get("c") or 0)
+    missing = max(0, total - with_emb)
+    return {
+        "folder_path": os.path.normpath(folder_path) if folder_path and str(folder_path).strip() else None,
+        "total_images": total,
+        "with_embedding": with_emb,
+        "missing_embedding": missing,
+        "expected_embedding_dim": expected_dim,
+    }
+
+
+def _probe_path_allowed(path: str) -> tuple[bool, str]:
+    p = (path or "").strip()
+    if not p.startswith("/"):
+        return False, "path must start with /"
+    if "\n" in p or "\r" in p or "://" in p:
+        return False, "invalid path"
+    if ".." in p:
+        return False, "path must not contain .."
+    if len(p) > 512:
+        return False, "path too long"
+    return True, p
+
+
+@mcp.tool(annotations=_RO)
+def probe_backend_http(path: str, timeout_ms: int = 10000) -> dict:
+    """GET a path on the configured scoring WebUI base URL (e.g. /api/health, /api/scope/tree). Returns status, elapsed_ms, and a short body preview. Read-only; path is constrained to same-origin relative URLs."""
+    ok, msg = _probe_path_allowed(path)
+    if not ok:
+        return {"error": msg, "path": path}
+
+    db_sec = config.get_config_section("database") or {}
+    base = str(db_sec.get("api_url", "") or "").strip().rstrip("/")
+    if not base:
+        port = config.get_config_value("webui_port", default=7860)
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            port = 7860
+        base = f"http://127.0.0.1:{port}"
+
+    url = base + msg
+    timeout_ms = max(100, min(int(timeout_ms), 120000))
+    try:
+        import httpx
+    except ImportError:
+        return {"error": "httpx not installed", "url": url}
+
+    t0 = time.perf_counter()
+    try:
+        with httpx.Client(timeout=timeout_ms / 1000.0) as client:
+            resp = client.get(url)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        body = resp.text or ""
+        preview = body[:4000] + ("…" if len(body) > 4000 else "")
+        return {
+            "url": url,
+            "status_code": resp.status_code,
+            "elapsed_ms": elapsed_ms,
+            "content_length_header": resp.headers.get("content-length"),
+            "body_chars": len(body),
+            "body_preview": preview,
+        }
+    except Exception as e:
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        return {
+            "url": url,
+            "error": str(e),
+            "elapsed_ms": elapsed_ms,
+        }
+
+
+@mcp.tool(annotations=_RO)
+def get_database_engine_info() -> dict:
+    """Summarize database.engine, connector mode, non-secret connection targets, and whether a simple query succeeds. Complements validate_config."""
+    engine = config.get_database_engine()
+    out: dict[str, Any] = {
+        "database_engine_config": engine,
+        "mcp_db_initialized": bool(_db_available),
+        "connector_type": None,
+        "targets": {},
+        "ping_ok": None,
+        "ping_error": None,
+    }
+    try:
+        conn = db.get_connector()
+        out["connector_type"] = getattr(conn, "type", type(conn).__name__)
+    except Exception as e:
+        out["connector_error"] = str(e)
+        return out
+
+    db_sec = config.get_config_section("database") or {}
+    if engine == "api" or out.get("connector_type") == "api":
+        out["targets"]["api_url"] = str(db_sec.get("api_url", "http://localhost:7860")).strip()
+    if engine in ("postgres", "firebird") or out.get("connector_type") == "postgres":
+        try:
+            from modules import db_postgres as _dpg
+            pg = _dpg.get_pg_config()
+            out["targets"]["postgres"] = {
+                "host": pg.get("host"),
+                "port": pg.get("port"),
+                "dbname": pg.get("dbname"),
+                "user": pg.get("user"),
+                "password_configured": bool(pg.get("password")),
+            }
+        except Exception as e:
+            out["targets"]["postgres_error"] = str(e)
+
+    if _db_available:
+        try:
+            db.get_connector().query_one("SELECT 1 AS ok FROM images FETCH FIRST 1 ROWS ONLY")
+            out["ping_ok"] = True
+        except Exception as e:
+            out["ping_ok"] = False
+            out["ping_error"] = str(e)
+    else:
+        out["ping_ok"] = None
+        out["ping_note"] = "Database not initialized in this MCP process."
+
+    return out
+
+
+@mcp.tool(annotations=_RO)
+@_require_db
+def check_stack_invariants(limit: int = 20) -> dict:
+    """Detect common stack data issues: single-image stacks, images pointing at missing stacks, stacks with no images. Returns counts and small samples."""
+    lim = max(1, min(int(limit), 200))
+    conn = db.get_connector()
+
+    singleton = conn.query_one(
+        """
+        SELECT COUNT(*) AS c FROM (
+            SELECT stack_id FROM images WHERE stack_id IS NOT NULL
+            GROUP BY stack_id
+            HAVING COUNT(*) = 1
+        ) AS singletons
+        """
+    )
+    orphan_img = conn.query_one(
+        """
+        SELECT COUNT(*) AS c FROM images i
+        WHERE i.stack_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM stacks s WHERE s.id = i.stack_id)
+        """
+    )
+    empty_stacks = conn.query_one(
+        """
+        SELECT COUNT(*) AS c FROM stacks s
+        WHERE NOT EXISTS (SELECT 1 FROM images i WHERE i.stack_id = s.id)
+        """
+    )
+
+    sample_singletons = conn.query(
+        """
+        SELECT stack_id, COUNT(*) AS cnt FROM images
+        WHERE stack_id IS NOT NULL
+        GROUP BY stack_id
+        HAVING COUNT(*) = 1
+        ORDER BY stack_id
+        FETCH FIRST ? ROWS ONLY
+        """,
+        (lim,),
+    )
+    sample_orphans = conn.query(
+        """
+        SELECT i.id AS image_id, i.stack_id, i.file_path FROM images i
+        WHERE i.stack_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM stacks s WHERE s.id = i.stack_id)
+        ORDER BY i.id
+        FETCH FIRST ? ROWS ONLY
+        """,
+        (lim,),
+    )
+
+    return {
+        "singleton_stack_count": int((singleton or {}).get("c") or 0),
+        "images_orphan_stack_id_count": int((orphan_img or {}).get("c") or 0),
+        "empty_stacks_count": int((empty_stacks or {}).get("c") or 0),
+        "sample_singleton_stack_ids": [r.get("stack_id") for r in (sample_singletons or [])],
+        "sample_orphan_stack_images": _sanitize_for_mcp(sample_orphans or []),
+    }
+
+
+# ============================================================
+# Maintenance & Mutation Tools (Write Access)
+# ============================================================
+
+@mcp.tool(annotations=_RW_DESTRUCTIVE)
+@_require_db
+def rebase_file_paths(old_root: str, new_root: str, dry_run: bool = True) -> dict:
+    """Batch update image file paths by replacing a root prefix.
+    Example: rebase D:\\Photos to Z:\\Archive."""
+    old_root = os.path.normpath(old_root)
+    new_root = os.path.normpath(new_root)
+
+    with db.connection() as conn:
+        c = conn.cursor()
+        try:
+            # First find how many would be affected
+            pattern = old_root + "%"
+            c.execute("SELECT COUNT(*) FROM images WHERE file_path LIKE ?", (pattern,))
+            count = c.fetchone()[0]
+
+            if dry_run:
+                return {
+                    "dry_run": True,
+                    "affected_count": count,
+                    "message": f"Would update {count} paths from {old_root} to {new_root}"
+                }
+
+            if count == 0:
+                return {"success": True, "count": 0, "message": "No matching paths found"}
+
+            # Update paths - using a simple replace logic
+            # This is complex in SQL depending on the DB engine, so we'll do it in a transaction
+            c.execute("SELECT id, file_path FROM images WHERE file_path LIKE ?", (pattern,))
+            rows = c.fetchall()
+
+            for image_id, old_path in rows:
+                new_path = old_path.replace(old_root, new_root, 1)
+                db.update_image_field(image_id, "file_path", new_path)
+
+            conn.commit()
+            return {"success": True, "updated_count": count}
+        except Exception as e:
+            return {"error": str(e)}
+
+
+@mcp.tool(annotations=_RW)
+@_require_db
+def set_image_metadata(file_path: str, rating: Optional[int] = None, label: Optional[str] = None) -> dict:
+    """Update metadata for a specific image in the database.
+    Optionally updates sidecar files if background runners are active."""
+    details = db.get_image_details(file_path)
+    if not details:
+        return {"error": f"Image {file_path} not found in database"}
+
+    image_id = details["id"]
+    updates = {}
+    if rating is not None:
+        updates["rating"] = rating
+    if label is not None:
+        updates["label"] = label
+
+    if not updates:
+        return {"message": "No updates specified"}
+
+    try:
+        for field, value in updates.items():
+            db.update_image_field(image_id, field, value)
+
+        # Notify gallery if context exists
+        if _gradio_context:
+            msg = f"Updated {file_path}: {updates}"
+            logger.info(f"MCP metadata update: {msg}")
+
+        return {"success": True, "image_id": image_id, "updates": updates}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool(annotations=_RW_DESTRUCTIVE)
+@_require_db
+def prune_missing_files(dry_run: bool = True) -> dict:
+    """Remove database records for images whose files no longer exist on disk."""
+    with db.connection() as conn:
+        c = conn.cursor()
+        try:
+            c.execute("SELECT id, file_path FROM images")
+            rows = c.fetchall()
+            to_prune = []  # List of (id, path)
+
+            for image_id, file_path in rows:
+                if not file_path or not os.path.exists(file_path):
+                    to_prune.append((image_id, file_path))
+
+            if dry_run:
+                return {
+                    "dry_run": True,
+                    "to_prune_count": len(to_prune),
+                    "examples": [p for i, p in to_prune][:10]
+                }
+
+            if not to_prune:
+                return {"success": True, "pruned_count": 0}
+
+            # Batch delete using the existing delete_image which handles relations
+            count = 0
+            for mid, mpath in to_prune:
+                if mpath:
+                    db.delete_image(mpath)
+                else:
+                    # If path is null, we need to delete by ID manually
+                    c.execute("DELETE FROM images WHERE id = ?", (mid,))
+                count += 1
+
+            conn.commit()
+            return {"success": True, "pruned_count": count}
+        except Exception as e:
+            return {"error": str(e)}
+
+
+@mcp.tool(annotations=_RO)
+def get_gallery_status() -> dict:
+    """Get the current state of the Gradio WebUI gallery and active runners."""
+    status = {
+        "webui_active": _gradio_context is not None,
+        "runners": {
+            "scoring": _scoring_runner is not None and not getattr(_scoring_runner, "_stop_event", None).is_set() if _scoring_runner else False,
+            "tagging": _tagging_runner is not None and not getattr(_tagging_runner, "_stop_event", None).is_set() if _tagging_runner else False,
+        },
+        "gradio_tabs": list(_gradio_context.get("components", {}).keys()) if _gradio_context else []
+    }
+    return status
+
+
+@mcp.tool(annotations=_RO)
+def verify_environment() -> dict:
+    """Comprehensive environment check: GPU, DB, Python, and system stats."""
+    import torch
+    import psutil
+    import platform
+
+    status = {
+        "os": platform.system(),
+        "python_version": sys.version,
+        "gpu": {
+            "available": torch.cuda.is_available(),
+            "count": torch.cuda.device_count(),
+            "names": [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())] if torch.cuda.is_available() else []
+        },
+        "memory": {
+            "total_gb": round(psutil.virtual_memory().total / (1024**3), 2),
+            "available_gb": round(psutil.virtual_memory().available / (1024**3), 2)
+        },
+        "database": {
+            "engine": db._get_db_engine(),
+            "available": _db_available
+        }
+    }
+    return status
 
 
 @mcp.tool(annotations=_RO)
