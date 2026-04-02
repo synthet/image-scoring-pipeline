@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-04-01
+
+### Added
+
+- **`modules/test_db_constants.py`**: Central `POSTGRES_TEST_DB` (`image_scoring_test`) and env names for the two-step escape hatch when pointing pytest at a non-test Postgres database.
+
+### Changed
+
+- **`modules/db_postgres.get_pg_config()`**: While pytest is active, the effective PostgreSQL database name defaults to `image_scoring_test` unless both **`IMAGE_SCORING_POSTGRES_PRODUCTION_IN_PYTEST=1`** and **`IMAGE_SCORING_I_ACCEPT_PRODUCTION_PYTEST_RISK=1`** are set; logs a warning if only the first is set.
+- **`tests/conftest.py`**: `pytest_sessionstart` ensures the `image_scoring_test` database exists when `database.engine` is `postgres` (unless the escape hatch is active); Firebird `scoring_history_test.fdb` setup is unchanged.
+
+### Fixed
+
+- **`modules/db.py`**: Pytest refuses Firebird connections targeting a basename `scoring_history.fdb` (production filename); tests must use `scoring_history_test.fdb` or another non-production file.
+
 ## [6.0.0] - 2026-03-31
 
 ### Breaking

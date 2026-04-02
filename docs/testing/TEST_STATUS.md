@@ -44,7 +44,9 @@ The test suite is split into:
   - Run `pytest -m postgres`
 - **Dependencies**: `psycopg2-binary` and `pgvector` (see `requirements/requirements_wsl_gpu.txt`). If drivers are missing, tests **skip** with a clear reason.
 - **Server**: e.g. `docker compose up -d db` from the repo root (`pgvector/pgvector:pg17` on port `5432`).
-- **Connection**: Uses the same env/config as the app: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (and temporarily `POSTGRES_DB=image_scoring_test` for the session).
+- **Pytest + `database.engine: postgres`**: `modules.db_postgres.get_pg_config()` always uses **`image_scoring_test`** while pytest is active (`POSTGRES_DB` and config `dbname` are ignored), matching Firebird’s `scoring_history_test.fdb` rule. To point pytest at another database (dangerous), set **`IMAGE_SCORING_POSTGRES_PRODUCTION_IN_PYTEST=1`** and **`IMAGE_SCORING_I_ACCEPT_PRODUCTION_PYTEST_RISK=1`**. Do not use **`image_scoring_test`** as a production database name on machines where you run tests.
+- **Session setup**: `pytest_sessionstart` in `tests/conftest.py` calls `ensure_database_exists(image_scoring_test)` when the resolved engine is `postgres` and the two-variable escape hatch is not set, so the test database exists before any test opens a pool.
+- **Connection**: Same env/config as the app: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`; the `postgres_test_session` fixture sets `POSTGRES_DB=image_scoring_test` for clarity (effective name is still forced under pytest without the escape hatch).
 - **Fixtures** (in `tests/conftest.py`): `postgres_test_session` creates the DB if needed and runs `modules.db_postgres.init_db()`; `clean_postgres` truncates app tables before each test.
 - **Tests**: `tests/test_postgres_integration.py`
 

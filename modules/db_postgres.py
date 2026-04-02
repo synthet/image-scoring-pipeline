@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import sys
 import psycopg2
 import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
@@ -8,18 +9,58 @@ from pgvector.psycopg2 import register_vector
 import datetime
 import json
 from modules import config
+from modules.test_db_constants import (
+    POSTGRES_PRODUCTION_IN_PYTEST_ENV,
+    POSTGRES_PRODUCTION_PYTEST_RISK_ACCEPTED_ENV,
+    POSTGRES_TEST_DB,
+    postgres_production_allowed_in_pytest,
+)
 
 logger = logging.getLogger(__name__)
 
 _pool = None
 
+_warned_production_pytest_incomplete = False
+
+
+def _pytest_active() -> bool:
+    return "pytest" in sys.modules or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+
+
+def _env_truthy(key: str) -> bool:
+    return os.environ.get(key, "").strip().lower() in ("1", "true", "yes")
+
+
 def get_pg_config():
+    global _warned_production_pytest_incomplete
     db_config = config.get_config_section("database") or {}
     pg = db_config.get("postgres", {})
+    config_dbname = pg.get("dbname", "image_scoring")
+    if "POSTGRES_DB" in os.environ:
+        dbname = os.environ["POSTGRES_DB"]
+    else:
+        dbname = config_dbname
+
+    if _pytest_active():
+        if postgres_production_allowed_in_pytest():
+            pass  # keep dbname from POSTGRES_DB / config above
+        else:
+            if _env_truthy(POSTGRES_PRODUCTION_IN_PYTEST_ENV) and not _env_truthy(
+                POSTGRES_PRODUCTION_PYTEST_RISK_ACCEPTED_ENV
+            ):
+                if not _warned_production_pytest_incomplete:
+                    logger.warning(
+                        "%s is set but pytest still uses %r unless %s is also set (dangerous).",
+                        POSTGRES_PRODUCTION_IN_PYTEST_ENV,
+                        POSTGRES_TEST_DB,
+                        POSTGRES_PRODUCTION_PYTEST_RISK_ACCEPTED_ENV,
+                    )
+                    _warned_production_pytest_incomplete = True
+            dbname = POSTGRES_TEST_DB
     return {
         "host": os.environ.get("POSTGRES_HOST", pg.get("host", "127.0.0.1")),
         "port": int(os.environ.get("POSTGRES_PORT", pg.get("port", 5432))),
-        "dbname": os.environ.get("POSTGRES_DB", pg.get("dbname", "image_scoring")),
+        "dbname": dbname,
         "user": os.environ.get("POSTGRES_USER", pg.get("user", "postgres")),
         "password": os.environ.get("POSTGRES_PASSWORD", pg.get("password", "postgres")),
     }
@@ -140,6 +181,14 @@ def ensure_database_exists(dbname: str, admin_dbname: str = "postgres") -> None:
 
 def truncate_app_tables() -> None:
     """TRUNCATE all application tables and restart sequences (uses current pool)."""
+    cfg = get_pg_config()
+    if cfg["dbname"] != POSTGRES_TEST_DB and not postgres_production_allowed_in_pytest():
+        raise RuntimeError(
+            f"truncate_app_tables refused: current PostgreSQL database is {cfg['dbname']!r}, "
+            f"expected {POSTGRES_TEST_DB!r}. Under pytest, POSTGRES_DB and config dbname are ignored "
+            f"unless both {POSTGRES_PRODUCTION_IN_PYTEST_ENV} and "
+            f"{POSTGRES_PRODUCTION_PYTEST_RISK_ACCEPTED_ENV} are set."
+        )
     table_list = ", ".join(POSTGRES_APP_TABLES)
     with PGConnectionManager(commit=True) as conn:
         with conn.cursor() as cur:

@@ -851,6 +851,14 @@ def _get_firebird_dsn(ctx: dict) -> str:
     return f"inet://{host_ip}/{win_path}"
 
 
+def _firebird_path_is_production_scoring_file(path: str) -> bool:
+    """True if basename is production scoring_history.fdb (not scoring_history_test.fdb)."""
+    if not path:
+        return False
+    bn = os.path.basename(str(path).replace("/", os.sep))
+    return bool(re.fullmatch(r"(?i)scoring_history\.fdb\Z", bn))
+
+
 def get_db():
     import time
     t0 = time.perf_counter()
@@ -877,6 +885,15 @@ def get_db():
 
         dsn = _get_firebird_dsn(fb_connect_ctx)
         fb_connect_ctx["dsn"] = dsn
+
+        import sys as _sys_mod
+        if ("pytest" in _sys_mod.modules or os.environ.get("PYTEST_CURRENT_TEST")) and _firebird_path_is_production_scoring_file(
+            fb_connect_ctx.get("win_path") or ""
+        ):
+            raise RuntimeError(
+                "pytest refused Firebird connection to production file scoring_history.fdb; "
+                "use scoring_history_test.fdb or a temporary .fdb for tests."
+            )
 
         # OS-specific driver setup and server auto-start
         if os.name != 'nt' and not fb_connect_ctx["use_local_path"]:

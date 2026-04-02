@@ -3,13 +3,19 @@ import os
 import re
 import glob
 import subprocess
+import logging
 import pytest
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-POSTGRES_TEST_DB = "image_scoring_test"
+from modules.test_db_constants import (
+    POSTGRES_TEST_DB,
+    postgres_production_allowed_in_pytest,
+)
+
+_log = logging.getLogger(__name__)
 
 
 def _postgres_tests_enabled(config):
@@ -67,11 +73,34 @@ def clean_postgres(postgres_test_session):
     db_postgres.truncate_app_tables()
     yield
 
+
 def pytest_sessionstart(session):
     """
     Called before performing collection and entering the test loop.
-    Ensures the test database (scoring_history_test.fdb only — never SCORING_HISTORY.FDB) is ready.
+    Ensures Postgres test catalog exists when the app engine is postgres (unless production escape hatch),
+    and the Firebird test database (scoring_history_test.fdb only — never SCORING_HISTORY.FDB) is ready.
     """
+    if not postgres_production_allowed_in_pytest():
+        try:
+            from modules import config
+        except Exception as e:
+            _log.debug("pytest_sessionstart: skip config import: %s", e)
+        else:
+            if config.get_database_engine() == "postgres":
+                try:
+                    from modules import db_postgres
+                except ModuleNotFoundError as e:
+                    _log.debug("pytest_sessionstart: skip postgres: %s", e)
+                else:
+                    try:
+                        db_postgres.ensure_database_exists(POSTGRES_TEST_DB)
+                    except Exception as e:
+                        _log.warning(
+                            "pytest_sessionstart: could not ensure database %s exists: %s",
+                            POSTGRES_TEST_DB,
+                            e,
+                        )
+
     if os.environ.get("SKIP_TEST_DB_SETUP", "").strip().lower() in ("1", "true", "yes"):
         print("\n[conftest] SKIP_TEST_DB_SETUP set — skipping scripts/setup_test_db.py (CI / no Firebird).\n")
         return
