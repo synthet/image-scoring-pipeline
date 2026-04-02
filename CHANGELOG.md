@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.1.1] - 2026-04-01
+
+### Added
+
+- **Alembic** (`migrations/versions/0003_widen_image_keywords_source.py`): widen `image_keywords.source` to `VARCHAR(128)` for long provenance labels (e.g. repair tooling). Run `alembic upgrade head` on existing PostgreSQL databases.
+- **`scripts/maintenance/restore_consistency_suite.py`**: post-restore orchestration — phase analysis, `repair_analyzer_gaps`, optional folder aggregates, embeddings / EXIF / hash backfills, and JSON reports.
+- **Docs** (`docs/technical/WORKFLOW_STAGES_ANALYSIS.md`): post-restore analyze + repair suite usage.
+
+### Changed
+
+- **DB** (`modules/db.py`, `modules/db_postgres.py`): `image_keywords.source` is `VARCHAR(128)` in DDL; idempotent `ALTER` widens existing PostgreSQL/Firebird tables when needed.
+- **`scripts/maintenance/populate_missing_embeddings.py`**: on Windows, resolves local thumbnail or file paths (`get_local_thumb`, `convert_path_to_local`); WSL/Linux behavior unchanged.
+- **`scripts/maintenance/repair_analyzer_gaps.py`**: progress lines before each repair stage.
+
+### Fixed
+
+- **`scripts/powershell/Backup-Postgres.ps1`**: Docker backup writes `pg_dump` inside the container then `docker cp` to the host — avoids corrupt custom-format dumps from PowerShell capturing binary stdout. Safer `$PSScriptRoot` / default path handling when parameters are omitted.
+- **`modules/db.py`**: default Firebird `masterkey` password warning only when `database.engine` is `firebird`.
+- **`_sync_image_keywords`** (`modules/db.py`): truncate `source` to 128 characters to match the column.
+
 ## [6.1.0] - 2026-04-01
 
 ### Added

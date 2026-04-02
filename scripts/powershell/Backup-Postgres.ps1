@@ -26,10 +26,20 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$ConfigPath   = (Join-Path $PSScriptRoot "..\..\config.json"),
-    [string]$BackupDir    = (Join-Path $PSScriptRoot "..\..\backups\postgres"),
+    [string]$ConfigPath   = $null,
+    [string]$BackupDir    = $null,
     [int]   $RetentionDays = 30
 )
+
+if ([string]::IsNullOrEmpty($PSScriptRoot)) {
+    $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Path
+}
+if ([string]::IsNullOrEmpty($ConfigPath)) {
+    $ConfigPath = Join-Path $PSScriptRoot "..\..\config.json"
+}
+if ([string]::IsNullOrEmpty($BackupDir)) {
+    $BackupDir = Join-Path $PSScriptRoot "..\..\backups\postgres"
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -119,7 +129,7 @@ $useDocker = $false
 if ($pgDumpExe) {
     Write-OK "Found local pg_dump: $pgDumpExe"
 } else {
-    Write-Step "No local pg_dump found — will use docker exec fallback"
+    Write-Step "No local pg_dump found - will use docker exec fallback"
     # Verify docker is available and the container is running
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         Write-Fail "Neither pg_dump nor docker is available on PATH. Cannot continue."
@@ -143,24 +153,32 @@ $env:PGPASSWORD = $PgPass
 
 try {
     if ($useDocker) {
-        # Docker exec: write dump directly to stdout, redirect to host file
-        $dockerArgs = @(
-            "exec", "-i", "image-scoring-postgres",
+        # Write dump inside the container, then docker cp (reliable binary; avoids broken stdout capture on Windows)
+        $containerTmp = "/tmp/${PgDb}_${Timestamp}.dump"
+        $dumpArgs = @(
+            "exec",
+            "-e", "PGPASSWORD=$PgPass",
+            "image-scoring-postgres",
             "pg_dump",
             "--host=127.0.0.1",
             "--port=$PgPort",
             "--username=$PgUser",
             "--dbname=$PgDb",
             "--format=custom",
-            "--no-password"
+            "--no-password",
+            "--file=$containerTmp"
         )
-        Write-Host "    docker $($dockerArgs -join ' ')"
-        $bytes = & docker @dockerArgs
+        Write-Host "    docker $($dumpArgs -join ' ')"
+        & docker @dumpArgs
         if ($LASTEXITCODE -ne 0) {
             throw "docker exec pg_dump exited with code $LASTEXITCODE"
         }
-        # docker exec stdout is captured as string lines; pipe binary via Out-File
-        [System.IO.File]::WriteAllBytes($DumpFile, [System.Text.Encoding]::Latin1.GetBytes($bytes -join "`n"))
+        Write-Step "Copying dump from container to host..."
+        & docker cp "image-scoring-postgres:${containerTmp}" $DumpFile
+        if ($LASTEXITCODE -ne 0) {
+            throw "docker cp exited with code $LASTEXITCODE"
+        }
+        & docker exec image-scoring-postgres rm -f $containerTmp
     } else {
         $pgArgs = @(
             "--host=$PgHost",
@@ -188,7 +206,7 @@ if (-not (Test-Path $DumpFile) -or (Get-Item $DumpFile).Length -eq 0) {
 }
 
 $sizeMB = [math]::Round((Get-Item $DumpFile).Length / 1MB, 2)
-Write-OK "Dump complete: $DumpFile ($sizeMB MB)"
+Write-OK ('Dump complete: {0} ({1} MB)' -f $DumpFile, $sizeMB)
 
 # ---------------------------------------------------------------------------
 # Retention cleanup

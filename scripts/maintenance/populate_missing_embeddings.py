@@ -29,34 +29,50 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from modules import db, utils, config
-from modules.thumbnails import get_thumb_wsl
+from modules.thumbnails import get_local_thumb, get_thumb_wsl
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def _resolve_wsl_path(row):
+def _row_file_path(row):
+    try:
+        return row["file_path"] if "file_path" in row.keys() else row[1]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def _resolve_image_path(row):
     """
-    Resolve a WSL-accessible path for an image row.
-    Uses get_thumb_wsl(row) if available and exists, else convert_path_to_wsl(file_path).
+    Resolve a local filesystem path for embedding input (thumbnail preferred).
+    On Windows: get_local_thumb + convert_path_to_local(file_path).
+    On Linux/WSL: get_thumb_wsl + convert_path_to_wsl(file_path).
     """
+    if os.name == "nt":
+        thumb = get_local_thumb(row)
+        if thumb and os.path.exists(thumb):
+            return thumb
+        fp = _row_file_path(row)
+        if not fp:
+            return None
+        local_fp = utils.convert_path_to_local(fp) if hasattr(utils, "convert_path_to_local") else fp
+        return local_fp if local_fp and os.path.exists(local_fp) else None
     thumb = get_thumb_wsl(row)
     if thumb and os.path.exists(thumb):
         return thumb
-    try:
-        fp = row["file_path"] if "file_path" in row.keys() else row[1]
-    except (KeyError, IndexError, TypeError):
-        return None
+    fp = _row_file_path(row)
     if not fp:
         return None
-    # Convert Windows path to WSL if needed
-    wsl_path = utils.convert_path_to_wsl(fp) if hasattr(utils, "convert_path_to_wsl") else fp
-    return wsl_path if os.path.exists(wsl_path) else None
+    wsl_fp = utils.convert_path_to_wsl(fp) if hasattr(utils, "convert_path_to_wsl") else fp
+    return wsl_fp if wsl_fp and os.path.exists(wsl_fp) else None
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Populate missing image embeddings in the database (run in WSL with ~/.venvs/tf)"
+        description=(
+            "Populate missing image embeddings in the database. "
+            "Recommended: WSL with ~/.venvs/tf for GPU/TensorFlow; paths resolve on Windows too when files exist."
+        )
     )
     parser.add_argument(
         "--folder",
@@ -115,10 +131,18 @@ def main():
 
     if args.dry_run:
         for i, row in enumerate(rows[:10]):
-            path = _resolve_wsl_path(row)
+            db_fp = _row_file_path(row)
+            path = _resolve_image_path(row)
             img_id = row["id"] if "id" in row.keys() else row[0]
             exists = path and os.path.exists(path)
-            logger.info("  [%d] id=%s path=%s exists=%s", i + 1, img_id, path, exists)
+            logger.info(
+                "  [%d] id=%s db_file_path=%s resolved=%s exists=%s",
+                i + 1,
+                img_id,
+                db_fp,
+                path,
+                exists,
+            )
         if total > 10:
             logger.info("  ... and %d more", total - 10)
         logger.info("Dry run complete. Would process %d images.", total)
@@ -139,13 +163,13 @@ def main():
     # Build list of (image_id, resolved_path) for images we can access
     to_process = []
     for row in rows:
-        path = _resolve_wsl_path(row)
+        path = _resolve_image_path(row)
         img_id = row["id"] if "id" in row.keys() else row[0]
         if path and os.path.exists(path):
             to_process.append((img_id, path))
         else:
             skipped_count += 1
-            fp = row["file_path"] if "file_path" in row.keys() else row[1]
+            fp = _row_file_path(row)
             logger.warning("Skipping id=%s (path not found): %s", img_id, fp)
 
     # Process in batches

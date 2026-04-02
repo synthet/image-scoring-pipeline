@@ -604,7 +604,7 @@ DB_PASS = str(
     or DB_CONFIG.get('password')
     or "masterkey"
 )
-if DB_PASS == "masterkey":
+if DB_PASS == "masterkey" and config.get_database_engine() == "firebird":
     logger.warning("Using default Firebird password 'masterkey' — set FIREBIRD_PASSWORD env var for production")
 
 import sys
@@ -2764,7 +2764,7 @@ def _init_db_impl():
                 c.execute('''CREATE TABLE image_keywords (
                     image_id    INTEGER NOT NULL,
                     keyword_id  INTEGER NOT NULL,
-                    source      VARCHAR(20) DEFAULT 'auto',
+                    source      VARCHAR(128) DEFAULT 'auto',
                     confidence  DOUBLE PRECISION,
                     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (image_id, keyword_id)
@@ -2797,6 +2797,21 @@ def _init_db_impl():
                 logger.warning("IMAGE_KEYWORDS table creation: %s", e)
                 try: conn.rollback()
                 except Exception: pass
+                c = conn.cursor()
+
+        if _table_exists(c, 'IMAGE_KEYWORDS'):
+            try:
+                c.execute(
+                    "ALTER TABLE image_keywords ALTER COLUMN source TYPE VARCHAR(128)"
+                )
+                conn.commit()
+                c = conn.cursor()
+            except Exception as e:
+                logger.debug("image_keywords.source widen (may already apply): %s", e)
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 c = conn.cursor()
 
         # Call backfill after tables are created
@@ -7911,6 +7926,8 @@ def _sync_image_keywords(image_id, keywords_str, source="auto", confidence=1.0):
     """
     if not image_id:
         return
+
+    source = (source or "auto")[:128]
 
     try:
         def _tx(tx):

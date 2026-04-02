@@ -629,7 +629,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS image_keywords (
                 image_id    INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
                 keyword_id  INTEGER NOT NULL REFERENCES keywords_dim(keyword_id) ON DELETE CASCADE,
-                source      VARCHAR(20) DEFAULT 'auto',
+                source      VARCHAR(128) DEFAULT 'auto',
                 confidence  DOUBLE PRECISION,
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (image_id, keyword_id)
@@ -637,5 +637,11 @@ def init_db():
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_imgkw_image_id ON image_keywords(image_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_imgkw_keyword_id ON image_keywords(keyword_id);")
+            try:
+                cur.execute(
+                    "ALTER TABLE image_keywords ALTER COLUMN source TYPE VARCHAR(128)"
+                )
+            except Exception as e:
+                logger.debug("image_keywords.source widen (optional): %s", e)
 
             logger.info("PostgreSQL schema initialization completed.")

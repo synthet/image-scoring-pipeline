@@ -113,6 +113,17 @@ python -u scripts/maintenance/repair_analyzer_gaps.py --all
 python -u scripts/maintenance/repair_analyzer_gaps.py --folder-agg --folder-agg-limit 500
 ```
 
+### Post-restore: analyze + repair suite
+
+**Script:** [`scripts/maintenance/restore_consistency_suite.py`](../../scripts/maintenance/restore_consistency_suite.py)
+
+Orchestrates the analyzer and `repair_analyzer_gaps` in a fixed order: optional pre-analysis JSON, `repair --all`, optional `--with-folder-agg` (rebuilds `folders.phase_agg_json` and related folder flags), optional `--with-embeddings` / `--with-exif-xmp` / `--with-hashes`, then optional `--verify` and `--report-json` with before/after `summary` blocks.
+
+```bash
+python scripts/maintenance/restore_consistency_suite.py full --dry-run --with-folder-agg
+python scripts/maintenance/restore_consistency_suite.py full --with-folder-agg --report-json /tmp/restore_report.json
+```
+
 **Related DB helpers** (callable from Python): `repair_legacy_keywords_junction`, `backfill_index_meta_global`, `repair_stuck_running_ips`, `backfill_folder_phase_aggregates` in [`modules/db.py`](../../modules/db.py).
 
 ## Conclusion & Proposed Path Forward

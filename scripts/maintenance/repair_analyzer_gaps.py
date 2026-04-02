@@ -71,21 +71,27 @@ def main() -> None:
     if not (run_kw or run_kw_ips or run_im or run_stuck or run_cull or run_fa):
         parser.error('Specify --all or one of the repair flags')
 
+    print('[repair] running init_db() (schema / pool; may take a moment)…', flush=True)
     db.init_db()
+    print('[repair] init_db() done', flush=True)
 
     if run_kw:
+        print('[repair] keywords junction (legacy CSV -> image_keywords)…', flush=True)
         r = db.repair_legacy_keywords_junction(limit=args.limit, dry_run=args.dry_run)
         print(f"[keywords] matched={r['matched']:,}  synced={r.get('synced', 0):,}  nulled={r.get('nulled', 0):,}  dry_run={args.dry_run}", flush=True)
 
     if run_kw_ips:
+        print('[repair] keywords IPS rows…', flush=True)
         r = db.backfill_keywords_ips_done(dry_run=args.dry_run)
         print(f"[keywords-ips] matched={r['matched']:,}  created={r['created']:,}  dry_run={args.dry_run}", flush=True)
 
     if run_im:
+        print('[repair] index/metadata IPS backfill…', flush=True)
         n = db.backfill_index_meta_global(limit=args.limit, dry_run=args.dry_run)
         print(f"[index-meta] images_{'would_update' if args.dry_run else 'updated'}={n:,}", flush=True)
 
     if run_stuck:
+        print('[repair] stuck running/queued IPS…', flush=True)
         r = db.repair_stuck_running_ips(
             hours=args.stuck_hours,
             phase_code=args.stuck_phase,
@@ -98,6 +104,7 @@ def main() -> None:
         )
 
     if run_cull:
+        print('[repair] culling IPS (failed but has data)…', flush=True)
         r = db.repair_culling_ips_failed_has_data(dry_run=args.dry_run)
         print(f"[culling-ips] matched={r['matched']:,}  repaired={r['repaired']:,}  dry_run={args.dry_run}", flush=True)
 
@@ -108,6 +115,10 @@ def main() -> None:
                 flush=True,
             )
         else:
+            print(
+                '[repair] folder phase aggregates (one folder at a time; can take a long time)…',
+                flush=True,
+            )
             out = db.backfill_folder_phase_aggregates(limit=args.folder_agg_limit)
             print(f"[folder-agg] recomputed={out['recomputed']:,}  selected={out['total']:,}", flush=True)
 
