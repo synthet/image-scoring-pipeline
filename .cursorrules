@@ -245,7 +245,7 @@ Dataclass representing a single image processing job.
 ### WSL Setup (Required for full functionality)
 ```bash
 source ~/.venvs/tf/bin/activate
-cd /mnt/d/Projects/image-scoring
+cd /path/to/image-scoring-backend
 python webui.py
 ```
 
