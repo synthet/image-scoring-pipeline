@@ -131,6 +131,10 @@ def search_similar_images(example_path=None, example_image_id=None,
     conn = db.get_db()
     c = conn.cursor()
     try:
+        sub = db._pg_default_embedding_space_subquery_sql()
+        has_e = db._postgres_has_default_embedding_sql("i")
+        emb_expr = "COALESCE(ie.embedding, i.image_embedding)"
+
         params = [query_vec, example_image_id]
         folder_clause = ""
 
@@ -142,20 +146,21 @@ def search_similar_images(example_path=None, example_image_id=None,
             if not frow:
                 return []
             folder_id = frow[0]
-            folder_clause = "AND folder_id = %s"
+            folder_clause = "AND i.folder_id = %s"
             params.insert(1, folder_id)
 
         # <=> is cosine distance (0=identical, 2=opposite)
         # similarity = 1 - cosine_distance
         sql = f"""
-            SELECT id AS image_id,
-                   file_path,
-                   1 - (image_embedding <=> %s::vector) AS similarity
-            FROM images
-            WHERE image_embedding IS NOT NULL
-              AND id != %s
+            SELECT i.id AS image_id,
+                   i.file_path,
+                   1 - ({emb_expr} <=> %s::vector) AS similarity
+            FROM images i
+            LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}
+            WHERE {has_e}
+              AND i.id != %s
               {folder_clause}
-            ORDER BY image_embedding <=> %s::vector
+            ORDER BY {emb_expr} <=> %s::vector
             LIMIT %s
         """
         params.extend([query_vec, limit])
@@ -207,6 +212,8 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
     c = conn.cursor()
     try:
         import os
+        sub = db._pg_default_embedding_space_subquery_sql()
+        has_e = db._postgres_has_default_embedding_sql("images")
         folder_clause = ""
         count_params = []
         if folder_path:
@@ -216,13 +223,15 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
             if not frow:
                 return []
             folder_id = frow[0]
-            folder_clause = "AND folder_id = %s"
+            folder_clause = "AND images.folder_id = %s"
             count_params = [folder_id]
 
-        c.execute(
-            f"SELECT COUNT(*) FROM images WHERE image_embedding IS NOT NULL {folder_clause}",
-            tuple(count_params)
-        )
+        count_sql = f"""
+            SELECT COUNT(*) FROM images
+            LEFT JOIN image_embeddings ie ON ie.image_id = images.id AND ie.embedding_space_id = {sub}
+            WHERE {has_e} {folder_clause}
+        """
+        c.execute(count_sql, tuple(count_params))
         count_row = c.fetchone()
         n_embeddings = count_row[0] if count_row else 0
     finally:
@@ -239,17 +248,24 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
     conn = db.get_db()
     c = conn.cursor()
     try:
+        sub = db._pg_default_embedding_space_subquery_sql()
+        has_e_a = db._postgres_has_default_embedding_sql("a")
+        has_e_b = db._postgres_has_default_embedding_sql("b")
+        emb_expr = "COALESCE(ie_a.embedding, a.image_embedding)"
+        emb_expr_b = "COALESCE(ie_b.embedding, b.image_embedding)"
         cosine_dist_threshold = 1.0 - threshold  # convert similarity → distance
 
         sql = f"""
             SELECT a.id AS image_id_a, b.id AS image_id_b,
                    a.file_path AS file_path_a, b.file_path AS file_path_b,
-                   1 - (a.image_embedding <=> b.image_embedding) AS similarity
+                   1 - ({emb_expr} <=> {emb_expr_b}) AS similarity
             FROM images a
+            LEFT JOIN image_embeddings ie_a ON ie_a.image_id = a.id AND ie_a.embedding_space_id = {sub}
             JOIN images b ON b.id > a.id
-            WHERE a.image_embedding IS NOT NULL
-              AND b.image_embedding IS NOT NULL
-              AND (a.image_embedding <=> b.image_embedding) <= %s
+            LEFT JOIN image_embeddings ie_b ON ie_b.image_id = b.id AND ie_b.embedding_space_id = {sub}
+            WHERE {has_e_a}
+              AND {has_e_b}
+              AND ({emb_expr} <=> {emb_expr_b}) <= %s
               {folder_clause if folder_clause else ''}
             ORDER BY similarity DESC
             LIMIT %s
@@ -257,20 +273,6 @@ def find_near_duplicates(threshold=None, folder_path=None, limit=None):
         sql_params = [cosine_dist_threshold]
         if folder_clause and count_params:
             # need folder_id for both a and b
-            sql = f"""
-                SELECT a.id AS image_id_a, b.id AS image_id_b,
-                       a.file_path AS file_path_a, b.file_path AS file_path_b,
-                       1 - (a.image_embedding <=> b.image_embedding) AS similarity
-                FROM images a
-                JOIN images b ON b.id > a.id
-                WHERE a.image_embedding IS NOT NULL
-                  AND b.image_embedding IS NOT NULL
-                  AND (a.image_embedding <=> b.image_embedding) <= %s
-                  AND a.folder_id = %s
-                  AND b.folder_id = %s
-                ORDER BY similarity DESC
-                LIMIT %s
-            """
             sql_params = [cosine_dist_threshold, count_params[0], count_params[0], limit]
         else:
             sql_params = [cosine_dist_threshold, limit]
@@ -408,17 +410,28 @@ def find_outliers(folder_path, z_threshold=None, k=None, limit=None):
     matrix = np.stack(vecs)
     matrix_norm = _normalize(matrix)
 
-    # Full pairwise cosine similarity
-    sim_matrix = matrix_norm @ matrix_norm.T
-
-    # For each image, compute mean of top-K similarities (excluding self)
+    # Compute mean of top-K similarities using block-wise processing to avoid huge sim_matrix
     effective_k = min(k, n - 1)
-    scores = np.empty(n, dtype=np.float64)
-    for i in range(n):
-        row = sim_matrix[i].copy()
-        row[i] = -np.inf  # exclude self
-        top_k = np.partition(row, -effective_k)[-effective_k:]
-        scores[i] = float(np.mean(top_k))
+    scores = np.zeros(n, dtype=np.float64)
+    block_size = 2000
+
+    for i in range(0, n, block_size):
+        end_i = min(i + block_size, n)
+        block_a = matrix_norm[i:end_i]
+        
+        # We need pairwise similarity of block_a vs ALL images to find top-K
+        # This still involves n * block_size similarities at a time.
+        # For 38k images and block_size 2000: 38000 * 2000 * 8 bytes ~= 600MB. Very safe.
+        sims_block = block_a @ matrix_norm.T
+        
+        for idx_in_block in range(end_i - i):
+            global_idx = i + idx_in_block
+            row = sims_block[idx_in_block].copy()
+            row[global_idx] = -np.inf  # exclude self
+            
+            # Use argpartition to find top-K indices efficiently
+            top_k_vals = np.partition(row, -effective_k)[-effective_k:]
+            scores[global_idx] = float(np.mean(top_k_vals))
 
     # Z-score
     folder_mean = float(np.mean(scores))
@@ -439,8 +452,9 @@ def find_outliers(folder_path, z_threshold=None, k=None, limit=None):
         if len(outliers) >= limit:
             break
 
-        # Nearest 3 neighbors for explainability
-        row = sim_matrix[idx].copy()
+        # Need the nearest neighbors for this specific outlier (small block here)
+        vec_norm = matrix_norm[idx].reshape(1, -1)
+        row = (vec_norm @ matrix_norm.T)[0].copy()
         row[idx] = -np.inf
         neighbor_k = min(3, n - 1)
         top_neighbor_indices = np.argpartition(row, -neighbor_k)[-neighbor_k:]
@@ -451,7 +465,7 @@ def find_outliers(folder_path, z_threshold=None, k=None, limit=None):
             nearest_neighbors.append({
                 "image_id": int(ids[ni]),
                 "file_path": paths[ni],
-                "similarity": round(float(sim_matrix[idx, ni]), 6),
+                "similarity": round(float(row[ni]), 6),
             })
 
         outliers.append({

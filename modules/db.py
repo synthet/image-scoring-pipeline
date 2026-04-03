@@ -6740,8 +6740,28 @@ def _embedding_bytes_to_pg(embedding_bytes):
     return np.frombuffer(embedding_bytes, dtype=np.float32)
 
 
-def update_image_embedding(image_id, embedding_bytes):
-    """Store a raw float32 embedding blob for an image."""
+
+def _pg_default_embedding_space_subquery_sql():
+    """Subquery returning embedding_spaces.id for the default visual space (Postgres only)."""
+    from modules.embedding_spaces import DEFAULT_EMBEDDING_SPACE_CODE
+    esc = DEFAULT_EMBEDDING_SPACE_CODE.replace("'", "''")
+    return (
+        f"(SELECT id FROM embedding_spaces WHERE code = '{esc}' "
+        "AND COALESCE(active, 1) = 1 LIMIT 1)"
+    )
+
+
+def _postgres_has_default_embedding_sql(image_alias="i"):
+    """SQL fragment: image has legacy blob or a row in image_embeddings for default space."""
+    sub = _pg_default_embedding_space_subquery_sql()
+    return (
+        f"(EXISTS (SELECT 1 FROM image_embeddings ie WHERE ie.image_id = {image_alias}.id "
+        f"AND ie.embedding_space_id = {sub}) OR {image_alias}.image_embedding IS NOT NULL)"
+    )
+
+
+def update_image_embedding(image_id, embedding_bytes, model_version=None):
+    """Store a raw float32 embedding blob for an image. Postgres also upserts image_embeddings."""
     try:
         conn = get_connector()
         if conn.type == 'postgres':
@@ -6750,21 +6770,40 @@ def update_image_embedding(image_id, embedding_bytes):
                 "UPDATE images SET image_embedding = %s WHERE id = %s",
                 (vec, image_id),
             )
+            from modules.embedding_spaces import get_default_embedding_space_id
+
+            sid = get_default_embedding_space_id()
+            if sid is not None and vec is not None:
+                db_postgres.execute_write(
+                    """
+                    INSERT INTO image_embeddings (image_id, embedding_space_id, embedding, model_version, updated_at)
+                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (image_id, embedding_space_id)
+                    DO UPDATE SET embedding = EXCLUDED.embedding,
+                                  model_version = EXCLUDED.model_version,
+                                  updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (image_id, sid, vec, model_version),
+                )
         else:
             conn.execute("UPDATE images SET image_embedding = ? WHERE id = ?", (embedding_bytes, image_id))
     except Exception as e:
         print(f"Error updating embedding for image {image_id}: {e}")
 
 
-def update_image_embeddings_batch(pairs):
+def update_image_embeddings_batch(pairs, model_version=None):
     """
     Batch-update embeddings.  pairs: list of (image_id, embedding_bytes).
+    Postgres dual-writes image_embeddings for the default visual space.
     """
     if not pairs:
         return
     try:
         conn = get_connector()
         if conn.type == 'postgres':
+            from modules.embedding_spaces import get_default_embedding_space_id
+
+            sid = get_default_embedding_space_id()
             with db_postgres.PGConnectionManager(commit=True) as pg_conn:
                 with pg_conn.cursor() as cur:
                     for image_id, embedding_bytes in pairs:
@@ -6773,6 +6812,18 @@ def update_image_embeddings_batch(pairs):
                             "UPDATE images SET image_embedding = %s WHERE id = %s",
                             (vec, image_id),
                         )
+                        if sid is not None and vec is not None:
+                            cur.execute(
+                                """
+                                INSERT INTO image_embeddings (image_id, embedding_space_id, embedding, model_version, updated_at)
+                                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                                ON CONFLICT (image_id, embedding_space_id)
+                                DO UPDATE SET embedding = EXCLUDED.embedding,
+                                              model_version = EXCLUDED.model_version,
+                                              updated_at = CURRENT_TIMESTAMP
+                                """,
+                                (image_id, sid, vec, model_version),
+                            )
         else:
             def _tx(tx):
                 for image_id, embedding_bytes in pairs:
@@ -6795,10 +6846,18 @@ def get_image_embedding(image_id):
     try:
         conn = get_connector()
         if conn.type == 'postgres':
+            sub = _pg_default_embedding_space_subquery_sql()
             row = db_postgres.execute_select_one(
-                "SELECT image_embedding FROM images WHERE id = %s", (image_id,)
+                f"""
+                SELECT COALESCE(ie.embedding, i.image_embedding) AS emb
+                FROM images i
+                LEFT JOIN image_embeddings ie ON ie.image_id = i.id
+                  AND ie.embedding_space_id = {sub}
+                WHERE i.id = %s
+                """,
+                (image_id,),
             )
-            return _pg_vec_to_bytes(row["image_embedding"]) if row else None
+            return _pg_vec_to_bytes(row["emb"]) if row and row.get("emb") is not None else None
         row = conn.query_one("SELECT image_embedding FROM images WHERE id = ?", (image_id,))
         if row and row.get("image_embedding"):
             return bytes(row["image_embedding"])
@@ -6815,12 +6874,24 @@ def get_image_embeddings_batch(image_ids: list[int]) -> dict[int, bytes]:
     try:
         conn = get_connector()
         if conn.type == 'postgres':
+            sub = _pg_default_embedding_space_subquery_sql()
             placeholders = ','.join(['%s'] * len(image_ids))
             rows = db_postgres.execute_select(
-                f"SELECT id, image_embedding FROM images WHERE id IN ({placeholders})",
+                f"""
+                SELECT i.id,
+                       COALESCE(ie.embedding, i.image_embedding) AS emb
+                FROM images i
+                LEFT JOIN image_embeddings ie ON ie.image_id = i.id
+                  AND ie.embedding_space_id = {sub}
+                WHERE i.id IN ({placeholders})
+                """,
                 tuple(image_ids),
             )
-            return {r["id"]: _pg_vec_to_bytes(r["image_embedding"]) for r in rows if r["image_embedding"] is not None}
+            return {
+                r["id"]: _pg_vec_to_bytes(r["emb"])
+                for r in rows
+                if r.get("emb") is not None
+            }
 
         placeholders = ','.join(['?'] * len(image_ids))
         rows = conn.query(
@@ -6839,27 +6910,40 @@ def get_embeddings_for_search(folder_path=None, limit=None):
     Optionally filter by folder_path and cap results with limit.
     """
     if _get_db_engine() == "postgres":
+        sub = _pg_default_embedding_space_subquery_sql()
+        has_e = _postgres_has_default_embedding_sql("i")
+        emb_expr = "COALESCE(ie.embedding, i.image_embedding)"
         if folder_path:
             norm = os.path.normpath(folder_path)
-            sql = ("SELECT i.id, i.file_path, i.image_embedding FROM images i "
-                   "JOIN folders f ON f.id = i.folder_id "
-                   "WHERE i.image_embedding IS NOT NULL AND f.path = ?")
+            sql = (
+                f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding FROM images i "
+                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"JOIN folders f ON f.id = i.folder_id "
+                f"WHERE {has_e} AND f.path = ?"
+            )
             params: list = [norm]
         else:
-            sql = "SELECT i.id, i.file_path, i.image_embedding FROM images i WHERE i.image_embedding IS NOT NULL"
+            sql = (
+                f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding FROM images i "
+                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"WHERE {has_e}"
+            )
             params = []
         if limit:
             sql += " ROWS ?"
             params.append(limit)
         conn = get_connector()
         if conn.type == 'postgres':
-            # pgvector returns numpy arrays; convert via db_postgres to get proper bytes
             import psycopg2.extras
             pg_sql = _translate_fb_to_pg(sql)
             with db_postgres.PGConnectionManager() as pg_conn:
                 with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                     cur.execute(pg_sql, tuple(params) if params else None)
-                    return [(r["id"], r["file_path"], bytes(r["image_embedding"])) for r in cur.fetchall()]
+                    return [
+                        (r["id"], r["file_path"], _pg_vec_to_bytes(r["image_embedding"]))
+                        for r in cur.fetchall()
+                        if r["image_embedding"] is not None
+                    ]
         rows = conn.query(sql, tuple(params) if params else None)
         return [(r["id"], r["file_path"], bytes(r["image_embedding"])) for r in rows]
 
@@ -6874,17 +6958,26 @@ def get_embeddings_with_metadata(folder_path=None, limit=None):
     Optionally filter by folder_path and cap results with limit.
     """
     if _get_db_engine() == "postgres":
+        sub = _pg_default_embedding_space_subquery_sql()
+        has_e = _postgres_has_default_embedding_sql("i")
+        emb_expr = "COALESCE(ie.embedding, i.image_embedding)"
         if folder_path:
             norm = os.path.normpath(folder_path)
-            sql = ("SELECT i.id, i.file_path, i.image_embedding, i.thumbnail_path, "
-                   "       i.label, i.rating, i.score_general FROM images i "
-                   "JOIN folders f ON f.id = i.folder_id "
-                   "WHERE i.image_embedding IS NOT NULL AND f.path = ?")
+            sql = (
+                f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding, i.thumbnail_path, "
+                f"       i.label, i.rating, i.score_general FROM images i "
+                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"JOIN folders f ON f.id = i.folder_id "
+                f"WHERE {has_e} AND f.path = ?"
+            )
             params: list = [norm]
         else:
-            sql = ("SELECT i.id, i.file_path, i.image_embedding, i.thumbnail_path, "
-                   "       i.label, i.rating, i.score_general FROM images i "
-                   "WHERE i.image_embedding IS NOT NULL")
+            sql = (
+                f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding, i.thumbnail_path, "
+                f"       i.label, i.rating, i.score_general FROM images i "
+                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"WHERE {has_e}"
+            )
             params = []
         if limit:
             sql += " ROWS ?"
@@ -6899,7 +6992,7 @@ def get_embeddings_with_metadata(folder_path=None, limit=None):
                     return [{
                         "image_id": r["id"],
                         "file_path": r["file_path"],
-                        "embedding": bytes(r["image_embedding"]),
+                        "embedding": _pg_vec_to_bytes(r["image_embedding"]),
                         "thumbnail_path": r["thumbnail_path"],
                         "label": r["label"],
                         "rating": r["rating"],
@@ -6917,6 +7010,40 @@ def get_embeddings_with_metadata(folder_path=None, limit=None):
         } for r in rows]
 
 
+def _get_images_missing_embeddings_pg(folder_path=None, limit=None, min_id_exclusive=None):
+    """Postgres: missing default-space embedding (no row in image_embeddings and no legacy blob)."""
+    has_e = _postgres_has_default_embedding_sql("images")
+    id_resume = ""
+    resume_params = []
+    if min_id_exclusive is not None:
+        id_resume = " AND images.id > ?"
+        resume_params.append(int(min_id_exclusive))
+    if folder_path:
+        norm = os.path.normpath(folder_path)
+        frow = get_connector().query_one("SELECT id FROM folders WHERE path = ?", (norm,))
+        if not frow:
+            return []
+        folder_id = frow["id"]
+        query = f"""
+            SELECT images.id, images.file_path, images.thumbnail_path, images.thumbnail_path_win
+            FROM images
+            WHERE NOT {has_e} AND images.folder_id = ?{id_resume}
+            ORDER BY images.id
+        """
+        params = [folder_id] + resume_params
+    else:
+        query = f"""
+            SELECT images.id, images.file_path, images.thumbnail_path, images.thumbnail_path_win
+            FROM images
+            WHERE NOT {has_e}{id_resume}
+            ORDER BY images.id
+        """
+        params = list(resume_params)
+    if limit:
+        query += " FETCH FIRST ? ROWS ONLY"
+        params.append(limit)
+    return list(get_connector().query(query, tuple(params)))
+
 def get_images_missing_embeddings(folder_path=None, limit=None, min_id_exclusive=None):
     """
     Return image rows with image_embedding IS NULL.
@@ -6925,6 +7052,8 @@ def get_images_missing_embeddings(folder_path=None, limit=None, min_id_exclusive
     Rows are ordered by id ascending for stable checkpointing.
     """
     try:
+        if _get_db_engine() == "postgres":
+            return _get_images_missing_embeddings_pg(folder_path, limit, min_id_exclusive)
         id_resume = ""
         resume_params: list = []
         if min_id_exclusive is not None:
@@ -6983,18 +7112,46 @@ def get_images_for_tag_propagation(folder_path=None):
             folder_filter = " AND i.folder_id = ?"
             params.append(frow["id"])
 
-        # Untagged images with embeddings.
-        # Phase 2/3 migration: prefer normalized IMAGE_KEYWORDS; keep legacy
-        # IMAGES.KEYWORDS fallback for rows not yet dual-written.
+        if conn.type == 'postgres':
+            # Postgres: use COALESCE + default space subquery
+            sub = _pg_default_embedding_space_subquery_sql()
+            has_e = _postgres_has_default_embedding_sql("i")
+            emb_expr = "COALESCE(ie.embedding, i.image_embedding)"
+            q_untagged = (
+                f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding FROM images i "
+                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"WHERE {has_e} "
+                f"AND NOT EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
+                f"AND (i.keywords IS NULL OR i.keywords = '')" + folder_filter
+            )
+            q_tagged = (
+                f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding, "
+                f"COALESCE((SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') "
+                f"FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
+                f"WHERE ik.image_id = i.id), i.keywords) AS keywords_csv "
+                f"FROM images i "
+                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"WHERE {has_e} "
+                f"AND (EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
+                f"OR (i.keywords IS NOT NULL AND i.keywords != ''))" + folder_filter
+            )
+            import psycopg2.extras
+            pg_params = tuple(params) if params else None
+            with db_postgres.PGConnectionManager() as pg_conn:
+                with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(q_untagged, pg_params)
+                    untagged = [(r["id"], r["file_path"], _pg_vec_to_bytes(r["image_embedding"])) for r in cur.fetchall()]
+                    cur.execute(q_tagged, pg_params)
+                    tagged = [(r["id"], r["file_path"], _pg_vec_to_bytes(r["image_embedding"]), r["keywords_csv"]) for r in cur.fetchall()]
+            return untagged, tagged
+
+        # Firebird / other connector path
         q_untagged = (
             "SELECT i.id, i.file_path, i.image_embedding FROM images i "
             "WHERE i.image_embedding IS NOT NULL "
             "AND NOT EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
             "AND (i.keywords IS NULL OR i.keywords = '')" + folder_filter
         )
-
-        # Tagged images with embeddings. Build keyword CSV from normalized
-        # tables when possible, otherwise fall back to legacy IMAGES.KEYWORDS.
         q_tagged = (
             "SELECT i.id, i.file_path, i.image_embedding, "
             "COALESCE((SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') "
@@ -7005,22 +7162,6 @@ def get_images_for_tag_propagation(folder_path=None):
             "AND (EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
             "OR (i.keywords IS NOT NULL AND i.keywords != ''))" + folder_filter
         )
-
-        if conn.type == 'postgres':
-            # pgvector requires direct cursor for proper binary embedding access
-            import psycopg2.extras
-            pg_untagged = _translate_fb_to_pg(q_untagged)
-            pg_tagged = _translate_fb_to_pg(q_tagged)
-            pg_params = tuple(params) if params else None
-            with db_postgres.PGConnectionManager() as pg_conn:
-                with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute(pg_untagged, pg_params)
-                    untagged = [(r["id"], r["file_path"], bytes(r["image_embedding"])) for r in cur.fetchall()]
-                    cur.execute(pg_tagged, pg_params)
-                    tagged = [(r["id"], r["file_path"], bytes(r["image_embedding"]), r["keywords_csv"]) for r in cur.fetchall()]
-            return untagged, tagged
-
-        # Firebird / other connector path
         p = tuple(params) if params else None
         untagged_rows = conn.query(q_untagged, p)
         untagged = [(r["id"], r["file_path"], bytes(r["image_embedding"])) for r in untagged_rows]
@@ -7082,7 +7223,10 @@ def list_folder_paths_with_missing_keywords(require_embedding: bool = False):
     """
     embed_clause = ""
     if require_embedding:
-        embed_clause = " AND i.image_embedding IS NOT NULL "
+        if _get_db_engine() == "postgres":
+            embed_clause = f" AND {_postgres_has_default_embedding_sql('i')} "
+        else:
+            embed_clause = " AND i.image_embedding IS NOT NULL "
     query = (
         "SELECT f.path, COUNT(*) AS cnt "
         "FROM images i "

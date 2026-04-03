@@ -2,13 +2,15 @@
 
 ## What is stored
 
-- **Column:** `images.image_embedding` (PostgreSQL: `vector(1280)` via pgvector; legacy Firebird: BLOB float32 payload).
+- **Primary (PostgreSQL):** Registry table **`embedding_spaces`** plus **`image_embeddings`** — one row per `(image_id, embedding_space_id)` with `embedding vector(1280)`, optional `model_version`, and an HNSW index for cosine search. The default space code is **`mobilenet_v2_imagenet_gap`** (see [`modules/embedding_spaces.py`](../../modules/embedding_spaces.py)).
+- **Legacy / dual-write column:** **`images.image_embedding`** — still updated on every write so older code paths keep working. Reads on Postgres typically use **`COALESCE(image_embeddings.embedding, images.image_embedding)`** for the default space (see [`modules/db.py`](../../modules/db.py)).
+- **Firebird (Electron gallery):** Single BLOB on **`images.image_embedding`** only; multi-space storage is **PostgreSQL-first** until the gallery migrates off Firebird (see [DB_VECTORS_REFACTOR.md](../plans/database/DB_VECTORS_REFACTOR.md)).
 - **Model:** TensorFlow Keras **MobileNetV2**, ImageNet weights, `include_top=False`, global average pooling → **1280** floats.
 - **Semantics:** Coarse **visual similarity** features for clustering, near-duplicate-style retrieval, tag propagation neighbors, and similar-image search. They are **not** CLIP text–image aligned embeddings.
 
 ## When embeddings are written
 
-1. **Culling phase (clustering)** — [`modules/clustering.py`](../../modules/clustering.py) `ClusteringEngine.extract_features()` persists batches with `db.update_image_embeddings_batch()`. Algorithm/model identity is tracked in code as `CLUSTER_VERSION` in that module.
+1. **Culling phase (clustering)** — [`modules/clustering.py`](../../modules/clustering.py) `ClusteringEngine.extract_features()` persists batches with `db.update_image_embeddings_batch()` (PostgreSQL also upserts **`image_embeddings`** for the default space when the registry row exists). Algorithm/model identity is tracked in code as `CLUSTER_VERSION` in that module; callers may pass `model_version=` into the batch API to persist it on `image_embeddings`.
 2. **On demand** — [`modules/similar_search.py`](../../modules/similar_search.py) may compute and persist a single embedding via `ClusteringEngine` if an image is queried and `image_embedding` is null.
 
 ## Backfill images missing embeddings
@@ -38,11 +40,19 @@ python scripts/maintenance/populate_missing_embeddings.py [--dry-run] [--limit N
 
 **Legacy launcher name:** `run_populate_missing_embeddings.bat` calls the same script (backward-compatible).
 
-## Schema: column on `images` vs separate table
+## Schema: column on `images` vs registry + `image_embeddings`
 
-For a **single** embedding type (fixed model and dimension), keeping **`images.image_embedding`** is appropriate: one vector per image, HNSW index on Postgres, no join on every similarity query.
+On **PostgreSQL**, the app now uses:
 
-Introduce a separate table (e.g. `image_embeddings` keyed by `image_id` + `model_key`) only if you need **multiple models**, **explicit versioning/invalidation**, or **independent lifecycle** from the image row. pgvector columns have a **fixed dimension per column**; multiple dimensions usually mean multiple columns or multiple tables, each with `vector(N)` and its own index.
+- **`embedding_spaces`** — canonical codes and dimensions (`dim` documents intent; the physical `vector(N)` column is still fixed per table).
+- **`image_embeddings`** — stores vectors for each `(image_id, embedding_space_id)` with **`UNIQUE(image_id, embedding_space_id)`** and HNSW on **`image_embeddings.embedding`**.
+- **`images.image_embedding`** — retained for **dual-write** and **dual-read** fallback during migration; new work should assume the keyed table is the long-term home for additional spaces.
+
+For a **single** embedding type, a column on `images` alone is enough; the project is in an **expand-contract** phase: both the column and `image_embeddings` are populated for the default MobileNet space.
+
+**pgvector rule (unchanged):** each `vector(N)` has a **fixed N**. A **512-d** CLIP space needs a **different** column or table — not another row in the current `image_embeddings.embedding` column (1280). See [DB_VECTORS_REFACTOR.md](../plans/database/DB_VECTORS_REFACTOR.md) worklog and follow-ups.
+
+**Upgrade:** run Alembic revision **`0004`** (`migrations/versions/0004_embedding_spaces_image_embeddings.py`) on existing databases; `init_db()` on greenfield Postgres creates the same objects.
 
 ## Checklist for additional models (e.g. CLIP)
 
@@ -61,8 +71,11 @@ Treat a new space as **not interchangeable** with MobileNet embeddings without m
 
 ## Related code
 
+- [`modules/embedding_spaces.py`](../../modules/embedding_spaces.py) — default space code, `get_default_embedding_space_id()`
 - [`modules/clustering.py`](../../modules/clustering.py) — feature extraction and culling persistence
-- [`modules/similar_search.py`](../../modules/similar_search.py) — similarity search, `EMBEDDING_DIM`
-- [`modules/db.py`](../../modules/db.py) — `update_image_embedding(s)`, `get_images_missing_embeddings`
-- [`modules/db_postgres.py`](../../modules/db_postgres.py) — `vector(1280)` DDL and HNSW index
+- [`modules/similar_search.py`](../../modules/similar_search.py) — similarity search, `EMBEDDING_DIM`; Postgres queries join `image_embeddings`
+- [`modules/db.py`](../../modules/db.py) — `update_image_embedding(s)`, `get_images_missing_embeddings`, `_postgres_has_default_embedding_sql`, etc.
+- [`modules/db_postgres.py`](../../modules/db_postgres.py) — DDL for `images`, `embedding_spaces`, `image_embeddings`, HNSW indexes
+- [`migrations/versions/0004_embedding_spaces_image_embeddings.py`](../../migrations/versions/0004_embedding_spaces_image_embeddings.py) — Alembic upgrade for registry + backfill
 - [`scripts/maintenance/populate_missing_embeddings.py`](../../scripts/maintenance/populate_missing_embeddings.py) — backfill CLI
+- [`docs/plans/database/DB_VECTORS_REFACTOR.md`](../plans/database/DB_VECTORS_REFACTOR.md) — plan, worklog, follow-ups

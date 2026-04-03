@@ -250,8 +250,8 @@ def status(
 
     for name, s in statuses.items():
         running = "[green]Yes[/green]" if s["running"] else "[dim]No[/dim]"
-        progress_str = f"{s['current']}/{s['total']}" if s["total"] else "-"
-        table.add_row(name, running, s["message"], progress_str)
+        progress_str = f"{s.get('current', 0)}/{s.get('total', 0)}" if s.get('total') else "-"
+        table.add_row(name, running, s.get("message", "-"), progress_str)
 
     console.print(table)
 

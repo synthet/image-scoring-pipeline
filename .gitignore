@@ -206,3 +206,14 @@ webui.lock
 .agent/skills/moltbook/
 
 .mcp.json
+
+# One-off patch/migration tools (dev artifacts)
+tools/patch_*.py
+tools/vec_*.py
+tools/_*.py
+tools/apply_*.py
+tools/run_*.py
+tools/toolbox.exe
+
+# Claude Code local settings
+.claude/settings.local.json

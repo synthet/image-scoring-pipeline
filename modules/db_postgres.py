@@ -130,6 +130,8 @@ POSTGRES_APP_TABLES = (
     "jobs",
     "folders",
     "stacks",
+    "image_embeddings",
+    "embedding_spaces",
     "images",
     "file_paths",
     "job_phases",
@@ -400,6 +402,49 @@ def init_db():
             cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_images_embedding_hnsw
               ON images USING hnsw (image_embedding vector_cosine_ops);
+            """)
+
+            # ------------------------------------------------------------------
+            # EMBEDDING_SPACES — registry of vector kinds (fixed dim per row)
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS embedding_spaces (
+                id              SERIAL PRIMARY KEY,
+                code            VARCHAR(64) NOT NULL,
+                dim             INTEGER NOT NULL,
+                description     TEXT,
+                active          SMALLINT DEFAULT 1 NOT NULL,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_embedding_spaces_code ON embedding_spaces(code);")
+
+            # ------------------------------------------------------------------
+            # IMAGE_EMBEDDINGS — one row per (image, space); vector(1280) for 1280-d spaces only
+            # ------------------------------------------------------------------
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS image_embeddings (
+                id                      SERIAL PRIMARY KEY,
+                image_id                INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+                embedding_space_id      INTEGER NOT NULL REFERENCES embedding_spaces(id) ON DELETE CASCADE,
+                embedding               vector(1280) NOT NULL,
+                model_version           VARCHAR(64),
+                updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (image_id, embedding_space_id)
+            );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_image_embeddings_image ON image_embeddings(image_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_image_embeddings_space ON image_embeddings(embedding_space_id);")
+            cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_image_embeddings_hnsw
+              ON image_embeddings USING hnsw (embedding vector_cosine_ops);
+            """)
+
+            cur.execute("""
+            INSERT INTO embedding_spaces (code, dim, description, active)
+            SELECT 'mobilenet_v2_imagenet_gap', 1280,
+                   'MobileNetV2 ImageNet weights, GAP — visual similarity / culling', 1
+            WHERE NOT EXISTS (SELECT 1 FROM embedding_spaces WHERE code = 'mobilenet_v2_imagenet_gap')
             """)
 
             # Back-fill FK on stacks.best_image_id now that images exists
