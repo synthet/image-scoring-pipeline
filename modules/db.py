@@ -3610,6 +3610,7 @@ def invalidate_folder_images_cache(folder_path=None):
 def get_images_by_folder(folder_path):
     """
     Returns all images located immediately in the specified folder using folder_id.
+    Keywords are loaded from normalized schema via COALESCE(IMAGE_KEYWORDS, IMAGES.KEYWORDS, '').
     Results are cached for up to _FOLDER_CACHE_TTL seconds to avoid redundant
     DB round-trips (e.g. folder tree selection followed by "Open in..." navigation).
     """
@@ -3628,9 +3629,53 @@ def get_images_by_folder(folder_path):
     if not folder_id:
         return []
 
-    result = list(get_connector().query(
-        "SELECT * FROM images WHERE folder_id = ? ORDER BY file_name", (folder_id,)
-    ))
+    if _get_db_engine() == "postgres":
+        # Postgres: fetch all columns, replace keywords with COALESCE
+        sql = f"""
+            SELECT
+                i.id, i.file_path, i.file_name, i.folder_id, i.stack_id,
+                i.image_embedding, i.rating, i.label, i.title, i.description,
+                i.metadata, i.scores_json, i.created_at,
+                COALESCE(
+                    (SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
+                     FROM image_keywords ik
+                     JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
+                     WHERE ik.image_id = i.id),
+                    i.keywords, ''
+                ) AS keywords
+            FROM images i
+            WHERE i.folder_id = %s
+            ORDER BY i.file_name
+        """
+        try:
+            import psycopg2.extras
+            with db_postgres.PGConnectionManager() as pg_conn:
+                with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(sql, (folder_id,))
+                    result = list(cur.fetchall())
+        except Exception as e:
+            logging.error(f"get_images_by_folder Postgres: {e}")
+            result = []
+    else:
+        # Firebird: same COALESCE logic with LIST()
+        sql = """
+            SELECT
+                i.id, i.file_path, i.file_name, i.folder_id, i.stack_id,
+                i.image_embedding, i.rating, i.label, i.title, i.description,
+                i.metadata, i.scores_json, i.created_at,
+                COALESCE(
+                    (SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
+                     FROM image_keywords ik
+                     JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
+                     WHERE ik.image_id = i.id),
+                    i.keywords, ''
+                ) AS keywords
+            FROM images i
+            WHERE i.folder_id = ?
+            ORDER BY i.file_name
+        """
+        result = list(get_connector().query(sql, (folder_id,)))
+
     _folder_images_cache[folder_path] = (now, result)
     return result
 
@@ -5019,11 +5064,61 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
 
 
 def get_image_details(file_path):
-    row = get_connector().query_one(
-        "SELECT * FROM images WHERE file_path = ?", (file_path,)
-    )
+    """
+    Returns image details with keywords from normalized schema (Postgres)
+    or legacy column (Firebird). Fallback chain: normalized → legacy → empty.
+
+    Keywords are loaded via COALESCE(IMAGE_KEYWORDS, IMAGES.KEYWORDS, '')
+    to transparently use the primary normalized source.
+    """
+    if _get_db_engine() == "postgres":
+        # Postgres: fetch all columns, replace keywords with COALESCE
+        sql = f"""
+            SELECT
+                i.id, i.file_path, i.file_name, i.folder_id, i.stack_id,
+                i.image_embedding, i.rating, i.label, i.title, i.description,
+                i.metadata, i.scores_json, i.created_at,
+                COALESCE(
+                    (SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
+                     FROM image_keywords ik
+                     JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
+                     WHERE ik.image_id = i.id),
+                    i.keywords, ''
+                ) AS keywords
+            FROM images i
+            WHERE i.file_path = %s
+        """
+        try:
+            import psycopg2.extras
+            with db_postgres.PGConnectionManager() as pg_conn:
+                with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(sql, (file_path,))
+                    row = cur.fetchone()
+        except Exception as e:
+            logging.error(f"get_image_details Postgres: {e}")
+            row = None
+    else:
+        # Firebird: same COALESCE logic with LIST()
+        sql = """
+            SELECT
+                i.id, i.file_path, i.file_name, i.folder_id, i.stack_id,
+                i.image_embedding, i.rating, i.label, i.title, i.description,
+                i.metadata, i.scores_json, i.created_at,
+                COALESCE(
+                    (SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
+                     FROM image_keywords ik
+                     JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
+                     WHERE ik.image_id = i.id),
+                    i.keywords, ''
+                ) AS keywords
+            FROM images i
+            WHERE i.file_path = ?
+        """
+        row = get_connector().query_one(sql, (file_path,))
+
     if not row:
         return {}
+
     data = dict(row)
     data['file_paths'] = get_all_paths(data['id'])
     data['resolved_path'] = get_resolved_path(data['id'], verified_only=False)
