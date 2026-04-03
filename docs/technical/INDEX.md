@@ -65,4 +65,11 @@ Existing features and implementation docs only. Plans and proposals → [plans/I
 | [RUNS_WALKTHROUGH.md](RUNS_WALKTHROUGH.md) | End-to-end walkthrough: submit → dispatcher → runners, pause/resume/retry/force, UI tabs |
 | [MCP_DEBUGGING_TOOLS.md](MCP_DEBUGGING_TOOLS.md) | MCP server tools for Cursor |
 
-**See also:** [Main docs index](../INDEX.md) · [reference/models/](../reference/models/INDEX.md) · [reference/api/](../reference/api/INDEX.md) · [plans/](../plans/INDEX.md)
+## Cross-project (image-scoring-gallery)
+
+| Document / topic | Description |
+|------------------|-------------|
+| [AGENT_COORDINATION.md](AGENT_COORDINATION.md) | Integration protocols with **image-scoring-gallery** ([canonical on GitHub](https://github.com/synthet/image-scoring-backend/blob/main/docs/technical/AGENT_COORDINATION.md)) |
+| [CROSS_APP_INTEGRATION_AUDIT.md](../testing/CROSS_APP_INTEGRATION_AUDIT.md) | Automated integration coverage between backend and gallery |
+
+**See also:** [Main docs index](../INDEX.md) · [reference/models/](../reference/models/INDEX.md) · [reference/api/](../reference/api/INDEX.md) · [plans/](../plans/INDEX.md) · [image-scoring-gallery docs](https://github.com/synthet/image-scoring-gallery/blob/main/docs/README.md)

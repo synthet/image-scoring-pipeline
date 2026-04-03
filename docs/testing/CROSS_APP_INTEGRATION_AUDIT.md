@@ -2,11 +2,11 @@
 
 Date: 2026-03-15
 
-This audit evaluates the current automated integration coverage between the Python backend in `image-scoring` and the sibling Electron frontend in `electron-image-scoring`.
+This audit evaluates the current automated integration coverage between the Python backend (**image-scoring-backend**) and the sibling Electron frontend (**image-scoring-gallery**).
 
 Target environment:
 - Local Windows developer workflow
-- Sibling repo layout: `D:\Projects\image-scoring` and `D:\Projects\electron-image-scoring`
+- Sibling repo layout: **image-scoring-backend** and **image-scoring-gallery** (paths on disk vary)
 - Shared Firebird database plus backend REST/WebSocket interfaces
 
 This is not a new end-to-end harness. It is a coverage audit, a list of verified failures, and a minimum next-step test matrix.
@@ -55,8 +55,8 @@ No true cross-repo automated smoke harness was found. Coverage remains split acr
 
 | Command | Result |
 |---|---|
-| `node scripts/validate-api-types.mjs` in `electron-image-scoring` | Failed with 28 contract mismatches |
-| `npm run test:run -- electron/apiUrlResolver.test.ts src/services/WebSocketService.test.ts` in `electron-image-scoring` | Passed: 2 files, 16 tests |
+| `node scripts/validate-api-types.mjs` in **image-scoring-gallery** | Failed with 28 contract mismatches |
+| `npm run test:run -- electron/apiUrlResolver.test.ts src/services/WebSocketService.test.ts` in **image-scoring-gallery** | Passed: 2 files, 16 tests |
 | `.venv\Scripts\pytest.exe tests/test_api_queue.py tests/test_events.py -q` in `image-scoring` | Blocked by local Python environment |
 
 ### Environment blockers

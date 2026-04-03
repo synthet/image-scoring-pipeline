@@ -11,6 +11,8 @@ Plans, proposals, and specs for features not yet implemented.
 | [DB_SCHEMA_REFACTOR_PLAN.md](database/DB_SCHEMA_REFACTOR_PLAN.md) | Strategic phase definitions for schema refactor |
 | [DB_SCHEMA_REFACTOR_IMPLEMENTATION.md](database/DB_SCHEMA_REFACTOR_IMPLEMENTATION.md) | Implementation guide for schema refactor |
 | [FIREBIRD_POSTGRES_MIGRATION.md](database/FIREBIRD_POSTGRES_MIGRATION.md) | Migration plan from Firebird to PostgreSQL + pgvector |
+| [NEXT_STEPS.md](database/NEXT_STEPS.md) | Keyword/metadata refactor — Phase 4 remaining steps and verification |
+| [DB_VECTORS_REFACTOR.md](database/DB_VECTORS_REFACTOR.md) | Multi-type vectors (pgvector) and optional normalization appendix |
 
 ## Refactoring
 
@@ -30,6 +32,7 @@ Plans, proposals, and specs for features not yet implemented.
 
 | Document | Description |
 |----------|-------------|
+| [NEXT_STEPS.md](embedding/NEXT_STEPS.md) | Implementation status and remaining gaps (UX, orchestration) |
 | [EMBEDDING_APPLICATIONS.md](embedding/EMBEDDING_APPLICATIONS.md) | Overview of proposed embedding use cases |
 | [EMBEDDING_APPLICATIONS_INDEX.md](embedding/EMBEDDING_APPLICATIONS_INDEX.md) | Index of detailed specs |
 | [EMBEDDING_APP_01_DIVERSITY_SELECTION.md](embedding/EMBEDDING_APP_01_DIVERSITY_SELECTION.md) | Diversity-aware selection |

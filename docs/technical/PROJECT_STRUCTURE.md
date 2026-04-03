@@ -21,7 +21,7 @@ Common entry points you’ll actually use:
 - `LICENSE`: License information
 
 ### External Repositories
-- **[electron-image-scoring](https://github.com/synthet/electron-image-scoring)**: The high-performance standalone Electron gallery. Previously located in `electron-gallery/`.
+- **[image-scoring-gallery](https://github.com/synthet/image-scoring-gallery)**: The high-performance standalone Electron gallery. Previously located in `electron-gallery/`.
 
 ## Core code
 

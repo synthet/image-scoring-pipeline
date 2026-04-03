@@ -530,7 +530,7 @@ sequenceDiagram
 
 ## Summary of Changes by File
 
-### Python repo (`image-scoring`)
+### Python repo (`image-scoring-backend`)
 
 - `modules/events.py` -- Add `CommandDispatcher` class (action registry, `handle()`, unicast `send_to()`)
 - `webui.py` -- Wire `command_dispatcher.handle()` into WS receive loop (replace `pass`)
@@ -542,7 +542,7 @@ sequenceDiagram
 - `modules/tagging.py` -- Ensure `image_updated` events include full payload
 - `modules/db.py` -- Audit all `broadcast_threadsafe` calls for consistent, complete payloads
 
-### Electron repo (`electron-image-scoring`)
+### Gallery repo (`image-scoring-gallery`)
 
 - `electron/pipelineBridge.ts` -- **New file:** WS connection, command send/receive, headless lifecycle, DB fallback
 - `electron/main.ts` -- Add Pipeline menu (lines 61-92), register `send-to-pipeline` + `pipeline:*` IPC handlers, headless spawn/kill

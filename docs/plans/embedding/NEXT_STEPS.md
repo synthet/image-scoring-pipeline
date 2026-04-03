@@ -25,7 +25,7 @@ Use these code references as the source of truth when reviewing status:
 - `tests/test_api_embedding_map.py` (API behavior and fallback/cache tests)
 - `modules/clustering.py` (`_select_best_image` centroid strategy)
 
-Similarity REST routes (search, duplicates, outliers) are tracked in [TODO.md](TODO.md) under **API REST Endpoints**; request/response shapes are described in [API_CONTRACT.md](../../technical/API_CONTRACT.md).
+Similarity REST routes (search, duplicates, outliers) are listed in the root [TODO.md](../../../TODO.md); request/response shapes are described in [API_CONTRACT.md](../../technical/API_CONTRACT.md).
 
 ---
 

@@ -1,20 +1,9 @@
-# API Integration TODO
+# API layer — task index
 
-Tasks for the REST API layer. See [API.md](API.md) and [API_CONTRACT.md](../../technical/API_CONTRACT.md) for current contract.
+**Canonical backlog:** repository root [`TODO.md`](../../../TODO.md) (sections **API & Embedding**, **API & Contract**).
 
-> See project root [TODO.md](../../../TODO.md) for consolidated list with Electron/DB tags.
+**Workflow:** [`docs/project/00-backlog-workflow.md`](../../project/00-backlog-workflow.md) — sync order after any status change (aligned with [gallery `docs/project/00-backlog-workflow.md`](https://github.com/synthet/image-scoring-gallery/blob/main/docs/project/00-backlog-workflow.md)).
 
-## Endpoints to Add
+**Contract reference:** [API.md](API.md), [API_CONTRACT.md](../../technical/API_CONTRACT.md), [openapi.yaml](openapi.yaml).
 
-- [x] Similarity endpoints: `/api/similarity/similar`, `/api/similarity/duplicates`, `/api/similarity/outliers`
-- [ ] Streaming/progress for `POST /api/import/register` (currently single-request; no incremental progress)
-
-## Contract & Documentation
-
-- [x] Keep OpenAPI schema (`openapi.yaml`) in sync with `modules/api.py`
-- [x] Add request/response examples for new endpoints to `API.md`
-
-## Cross-Project Sync
-
-- [ ] Notify electron-image-scoring when API contract changes (see [AGENT_COORDINATION.md](../../technical/AGENT_COORDINATION.md))
-- [ ] Update `electron/apiService.ts` and `electron/apiTypes.ts` when adding endpoints
+Do not add duplicate checkbox lists here; update root `TODO.md` when tasks change.

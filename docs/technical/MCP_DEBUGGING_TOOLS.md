@@ -43,7 +43,7 @@ Add the following to your Cursor MCP settings (Settings → MCP → Add Server):
 }
 ```
 
-When the Cursor workspace is **electron-image-scoring**, use the same `command` / `args` but name the server **`imgscore-el-stdio`** and set `cwd` / `PYTHONPATH` to your **image-scoring** checkout path. For WebUI / `execute_code`, register **`imgscore-el-sse`** (or **`imgscore-py-sse`** in the Python workspace) with the `url` from `GET /mcp-status`.
+When the Cursor workspace is **image-scoring-gallery**, use the same `command` / `args` but name the server **`imgscore-el-stdio`** and set `cwd` / `PYTHONPATH` to your **image-scoring-backend** checkout path. For WebUI / `execute_code`, register **`imgscore-el-sse`** (or **`imgscore-py-sse`** in the Python workspace) with the `url` from `GET /mcp-status`.
 
 ### Option 2: Project Config File
 

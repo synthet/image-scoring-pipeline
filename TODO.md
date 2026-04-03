@@ -1,8 +1,39 @@
 # Image Scoring — Project TODO
 
-Consolidated backlog. **Quick filter:** Python/Gradio = this repo; DB = schema/migrations; Electron = frontend repo.
+**Last evaluated:** 2026-04-02
 
-Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio WebUI; **[Electron]** = electron-image-scoring changes; **[DB]** = schema/migration/dual-write.
+Consolidated backlog (Python backend). **Quick filter:** **[Electron]** = image-scoring-gallery (sibling repo); **[Python]** / **[Gradio]** / **[DB]** = this repo.
+
+> **Source of truth and update order:** Edit **this file first**, then follow the sync order in [`docs/project/00-backlog-workflow.md`](docs/project/00-backlog-workflow.md). That doc is aligned with the gallery’s [`docs/project/00-backlog-workflow.md`](https://github.com/synthet/image-scoring-gallery/blob/main/docs/project/00-backlog-workflow.md) ([`docs/planning/00-backlog-workflow.md`](https://github.com/synthet/image-scoring-gallery/blob/main/docs/planning/00-backlog-workflow.md) redirects).
+
+| Marker | Use when |
+|--------|----------|
+| `[Python]` | Backend (`modules/`, FastAPI, tests) |
+| `[Gradio]` | Gradio WebUI / operator UI |
+| `[DB]` | PostgreSQL, Alembic, `modules/db.py` |
+| `[Electron]` | Coordinated work in **image-scoring-gallery** or IPC/API contract with the desktop app |
+
+### Count snapshot rules
+
+- **Open item:** each unchecked `- [ ]` line counts as one.
+- **Gallery-dependent:** any open line tagged `[Electron]` (cross-repo or gallery-side work).
+- **Backend scope:** open items with **no** `[Electron]` tag (this repository only).
+
+#### Current status snapshot (2026-04-02)
+
+- **Total open items:** 41  
+- **Gallery-dependent (`[Electron]`):** 7  
+- **Backend scope (no `[Electron]`):** 34  
+
+### Highest-Impact Next Steps (recommended sequence)
+
+1. **Cross-repo coordination** — Notify gallery when API/schema changes; keep [`AGENT_COORDINATION.md`](docs/technical/AGENT_COORDINATION.md) in sync with [**image-scoring-gallery** `TODO.md`](https://github.com/synthet/image-scoring-gallery/blob/main/TODO.md).
+2. **Database Phase 4 (keywords/metadata)** — Python validation, perf, and deprecation plan per [`docs/plans/database/NEXT_STEPS.md`](docs/plans/database/NEXT_STEPS.md); coordinate gallery read-path when they cut over.
+3. **Contract hygiene** — Keep [`openapi.yaml`](docs/reference/api/openapi.yaml) and [`API_CONTRACT.md`](docs/technical/API_CONTRACT.md) aligned with `modules/api.py` when endpoints change.
+4. **Verification debt** — In-browser RAW preview manual test pass (High Priority section below).
+5. **Embedding & UI surfaces** — Gradio “Similarity Search” / gallery IPC bridge per [`docs/plans/embedding/NEXT_STEPS.md`](docs/plans/embedding/NEXT_STEPS.md), coordinated with the gallery embedding wave where applicable.
+
+**Residual docs cleanup (optional):** Align user-facing [`README.md`](README.md) strings with PostgreSQL-native reality wherever Firebird-era wording still appears.
 
 ---
 
@@ -22,8 +53,8 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 
 ### API & Embedding
 
-- [x] **[Python]** Similarity endpoints: `GET /api/similarity/similar?image_id=123`, `/api/similarity/duplicates`, `/api/similarity/outliers`
-- [ ] **[Electron]** **[DB]** Notify electron-image-scoring when API/schema changes; update `apiService.ts`, `db.ts` (see [AGENT_COORDINATION.md](docs/technical/AGENT_COORDINATION.md))
+- [x] **[Python]** Similarity endpoints: `/api/similarity/search`, `/api/similarity/duplicates`, `/api/similarity/outliers` (legacy paths may redirect; see [API_CONTRACT.md](docs/technical/API_CONTRACT.md))
+- [ ] **[Electron]** **[DB]** Notify **image-scoring-gallery** when API/schema changes; update `apiService.ts`, `db.ts` (see [AGENT_COORDINATION.md](docs/technical/AGENT_COORDINATION.md))
 
 ---
 
@@ -40,21 +71,22 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 ### Tag Propagation
 
 - [x] **[Python]** REST endpoint for tag propagation (`POST /tagging/propagate`) — dry-run and live modes
-- [ ] **[Electron]** Tag Propagation UI: AI Suggestions sidebar in `ImageViewer.tsx`, Accept/Reject interaction logic (see Electron TODO P2)
+- [ ] **[Electron]** Tag Propagation UI: AI Suggestions sidebar in `ImageViewer.tsx`, Accept/Reject interaction logic (see Electron backlog)
 
 ### Clustering & Embeddings
 
 - [x] **[Python]** Add `stack_representative_strategy` config option to `ClusteringEngine`
-- [ ] **[Python]** Implement centroid strategy (mean embedding → select closest image) in `modules/clustering.py`
-- [x] **[Python]** 2D embedding map: add `umap-learn`, implement `modules/projections.py` (UMAP 2D coords + folder-level caching), `GET /api/embedding_map` endpoint
-- [ ] **[Electron]** **[Gradio]** Bidirectional WebSocket command channel — coordinate protocol with Electron's IPC/WebSocket bridge enhancement (see [EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md](docs/plans/embedding/EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md))
+- [x] **[Python]** Centroid / balanced strategies in `modules/clustering.py` (`_select_best_image`) when per-image embeddings are provided (visual stacks). Burst stack creation still passes scores only — representative stays score-based there until embeddings are wired into that path
+- [x] **[Python]** 2D embedding map: `modules/projections.py`, `GET /api/embedding_map`, tests in `tests/test_api_embedding_map.py`
+- [x] **[Python]** WebSocket `/ws/updates` with inbound command dispatch (`modules/command_dispatcher.py`, `webui.py`) — backend channel exists
+- [ ] **[Electron]** **[Gradio]** End-to-end UI wiring: gallery IPC/WebSocket bridge + Gradio/Electron flows per [EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md](docs/plans/embedding/EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md)
 - [ ] **[Electron]** **[DB]** Pipeline mode selector, headless lifecycle, `INTEGRATION_QUEUE` table
 - [ ] **[Gradio]** "Similarity Search" tab or context menu in Gradio WebUI using `similar_search.py`
 
 ### API & Contract
 
-- [ ] **[Python]** Streaming/progress for `POST /api/import/register` (currently single-request; no incremental progress)
-- [ ] **[Python]** Keep OpenAPI schema (`openapi.yaml`) in sync with `modules/api.py`
+- [x] **[Python]** Streaming progress for folder import: `POST /api/import/register/stream` (NDJSON); non-stream endpoint broadcasts progress via WebSocket events
+- [ ] **[Python]** Keep OpenAPI schema ([docs/reference/api/openapi.yaml](docs/reference/api/openapi.yaml)) aligned with `modules/api.py` (periodic diff / review)
 - [x] **[Python]** Add request/response examples for new endpoints to `API.md`
 - [ ] **[Electron]** Update `electron/apiService.ts` and `electron/apiTypes.ts` when adding endpoints
 
@@ -66,23 +98,19 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 
 ## Database & Migration [DB]
 
-### Schema Refactor (DB_SCHEMA_REFACTOR_IMPLEMENTATION)
+### Schema refactor — keywords / metadata ([DB_SCHEMA_REFACTOR_IMPLEMENTATION](docs/plans/database/DB_SCHEMA_REFACTOR_IMPLEMENTATION.md))
 
-- [ ] **[Python]** **[DB]** Phase 1: IMAGE_EXIF, IMAGE_XMP tables, dual-write paths in `modules/db.py`
-- [ ] **[Electron]** Phase 1: `db.ts` dual-write in `updateImageDetails()`
-- [ ] **[Python]** **[DB]** Phase 3: Refactor keyword filters in query functions
-- [ ] **[Electron]** Phase 3: `db.ts` query changes for keyword filters
+Phases 1–3 (integrity, normalization, query refactor) are **complete** on the Python/Postgres side. Remaining work is **Phase 4 — validation & cleanup** — see [docs/plans/database/NEXT_STEPS.md](docs/plans/database/NEXT_STEPS.md):
 
-### Firebird → PostgreSQL (FIREBIRD_POSTGRES_MIGRATION)
+- [ ] **[Python]** **[DB]** Phase 4: Data consistency checks (`IMAGES.KEYWORDS` vs `IMAGE_KEYWORDS`), performance benchmarks, keyword cloud via `KEYWORDS_DIM`, deprecation plan for legacy `keywords` column
+- [ ] **[Electron]** Phase 4 (coordinated): Query/read path updates for normalized keywords when gallery cuts over (see [AGENT_COORDINATION.md](docs/technical/AGENT_COORDINATION.md))
 
-- [x] **[Python]** **[DB]** Phase 0: Schema baseline, versioned SQL migrations, migration runbook — `alembic.ini`, `migrations/`, `docs/plans/database/FIREBIRD_POSTGRES_MIGRATION.md`
-- [x] **[Python]** **[DB]** Phase 1: Postgres + pgvector in Docker, full schema creation — `docker-compose.yml`, `modules/db_postgres.py` (17 tables, HNSW index), `scripts/python/migrate_firebird_to_postgres.py`
-- [x] **[Python]** **[DB]** Phase 2 infrastructure: dual-write worker thread + queue in `modules/db.py` (`_dual_write_worker`, `_enqueue_dual_write`, `FirebirdCursorProxy`); `db_connector/` transport abstraction (FirebirdConnector, PostgresConnector, ApiConnector)
-- [x] **[Python]** **[DB]** Phase 2 bug fixes: BUG 1 (DATEDIFF division already uses `/` — was fixed in prior commit), BUG 2 (`FirebirdCursorProxy._translate_query` only needs SQLite→Firebird; full FB→PG translation handled by `_dual_write_worker` via `_translate_fb_to_pg()` — not a bug)
-- [x] **[Python]** **[DB]** Phase 2 blockers: Alembic migration for `keywords_dim`/`image_keywords` (`0002`), `image_embedding` skip filter in `_enqueue_dual_write`
-- [x] **[Python]** **[DB]** Phase 2 activation: set `database.dual_write: true` + run migration script + soak test
-- [x] **[Python]** **[DB]** Phase 3: Python cutover — 60+ read functions already routed to Postgres via `_get_db_engine()`; activate by setting `"engine": "postgres"` after Phase 2 activation and parity verification
-- [ ] **[Electron]** Phase 4: DB provider abstraction in `electron/db.ts`, migrate from `node-firebird` to Postgres client
+### Firebird → PostgreSQL ([FIREBIRD_POSTGRES_MIGRATION.md](docs/plans/database/FIREBIRD_POSTGRES_MIGRATION.md))
+
+Python backend is **PostgreSQL-native**; Firebird runtime and dual-write queue were **removed** (2026-03). `_translate_fb_to_pg()` remains for translating legacy-dialect SQL to PostgreSQL where needed.
+
+- [x] **[Python]** **[DB]** Phases 0–3: Postgres schema, migration tooling, Python cutover to `database.engine: postgres`
+- [ ] **[Electron]** Phase 4: DB provider in `electron/db.ts`, migrate from `node-firebird` to Postgres client (gallery repo)
 
 ---
 
@@ -90,7 +118,7 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 
 ### Infrastructure
 
-- [ ] **[DB]** **[Python]** Database migration tools — schema versioning and migration scripts
+- [ ] **[DB]** **[Python]** Database migration tooling — ongoing Alembic revisions and runbooks
 - [ ] **[Python]** Batch API endpoints — REST API for programmatic access
 - [ ] **[Python]** Cloud processing support — remote GPU inference (RunPod, Lambda Labs)
 
@@ -110,7 +138,9 @@ Tags: **[Python]** = Python backend (`modules/`, FastAPI); **[Gradio]** = Gradio
 
 ## Related Docs
 
-- [docs/project/TODO.md](docs/project/TODO.md) — Detailed backlog with completed items
+- [docs/project/00-backlog-workflow.md](docs/project/00-backlog-workflow.md) — Hierarchy, sync order, picking tasks, counts (aligned with gallery repo)
+- [docs/project/BACKLOG_GOVERNANCE.md](docs/project/BACKLOG_GOVERNANCE.md) — Alias to `00-backlog-workflow.md`
+- [docs/plans/database/NEXT_STEPS.md](docs/plans/database/NEXT_STEPS.md) — DB refactor Phase 4 details
 - [docs/technical/AGENT_COORDINATION.md](docs/technical/AGENT_COORDINATION.md) — Electron sync protocol
-- [docs/plans/embedding/](docs/plans/embedding/) — Embedding roadmap
-- [docs/plans/database/](docs/plans/database/) — DB migration plans
+- [docs/plans/embedding/](docs/plans/embedding/) — Embedding roadmap and [NEXT_STEPS.md](docs/plans/embedding/NEXT_STEPS.md)
+- [docs/plans/database/](docs/plans/database/) — DB migration and vector refactor plans

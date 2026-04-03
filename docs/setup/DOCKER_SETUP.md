@@ -103,7 +103,7 @@ flowchart LR
 - **Docker Desktop for Windows** with the WSL 2 backend enabled
 - **Firebird 5 Server** running on Windows (port 3050). The service must be started before the container.
 - **NVIDIA GPU + drivers 470+** (optional — required only for ML scoring)
-- Project cloned at `D:\Projects\image-scoring-backend`. If your path differs, see [Customising the FDB path](#customising-the-fdb-path) below.
+- Project cloned on your machine (sibling layout with **image-scoring-gallery** is typical). If your path differs, see [Customising the FDB path](#customising-the-fdb-path) below.
 
 ### First-time build
 
@@ -115,7 +115,7 @@ docker compose build
 
 ### Customising the FDB path
 
-If your project is **not** at `D:\Projects\image-scoring-backend`, edit `FIREBIRD_WIN_DB_PATH` in `docker-compose.yml` to your actual path. Use **forward slashes** — backslashes are not YAML-safe:
+If your project lives somewhere other than the path you first configured, edit `FIREBIRD_WIN_DB_PATH` in `docker-compose.yml` (or set it in `.env`) to your actual host path. Use **forward slashes** — backslashes are not YAML-safe:
 
 ```yaml
 - FIREBIRD_WIN_DB_PATH=E:/MyProject/image-scoring-backend/SCORING_HISTORY.FDB
@@ -157,7 +157,7 @@ These are set in `docker-compose.yml` and control the container's behaviour:
 
 | Variable | Value | Purpose |
 |---|---|---|
-| `FIREBIRD_WIN_DB_PATH` | `D:/Projects/.../SCORING_HISTORY.FDB` | Windows path to the FDB file (forward slashes) |
+| `FIREBIRD_WIN_DB_PATH` | e.g. `/app/SCORING_HISTORY.FDB` (see `docker-compose.yml`) | Host path to the FDB file when using Firebird from the container |
 | `FIREBIRD_CLIENT_LIBRARY` | `/app/FirebirdLinux/.../libfbclient.so` | Path to the bundled Linux Firebird client library |
 | `DOCKER_CONTAINER` | `1` | Tells the app it is running inside Docker |
 | `WEBUI_HOST` | `0.0.0.0` | Bind to all interfaces so port 7860 is reachable from Windows |
@@ -195,7 +195,7 @@ Complete Step 2 (post-installation) and restart WSL, or run `newgrp docker`.
 
 1. Verify the Firebird service is running on Windows (port 3050).
 2. Ensure Windows Firewall permits port 3050. Run `setup_firewall.bat` as Administrator.
-3. Check that `FIREBIRD_WIN_DB_PATH` in `docker-compose.yml` uses the correct path with **forward slashes** (e.g., `D:/Projects/image-scoring-backend/SCORING_HISTORY.FDB`).
+3. Check that `FIREBIRD_WIN_DB_PATH` in `docker-compose.yml` (or `.env`) uses the correct path with **forward slashes** (match your clone location and `SCORING_HISTORY.FDB`).
 4. If you see `Docker: FIREBIRD_WIN_DB_PATH is not set` or `using computed path` in the container logs, the env var is wrong or was not applied. Fix the path and run `docker compose down && docker compose up` to recreate the container.
 
 ### No GPU detected

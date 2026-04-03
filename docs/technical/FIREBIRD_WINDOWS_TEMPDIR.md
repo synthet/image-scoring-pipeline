@@ -15,13 +15,13 @@ The Firebird server writes temporary sort files under **`TempDirectories`** in `
 
 1. Open `Firebird/firebird.conf` next to `firebird.exe` (used by `run_firebird.bat`).
 2. Set **`TempDirectories`** to a directory that exists and is writable:
-   - **Explicit (safest after renaming the repo folder):** e.g. `TempDirectories = D:/Projects/image-scoring-backend/Firebird/temp`  
-     Use forward slashes; point at **`Firebird\temp`** under your **current** backend root — not an old path like `d:\Projects\image-scoring\…` if that folder no longer exists.
+   - **Explicit (safest after renaming the repo folder):** e.g. `TempDirectories = X:/path/to/image-scoring-backend/Firebird/temp`  
+     Use forward slashes; point at **`Firebird\temp`** under your **current** backend root — not an old clone path if that folder no longer exists.
    - **Portable:** `TempDirectories = temp` — resolved relative to this Firebird install directory (the folder that contains `firebird.exe`).
 3. Ensure the **`Firebird\temp`** folder exists (`run_firebird.bat` creates it).
-4. **Restart** the Firebird process so the new setting is loaded. Until you restart, the server keeps the **old** `TempDirectories` value (you will still see errors mentioning the previous path, e.g. `d:\Projects\image-scoring\Firebird\temp`, even after you edit the file on disk).
+4. **Restart** the Firebird process so the new setting is loaded. Until you restart, the server keeps the **old** `TempDirectories` value (you may still see errors mentioning the previous path even after you edit the file on disk).
 
-### If the error still names `d:\Projects\image-scoring\…`
+### If the error still names an old clone path
 
 That path is almost always the **previous** config still in memory, or a second Firebird started from an old copy. Stop **all** `firebird.exe` instances, confirm `firebird.conf` uses your real backend path, then start **`image-scoring-backend\run_firebird.bat`** again.
 

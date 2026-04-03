@@ -5,6 +5,7 @@ Complete documentation for the Image Scoring project.
 ## Quick Links
 
 - **[Documentation Index](INDEX.md)** — Full index of all docs, organized by category
+- **[Project backlog](../TODO.md)** — Canonical open work; **[00-backlog-workflow](project/00-backlog-workflow.md)** — picking tasks, sync order, counts (aligned with [image-scoring-gallery `docs/project/00-backlog-workflow.md`](https://github.com/synthet/image-scoring-gallery/blob/main/docs/project/00-backlog-workflow.md))
 - **Subfolder indexes** — Each docs subfolder has its own [INDEX.md](INDEX.md) (e.g. [technical/](technical/INDEX.md), [setup/](setup/INDEX.md), [gallery/](gallery/INDEX.md), [plans/](plans/INDEX.md))
 - **[Project README](../README.md)** — Main project overview and quick start
 - **[CHANGELOG](../CHANGELOG.md)** — Version history and release notes
@@ -19,3 +20,16 @@ Complete documentation for the Image Scoring project.
 - [AGENTS.md](../AGENTS.md) — MCP server configuration
 - [.agent/mcp_tools_reference.md](../.agent/mcp_tools_reference.md) — MCP tools quick reference
 - [.agent/workflows/](../.agent/workflows/) — Workflows for run_scoring, verify_system, etc.
+
+## Sibling repository: image-scoring-gallery
+
+Electron desktop app (**[image-scoring-gallery](https://github.com/synthet/image-scoring-gallery)**) shares the API contract and database design with this repo.
+
+| Topic | Documentation (GitHub) |
+|--------|-------------------------|
+| Docs index | [docs/README.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/README.md) |
+| Integration backlog | [docs/integration/TODO.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/integration/TODO.md) |
+| DB refactor impact (gallery) | [DATABASE_REFACTOR_ANALYSIS.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/technical/DATABASE_REFACTOR_ANALYSIS.md) |
+| Planned embedding UI | [features/planned/embeddings/README.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/features/planned/embeddings/README.md) |
+
+Cross-project protocol: [AGENT_COORDINATION.md](technical/AGENT_COORDINATION.md).

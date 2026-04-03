@@ -176,7 +176,7 @@ Model specifications, scoring strategy, and fallback systems.
 
 | Document | Description |
 |----------|-------------|
-| [CROSS_APP_INTEGRATION_AUDIT.md](testing/CROSS_APP_INTEGRATION_AUDIT.md) | Audit of shared backend/Electron integration coverage and gaps |
+| [CROSS_APP_INTEGRATION_AUDIT.md](testing/CROSS_APP_INTEGRATION_AUDIT.md) | Audit of shared **image-scoring-backend** ↔ **image-scoring-gallery** integration coverage and gaps; gallery tasks: [`docs/integration/TODO.md`](https://github.com/synthet/image-scoring-gallery/blob/main/docs/integration/TODO.md) |
 | [TEST_STATUS.md](testing/TEST_STATUS.md) | Unit test status overview |
 | [WSL_TESTS.md](testing/WSL_TESTS.md) | WSL-only pytest markers |
 | [DOCUMENTATION_ISSUES.md](testing/DOCUMENTATION_ISSUES.md) | Testing documentation issues and recommendations |
@@ -213,6 +213,21 @@ Historical debugging notes. → [reports/debugging-sessions/INDEX.md](reports/de
 
 ---
 
+## Sibling repository: image-scoring-gallery
+
+Electron app (**[image-scoring-gallery](https://github.com/synthet/image-scoring-gallery)**) — shared API and DB design.
+
+| Topic | Link (GitHub) |
+|--------|----------------|
+| Docs index | [docs/README.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/README.md) |
+| Integration backlog | [docs/integration/TODO.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/integration/TODO.md) |
+| DB refactor impact | [DATABASE_REFACTOR_ANALYSIS.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/technical/DATABASE_REFACTOR_ANALYSIS.md) |
+| Planned embedding UI | [features/planned/embeddings/README.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/features/planned/embeddings/README.md) |
+
+Protocol: [AGENT_COORDINATION.md](technical/AGENT_COORDINATION.md).
+
+---
+
 ## Reports & Reviews
 
 → [reports/INDEX.md](reports/INDEX.md)
@@ -236,7 +251,10 @@ Historical debugging notes. → [reports/debugging-sessions/INDEX.md](reports/de
 
 | Document | Description |
 |----------|-------------|
-| [TODO.md](project/TODO.md) | Project backlog |
+| [TODO.md](../TODO.md) | Canonical project backlog (repository root) |
+| [00-backlog-workflow.md](project/00-backlog-workflow.md) | Task workflow, sync order, counts — aligned with [image-scoring-gallery `docs/project/00-backlog-workflow.md`](https://github.com/synthet/image-scoring-gallery/blob/main/docs/project/00-backlog-workflow.md) |
+| [BACKLOG_GOVERNANCE.md](project/BACKLOG_GOVERNANCE.md) | Alias → `00-backlog-workflow.md` |
+| [project/TODO.md](project/TODO.md) | Pointer to root backlog (historical index archived) |
 
 ---
 

@@ -29,11 +29,17 @@
 
 ---
 
-## Related: Firebird → Postgres Migration
+## Related: PostgreSQL and migration history
 
-This schema refactor is **independent of but a prerequisite for** the Postgres migration.
-The normalized `IMAGE_KEYWORDS` / `KEYWORDS_DIM` / `IMAGE_XMP` tables already exist in the
-Postgres schema (`modules/db_postgres.py` `init_db()`).
+The normalized `IMAGE_KEYWORDS` / `KEYWORDS_DIM` / `IMAGE_XMP` tables exist in the Postgres
+schema (`modules/db_postgres.py` `init_db()`).
 
-See [`FIREBIRD_POSTGRES_MIGRATION.md`](FIREBIRD_POSTGRES_MIGRATION.md) for migration status.
-Two bugs in `_translate_fb_to_pg()` must be fixed before Phase 2 dual-write can be activated.
+See [`FIREBIRD_POSTGRES_MIGRATION.md`](FIREBIRD_POSTGRES_MIGRATION.md) for full history. The
+Python backend is **PostgreSQL-native**; Firebird runtime and dual-write were decommissioned.
+The function `_translate_fb_to_pg()` in `modules/db.py` remains as a **SQL dialect helper**
+for legacy Firebird-style queries routed through the Postgres adapter — it is not a
+dual-write gate.
+
+**Electron / gallery:** Until the gallery app migrates off Firebird (`electron/db.ts`),
+coordinate any keyword-query or schema contract changes with
+[`AGENT_COORDINATION.md`](../../technical/AGENT_COORDINATION.md).

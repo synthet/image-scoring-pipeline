@@ -4,10 +4,10 @@ AI-powered image scoring, tagging, and clustering engine using MUSIQ, LIQE, BLIP
 
 ## Related Projects
 
-| Project | Path | Role |
-|---------|------|------|
-| **Python Backend** (this) | `https://github.com/synthet/image-scoring` | AI scoring engine, FastAPI server, PostgreSQL DB schema owner |
-| **Electron Frontend** | `https://github.com/synthet/electron-image-scoring` | Desktop UI, IPC query layer, React/Vite |
+| Project | Repository | Role |
+|---------|------------|------|
+| **image-scoring-backend** (this) | `https://github.com/synthet/image-scoring-backend` | AI scoring engine, FastAPI server, PostgreSQL DB schema owner |
+| **image-scoring-gallery** | `https://github.com/synthet/image-scoring-gallery` | Desktop UI, IPC query layer, React/Vite |
 
 This project is the **schema authority** — DDL is managed via `modules/db_postgres.py` (PostgreSQL) and Alembic migrations. The legacy Firebird schema in `modules/db.py` (`_init_db_impl()`) is retained for reference and Electron compatibility (Phase 4 migration pending).
 
@@ -144,6 +144,42 @@ Helpers: `_table_exists()`, `_column_exists()`, `_index_exists()`, `_constraint_
 - **DB column renames** require updating `electron/db.ts` too
 - **New score columns** require updating `_init_db_impl()` in `modules/db.py`
 - **Secrets** (API keys) go in `secrets.json` (git-ignored), never in `config.json`
+
+### Keyword Storage (Phase 4 / Transition Period)
+
+**Current state:** Keywords are stored in two places:
+- **Primary (Postgres):** `IMAGE_KEYWORDS` junction table + `KEYWORDS_DIM` catalog
+- **Legacy (Firebird):** `IMAGES.KEYWORDS` text field
+
+**For new code:**
+1. Always **read** keywords via `IMAGE_KEYWORDS` / `KEYWORDS_DIM` (normalized schema)
+   - Use `_add_keyword_filter()` helper for filtering by keyword
+   - Use `keyword_discovery.py` helpers for cloud/autocomplete features
+
+2. Always **write** keywords via `db.update_image_metadata()` (dual-write to both schemas)
+   - Or call `db._sync_image_keywords()` directly to sync to normalized schema
+   - Do NOT write directly to `IMAGES.KEYWORDS` legacy column
+
+3. Understand the **deprecation timeline:**
+   - **v6.3 (Apr 2026):** Normalized schema becomes primary source
+   - **v6.4 (May 2026):** Soft deprecation (logging warnings on legacy reads)
+   - **v7.0 (Jul 2026):** Hard deprecation (legacy column removed)
+
+**Example: Update image keywords programmatically**
+```python
+# ✅ CORRECT: Use db.update_image_metadata()
+db.update_image_metadata(file_path, "nature,wildlife,sunset", title, desc, rating, label)
+
+# ❌ WRONG: Direct legacy column write
+conn.execute("UPDATE images SET keywords = ? WHERE file_path = ?", (keywords, file_path))
+
+# ✅ ALSO CORRECT: Manual dual-write for special cases
+db._sync_image_keywords(image_id, "nature,wildlife")  # → writes to IMAGE_KEYWORDS
+```
+
+**Related docs:**
+- `docs/plans/database/PHASE4_KEYWORDS_DEPRECATION.md` — Full deprecation roadmap
+- `docs/plans/database/PHASE4_CODE_AUDIT.md` — Code audit & refactoring plan
 
 ## Configuration
 

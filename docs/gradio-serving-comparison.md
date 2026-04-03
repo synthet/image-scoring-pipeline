@@ -23,8 +23,8 @@ That distinction matters because replacing Gradio does not automatically improve
 
 This repository already uses a hybrid structure that is close to the right shape for an interactive ML tool:
 
-- [`webui.py`](/d:/Projects/image-scoring/webui.py) creates the root `FastAPI` application.
-- [`modules/api.py`](/d:/Projects/image-scoring/modules/api.py) exposes REST endpoints under `/api`.
+- [`webui.py`](../webui.py) creates the root `FastAPI` application.
+- [`modules/api.py`](../modules/api.py) exposes REST endpoints under `/api`.
 - Gradio is mounted into the FastAPI app rather than replacing it.
 - Model execution happens in the scoring and tagging pipeline, not inside Gradio itself.
 

@@ -4,7 +4,7 @@ This index breaks out each proposed `image_embedding` use case into a separate i
 
 ## Documents
 
-- [TODO.md](TODO.md) - Embedding feature task list
+- [TODO.md](TODO.md) — Index to root backlog (canonical: [TODO.md](../../../TODO.md))
 - [01 - Diversity-Aware Selection](EMBEDDING_APP_01_DIVERSITY_SELECTION.md)
 - [02 - Near-Duplicate Detection](EMBEDDING_APP_02_NEAR_DUPLICATE_DETECTION.md)
 - [03 - Tag Propagation](EMBEDDING_APP_03_TAG_PROPAGATION.md)

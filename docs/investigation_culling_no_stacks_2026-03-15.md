@@ -1,6 +1,6 @@
 # Investigation: Folder Marked "Culled" but No Stacks
 
-**Folder:** `D:\Photos\Z8\105mm\2026\2026-03-15`  
+**Folder:** (local test folder — path omitted)  
 **Date:** 2026-03-18
 
 ## Summary
@@ -34,7 +34,7 @@ Stacks are created by the clustering engine in `modules/clustering.py` only when
 
 ### 1. Re-run Culling with Force Rescan (Required)
 
-After restarting the WebUI with the fix, re-run culling on `D:\Photos\Z8\105mm\2026\2026-03-15` with **Force Rescan** enabled. The images are already marked `done`, so Force Rescan is required to reprocess them and create stacks.
+After restarting the WebUI with the fix, re-run culling on the affected folder with **Force Rescan** enabled. The images are already marked `done`, so Force Rescan is required to reprocess them and create stacks.
 
 ### 2. Optional: Relax Settings for More Stacks
 

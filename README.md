@@ -4,7 +4,7 @@ A comprehensive **AI-powered Digital Asset Management** tool for photographers a
 
 - 🎯 **Multi-Model Quality Scoring**: Technical and aesthetic assessment using Google's MUSIQ, LIQE, and other SOTA models
 - 🖼️ **Interactive Web Gallery**: Gradio-based UI for browsing, filtering, and managing your image library
-- 💻 **Standalone Desktop App**: High-performance **[Electron Gallery](https://github.com/synthet/electron-image-scoring)** for native-feeling browsing
+- 💻 **Standalone Desktop App**: High-performance **[Electron Gallery](https://github.com/synthet/image-scoring-gallery)** for native-feeling browsing
 - 🏷️ **AI Keyword Extraction**: Automatic tagging using BLIP + CLIP vision-language models
 - 📸 **RAW File Support**: Native support for Nikon NEF (Z8/Z9 HE*), Canon CR2, Sony ARW, and other RAW formats
 - ⚡ **GPU Acceleration**: CUDA support for 10-15x faster batch processing

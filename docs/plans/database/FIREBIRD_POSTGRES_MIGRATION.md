@@ -2,11 +2,11 @@
 
 Date: 2026-03-08 (updated 2026-04-01)  
 Status: **Decommissioning Complete** — Firebird infrastructure removed; system fully PostgreSQL-native.  
-Scope: image-scoring + electron-image-scoring coordinated migration
+Scope: **image-scoring-backend** + **image-scoring-gallery** coordinated migration
 
 ## Summary
 
-- Treat this as a **coordinated platform migration** across both repos (`image-scoring` and `electron-image-scoring`), not a frontend-only or backend-only DB split.
+- Treat this as a **coordinated platform migration** across both repos (**image-scoring-backend** and **image-scoring-gallery**), not a frontend-only or backend-only DB split.
 - Keep your selected rollout defaults: **phased dual-write**, **Postgres in local Docker**, **Python app + MCP as day-1 cutover scope**.
 - Add explicit **Electron migration gates** before final Firebird retirement, aligned with Electron docs that currently recommend Firebird until coordinated migration is ready.
 
@@ -40,7 +40,7 @@ Scope: image-scoring + electron-image-scoring coordinated migration
 
 ## Public API / Interface Changes
 
-- `image-scoring` config:
+- **image-scoring-backend** (`config.json`) keys:
 - `database.engine` (`firebird|postgres`)
 - `database.filename` (used by Firebird mode)
 - optional `database.dual_write` (Firebird primary write + Postgres secondary write)
@@ -296,7 +296,7 @@ The `_translate_fb_to_pg()` function in `modules/db.py` remains active. It allow
 
 ## Assumptions and Defaults
 
-- The exact file path you gave ([migration-plan.md](https://github.com/synthet/electron-image-scoring/blob/master/docs/technical/migrations/firebird-to-postgresql-pgvector-migration-plan.md)) was not found locally; refinement is based on nearby Electron docs:
+- The exact file path you gave ([migration-plan.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/technical/migrations/firebird-to-postgresql-pgvector-migration-plan.md)) was not found locally; refinement is based on nearby Electron docs:
 - `docs/technical/architecture/DATABASE.md`
 - `docs/technical/architecture/OVERVIEW.md`
 - Day-1 cutover remains Python + MCP; Electron migration is required before final decommission.

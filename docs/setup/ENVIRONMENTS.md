@@ -54,7 +54,7 @@ This document describes each Python environment referenced in the image-scoring 
 
 ## What `run_webui.bat` does
 
-1. Converts the project root to a WSL path (e.g. `D:\path\to\image-scoring` → `/mnt/d/path/to/image-scoring`).
+1. Converts the project root to a WSL path (e.g. `D:\path\to\repo` → `/mnt/d/path/to/repo`; adjust the drive letter for your setup).
 2. Sets `LD_LIBRARY_PATH` to include the Firebird Linux lib path under the project.
 3. Sets `ENABLE_MCP_SERVER` (default `1`) for optional MCP.
 4. Runs in WSL: **`source ~/.venvs/tf/bin/activate && python launch.py %*`**.
@@ -70,7 +70,7 @@ For any script that uses `modules`, the database, or config (e.g. under `scripts
 
 - **From WSL** (recommended):
   ```bash
-  cd /mnt/d/Projects/image-scoring   # adjust drive if needed
+  cd /path/to/image-scoring-backend   # use your WSL path to the repo
   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib
   source ~/.venvs/tf/bin/activate
   python scripts/path/to/script.py
