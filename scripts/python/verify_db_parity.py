@@ -210,14 +210,14 @@ def main():
     parser = argparse.ArgumentParser(description="Verify database parity between Firebird and PostgreSQL")
     parser.add_argument("--fdb-path", help="Path to Firebird .fdb file")
     parser.add_argument("--samples", type=int, default=10, help="Number of rows to sample per table")
-    parser.add_argument("--pg-host", default="localhost")
-    parser.add_argument("--pg-port", default=5432, type=int)
-    parser.add_argument("--pg-db", default="image_scoring")
-    parser.add_argument("--pg-user", default="postgres")
-    parser.add_argument("--pg-password", default="postgres")
+    parser.add_argument("--pg-host", default=None, help="PostgreSQL host (default: from merged config / environment.json)")
+    parser.add_argument("--pg-port", default=None, type=int)
+    parser.add_argument("--pg-db", default=None)
+    parser.add_argument("--pg-user", default=None)
+    parser.add_argument("--pg-password", default=None)
     args = parser.parse_args()
 
-    # Load app config for defaults if needed
+    # Load app config for defaults if needed (config.json + environment.json)
     project_root = Path(__file__).parent.parent.parent
     sys.path.insert(0, str(project_root))
     try:
@@ -225,14 +225,18 @@ def main():
         db_cfg = app_config.get_config_section("database")
         fdb_path = args.fdb_path or project_root / db_cfg.get("filename", "scoring_history.fdb")
         p_cfg = db_cfg.get("postgres", {})
-        pg_host = args.pg_host or p_cfg.get("host", "localhost")
-        pg_port = args.pg_port or p_cfg.get("port", 5432)
-        pg_db = args.pg_db or p_cfg.get("dbname", "image_scoring")
-        pg_user = args.pg_user or p_cfg.get("user", "postgres")
-        pg_password = args.pg_password or p_cfg.get("password", "postgres")
+        pg_host = args.pg_host if args.pg_host is not None else p_cfg.get("host", "localhost")
+        pg_port = args.pg_port if args.pg_port is not None else p_cfg.get("port", 5432)
+        pg_db = args.pg_db if args.pg_db is not None else p_cfg.get("dbname", "image_scoring")
+        pg_user = args.pg_user if args.pg_user is not None else p_cfg.get("user", "postgres")
+        pg_password = args.pg_password if args.pg_password is not None else p_cfg.get("password", "postgres")
     except Exception:
         fdb_path = args.fdb_path or "scoring_history.fdb"
-        pg_host, pg_port, pg_db, pg_user, pg_password = args.pg_host, args.pg_port, args.pg_db, args.pg_user, args.pg_password
+        pg_host = args.pg_host if args.pg_host is not None else "localhost"
+        pg_port = args.pg_port if args.pg_port is not None else 5432
+        pg_db = args.pg_db if args.pg_db is not None else "image_scoring"
+        pg_user = args.pg_user if args.pg_user is not None else "postgres"
+        pg_password = args.pg_password if args.pg_password is not None else "postgres"
 
     logger.info("Firebird Source: %s", fdb_path)
     logger.info("PostgreSQL Target: %s:%s/%s", pg_host, pg_port, pg_db)

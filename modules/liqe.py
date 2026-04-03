@@ -1,5 +1,3 @@
-import json
-import os
 import contextlib
 import io
 import sys
@@ -53,13 +51,13 @@ class LiqeScorer:
     def _load_max_dimension(self):
         """Read LIQE max dimension from config (scoring.liqe_max_dimension or raw_conversion.liqe_max_dimension)."""
         try:
-            config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    cfg = json.load(f)
-                v = (cfg.get("scoring") or {}).get("liqe_max_dimension") or (cfg.get("raw_conversion") or {}).get("liqe_max_dimension")
-                if v is not None:
-                    return max(224, min(2048, int(v)))
+            from modules.config import get_config_value
+
+            v = get_config_value("scoring.liqe_max_dimension") or get_config_value(
+                "raw_conversion.liqe_max_dimension"
+            )
+            if v is not None:
+                return max(224, min(2048, int(v)))
         except Exception:
             pass
         return self.DEFAULT_MAX_DIM

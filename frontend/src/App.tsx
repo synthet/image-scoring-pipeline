@@ -5,6 +5,7 @@ import { RunsPage } from '@/pages/RunsPage'
 import { RunDetailPage } from '@/pages/RunDetailPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { DiagnosticsPage } from '@/pages/DiagnosticsPage'
+import { LogsPage } from '@/pages/LogsPage'
 import { ScopeSelector } from '@/components/scope/ScopeSelector'
 
 const queryClient = new QueryClient({
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/runs/:runId" element={<RunDetailPage />} />
             <Route path="/diagnostics" element={<DiagnosticsPage />} />
+            <Route path="/logs" element={<LogsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>

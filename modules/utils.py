@@ -138,6 +138,8 @@ def convert_path_to_local(path):
         # Normalize to forward slashes for checking
         p_str = path.replace('\\', '/')
         if p_str.startswith("/mnt/"):
+            # Collapse duplicate slashes (e.g. /mnt//d/foo) so drive letter parses correctly
+            p_str = re.sub(r"/+", "/", p_str)
             # /mnt/d/Description -> D:/Description
             parts = p_str.split('/')
             if len(parts) > 2 and len(parts[2]) == 1:
@@ -159,6 +161,79 @@ def convert_path_to_local(path):
              path = path.replace('\\', '/')
     
     return path
+
+
+def resolve_scope_input_path(raw: str) -> tuple[str, list[str]]:
+    """
+    Resolve a user-entered folder/file path for scope preview and validation.
+
+    Tries several canonical forms (WSL /mnt/..., Windows D:\\..., duplicate slashes)
+    and returns the first path that exists on the current OS.
+
+    Returns:
+        (existing_path, candidates_tried) when found; (None, candidates_tried) when not found.
+    """
+    s = (raw or "").strip()
+    while len(s) > 1 and s[-1] in "/\\":
+        prev = s[:-1]
+        if len(prev) == 2 and prev[1] == ":":
+            break
+        s = prev
+    if not s:
+        return None, []
+
+    sl = s.replace("\\", "/")
+    collapsed_mnt = re.sub(r"/+", "/", sl) if sl.startswith("/mnt/") else sl
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def add(p: str | None) -> None:
+        if p is None:
+            return
+        q = str(p).strip()
+        if not q or q in seen:
+            return
+        seen.add(q)
+        candidates.append(q)
+
+    system = platform.system()
+    if system == "Windows":
+        # Prefer WSL-style → Windows drive mapping first (raw /mnt/d/... does not exist on NTFS)
+        add(convert_path_to_local(collapsed_mnt))
+        add(convert_path_to_local(s))
+        add(collapsed_mnt)
+        add(s)
+    else:
+        add(collapsed_mnt)
+        add(s)
+        if re.match(r"^[a-zA-Z]:/", sl):
+            add(convert_path_to_wsl(sl))
+        add(convert_path_to_local(s))
+        add(convert_path_to_local(collapsed_mnt))
+
+    for cand in candidates:
+        expanded = os.path.expanduser(os.path.expandvars(cand))
+        try:
+            norm = os.path.normpath(expanded)
+        except (OSError, ValueError):
+            norm = expanded
+        if os.path.exists(norm):
+            return norm, candidates
+
+    return None, candidates
+
+
+def is_docker_runtime() -> bool:
+    """True when the process is expected to run with a container filesystem (compose sets DOCKER_CONTAINER=1)."""
+    flag = os.environ.get("DOCKER_CONTAINER", "").strip().lower()
+    if flag in ("1", "true", "yes"):
+        return True
+    try:
+        return os.path.exists("/.dockerenv")
+    except OSError:
+        return False
+
 
 def convert_path_to_wsl(path):
     """

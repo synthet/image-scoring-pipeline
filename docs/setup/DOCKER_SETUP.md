@@ -151,12 +151,30 @@ docker compose build && docker compose up
 
 The project root is live-mounted into the container (`.:/app`). Python source changes take effect on the next `docker compose restart webui` — no rebuild needed.
 
+### Scope paths (Runs / preview / indexing)
+
+The WebUI only sees filesystem paths **inside the container**. `docker-compose.yml` maps a **host** folder to **`/mnt/d/Photos`** inside `webui` via:
+
+`${PHOTOS_BIND_SOURCE:-/mnt/d/Photos}:/mnt/d/Photos:rw`
+
+- **Docker CLI in WSL**: Leaving `PHOTOS_BIND_SOURCE` unset uses `/mnt/d/Photos` on the WSL host, which matches typical drive mounts — paths like `/mnt/d/Photos/...` in **New Run** work.
+- **Docker Desktop for Windows**: The default left-hand path is **not** your Windows `D:\` tree. Create a `.env` in the repo root (see [`.env.example`](../../.env.example)) with e.g. `PHOTOS_BIND_SOURCE=D:/Photos` (forward slashes), then run `docker compose up -d --force-recreate webui`. Keep using `/mnt/d/Photos/...` in the UI; that is the path **inside** the container.
+
+1. Set `PHOTOS_BIND_SOURCE` in `.env` when on Docker Desktop, or adjust `webui.volumes` if needed (e.g. `/mnt/e/Pictures:/mnt/e/Pictures:rw`, or a custom target and matching UI paths).
+2. Run `docker compose up -d --force-recreate webui` after changing `.env` or compose volumes.
+3. Use the **in-container** path in the scope field (`/mnt/d/Photos/...` when using the default right-hand mount).
+
+Verify the bind: `docker exec image-scoring-webui ls /mnt/d/Photos`.
+
+API errors for missing paths include a Docker reminder when `DOCKER_CONTAINER=1`.
+
 ### Key environment variables
 
 These are set in `docker-compose.yml` and control the container's behaviour:
 
 | Variable | Value | Purpose |
 |---|---|---|
+| `PHOTOS_BIND_SOURCE` | Optional; e.g. `D:/Photos` (Compose `.env`, not `config.json`) | **Host** folder bound to `/mnt/d/Photos` in `webui`; required for correct **New Run** paths on Docker Desktop for Windows |
 | `FIREBIRD_WIN_DB_PATH` | e.g. `/app/SCORING_HISTORY.FDB` (see `docker-compose.yml`) | Host path to the FDB file when using Firebird from the container |
 | `FIREBIRD_CLIENT_LIBRARY` | `/app/FirebirdLinux/.../libfbclient.so` | Path to the bundled Linux Firebird client library |
 | `DOCKER_CONTAINER` | `1` | Tells the app it is running inside Docker |
@@ -197,6 +215,40 @@ Complete Step 2 (post-installation) and restart WSL, or run `newgrp docker`.
 2. Ensure Windows Firewall permits port 3050. Run `setup_firewall.bat` as Administrator.
 3. Check that `FIREBIRD_WIN_DB_PATH` in `docker-compose.yml` (or `.env`) uses the correct path with **forward slashes** (match your clone location and `SCORING_HISTORY.FDB`).
 4. If you see `Docker: FIREBIRD_WIN_DB_PATH is not set` or `using computed path` in the container logs, the env var is wrong or was not applied. Fix the path and run `docker compose down && docker compose up` to recreate the container.
+
+### `duplicate key value violates unique constraint "jobs_pkey"` (`POST /api/runs/submit`)
+
+PostgreSQL assigns `jobs.id` from a sequence (`SERIAL`). If you restored data, imported rows with explicit IDs, or migrated without resetting sequences, the sequence can lag behind `MAX(jobs.id)` and the next insert reuses an existing id.
+
+**Fix — realign sequences** (same database your backend uses):
+
+From the host, using the Compose Postgres service:
+
+```bash
+docker exec image-scoring-postgres psql -U postgres -d image_scoring -c "
+SELECT setval(
+  pg_get_serial_sequence('jobs', 'id'),
+  COALESCE((SELECT MAX(id) FROM jobs), 1),
+  true
+);
+"
+```
+
+To repair **all** SERIAL `id` columns the app uses (recommended after a full restore), run from the repo root (WSL / venv with project deps, same as the Firebird→Postgres migrate script):
+
+```bash
+python scripts/python/postgres_sequence_repair.py
+```
+
+You can pass `--pg-host`, `--pg-port`, `--pg-db`, `--pg-user`, `--pg-password` to override `config.json` / environment.
+
+### New Run / scope preview: Path not found (`/mnt/d/Photos/...`)
+
+The API checks paths **inside** the `webui` container. If the error mentions Docker and `PHOTOS_BIND_SOURCE`, the photos folder is not bind-mounted correctly.
+
+1. Add `PHOTOS_BIND_SOURCE=<Windows path to library root>` to `.env` (see [`.env.example`](../../.env.example)), e.g. `PHOTOS_BIND_SOURCE=D:/Photos`.
+2. Run `docker compose up -d --force-recreate webui`.
+3. Confirm: `docker exec image-scoring-webui ls /mnt/d/Photos` lists your top-level folders.
 
 ### No GPU detected
 

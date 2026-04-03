@@ -61,13 +61,33 @@ function Write-Fail([string]$msg) {
 }
 
 # ---------------------------------------------------------------------------
-# Load connection config from config.json
+# Load connection config (config.json merged with environment.json via Python)
 # ---------------------------------------------------------------------------
 
-Write-Step "Reading config from: $ConfigPath"
+Write-Step "Resolving config path: $ConfigPath"
 
 $ConfigPath = (Resolve-Path $ConfigPath).Path
-$cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$ProjectRoot = Split-Path -Parent $ConfigPath
+
+$cfgJson = $null
+try {
+    $pyCode = @"
+import json, sys
+sys.path.insert(0, r'$ProjectRoot')
+from modules.config import load_config
+print(json.dumps(load_config()))
+"@
+    $cfgJson = & python -c $pyCode 2>$null
+} catch {
+    $cfgJson = $null
+}
+
+if (-not $cfgJson) {
+    Write-Host "    Warning: merged config unavailable (is Python on PATH?). Reading config.json only." -ForegroundColor Yellow
+    $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+} else {
+    $cfg = $cfgJson | ConvertFrom-Json
+}
 
 $pgCfg  = $cfg.database.postgres
 $PgHost = if ($pgCfg.host)     { $pgCfg.host }     else { "127.0.0.1" }
@@ -160,7 +180,7 @@ try {
             "-e", "PGPASSWORD=$PgPass",
             "image-scoring-postgres",
             "pg_dump",
-            "--host=127.0.0.1",
+            "--host=$PgHost",
             "--port=$PgPort",
             "--username=$PgUser",
             "--dbname=$PgDb",

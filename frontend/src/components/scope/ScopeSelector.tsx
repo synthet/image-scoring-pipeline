@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { X, Plus, Trash2, FolderOpen, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { ApiError, parseApiErrorDetail } from '@/api/client'
 import { runsApi, type RunSubmitRequest } from '@/api/runs'
 import { scopeApi } from '@/api/scope'
 import { Button } from '@/components/ui/button'
@@ -32,6 +33,7 @@ export function ScopeSelector() {
   const [skipDone, setSkipDone] = useState(true)
   const [forceRerun, setForceRerun] = useState(false)
   const [preview, setPreview] = useState<ScopePreviewResult | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
   useEffect(() => {
@@ -48,11 +50,14 @@ export function ScopeSelector() {
   async function loadPreview() {
     if (validPaths.length === 0) return
     setPreviewLoading(true)
+    setPreviewError(null)
     try {
       const res = await scopeApi.preview(validPaths, scopeType === 'folder_recursive')
       setPreview(res)
-    } catch {
+    } catch (e) {
       setPreview(null)
+      const msg = e instanceof ApiError ? parseApiErrorDetail(e.message) : String(e)
+      setPreviewError(msg)
     } finally {
       setPreviewLoading(false)
     }
@@ -152,6 +157,7 @@ export function ScopeSelector() {
                         next[i] = e.target.value
                         setPaths(next)
                         setPreview(null)
+                        setPreviewError(null)
                       }}
                       placeholder="/path/to/folder"
                       className="flex-1 bg-transparent text-sm text-[#cccccc] outline-none placeholder:text-[#6d6d6d]"
@@ -188,14 +194,21 @@ export function ScopeSelector() {
                 {previewLoading ? '' : 'Refresh'}
               </Button>
             </div>
+            {previewError && (
+              <div className="bg-[#1e1e1e] border border-[#f44747]/50 rounded p-3 text-xs text-[#f48787] whitespace-pre-wrap break-words">
+                {previewError}
+              </div>
+            )}
             {preview ? (
               <PreviewPanel preview={preview} />
             ) : (
-              <div className="bg-[#1e1e1e] border border-[#3c3c3c] rounded p-3 text-xs text-[#6d6d6d]">
-                {validPaths.length > 0
-                  ? 'Click Refresh to preview scope'
-                  : 'Enter a path above to preview'}
-              </div>
+              !previewError && (
+                <div className="bg-[#1e1e1e] border border-[#3c3c3c] rounded p-3 text-xs text-[#6d6d6d]">
+                  {validPaths.length > 0
+                    ? 'Click Refresh to preview scope'
+                    : 'Enter a path above to preview'}
+                </div>
+              )
             )}
           </div>
 
@@ -299,6 +312,12 @@ function PreviewPanel({ preview }: { preview: ScopePreviewResult }) {
               <span className="text-[#6d6d6d]">
                 {status === 'not_started' && '— not started'}
                 {status === 'done' && '✓ all done'}
+                {status === 'running' &&
+                  counts &&
+                  (counts.running
+                    ? `${counts.running} running`
+                    : `${counts.done} / ${counts.total} in progress`)}
+                {status === 'queued' && 'queued'}
                 {status === 'partial' && counts && `${counts.done} / ${counts.total} done`}
                 {status === 'failed' && counts && `${counts.failed} failed`}
               </span>
@@ -317,6 +336,8 @@ function StageStatusIcon({ status }: { status: string }) {
     case 'failed':
       return <AlertCircle size={12} className="text-[#f44747]" />
     case 'partial':
+    case 'running':
+    case 'queued':
       return <Loader2 size={12} className="text-[#cca700]" />
     default:
       return <div className="w-3 h-3 rounded-full border border-[#474747]" />

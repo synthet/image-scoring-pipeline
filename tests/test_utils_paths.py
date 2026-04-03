@@ -23,6 +23,12 @@ def test_convert_path_to_local_wsl_to_windows(monkeypatch):
     assert result == "D:/Photos/img.jpg"
 
 
+def test_convert_path_to_local_wsl_double_slash(monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    result = utils.convert_path_to_local("/mnt//d/Photos/img.jpg")
+    assert result == "D:/Photos/img.jpg"
+
+
 def test_convert_path_to_local_wsl_drive_uppercase(monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Windows")
     result = utils.convert_path_to_local("/mnt/c/Users/test.nef")
@@ -51,6 +57,61 @@ def test_convert_path_to_local_native_linux_path_unchanged(monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Linux")
     result = utils.convert_path_to_local("/home/user/photos/img.jpg")
     assert result == "/home/user/photos/img.jpg"
+
+
+# ---------------------------------------------------------------------------
+# resolve_scope_input_path
+# ---------------------------------------------------------------------------
+
+def test_resolve_scope_input_path_finds_existing_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    d = tmp_path / "scope_dir"
+    d.mkdir()
+    win, tried = utils.resolve_scope_input_path(str(d))
+    assert os.path.exists(win)
+    assert win == os.path.normpath(str(d))
+    assert any(str(d) == t or os.path.normpath(t) == win for t in tried)
+
+
+def test_resolve_scope_input_path_windows_prefers_drive_for_mnt(monkeypatch):
+    """On Windows, /mnt/d/... is not a real path; converted D:/... must be tried first."""
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    checked: list[str] = []
+
+    def fake_exists(p):
+        checked.append(p)
+        return str(p).replace("\\", "/") == "D:/Photos/here"
+
+    monkeypatch.setattr(os.path, "exists", fake_exists)
+    win, _tried = utils.resolve_scope_input_path("/mnt/d/Photos/here")
+    assert win.replace("\\", "/") == "D:/Photos/here"
+    assert any(str(x).replace("\\", "/") == "D:/Photos/here" for x in checked)
+
+
+def test_resolve_scope_input_path_none_when_missing(monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(os.path, "exists", lambda _p: False)
+    win, tried = utils.resolve_scope_input_path("/mnt/d/does/not/exist")
+    assert win is None
+    assert tried
+
+
+def test_is_docker_runtime_env(monkeypatch):
+    monkeypatch.delenv("DOCKER_CONTAINER", raising=False)
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+    assert utils.is_docker_runtime() is False
+    monkeypatch.setenv("DOCKER_CONTAINER", "1")
+    assert utils.is_docker_runtime() is True
+
+
+def test_is_docker_runtime_dotdockerenv(monkeypatch):
+    monkeypatch.delenv("DOCKER_CONTAINER", raising=False)
+
+    def exists(p):
+        return p == "/.dockerenv"
+
+    monkeypatch.setattr(os.path, "exists", exists)
+    assert utils.is_docker_runtime() is True
 
 
 # ---------------------------------------------------------------------------

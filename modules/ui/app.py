@@ -131,6 +131,16 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
             clustering_runner=clustering_runner,
         )
 
+    @fastapi_app.get("/api/status/logs", tags=["Status"])
+    async def status_logs_endpoint():
+        """Log sections only (webui.log + debug.log HTML) for the React SPA /ui/logs page."""
+        import asyncio
+        from datetime import datetime
+        from modules.ui.status_gradio import _render_log
+
+        log_html = await asyncio.to_thread(_render_log)
+        return {"ts": datetime.now().strftime("%H:%M:%S"), "log": log_html}
+
     @fastapi_app.get("/manifest.json")
     async def manifest_endpoint():
         """Serve a minimal web app manifest to prevent 404 errors."""

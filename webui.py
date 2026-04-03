@@ -28,6 +28,34 @@ warnings.filterwarnings("ignore", message=r".*tf\.losses\..*is deprecated.*")
 warnings.filterwarnings("ignore", message="The 'css' parameter in the Blocks constructor")
 warnings.filterwarnings("ignore", message="The 'head' parameter in the Blocks constructor")
 
+_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+
+def _ensure_webui_file_handler(app_log_path: str, log_level: int) -> None:
+    """Attach project webui.log handler even if logging.basicConfig was already a no-op.
+
+    Library modules (e.g. modules.pipeline) may call basicConfig at import time; then
+    webui.main()'s basicConfig skips adding handlers and application logs never hit disk.
+    """
+    root = logging.getLogger()
+    try:
+        abs_target = os.path.normcase(os.path.abspath(app_log_path))
+    except OSError:
+        abs_target = None
+    for h in root.handlers:
+        if isinstance(h, logging.FileHandler):
+            try:
+                existing = os.path.normcase(os.path.abspath(h.baseFilename))
+                if abs_target and existing == abs_target:
+                    return
+            except (AttributeError, OSError, ValueError, TypeError):
+                continue
+    fh = logging.FileHandler(app_log_path, mode="a", encoding="utf-8")
+    fh.setLevel(log_level)
+    fh.setFormatter(logging.Formatter(_LOG_FORMAT))
+    root.addHandler(fh)
+
+
 # Custom logging filter to suppress Gradio queue polling messages
 class SuppressGradioQueueFilter(logging.Filter):
     def filter(self, record):
@@ -44,23 +72,27 @@ def main():
             return default
         return value.strip().lower() in {"1", "true", "yes", "on"}
 
-    # Load config to check for debug mode
+    # Load config (config.json + environment.json) for debug mode and bind defaults
+    app_config: dict = {}
     try:
         from modules import config
         app_config = config.load_config()
         debug_mode = app_config.get('debug', False)
-        
-        # Configure logging
+
+        # Configure logging — project-root webui.log (stable regardless of process cwd)
         log_level = logging.DEBUG if debug_mode else logging.INFO
+        app_log_path = str(config.BASE_DIR / "webui.log")
         logging.basicConfig(
             level=log_level,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            format=_LOG_FORMAT,
             handlers=[
                 logging.StreamHandler(),
-                logging.FileHandler("webui.log", mode='a')
-            ]
+                logging.FileHandler(app_log_path, mode="a", encoding="utf-8"),
+            ],
         )
-        
+        _ensure_webui_file_handler(app_log_path, log_level)
+        logging.getLogger().setLevel(log_level)
+
         if debug_mode:
             print("[DEBUG] Debug mode enabled. Performance metrics will be logged to webui.log")
             logging.getLogger("image_scoring.performance").setLevel(logging.DEBUG)
@@ -82,8 +114,12 @@ def main():
 
     # Cache platform check
     is_windows = platform.system() == "Windows"
-    server_host = (os.environ.get("WEBUI_HOST") or "127.0.0.1").strip() or "127.0.0.1"
-    server_port = int((os.environ.get("WEBUI_PORT") or "7860").strip() or "7860")
+    # WEBUI_* env wins over config webui_host / webui_port (see environment.example.json)
+    _host_env = (os.environ.get("WEBUI_HOST") or "").strip()
+    _port_env = (os.environ.get("WEBUI_PORT") or "").strip()
+    server_host = _host_env or str(app_config.get("webui_host", "127.0.0.1")).strip() or "127.0.0.1"
+    _port_str = _port_env or str(app_config.get("webui_port", 7860)).strip() or "7860"
+    server_port = int(_port_str)
     display_host = "127.0.0.1" if server_host == "0.0.0.0" else server_host
 
     # MCP Server Integration (optional - for Cursor debugging)

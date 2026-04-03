@@ -432,57 +432,109 @@ def _render_diagnostics() -> str:
         return _section("Diagnostics", f"<em style='color:{_ERROR}'>Error: {html.escape(str(exc))}</em>")
 
 
-_LOG_MAX_LINES = 80
+_LOG_SECTION_MAX = 40
+
+
+def _colorize_log_line(stripped: str) -> str:
+    low = stripped.lower()
+    if " error" in low or "error:" in low:
+        color = _ERROR
+    elif " warning" in low or " warn" in low:
+        color = _WARN
+    else:
+        color = "#cccccc"
+    return (
+        f"<div style='color:{color};margin-bottom:1px;line-height:1.4'>"
+        f"{html.escape(stripped)}</div>"
+    )
+
+
+def _render_log_subsection(
+    *,
+    summary_label: str,
+    resolved_path: Path,
+    max_lines: int,
+) -> str:
+    """One nested <details> block for a log file path."""
+    path_str = html.escape(str(resolved_path))
+    if not resolved_path.exists():
+        # Log dir may exist (e.g. get_debug_log_path makedirs) but file not created yet — same UX as empty file
+        if resolved_path.parent.exists():
+            inner = f"<em style='color:{_TEXT_FAINT}'>No lines yet — {path_str}</em>"
+        else:
+            inner = f"<em style='color:{_TEXT_FAINT}'>Not found — {path_str}</em>"
+        return (
+            f"<details open style='margin-bottom:8px'>"
+            f"<summary style='font-size:0.78em;font-weight:600;color:{_TEXT_MID};cursor:pointer;padding:4px 0'>"
+            f"{html.escape(summary_label)}</summary>"
+            f"<div style='margin-top:6px'>{inner}</div></details>"
+        )
+
+    try:
+        with open(resolved_path, "r", encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()
+    except Exception as exc:
+        err = f"<em style='color:{_ERROR}'>Read error: {html.escape(str(exc))}</em>"
+        return (
+            f"<details open style='margin-bottom:8px'>"
+            f"<summary style='font-size:0.78em;font-weight:600;color:{_TEXT_MID};cursor:pointer;padding:4px 0'>"
+            f"{html.escape(summary_label)}</summary>"
+            f"<div style='margin-top:6px'>{err}</div></details>"
+        )
+
+    tail = lines[-max_lines:]
+    if not tail:
+        inner = f"<em style='color:{_TEXT_FAINT}'>No lines yet — {path_str}</em>"
+        return (
+            f"<details open style='margin-bottom:8px'>"
+            f"<summary style='font-size:0.78em;font-weight:600;color:{_TEXT_MID};cursor:pointer;padding:4px 0'>"
+            f"{html.escape(summary_label)}</summary>"
+            f"<div style='margin-top:6px'>{inner}</div></details>"
+        )
+
+    colored = "".join(_colorize_log_line(line.rstrip("\n")) for line in tail)
+    header_bar = (
+        f"<div style='display:flex;justify-content:space-between;align-items:center;"
+        f"padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid {_BORDER_DIM}'>"
+        f"<span style='font-size:0.72em;color:{_TEXT_FAINT};word-break:break-all'>{path_str}</span>"
+        f"<span style='font-size:0.72em;color:{_TEXT_FAINT};white-space:nowrap'>last {len(tail)} lines</span>"
+        f"</div>"
+    )
+    console = (
+        f"<div style='font-family:{_MONO};font-size:0.78em;background:{_BG_CONSOLE};"
+        f"padding:8px 10px;border-radius:4px;max-height:280px;overflow-y:auto;line-height:1.5'>"
+        f"{colored}</div>"
+    )
+    return (
+        f"<details open style='margin-bottom:8px'>"
+        f"<summary style='font-size:0.78em;font-weight:600;color:{_TEXT_MID};cursor:pointer;padding:4px 0'>"
+        f"{html.escape(summary_label)}</summary>"
+        f"<div style='margin-top:6px'>{header_bar}{console}</div></details>"
+    )
 
 
 def _render_log() -> str:
     from modules.config import BASE_DIR
-    log_path = next(
-        (p for p in [BASE_DIR / "webui.log", Path.cwd() / "webui.log"] if p.exists()),
-        None,
+    from modules import utils
+
+    app_candidates = [BASE_DIR / "webui.log", Path.cwd() / "webui.log"]
+    app_path = next((p for p in app_candidates if p.exists()), app_candidates[0])
+
+    debug_path = Path(utils.get_debug_log_path())
+
+    body = (
+        _render_log_subsection(
+            summary_label="Application (webui.log)",
+            resolved_path=app_path,
+            max_lines=_LOG_SECTION_MAX,
+        )
+        + _render_log_subsection(
+            summary_label="Debug (debug.log)",
+            resolved_path=debug_path,
+            max_lines=_LOG_SECTION_MAX,
+        )
     )
-    if log_path is None:
-        body = f"<em style='color:{_TEXT_FAINT}'>webui.log not found</em>"
-        return _section("Log", body)
-
-    try:
-        with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
-            lines = fh.readlines()
-        tail = lines[-_LOG_MAX_LINES:]
-
-        log_rows = []
-        for line in tail:
-            stripped = line.rstrip("\n")
-            low = stripped.lower()
-            if " error" in low or "error:" in low:
-                color = _ERROR
-            elif " warning" in low or " warn" in low:
-                color = _WARN
-            else:
-                color = "#cccccc"
-            log_rows.append(
-                f"<div style='color:{color};margin-bottom:1px;line-height:1.4'>"
-                f"{html.escape(stripped)}</div>"
-            )
-
-        header_bar = (
-            f"<div style='display:flex;justify-content:space-between;align-items:center;"
-            f"padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid {_BORDER_DIM}'>"
-            f"<span style='font-size:0.75em;font-weight:600;color:{_TEXT_MID};"
-            f"text-transform:uppercase;letter-spacing:0.05em'>webui.log</span>"
-            f"<span style='font-size:0.72em;color:{_TEXT_FAINT}'>last {len(tail)} lines</span>"
-            f"</div>"
-        )
-        console = (
-            f"<div style='font-family:{_MONO};font-size:0.78em;background:{_BG_CONSOLE};"
-            f"padding:8px 10px;border-radius:4px;max-height:400px;overflow-y:auto;line-height:1.5'>"
-            + "".join(log_rows)
-            + "</div>"
-        )
-        return _section("Log", header_bar + console, open=True)
-    except Exception as exc:
-        body = f"<em style='color:{_TEXT_FAINT}'>Read error: {html.escape(str(exc))}</em>"
-        return _section("Log", body)
+    return _section("Log", body, open=True)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

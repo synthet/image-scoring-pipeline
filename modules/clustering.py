@@ -549,6 +549,30 @@ class ClusteringEngine(IClusteringEngine):
 
             if not runnable_rows:
                 logging.warning(f"[Clustering] Skipping folder {folder}: runnable_rows=0 (all images current)")
+                # Recover stuck RUNNING rows (e.g. crashed job) so folder previews / phase summaries stay accurate.
+                for r in rows:
+                    st = (db.get_image_phase_statuses(r["id"]) or {}).get("culling") or {}
+                    if (st.get("status") or "").strip() != PhaseStatus.RUNNING:
+                        continue
+                    decision = explain_phase_run_decision(
+                        r["id"],
+                        PhaseCode.CULLING,
+                        current_executor_version=CLUSTER_VERSION,
+                        force_run=force_rescan,
+                    )
+                    if decision.get("should_run") or decision.get("reason") != "already_running":
+                        continue
+                    try:
+                        db.set_image_phase_status(
+                            r["id"],
+                            PhaseCode.CULLING,
+                            PhaseStatus.DONE,
+                            app_version=APP_VERSION,
+                            executor_version=CLUSTER_VERSION,
+                            job_id=job_id,
+                        )
+                    except Exception:
+                        pass
                 yield update_status(f"Skipping folder: {folder} (all images current)", processed_count, len(images_rows))
                 continue
 

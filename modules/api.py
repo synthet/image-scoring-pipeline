@@ -5083,20 +5083,49 @@ def create_api_router() -> APIRouter:
         return s
 
     def _scope_resolve_path(raw_path: str) -> str:
-        """Convert path to local format (Windows->WSL when in WSL). Raises if path not found."""
+        """Map user path to an existing filesystem path for this OS (WSL /mnt/..., Windows, typos in slashes)."""
         from modules import utils
         path = _normalize_scope_path_input(raw_path)
         if not path:
             raise HTTPException(status_code=400, detail="Empty path")
-        local_path = utils.convert_path_to_local(path)
-        if platform.system() == "Linux" and (":" in path or "\\" in path) and hasattr(utils, "convert_path_to_wsl"):
-            wsl = utils.convert_path_to_wsl(path)
-            if wsl and wsl != path:
-                local_path = wsl
-        if not os.path.exists(local_path):
+        local_path, tried = utils.resolve_scope_input_path(path)
+        if not local_path:
+            sysname = platform.system()
+            sl = path.replace("\\", "/")
+            extra = ""
+            if sysname == "Linux" and sl.startswith("/mnt/"):
+                segs = [x for x in sl.split("/") if x]
+                if len(segs) >= 2 and segs[0] == "mnt":
+                    drv = segs[1]
+                    mroot = f"/mnt/{drv}"
+                    if not os.path.exists(mroot):
+                        extra = (
+                            f" {mroot}/ is not mounted here (WSL automount disabled, container without a host bind, "
+                            "or this process is not WSL). Run the WebUI where that path exists, or bind-mount the folder."
+                        )
+            if utils.is_docker_runtime():
+                extra += (
+                    " Docker: only bind-mounted paths exist inside the container (besides `.:/app`). "
+                    "`webui.volumes` uses ${PHOTOS_BIND_SOURCE:-/mnt/d/Photos}:/mnt/d/Photos — if `/mnt/d` is missing here, "
+                    "you are likely on Docker Desktop for Windows: set PHOTOS_BIND_SOURCE to a Windows path in `.env` "
+                    "(e.g. PHOTOS_BIND_SOURCE=D:/Photos), then `docker compose up -d --force-recreate webui`. "
+                    "Using /mnt/d/... as the compose host source only works when the Docker engine runs inside WSL."
+                )
+            uniq_try = []
+            for t in tried:
+                if t not in uniq_try:
+                    uniq_try.append(t)
+            preview = ", ".join(repr(t) for t in uniq_try[:5])
+            if len(uniq_try) > 5:
+                preview += ", …"
             raise HTTPException(
                 status_code=400,
-                detail=f"Path not found: {raw_path} (resolved to {local_path}). Ensure the path exists and is accessible from the backend (WSL uses /mnt/d/... for D:\\...).",
+                detail=(
+                    f"Path not found: {raw_path}. Checked: {preview or '(no variants)'}. "
+                    f"This server runs on {sysname}: use a path visible to that process "
+                    f"(native Windows: D:\\Photos\\...; WSL/Linux: /mnt/d/Photos/... when drives are mounted)."
+                    f"{extra}"
+                ),
             )
         return local_path
 
@@ -5139,10 +5168,12 @@ def create_api_router() -> APIRouter:
             stage_total: Dict[str, int] = {}
             phase_codes = [p.value for p in PhaseCode]
 
-            from modules import utils
+            stage_running: Dict[str, int] = {}
+            stage_queued: Dict[str, int] = {}
             for path in preview_paths:
                 local_path = _scope_resolve_path(path)
-                summary = db.get_folder_phase_summary(path, force_refresh=True)
+                # Use the same resolved path the job/runner uses so folder_id / phase aggregates match.
+                summary = db.get_folder_phase_summary(local_path, force_refresh=True)
                 db_img_count = (summary[0].get("total_count", 0) if summary else 0)
                 if summary and db_img_count > 0:
                     folder_count += 1
@@ -5154,6 +5185,8 @@ def create_api_router() -> APIRouter:
                         stage_done[code] = stage_done.get(code, 0) + row.get("done_count", 0)
                         stage_failed[code] = stage_failed.get(code, 0) + row.get("failed_count", 0)
                         stage_skipped[code] = stage_skipped.get(code, 0) + row.get("skipped_count", 0)
+                        stage_running[code] = stage_running.get(code, 0) + int(row.get("running_count") or 0)
+                        stage_queued[code] = stage_queued.get(code, 0) + int(row.get("queued_count") or 0)
                 else:
                     img_count, n_folders = _scope_count_images_on_disk(local_path, request.recursive)
                     if img_count > 0 or n_folders > 0:
@@ -5172,18 +5205,34 @@ def create_api_router() -> APIRouter:
                 done = stage_done.get(code, 0)
                 failed = stage_failed.get(code, 0)
                 skipped = stage_skipped.get(code, 0)
+                running = stage_running.get(code, 0)
+                queued = stage_queued.get(code, 0)
                 if total == 0:
                     status = "not_started"
-                elif done == total:
-                    status = "done"
+                elif running > 0:
+                    status = "running"
+                elif queued > 0:
+                    status = "queued"
                 elif failed > 0:
                     status = "failed"
+                elif done == total:
+                    status = "done"
+                elif (done + skipped) == total and failed == 0:
+                    # Optional phases (e.g. culling) can be "finished" via skip + done mix; mirror folder summary semantics.
+                    status = "done"
                 elif done > 0 or skipped > 0:
                     status = "partial"
                 else:
                     status = "not_started"
                 stage_statuses[code] = status
-                stage_counts[code] = {"done": done, "failed": failed, "skipped": skipped, "total": total}
+                stage_counts[code] = {
+                    "done": done,
+                    "failed": failed,
+                    "skipped": skipped,
+                    "total": total,
+                    "running": running,
+                    "queued": queued,
+                }
 
             return {
                 "image_count": total_images,

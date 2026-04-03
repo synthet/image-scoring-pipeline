@@ -151,7 +151,10 @@ class SelectionRunner:
 
         skipped_by_policy = max(0, len(images) - len(images_for_phase))
         if skipped_by_policy:
-            log(f"Policy gated {len(images_for_phase)} image(s); {skipped_by_policy} remain unchanged.")
+            log(
+                f"Culling: skipping re-run for {skipped_by_policy} image(s) (already current); "
+                f"{len(images_for_phase)} image(s) will be driven through clustering for this run."
+            )
 
         cfg = SelectionConfig(force_rescan=force_rescan)
         log(f"Starting clustering for {len(images_for_phase)} images (force_rescan={force_rescan})...")

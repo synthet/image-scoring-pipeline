@@ -5,6 +5,7 @@
   "stacks_input_path": "/mnt/d/Photos",
   "culling_input_path": "/mnt/d/Photos",
   "selection_input_path": "",
+  "webui_host": "127.0.0.1",
   "webui_port": 7860,
   "database": {
     "engine": "postgres",

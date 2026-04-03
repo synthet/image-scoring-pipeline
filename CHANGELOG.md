@@ -9,12 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Documentation
+## [6.3.0] - 2026-04-03
 
-- **Hub & navigation**: `docs/README.md`, `docs/INDEX.md`, `docs/technical/INDEX.md`, and plan indexes updated with cross-links to **image-scoring-backend** / **image-scoring-gallery** on GitHub and backlog pointers.
-- **Coordination & setup**: `docs/technical/AGENT_COORDINATION.md`, `docs/setup/ENVIRONMENTS.md`, `docs/setup/DOCKER_SETUP.md`, migration and embedding plan docs refreshed for canonical repo names and Postgres-primary wording.
-- **Project docs**: `docs/project/00-backlog-workflow.md`, `docs/project/BACKLOG_GOVERNANCE.md`, `TODO.md`, `CLAUDE.md`, and `README.md` aligned with the same naming and integration notes.
-- **Contributor hygiene**: `.claude/settings.json` no longer embeds user-specific absolute paths; `.cursorrules` WSL snippet uses a generic clone path.
+### Added
+
+- **`GET /api/status/logs`**: Returns HTML log sections (application + debug tails) for the React UI; **`LogsPage`** at `/ui/logs` polls the endpoint.
+- **`modules.utils.resolve_scope_input_path`**: Tries WSL `/mnt/…`, Windows, collapsed slashes, and related variants; **`is_docker_runtime()`** for clearer “path not found” errors (bind-mount hints, `PHOTOS_BIND_SOURCE`).
+- **`scripts/python/postgres_sequence_repair.py`**: Realigns PostgreSQL SERIAL sequences to `MAX(id)` after restore/migration (avoids duplicate PK on `jobs`, `images`, etc.).
+- **`.env.example`**: Documents `PHOTOS_BIND_SOURCE` / Docker photo bind patterns.
+- **`environment.example.json`**: Documents optional **`webui_host`** alongside **`webui_port`**.
+
+### Changed
+
+- **Scope preview** (`modules/api.py`): Resolves paths the same way as jobs; aggregates **running** / **queued** image counts per phase; stage status can be `running` or `queued`; **`stage_counts`** includes `running` and `queued`; optional phases can report `done` when done+skipped covers the folder.
+- **`webui.py`**: Writes **`webui.log`** under project **`BASE_DIR`** (stable cwd); **`_ensure_webui_file_handler`** adds a file handler if import-time `basicConfig` skipped it; **`WEBUI_HOST` / `WEBUI_PORT`** override merged config **`webui_host` / `webui_port`** when set.
+- **Operator `/app` log panel** (`modules/ui/status_gradio.py`): Separate collapsible sections for **webui.log** and **debug.log** tails with line colorization.
+- **LIQE** (`modules/liqe.py`) and **score normalization** (`modules/score_normalization.py`): Read limits/settings via **`modules.config`** (merged `config.json` + `environment.json`) instead of parsing only `config.json`.
+- **Docker** (`docker-compose.yml`, `scripts/docker_entrypoint.sh`, `docs/setup/DOCKER_SETUP.md`): Default **`PHOTOS_BIND_SOURCE`** bind to **`/mnt/d/Photos`**; Firebird wait in entrypoint is opt-in via **`WAIT_FOR_FIREBIRD=1`** (Postgres-first compose flow).
+- **`scripts/powershell/Backup-Postgres.ps1`**: Loads merged config via Python when available; **`pg_dump` inside Docker** uses configured **`host`** (not hard-coded `127.0.0.1`).
+- **React shell / scope** (`frontend/src`): Nav link to Logs; API client/types for log payload and scope stage counts.
+
+### Fixed
+
+- **Clustering** (`modules/clustering.py`): When a folder is skipped as “all current”, recover stuck per-image **culling** **`RUNNING`** rows so previews and phase summaries stay accurate.
+
+### Chore
+
+- **Built `/ui` static assets** refreshed (`static/app/assets/*`, `static/app/index.html`).
+- **`scripts/python/migrate_firebird_to_postgres.py`**, **`verify_db_parity.py`**, **`run_all_musiq_models.py`**: Minor maintenance adjustments.
+- **`modules/selection_runner.py`**: Clearer log line when policy skips already-current images.
+- **`tests/test_utils_paths.py`**: Coverage for **`resolve_scope_input_path`**.
 
 ## [6.2.0] - 2026-04-02
 

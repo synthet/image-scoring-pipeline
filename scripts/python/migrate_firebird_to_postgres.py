@@ -34,6 +34,8 @@ import psycopg2
 import psycopg2.extras
 from pgvector.psycopg2 import register_vector
 
+from postgres_sequence_repair import reset_sequences
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -235,34 +237,6 @@ def migrate_table(fb_conn, pg_conn, table_name, batch_size=500, dry_run=False):
         return total_inserted
     finally:
         fb_cur.close()
-        pg_cur.close()
-
-
-def reset_sequences(pg_conn):
-    """Reset PostgreSQL SERIAL sequences to MAX(id) + 1 for each table."""
-    pg_cur = pg_conn.cursor()
-    try:
-        tables_with_id = [
-            "jobs", "folders", "stacks", "images",
-            "job_phases", "job_steps",
-            "culling_sessions", "culling_picks",
-            "pipeline_phases", "image_phase_status",
-            "keywords_dim",
-        ]
-        for table in tables_with_id:
-            try:
-                pg_cur.execute(f"SELECT MAX(id) FROM {table}")
-                row = pg_cur.fetchone()
-                max_id = row[0] if row and row[0] else 0
-                pg_cur.execute(
-                    f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), %s, true)",
-                    (max(max_id, 1),),
-                )
-                logger.info("  Reset sequence for %s to %d", table, max_id)
-            except Exception as e:
-                logger.warning("  Could not reset sequence for %s: %s", table, e)
-        pg_conn.commit()
-    finally:
         pg_cur.close()
 
 

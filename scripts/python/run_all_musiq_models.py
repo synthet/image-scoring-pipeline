@@ -30,6 +30,16 @@ project_root = str(Path(__file__).resolve().parents[2])
 if project_root not in sys.path:
     sys.path.append(project_root)
 
+
+def _merged_app_config() -> dict:
+    """config.json merged with environment.json (same as the WebUI)."""
+    try:
+        from modules.config import load_config
+
+        return load_config()
+    except Exception:
+        return {}
+
 try:
     from modules.liqe import LiqeScorer
 except Exception:
@@ -83,11 +93,7 @@ class MultiModelMUSIQ:
         """Return path to cached preprocessed JPEG, or None if caching disabled.
         Cache key includes max_resolution so changing config invalidates cache."""
         try:
-            cfg = {}
-            config_path = os.path.join(self.project_root, "config.json")
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    cfg = json.load(f)
+            cfg = _merged_app_config()
 
             prep_cfg = cfg.get("preprocessing", {})
             if not prep_cfg.get("cache_enabled", False):
@@ -116,16 +122,13 @@ class MultiModelMUSIQ:
     def _get_raw_conversion_config(self) -> dict:
         """Read raw_conversion and preprocessing config. Returns defaults if missing."""
         try:
-            config_path = os.path.join(self.project_root, "config.json")
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    cfg = json.load(f)
-                raw_cfg = cfg.get("raw_conversion", {})
-                return {
-                    "method": raw_cfg.get("method", "rawpy_half"),
-                    "max_resolution": int(raw_cfg.get("max_resolution", 512)),
-                    "jpeg_quality": int(raw_cfg.get("jpeg_quality", 85)),
-                }
+            cfg = _merged_app_config()
+            raw_cfg = cfg.get("raw_conversion", {})
+            return {
+                "method": raw_cfg.get("method", "rawpy_half"),
+                "max_resolution": int(raw_cfg.get("max_resolution", 512)),
+                "jpeg_quality": int(raw_cfg.get("jpeg_quality", 85)),
+            }
         except Exception:
             pass
         return {"method": "rawpy_half", "max_resolution": 512, "jpeg_quality": 85}
@@ -797,15 +800,10 @@ class MultiModelMUSIQ:
             "vila": 0.00
         }
         
-        # Try to load from config
+        # Try to load from config (merged with environment.json)
         try:
-            config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config.json')
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config_data = json.load(f)
-                    self.model_weights = config_data.get('model_weights', default_weights)
-            else:
-                self.model_weights = default_weights
+            config_data = _merged_app_config()
+            self.model_weights = config_data.get("model_weights", default_weights)
         except Exception as e:
             logging.getLogger(__name__).warning(f"Could not load model weights from config: {e}")
             self.model_weights = default_weights

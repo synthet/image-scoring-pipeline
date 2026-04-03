@@ -11,8 +11,6 @@ Individual model scores stored in DB remain in theoretical 0-1 range.
 Composite scores use empirical percentile rescaling for better discrimination.
 """
 
-import json
-import os
 import logging
 from typing import Dict, Optional, Tuple
 
@@ -56,23 +54,18 @@ _config_cache = None
 
 
 def _load_config() -> dict:
-    """Load scoring config from config.json, with caching."""
+    """Load scoring config (config.json merged with environment.json), with caching."""
     global _config_cache
     if _config_cache is not None:
         return _config_cache
 
     try:
-        config_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "config.json"
-        )
-        if os.path.exists(config_path):
-            with open(config_path, "r") as f:
-                data = json.load(f)
-            _config_cache = data
-            return data
+        from modules.config import load_config as _load_app_config
+
+        _config_cache = _load_app_config()
+        return _config_cache
     except Exception as e:
-        logger.warning("Could not load config.json for scoring: %s", e)
+        logger.warning("Could not load config for scoring: %s", e)
 
     _config_cache = {}
     return _config_cache

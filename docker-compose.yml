@@ -31,6 +31,7 @@ services:
     environment:
       - DOCKER_CONTAINER=1
       - WEBUI_HOST=0.0.0.0
+      # Postgres: `db` service + depends_on healthcheck — no Firebird wait unless WAIT_FOR_FIREBIRD=1
       # FDB at repo root when `.:/app` is mounted (set FIREBIRD_WIN_DB_PATH in `.env` to override)
       - FIREBIRD_WIN_DB_PATH=/app/SCORING_HISTORY.FDB
       - FIREBIRD_CLIENT_LIBRARY=/app/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib/libfbclient.so
@@ -41,7 +42,10 @@ services:
       - POSTGRES_PASSWORD=postgres
     volumes:
       - .:/app
-      # Optional: add `- "${WSL_DRIVE_MOUNT}:/mnt/d"` when you need a Windows drive under `/mnt/d` (set `WSL_DRIVE_MOUNT` in `.env`, e.g. your drive root with forward slashes).
+      # Host folder → /mnt/d/Photos inside the container (keep UI paths as /mnt/d/Photos/...).
+      # WSL / docker CLI in WSL: default PHOTOS_BIND_SOURCE=/mnt/d/Photos works.
+      # Docker Desktop on Windows: create .env with PHOTOS_BIND_SOURCE=D:/Photos (your real drive/path).
+      - ${PHOTOS_BIND_SOURCE:-/mnt/d/Photos}:/mnt/d/Photos:rw
     # Make GPU usage work with non-Swarm `docker compose`
     gpus: all
     deploy:

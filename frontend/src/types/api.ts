@@ -114,7 +114,10 @@ export interface ScopePreviewResult {
   image_count: number
   folder_count: number
   stage_statuses: Record<StageCode, string>
-  stage_counts: Record<StageCode, { done: number; failed: number; skipped: number; total: number }>
+  stage_counts: Record<
+    StageCode,
+    { done: number; failed: number; skipped: number; total: number; running?: number; queued?: number }
+  >
 }
 
 // ─── Folder tree ─────────────────────────────────────────────────────────
