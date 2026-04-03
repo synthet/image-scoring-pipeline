@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.2.0] - 2026-04-02
+
+### Added
+
+- **Alembic** (`migrations/versions/0004_embedding_spaces_image_embeddings.py`): `embedding_spaces` registry, `image_embeddings` with `vector(1280)`, HNSW cosine index, seed row `mobilenet_v2_imagenet_gap`, and backfill from `images.image_embedding`. Run `alembic upgrade head` on existing PostgreSQL databases.
+- **`modules/embedding_spaces.py`**: Default embedding space code and `get_default_embedding_space_id()` for Postgres.
+- **Docs** (`docs/plans/database/DB_VECTORS_REFACTOR.md`): Plan for vector storage refactor and multi-space direction.
+
+### Changed
+
+- **PostgreSQL** (`modules/db_postgres.py`): `init_db` creates `embedding_spaces` / `image_embeddings` (aligned with migration 0004).
+- **DB** (`modules/db.py`): Dual-write and read paths for the default visual space — upsert `image_embeddings` while keeping `images.image_embedding`; batch updates, similarity queries, and “missing embedding” checks use `COALESCE` / joins against the keyed table where appropriate.
+- **`modules/similar_search.py`**: Uses the new embedding storage layout on Postgres.
+- **Docs** (`docs/technical/EMBEDDINGS.md`): Documents registry + `image_embeddings` vs legacy column and backfill notes.
+
+### Fixed
+
+- **`cli.py`**: `status` table tolerates status dicts missing `current`, `total`, or `message`.
+
+### Chore
+
+- **`.gitignore`**: Ignore common one-off `tools/` patch scripts and local Claude settings.
+
 ## [6.1.1] - 2026-04-01
 
 ### Added
