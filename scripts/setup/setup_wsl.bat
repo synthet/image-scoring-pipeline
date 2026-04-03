@@ -10,7 +10,7 @@ set "PROJECT_ROOT=%SCRIPT_DIR%..\.."
 cd /d "%PROJECT_ROOT%"
 set "PROJECT_ROOT=%CD%"
 
-REM Convert to WSL path (e.g. D:\Projects\image-scoring -> /mnt/d/Projects/image-scoring)
+REM Convert to WSL path (e.g. D:\path\to\repo -> /mnt/d/path/to/repo)
 set "WSL_PATH=!PROJECT_ROOT:\=/!"
 set "WSL_PATH=!WSL_PATH::=!"
 set "WSL_PATH=/mnt/!WSL_PATH!"

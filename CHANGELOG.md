@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **Hub & navigation**: `docs/README.md`, `docs/INDEX.md`, `docs/technical/INDEX.md`, and plan indexes updated with cross-links to **image-scoring-backend** / **image-scoring-gallery** on GitHub and backlog pointers.
+- **Coordination & setup**: `docs/technical/AGENT_COORDINATION.md`, `docs/setup/ENVIRONMENTS.md`, `docs/setup/DOCKER_SETUP.md`, migration and embedding plan docs refreshed for canonical repo names and Postgres-primary wording.
+- **Project docs**: `docs/project/00-backlog-workflow.md`, `docs/project/BACKLOG_GOVERNANCE.md`, `TODO.md`, `CLAUDE.md`, and `README.md` aligned with the same naming and integration notes.
+- **Contributor hygiene**: `.claude/settings.json` no longer embeds user-specific absolute paths; `.cursorrules` WSL snippet uses a generic clone path.
+
 ## [6.2.0] - 2026-04-02
 
 ### Added

@@ -8,28 +8,55 @@ import string
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = BASE_DIR / "config.json"
+ENVIRONMENT_FILE = BASE_DIR / "environment.json"
+
+
+def _read_json_file(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logging.error("Failed to load JSON from %s: %s", path, e)
+        return {}
+
+
+def _deep_merge_dict(base: dict, override: dict) -> dict:
+    """Recursively merge override into base; override wins. Lists and scalars replace."""
+    out = dict(base)
+    for key, val in override.items():
+        if key in out and isinstance(out[key], dict) and isinstance(val, dict):
+            out[key] = _deep_merge_dict(out[key], val)
+        else:
+            out[key] = val
+    return out
+
+
+def _load_config_file_only() -> dict:
+    """config.json only (no environment merge). Used when persisting changes."""
+    return _read_json_file(CONFIG_FILE)
+
+
+def _load_environment_file_only() -> dict:
+    return _read_json_file(ENVIRONMENT_FILE)
+
 
 def load_config():
     """
-    Loads configuration from config.json.
-    Returns a dictionary.
+    Loads configuration from config.json merged with environment.json (when present).
+    environment.json overrides overlapping keys.
     """
-    if not os.path.exists(CONFIG_FILE):
-        return {}
-    
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    except Exception as e:
-        logging.error(f"Failed to load config: {e}")
-        return {}
+    merged = _deep_merge_dict(_load_config_file_only(), _load_environment_file_only())
+    return merged
 
 def save_config_value(key, value):
     """
     Updates a single key in the config and saves it.
     Supports nested keys using dot notation (e.g., 'scoring.force_rescore_default').
     """
-    data = load_config()
+    data = _load_config_file_only()
     if '.' in key:
         parts = key.split('.')
         target = data
@@ -42,7 +69,7 @@ def save_config_value(key, value):
         data[key] = value
 
     try:
-        with open(CONFIG_FILE, 'w') as f:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4)
     except Exception as e:
         logging.error(f"Failed to save config: {e}")
@@ -127,10 +154,10 @@ def save_config_section(section, section_data):
     """
     Save an entire section of configuration.
     """
-    data = load_config()
+    data = _load_config_file_only()
     data[section] = section_data
     try:
-        with open(CONFIG_FILE, 'w') as f:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4)
     except Exception as e:
         logging.error(f"Failed to save config section: {e}")
@@ -167,14 +194,14 @@ def save_export_template(template_name, template_config):
             - filter_date_start: str
             - filter_date_end: str
     """
-    data = load_config()
+    data = _load_config_file_only()
     if 'export_templates' not in data:
         data['export_templates'] = {}
     
     data['export_templates'][template_name] = template_config
     
     try:
-        with open(CONFIG_FILE, 'w') as f:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4)
         return True
     except Exception as e:
@@ -186,11 +213,11 @@ def delete_export_template(template_name):
     """
     Delete an export template.
     """
-    data = load_config()
+    data = _load_config_file_only()
     if 'export_templates' in data and template_name in data['export_templates']:
         del data['export_templates'][template_name]
         try:
-            with open(CONFIG_FILE, 'w') as f:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4)
             return True
         except Exception as e:
@@ -285,16 +312,18 @@ def validate_config() -> dict:
     issues = []
     warnings = []
 
-    if not CONFIG_FILE.exists():
+    if not CONFIG_FILE.exists() and not ENVIRONMENT_FILE.exists():
         return {
             "ok": False,
-            "issues": [f"Configuration file not found: {CONFIG_FILE}"],
+            "issues": [
+                f"No configuration files found: {CONFIG_FILE} or {ENVIRONMENT_FILE}",
+            ],
             "warnings": warnings,
         }
 
     data = load_config()
     if not data:
-        issues.append("config.json is missing, empty, or failed to parse")
+        issues.append("config.json and environment.json are missing, empty, or failed to parse")
 
     proc = data.get("processing") or {}
     for key in ("prep_queue_size", "scoring_queue_size", "result_queue_size"):

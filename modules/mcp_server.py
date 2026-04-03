@@ -1002,20 +1002,47 @@ def get_embedding_stats(folder_path: Optional[str] = None) -> dict:
             return {"error": "folder_not_found", "folder_path": norm}
         folder_id = frow["id"]
 
-    if folder_id is not None:
-        base = "folder_id = ?"
-        params_t = (folder_id,)
-        total_row = conn.query_one(f"SELECT COUNT(*) AS c FROM images WHERE {base}", params_t)
-        with_row = conn.query_one(
-            f"SELECT COUNT(*) AS c FROM images WHERE {base} AND image_embedding IS NOT NULL",
-            params_t,
-        )
+    # Postgres: use COALESCE predicate to count both legacy and normalized storage
+    if conn.type == 'postgres':
+        sub = db._pg_default_embedding_space_subquery_sql()
+        has_e = db._postgres_has_default_embedding_sql("i")
+        if folder_id is not None:
+            base = "i.folder_id = ?"
+            params_t = (folder_id,)
+            total_row = conn.query_one(
+                f"SELECT COUNT(*) AS c FROM images i WHERE {base}",
+                params_t
+            )
+            with_row = conn.query_one(
+                f"""SELECT COUNT(*) AS c FROM images i
+                   LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}
+                   WHERE {base} AND {has_e}""",
+                params_t,
+            )
+        else:
+            total_row = conn.query_one("SELECT COUNT(*) AS c FROM images i", ())
+            with_row = conn.query_one(
+                f"""SELECT COUNT(*) AS c FROM images i
+                   LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}
+                   WHERE {has_e}""",
+                (),
+            )
     else:
-        total_row = conn.query_one("SELECT COUNT(*) AS c FROM images", ())
-        with_row = conn.query_one(
-            "SELECT COUNT(*) AS c FROM images WHERE image_embedding IS NOT NULL",
-            (),
-        )
+        # Firebird: legacy path
+        if folder_id is not None:
+            base = "folder_id = ?"
+            params_t = (folder_id,)
+            total_row = conn.query_one(f"SELECT COUNT(*) AS c FROM images WHERE {base}", params_t)
+            with_row = conn.query_one(
+                f"SELECT COUNT(*) AS c FROM images WHERE {base} AND image_embedding IS NOT NULL",
+                params_t,
+            )
+        else:
+            total_row = conn.query_one("SELECT COUNT(*) AS c FROM images", ())
+            with_row = conn.query_one(
+                "SELECT COUNT(*) AS c FROM images WHERE image_embedding IS NOT NULL",
+                (),
+            )
 
     total = int((total_row or {}).get("c") or 0)
     with_emb = int((with_row or {}).get("c") or 0)
@@ -1733,15 +1760,16 @@ def run_processing_job(job_type: str, input_path: str, args: dict = None) -> dic
 
 @mcp.tool(annotations=_RO)
 def get_config() -> dict:
-    """Get current application configuration from config.json."""
+    """Get current application configuration (config.json merged with environment.json)."""
     return config.load_config()
 
 
 @mcp.tool(annotations=_RO)
 def validate_config() -> dict:
-    """Validate config.json structure and referenced paths; optionally ping the database when available."""
+    """Validate config structure and referenced paths; optionally ping the database when available."""
     out = dict(config.validate_config())
     out["config_path"] = str(config.CONFIG_FILE)
+    out["environment_path"] = str(config.ENVIRONMENT_FILE)
     if _db_available:
         try:
             with db.connection() as conn:

@@ -104,7 +104,7 @@ extract();
             ['node', str(script_file), str(filepath), str(output_file)],
             capture_output=True,
             timeout=15,
-            cwd=str(Path('d:/Projects/image-scoring/electron-gallery'))
+            cwd=str(Path(__file__).resolve().parents[2].parent / "image-scoring-gallery")
         )
         
         output_text = result.stdout.decode('utf-8').strip()

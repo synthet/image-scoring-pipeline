@@ -1,0 +1,29 @@
+{
+  "_comment": "Copy to environment.json and set real paths, ports, and URLs for this machine. environment.json is gitignored. Values here override the same keys in config.json when both exist.",
+  "scoring_input_path": "/mnt/d/Photos",
+  "tagging_input_path": "",
+  "stacks_input_path": "/mnt/d/Photos",
+  "culling_input_path": "/mnt/d/Photos",
+  "selection_input_path": "",
+  "webui_port": 7860,
+  "database": {
+    "engine": "postgres",
+    "filename": "",
+    "postgres": {
+      "host": "127.0.0.1",
+      "port": 5432,
+      "dbname": "image_scoring",
+      "user": "postgres",
+      "password": "postgres"
+    },
+    "api_url": "http://127.0.0.1:7860"
+  },
+  "system": {
+    "allowed_paths": [
+      "C:/",
+      "D:/",
+      "/mnt/"
+    ],
+    "log_dir": ".cursor"
+  }
+}

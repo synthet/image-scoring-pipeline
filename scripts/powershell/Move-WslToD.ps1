@@ -27,7 +27,7 @@
 
 .PARAMETER LinuxUser
     Default Linux username to set in /etc/wsl.conf after Ubuntu import.
-    Default: owner.
+    Default: ubuntu (override to match your distro user).
 
 .PARAMETER SkipCompact
     Skip the diskpart compact step after import.
@@ -42,7 +42,7 @@
     .\Move-WslToD.ps1
 
 .EXAMPLE
-    .\Move-WslToD.ps1 -Force -LinuxUser owner
+    .\Move-WslToD.ps1 -Force -LinuxUser your-wsl-username
 
 .EXAMPLE
     .\Move-WslToD.ps1 -TargetRoot "D:\Dev\WSL" -DockerRoot "D:\Dev\Docker" -Force
@@ -52,7 +52,7 @@ param(
     [string]$TargetRoot = "D:\WSL",
     [string]$DockerRoot = "D:\Docker\wsl",
     [string]$ExportDir  = "D:\WSL\export",
-    [string]$LinuxUser  = "owner",
+    [string]$LinuxUser  = "ubuntu",
     [switch]$SkipCompact,
     [switch]$KeepExports,
     [switch]$Force

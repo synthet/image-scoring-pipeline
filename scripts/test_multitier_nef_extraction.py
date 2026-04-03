@@ -402,7 +402,8 @@ def main():
         print("   Install from: https://exiftool.org/")
     
     # Find sample files
-    db_path = "D:/Projects/image-scoring/SCORING_HISTORY.FDB"
+    _repo = Path(__file__).resolve().parents[1]
+    db_path = os.environ.get("IMAGE_SCORING_FDB_PATH", str(_repo / "SCORING_HISTORY.FDB"))
     if os.path.exists(db_path):
         print(f"\n📂 Querying database: {db_path}")
         samples = find_sample_files_from_db(db_path, samples_per_model=2)

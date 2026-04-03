@@ -31,7 +31,8 @@ services:
     environment:
       - DOCKER_CONTAINER=1
       - WEBUI_HOST=0.0.0.0
-      - FIREBIRD_WIN_DB_PATH=D:/Projects/image-scoring-backend/SCORING_HISTORY.FDB
+      # FDB at repo root when `.:/app` is mounted (set FIREBIRD_WIN_DB_PATH in `.env` to override)
+      - FIREBIRD_WIN_DB_PATH=/app/SCORING_HISTORY.FDB
       - FIREBIRD_CLIENT_LIBRARY=/app/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib/libfbclient.so
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
@@ -40,8 +41,7 @@ services:
       - POSTGRES_PASSWORD=postgres
     volumes:
       - .:/app
-      # Mount Windows drives for image file access (add more as needed)
-      - "D:/:/mnt/d"
+      # Optional: add `- "${WSL_DRIVE_MOUNT}:/mnt/d"` when you need a Windows drive under `/mnt/d` (set `WSL_DRIVE_MOUNT` in `.env`, e.g. your drive root with forward slashes).
     # Make GPU usage work with non-Swarm `docker compose`
     gpus: all
     deploy:

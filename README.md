@@ -14,6 +14,8 @@ A comprehensive **AI-powered Digital Asset Management** tool for photographers a
 
 ## Quick Setup
 
+Copy `config.example.json` to `config.json` (gitignored). Optionally copy `environment.example.json` to `environment.json` for machine-specific paths, ports, and URLs; `environment.json` overrides overlapping keys in `config.json`.
+
 Choose your deployment method based on your needs:
 
 | Method | Best For | GPU Support | Setup Time | Complexity |

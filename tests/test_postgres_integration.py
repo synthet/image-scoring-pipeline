@@ -42,6 +42,28 @@ def test_vector_extension_and_core_tables():
         assert row is not None, f"missing table {table}"
 
 
+def test_embedding_spaces_and_image_embeddings_tables():
+    """Verify embedding_spaces registry and image_embeddings table exist with proper structure."""
+    from modules import db_postgres
+
+    # Check embedding_spaces table
+    for table in ("embedding_spaces", "image_embeddings"):
+        row = db_postgres.execute_select_one(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = %s",
+            (table,),
+        )
+        assert row is not None, f"missing table {table}"
+
+    # Verify embedding_spaces seed row
+    space = db_postgres.execute_select_one(
+        "SELECT id, code, dim FROM embedding_spaces WHERE code = %s",
+        ("mobilenet_v2_imagenet_gap",),
+    )
+    assert space is not None, "missing default embedding space"
+    assert space["dim"] == 1280
+
+
 def test_insert_folder_and_image_with_embedding():
     from modules import db_postgres
 

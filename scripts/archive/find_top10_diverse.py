@@ -53,16 +53,18 @@ def main():
     out_lines.append("Top 10 Diverse High-Scoring Images:")
     for i, img in enumerate(picked[:10]):
         path = img['path']
-        if path.startswith('/mnt/d/'):
-            path = 'D:\\' + path[7:].replace('/', '\\')
+        if path.startswith("/mnt/") and len(path) > 7 and path[6] == "/":
+            path = path[5].upper() + ":\\" + path[7:].replace("/", "\\")
         out_lines.append(f"{i+1}. Score: {img['score_general']:.4f} | Path: {path}")
     
     result_text = "\n".join(out_lines)
     print("\n" + result_text)
     
     # Also write to a file to easily read the output
-    with open('/mnt/d/Projects/image-scoring/diverse_picks.txt', 'w') as f:
+    out_file = Path(__file__).resolve().parents[2] / "diverse_picks.txt"
+    with open(out_file, "w", encoding="utf-8") as f:
         f.write(result_text)
+    print(f"Wrote {out_file}")
 
 if __name__ == "__main__":
     main()

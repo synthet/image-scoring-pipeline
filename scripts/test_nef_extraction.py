@@ -149,13 +149,16 @@ def find_sample_files_from_db(db_path: str, samples_per_model: int = 2) -> Dict[
     return samples
 
 
-def find_sample_files_from_disk(base_path: str = "D:/Photos", samples_per_model: int = 2) -> Dict[str, List[str]]:
-    """Find sample NEF files from disk by scanning directories"""
-    
+def find_sample_files_from_disk(base_path: str = "", samples_per_model: int = 2) -> Dict[str, List[str]]:
+    """Find sample NEF files from disk by scanning directories."""
     samples = {'D90': [], 'Z6II': [], 'Z8': [], 'OTHER': []}
-    
+
+    if not base_path:
+        print("🔍 No disk scan path set (set IMAGE_SCORING_TEST_PHOTOS_ROOT or pass a path).")
+        return samples
+
     print(f"🔍 Scanning {base_path} for NEF files...")
-    
+
     if not os.path.exists(base_path):
         print(f"❌ Path not found: {base_path}")
         return samples
@@ -263,15 +266,18 @@ def main():
     samples = {}
     
     # Try database first
-    db_path = "D:/Projects/image-scoring/SCORING_HISTORY.FDB"
+    _repo = Path(__file__).resolve().parents[1]
+    db_path = os.environ.get("IMAGE_SCORING_FDB_PATH", str(_repo / "SCORING_HISTORY.FDB"))
     if os.path.exists(db_path):
         print(f"\n📂 Querying database: {db_path}")
         samples = find_sample_files_from_db(db_path, samples_per_model=2)
     
     # Supplement with disk scan if needed
     if not any(samples.values()):
-        print("\n📂 Scanning disk for NEF files...")
-        samples = find_sample_files_from_disk("D:/Photos", samples_per_model=2)
+        photos_root = os.environ.get("IMAGE_SCORING_TEST_PHOTOS_ROOT", "")
+        if photos_root:
+            print("\n📂 Scanning disk for NEF files...")
+            samples = find_sample_files_from_disk(photos_root, samples_per_model=2)
     
     # Print what we found
     print("\n📋 Sample Files Found:")
@@ -521,7 +527,8 @@ def main():
     print("="*80)
     
     # Connect to database
-    db_path = Path("D:/Projects/image-scoring/SCORING_HISTORY.FDB")
+    _repo = Path(__file__).resolve().parents[1]
+    db_path = Path(os.environ.get("IMAGE_SCORING_FDB_PATH", str(_repo / "SCORING_HISTORY.FDB")))
     if not db_path.exists():
         print(f"❌ Database not found: {db_path}")
         return

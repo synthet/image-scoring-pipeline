@@ -1,0 +1,14 @@
+{
+  "old_wsl_thumb_prefix": "/mnt/wsl/projects/image-scoring/thumbnails/",
+  "new_wsl_thumb_prefix": "/mnt/wsl/projects/image-scoring-backend/thumbnails/",
+  "old_wsl_root": "/mnt/wsl/projects/image-scoring/",
+  "new_wsl_root": "/mnt/wsl/projects/image-scoring-backend/",
+  "old_win_thumb_backslash": "\\\\Projects\\\\image-scoring\\\\thumbnails",
+  "new_win_thumb_backslash": "\\\\Projects\\\\image-scoring-backend\\\\thumbnails",
+  "old_win_thumb_slash": "X:/Projects/image-scoring/thumbnails",
+  "new_win_thumb_slash": "X:/Projects/image-scoring-backend/thumbnails",
+  "scores_json_old_win_slash": "X:/Projects/image-scoring/",
+  "scores_json_new_win_slash": "X:/Projects/image-scoring-backend/",
+  "scores_json_old_win_backslash": "\\\\Projects\\\\image-scoring\\\\",
+  "scores_json_new_win_backslash": "\\\\Projects\\\\image-scoring-backend\\\\"
+}

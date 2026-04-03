@@ -92,9 +92,9 @@ def main():
         if not args.exif_only:
             where_parts.append("NOT EXISTS (SELECT 1 FROM image_xmp x WHERE x.image_id = i.id)")
     if args.folder:
-        # Normalize Windows path (D:/...) to WSL (/mnt/d/...) when in WSL, so folder lookup
-        # matches DB (images use WSL paths). Otherwise "D:/Photos/..." + abspath in WSL
-        # becomes "/mnt/d/Projects/.../D:/Photos/..." and matches wrong folder.
+        # Normalize Windows paths to WSL (/mnt/<drive>/...) when in WSL, so folder lookup
+        # matches DB (images use WSL paths). Otherwise mixing roots can concatenate paths
+        # incorrectly and match the wrong folder.
         folder_path = args.folder.replace("\\", "/")
         if re.match(r"^[a-zA-Z]:", folder_path):
             folder_path = utils.convert_path_to_wsl(folder_path)

@@ -49,7 +49,7 @@
   },
   "system": {
     "allowed_paths": [
-      "D:/",
+      "C:/",
       "/mnt/"
     ],
     "log_dir": ".cursor"

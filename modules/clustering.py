@@ -704,7 +704,7 @@ class ClusteringEngine(IClusteringEngine):
                     img_id = batch_ids[orig_idx]
                     embedding_pairs.append((img_id, feat.astype(np.float32).tobytes()))
                 if embedding_pairs:
-                    db.update_image_embeddings_batch(embedding_pairs)
+                    db.update_image_embeddings_batch(embedding_pairs, model_version=CLUSTER_VERSION)
 
                 if len(features) < 2:
                     continue

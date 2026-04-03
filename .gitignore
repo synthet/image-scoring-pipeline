@@ -53,6 +53,9 @@ musiq_gpu_env_*/
 # VS Code
 .vscode/
 
+# Site-specific migration config (copy from migrate_thumbnail_paths.config.example.json)
+scripts/maintenance/migrate_thumbnail_paths.config.json
+
 # Environment variables
 .env
 .env.local
@@ -161,6 +164,7 @@ diverse_picks.txt
 
 backups/
 config.json
+environment.json
 secrets.json
 test_export.json
 _cli_test_export.json

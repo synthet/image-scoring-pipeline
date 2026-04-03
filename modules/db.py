@@ -734,7 +734,7 @@ def _humanize_firebird_connect_error(exc: BaseException, ctx: dict) -> str:
             "Start Firebird on Windows and ensure TCP port 3050 is reachable from the container. "
             "On Linux Docker, add extra_hosts (e.g. host.docker.internal:host-gateway) or set FIREBIRD_HOST "
             "to a reachable IP. Set FIREBIRD_WIN_DB_PATH to the Windows path of your .fdb "
-            "(e.g. D:/Projects/.../SCORING_HISTORY.FDB). "
+            "(e.g. path to your clone’s SCORING_HISTORY.FDB). "
             f"Resolved host: {host_ip or 'unknown'}. Details: {raw_one}"
         )
 
@@ -7183,30 +7183,62 @@ def get_image_tag_propagation_focus(image_id: int):
         (embedding_bytes, file_path, folder_path_or_none, keywords_csv) or None
         if the image has no embedding.
     """
-    conn = get_db()
-    c = conn.cursor()
-    try:
-        c.execute(
-            "SELECT i.image_embedding, i.file_path, f.path, "
-            "COALESCE((SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') "
-            "FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
-            "WHERE ik.image_id = i.id), COALESCE(i.keywords, '')) AS kw "
-            "FROM images i LEFT JOIN folders f ON f.id = i.folder_id WHERE i.id = ?",
-            (image_id,),
-        )
-        row = c.fetchone()
-        if not row or not row[0]:
+    if _get_db_engine() == "postgres":
+        # Postgres: use COALESCE + join to image_embeddings
+        sub = _pg_default_embedding_space_subquery_sql()
+        sql = f"""
+            SELECT COALESCE(ie.embedding, i.image_embedding) AS image_embedding,
+                   i.file_path, f.path,
+                   COALESCE((SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
+                            FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id
+                            WHERE ik.image_id = i.id), COALESCE(i.keywords, '')) AS kw
+            FROM images i
+            LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}
+            LEFT JOIN folders f ON f.id = i.folder_id
+            WHERE i.id = %s
+        """
+        try:
+            import psycopg2.extras
+            with db_postgres.PGConnectionManager() as pg_conn:
+                with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(sql, (image_id,))
+                    row = cur.fetchone()
+                    if not row or not row.get("image_embedding"):
+                        return None
+                    emb = _pg_vec_to_bytes(row["image_embedding"])
+                    fp = row["file_path"]
+                    folder_path = row["path"]
+                    kw = row["kw"] if row["kw"] is not None else ""
+                    return (emb, fp, folder_path, kw)
+        except Exception as e:
+            logging.error("get_image_tag_propagation_focus(%s) Postgres: %s", image_id, e)
             return None
-        emb = bytes(row[0])
-        fp = row[1]
-        folder_path = row[2]
-        kw = row[3] if row[3] is not None else ""
-        return (emb, fp, folder_path, kw)
-    except Exception as e:
-        logging.error("get_image_tag_propagation_focus(%s): %s", image_id, e)
-        return None
-    finally:
-        conn.close()
+    else:
+        # Firebird / legacy path
+        conn = get_db()
+        c = conn.cursor()
+        try:
+            c.execute(
+                "SELECT i.image_embedding, i.file_path, f.path, "
+                "COALESCE((SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') "
+                "FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
+                "WHERE ik.image_id = i.id), COALESCE(i.keywords, '')) AS kw "
+                "FROM images i LEFT JOIN folders f ON f.id = i.folder_id WHERE i.id = ?",
+                (image_id,),
+            )
+            row = c.fetchone()
+            if not row or not row[0]:
+                return None
+            emb = bytes(row[0])
+            fp = row[1]
+            folder_path = row[2]
+            kw = row[3] if row[3] is not None else ""
+            return (emb, fp, folder_path, kw)
+        except Exception as e:
+            logging.error("get_image_tag_propagation_focus(%s): %s", image_id, e)
+            return None
+        finally:
+            conn.close()
 
 
 def list_folder_paths_with_missing_keywords(require_embedding: bool = False):
@@ -7971,16 +8003,32 @@ def repair_culling_ips_failed_has_data(dry_run=False):
     Returns:
         dict: matched, repaired
     """
-    rows = get_connector().query(
-        """
-        SELECT ips.id
-        FROM image_phase_status ips
-        JOIN pipeline_phases pp ON pp.id = ips.phase_id
-        JOIN images i ON i.id = ips.image_id
-        WHERE LOWER(TRIM(pp.code)) = 'culling'
-          AND LOWER(TRIM(ips.status)) = 'failed'
-          AND (i.stack_id IS NOT NULL OR i.image_embedding IS NOT NULL)
-        """)
+    conn = get_connector()
+    if conn.type == 'postgres':
+        sub = _pg_default_embedding_space_subquery_sql()
+        has_e = _postgres_has_default_embedding_sql("i")
+        sql = f"""
+            SELECT ips.id
+            FROM image_phase_status ips
+            JOIN pipeline_phases pp ON pp.id = ips.phase_id
+            JOIN images i ON i.id = ips.image_id
+            LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}
+            WHERE LOWER(TRIM(pp.code)) = 'culling'
+              AND LOWER(TRIM(ips.status)) = 'failed'
+              AND (i.stack_id IS NOT NULL OR {has_e})
+            """
+        rows = conn.query(sql)
+    else:
+        rows = conn.query(
+            """
+            SELECT ips.id
+            FROM image_phase_status ips
+            JOIN pipeline_phases pp ON pp.id = ips.phase_id
+            JOIN images i ON i.id = ips.image_id
+            WHERE LOWER(TRIM(pp.code)) = 'culling'
+              AND LOWER(TRIM(ips.status)) = 'failed'
+              AND (i.stack_id IS NOT NULL OR i.image_embedding IS NOT NULL)
+            """)
     ids = [row["id"] for row in rows]
 
     if dry_run:
