@@ -158,6 +158,7 @@ def test_scoring_start_enqueues_job_and_returns_job_id(monkeypatch, tmp_path):
     monkeypatch.setattr(api, "_scoring_runner", _RunnerStub())
     monkeypatch.setattr(ui_app, "_check_rate_limit", _noop_rate_limit)
     monkeypatch.setattr("modules.selector_resolver.resolve_selectors", _noop_resolve_selectors)
+    monkeypatch.setattr(db, "create_job_phases", lambda *a, **kw: [])
     monkeypatch.setattr(db, "enqueue_job", lambda *a, **kw: (42, 1))
     with _build_client() as client:
         response = client.post("/api/scoring/start", json={"input_path": str(tmp_path)})
@@ -238,6 +239,7 @@ def test_tagging_start_enqueues_job(monkeypatch, tmp_path):
     monkeypatch.setattr(api, "_tagging_runner", _RunnerStub())
     monkeypatch.setattr(ui_app, "_check_rate_limit", _noop_rate_limit)
     monkeypatch.setattr("modules.selector_resolver.resolve_selectors", _noop_resolve_selectors)
+    monkeypatch.setattr(db, "create_job_phases", lambda *a, **kw: [])
     monkeypatch.setattr(db, "enqueue_job", lambda *a, **kw: (99, 2))
     with _build_client() as client:
         response = client.post("/api/tagging/start", json={"input_path": str(tmp_path)})

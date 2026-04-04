@@ -18,11 +18,10 @@ try:
 except ImportError:
     db_postgres = None
 try:
-    from firebird.driver import connect, driver_config, create_database
+    from firebird.driver import connect, driver_config
 except ImportError:
     # Fallback/Mock for linting if package missing
-    connect = None
-    create_database = None 
+    connect = None 
 
 import shutil
 
@@ -106,7 +105,68 @@ class RowWrapper:
         return d
 
 
-# NOTE: FirebirdCursorProxy removed — Firebird has been decommissioned (2026-03).
+class FirebirdCursorProxy:
+    """Proxies a Firebird cursor to sqlite3.Row-like RowWrapper results (legacy test DB)."""
+
+    def __init__(self, fb_cur):
+        self._cur = fb_cur
+
+    def execute(self, query, params=None):
+        if params is not None:
+            return self._cur.execute(query, params)
+        return self._cur.execute(query)
+
+    def executemany(self, query, params_seq):
+        return self._cur.executemany(query, params_seq)
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        if row is None:
+            return None
+        col_names = self._column_names()
+        return RowWrapper(col_names, row)
+
+    def fetchall(self):
+        rows = self._cur.fetchall()
+        if not rows:
+            return []
+        col_names = self._column_names()
+        return [RowWrapper(col_names, r) for r in rows]
+
+    def _column_names(self):
+        names = []
+        for d in self._cur.description or []:
+            if hasattr(d, "name"):
+                names.append(str(d.name).lower())
+            else:
+                names.append(str(d[0]).lower())
+        return names
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+
+class FirebirdConnectionProxy:
+    """Firebird connection with cursor() returning FirebirdCursorProxy."""
+
+    def __init__(self, fb_conn):
+        self._conn = fb_conn
+        self.row_factory = sqlite3.Row
+
+    def cursor(self):
+        return FirebirdCursorProxy(self._conn.cursor())
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
 
 
 class PostgresCursorProxy:
@@ -455,8 +515,6 @@ def execute_write_sql_for_api(sql: str, params: list | None = None) -> list[dict
 def get_dual_write_stats() -> dict:
     """Legacy stub — dual-write has been removed (Firebird decommissioned 2026-03)."""
     return {"queued": 0, "success": 0, "fail": 0, "queue_depth": 0, "enabled": False}
-
-# NOTE: FirebirdConnectionProxy removed — Firebird has been decommissioned (2026-03).
 
 
 class PostgresConnectionProxy:

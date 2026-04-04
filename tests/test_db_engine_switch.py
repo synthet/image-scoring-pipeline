@@ -144,43 +144,12 @@ def test_postgres_proxy_translates_firebird_sql(monkeypatch):
     assert "?" not in translated
 
 
-def test_dual_write_mode_gating(monkeypatch):
-    """Dual-write is only enabled when engine=firebird AND dual_write=True."""
-    queued = []
-    monkeypatch.setattr(db._DUAL_WRITE_QUEUE, "put", lambda item: queued.append(item))
-
-    monkeypatch.setenv("IMAGE_SCORING_DB_ENGINE_DEFAULT", "postgres")
-    monkeypatch.setattr(
-        db.config,
-        "get_config_section",
-        lambda name: _mock_config(engine="postgres", dual_write=True),
-    )
-    db.init_dual_write()
-    assert db._DUAL_WRITE_ENABLED is False
-    db._enqueue_dual_write("INSERT INTO images(file_name) VALUES (?)", ("a.jpg",))
-    assert queued == []
-
-    monkeypatch.setenv("IMAGE_SCORING_DB_ENGINE_DEFAULT", "firebird")
-    monkeypatch.setattr(
-        db.config,
-        "get_config_section",
-        lambda name: _mock_config(engine="firebird", dual_write=True),
-    )
-    db.init_dual_write()
-    assert db._DUAL_WRITE_ENABLED is True
-    db._enqueue_dual_write("INSERT INTO images(file_name) VALUES (?)", ("b.jpg",))
-    assert len(queued) == 1
-
-
-def test_dual_write_disabled_when_no_flag(monkeypatch):
-    """Dual-write stays disabled when dual_write=False, even with engine=firebird."""
-    monkeypatch.setattr(
-        db.config,
-        "get_config_section",
-        lambda name: _mock_config(engine="firebird", dual_write=False),
-    )
-    db.init_dual_write()
-    assert db._DUAL_WRITE_ENABLED is False
+def test_dual_write_removed_reports_disabled():
+    """Firebird→Postgres dual-write queue was removed; stats stub stays off."""
+    stats = db.get_dual_write_stats()
+    assert stats["enabled"] is False
+    assert stats["queue_depth"] == 0
+    assert stats["queued"] == 0
 
 
 # ---- _translate_fb_to_pg() unit tests ----
