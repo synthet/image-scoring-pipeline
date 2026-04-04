@@ -87,30 +87,48 @@ class JobDispatcher:
             if self._any_runner_busy():
                 return
             job = db.dequeue_next_job()
-            if not job:
+            if job:
+                payload = self._parse_queue_payload(job)
+                started, err = self._start_job(job, payload)
+                if not started:
+                    reason = err or "Dispatcher failed to start job (unknown reason)"
+                    logger.warning("Dispatcher: job %s failed to start: %s", job.get("id"), reason)
+                    db.update_job_status(job["id"], "failed", reason)
                 return
 
-            payload = {}
-            raw_payload = job.get("queue_payload")
-            if raw_payload:
-                try:
-                    parsed = json.loads(raw_payload)
-                    # Handle double-encoded JSON (string wrapped in extra quotes)
-                    if isinstance(parsed, str):
-                        parsed = json.loads(parsed)
-                    payload = parsed if isinstance(parsed, dict) else {}
-                except Exception:
-                    logger.warning("Invalid queue payload for job %s", job.get("id"))
+            cont = db.get_running_job_for_phase_continuation()
+            if not cont:
+                return
 
-            started, err = self._start_job(job, payload)
+            phase_code = (cont.pop("_active_phase_code", None) or "").strip().lower()
+            if not phase_code:
+                logger.warning("Dispatcher: continuation job %s missing active phase code", cont.get("id"))
+                return
+
+            payload = self._parse_queue_payload(cont)
+            started, err = self._start_job(cont, payload, phase_override=phase_code)
             if not started:
-                reason = err or "Dispatcher failed to start job (unknown reason)"
-                logger.warning("Dispatcher: job %s failed to start: %s", job.get("id"), reason)
-                db.update_job_status(job["id"], "failed", reason)
+                reason = err or "Dispatcher failed to continue multi-phase job (unknown reason)"
+                logger.warning("Dispatcher: continuation job %s failed to start: %s", cont.get("id"), reason)
+                db.update_job_status(cont["id"], "failed", reason)
 
-    def _start_job(self, job: Dict[str, Any], payload: Dict[str, Any]) -> tuple:
+    @staticmethod
+    def _parse_queue_payload(job: Dict[str, Any]) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        raw_payload = job.get("queue_payload")
+        if raw_payload:
+            try:
+                parsed = json.loads(raw_payload)
+                if isinstance(parsed, str):
+                    parsed = json.loads(parsed)
+                payload = parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                logger.warning("Invalid queue payload for job %s", job.get("id"))
+        return payload
+
+    def _start_job(self, job: Dict[str, Any], payload: Dict[str, Any], phase_override: Optional[str] = None) -> tuple:
         """Try to start the job. Returns (success: bool, error_msg: str|None)."""
-        phase = (job.get("job_type") or "").lower()
+        phase = (phase_override or job.get("job_type") or "").lower()
         job_id = int(job["id"])
         input_path = job.get("input_path")
 

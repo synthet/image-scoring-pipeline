@@ -29,6 +29,24 @@ Phase 4c keyword legacy column soft deprecation (target a future release; see `d
 3. Monitor logs for deprecation warnings when Phase 4c ships
 4. Complete migration before v7.0 (July 2026)
 
+## [6.4.1] - 2026-04-04
+
+### Fixed
+
+- **Multi-phase workflow jobs**: Runs were treated as finished after the first phase — the dispatcher now picks up in-process jobs for the next phase when the queue is empty, and indexing/metadata runners no longer broadcast `job_completed` on intermediate phase completion.
+- **PostgreSQL**: `images.updated_at` for code paths that select it; unique index on `file_paths (image_id, path)` so `register_image_path` / `ON CONFLICT` upserts work (migration deduplicates prior duplicate rows).
+
+### Added
+
+- **Alembic** `0005_images_updated_at_file_paths_unique` for existing databases.
+- **Tests**: `tests/test_multi_phase_job_postgres.py`, `tests/test_multi_phase_job_workflow.py`.
+- **Developer tooling**: `scripts/audit/` (REST/OpenAPI audit helpers; see `scripts/audit/README.md`).
+
+### Changed
+
+- **React `/ui`**: Shell nav uses distinct icons for Runs vs Diagnostics.
+- **Built `/ui` static assets** refreshed (`static/app/assets/*`, `static/app/index.html`).
+
 ## [6.4.0] - 2026-04-04
 
 ### Breaking changes (operators & CI)

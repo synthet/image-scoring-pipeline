@@ -398,9 +398,17 @@ def init_db():
                 cull_policy_version VARCHAR(50),
                 image_uuid          VARCHAR(36),
                 created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at          TIMESTAMP,
                 image_embedding     vector(1280)
             );
             """)
+            cur.execute(
+                "ALTER TABLE images ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;"
+            )
+            cur.execute(
+                "UPDATE images SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP) "
+                "WHERE updated_at IS NULL"
+            )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_images_folder_id ON images(folder_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_images_stack_id ON images(stack_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_images_hash ON images(image_hash);")
@@ -483,6 +491,24 @@ def init_db():
             );
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_file_paths_img_type ON file_paths(image_id, path_type);")
+            cur.execute(
+                "SELECT 1 FROM pg_indexes WHERE schemaname = ANY (current_schemas(false)) "
+                "AND indexname = 'uq_file_paths_image_id_path'"
+            )
+            if cur.fetchone() is None:
+                cur.execute(
+                    """
+                    DELETE FROM file_paths AS fp1
+                    USING file_paths AS fp2
+                    WHERE fp1.id > fp2.id
+                      AND fp1.image_id IS NOT DISTINCT FROM fp2.image_id
+                      AND fp1.path IS NOT DISTINCT FROM fp2.path
+                    """
+                )
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_file_paths_image_id_path "
+                "ON file_paths(image_id, path);"
+            )
 
             # ------------------------------------------------------------------
             # CLUSTER_PROGRESS

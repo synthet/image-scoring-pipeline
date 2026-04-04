@@ -241,10 +241,6 @@ class MetadataRunner:
 
         if job_id:
             db.update_job_status(job_id, "completed")
-            event_manager.broadcast_threadsafe("job_completed", {
-                "job_id": job_id, 
-                "status": "completed"
-            })
 
     def stop(self):
         self.stop_event.set()
