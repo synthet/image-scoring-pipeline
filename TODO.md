@@ -21,9 +21,9 @@ Consolidated backlog (Python backend). **Quick filter:** **[Electron]** = image-
 
 #### Current status snapshot (2026-04-04)
 
-- **Total open items:** 39 (↓ 2 from Phase 4b & 4c completion)
+- **Total open items:** 38 (↓ 3 from Phase 4b/4c + OpenAPI)
 - **Gallery-dependent (`[Electron]`):** 7  
-- **Backend scope (no `[Electron]`):** 32 (Phase 4a, 4b, 4c ✅ complete; 4d scheduled v7.0)
+- **Backend scope (no `[Electron]`):** 31
 
 ### Highest-Impact Next Steps (recommended sequence)
 
@@ -86,7 +86,7 @@ Consolidated backlog (Python backend). **Quick filter:** **[Electron]** = image-
 ### API & Contract
 
 - [x] **[Python]** Streaming progress for folder import: `POST /api/import/register/stream` (NDJSON); non-stream endpoint broadcasts progress via WebSocket events
-- [ ] **[Python]** Keep OpenAPI schema ([docs/reference/api/openapi.yaml](docs/reference/api/openapi.yaml)) aligned with `modules/api.py` (periodic diff / review)
+- [x] **[Python]** Keep OpenAPI schema ([docs/reference/api/openapi.yaml](docs/reference/api/openapi.yaml)) aligned with `modules/api.py` — regenerated from FastAPI (131 paths, 37 schemas)
 - [x] **[Python]** Add request/response examples for new endpoints to `API.md`
 - [ ] **[Electron]** Update `electron/apiService.ts` and `electron/apiTypes.ts` when adding endpoints
 
