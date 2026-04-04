@@ -19,11 +19,11 @@ Consolidated backlog (Python backend). **Quick filter:** **[Electron]** = image-
 - **Gallery-dependent:** any open line tagged `[Electron]` (cross-repo or gallery-side work).
 - **Backend scope:** open items with **no** `[Electron]` tag (this repository only).
 
-#### Current status snapshot (2026-04-02)
+#### Current status snapshot (2026-04-04)
 
-- **Total open items:** 41  
+- **Total open items:** 39 (↓ 2 from Phase 4b & 4c completion)
 - **Gallery-dependent (`[Electron]`):** 7  
-- **Backend scope (no `[Electron]`):** 34  
+- **Backend scope (no `[Electron]`):** 32 (Phase 4a, 4b, 4c ✅ complete; 4d scheduled v7.0)
 
 ### Highest-Impact Next Steps (recommended sequence)
 
@@ -100,9 +100,13 @@ Consolidated backlog (Python backend). **Quick filter:** **[Electron]** = image-
 
 ### Schema refactor — keywords / metadata ([DB_SCHEMA_REFACTOR_IMPLEMENTATION](docs/plans/database/DB_SCHEMA_REFACTOR_IMPLEMENTATION.md))
 
-Phases 1–3 (integrity, normalization, query refactor) are **complete** on the Python/Postgres side. Remaining work is **Phase 4 — validation & cleanup** — see [docs/plans/database/NEXT_STEPS.md](docs/plans/database/NEXT_STEPS.md):
+**Phase 4 Status:** 4a, 4b, 4c COMPLETE on Python side; 4d scheduled for v7.0 (July 2026)  
+See [PHASE4_STATUS_SUMMARY.md](docs/plans/database/PHASE4_STATUS_SUMMARY.md) for full timeline.
 
-- [ ] **[Python]** **[DB]** Phase 4: Data consistency checks (`IMAGES.KEYWORDS` vs `IMAGE_KEYWORDS`), performance benchmarks, keyword cloud via `KEYWORDS_DIM`, deprecation plan for legacy `keywords` column
+- [x] **[Python]** **[DB]** Phase 4a: Data consistency checks (0 mismatches), performance benchmarks (12.10x improvement)
+- [x] **[Python]** **[DB]** Phase 4b: Primary source cutover — `get_image_details()`, `get_images_by_folder()` use normalized keywords (v6.3.1)
+- [x] **[Python]** **[DB]** Phase 4c: Soft deprecation logging — warnings when legacy column accessed (v6.4.0 unreleased)
+- [ ] **[Python]** **[DB]** Phase 4d: Hard deprecation — remove `IMAGES.KEYWORDS` column (v7.0, July 2026)
 - [ ] **[Electron]** Phase 4 (coordinated): Query/read path updates for normalized keywords when gallery cuts over (see [AGENT_COORDINATION.md](docs/technical/AGENT_COORDINATION.md))
 
 ### Firebird → PostgreSQL ([FIREBIRD_POSTGRES_MIGRATION.md](docs/plans/database/FIREBIRD_POSTGRES_MIGRATION.md))

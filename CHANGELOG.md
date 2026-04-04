@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.4.0] - Planned (2026-05)
+
+### Phase 4c: Keyword Legacy Column Soft Deprecation
+
+- **Deprecation logging**: `_log_legacy_keyword_access()` helper added; warnings logged when legacy `IMAGES.KEYWORDS` column is accessed
+- **Instrumented functions**: `get_image_details()` and `get_images_by_folder()` now detect and log legacy fallback usage
+- **Deprecation notice**: Users warned that legacy column will be removed in v7.0 (July 2026); guidance provided on migration path
+- **6-month notice**: Soft deprecation in v6.4 signals end-of-life before hard removal in v7.0
+
+### Deprecated
+
+- **IMAGES.KEYWORDS legacy column**: Soft deprecated in v6.4; hard removal scheduled for v7.0 (July 2026)
+  * Logging warnings added when legacy column is accessed
+  * Migrate to `IMAGE_KEYWORDS` + `KEYWORDS_DIM` normalized schema
+  * Dual-write remains active for backward compatibility
+
+### Migration Path
+
+For applications using `IMAGES.KEYWORDS`:
+1. Migrate keyword reads to `IMAGE_KEYWORDS` + `KEYWORDS_DIM` (transparent via `db.get_image_details()`, `db.get_images_by_folder()`)
+2. Update keyword writes to use `db.update_image_metadata()` (dual-write active)
+3. Monitor logs for deprecation warnings in v6.4
+4. Complete migration before v7.0 (July 2026)
+
+See `docs/plans/database/PHASE4_KEYWORDS_DEPRECATION.md` for full timeline.
+
 ## [6.3.1] - 2026-04-03
 
 ### Phase 4b: Keyword Primary Source Cutover
