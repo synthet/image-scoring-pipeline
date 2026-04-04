@@ -8,6 +8,8 @@ Run with: python -m pytest tests/test_db_core.py -v -m "db and firebird"
 """
 
 import os
+import uuid
+
 import pytest
 
 try:
@@ -184,6 +186,19 @@ def test_set_image_phase_status_upserts_on_second_call(test_db):
     db.set_image_phase_status(image_id, "scoring", "done")
     phases = db.get_image_phase_statuses(image_id)
     assert phases["scoring"]["status"] == "done"
+
+
+def test_get_image_phase_status_matches_statuses_dict(test_db):
+    folder_id = db.get_or_create_folder("/test/phase_get_one")
+    suffix = uuid.uuid4().hex[:12]
+    fp = f"/test/phase_get_one/one_{suffix}.jpg"
+    image_id, _ = db.register_image_for_import(fp, f"one_{suffix}.jpg", "jpg", folder_id)
+    assert image_id is not None
+    assert db.get_image_phase_status(image_id, "indexing") is None
+    db.set_image_phase_status(image_id, "indexing", "done")
+    one = db.get_image_phase_status(image_id, "indexing")
+    all_phases = db.get_image_phase_statuses(image_id)
+    assert one == all_phases["indexing"]
 
 
 # ---------------------------------------------------------------------------
