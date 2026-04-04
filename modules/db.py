@@ -596,6 +596,24 @@ def _add_keyword_filter(conditions, params, keyword_filter, table_ref="images"):
         params.append(f"%{keyword_filter.strip().lower()}%")
 
 
+def _log_legacy_keyword_access(image_id, context=""):
+    """Log deprecation warning when legacy IMAGES.KEYWORDS column is accessed.
+
+    Phase 4c (v6.4): Soft deprecation. Legacy column will be removed in v7.0 (July 2026).
+
+    Args:
+        image_id: Image ID that triggered fallback to legacy column
+        context: Function/context name (e.g. "get_image_details", "get_images_by_folder")
+    """
+    logger.warning(
+        "⚠️  DEPRECATION: Reading IMAGES.KEYWORDS (legacy column). "
+        "Migrate to IMAGE_KEYWORDS + KEYWORDS_DIM normalized schema. "
+        "Legacy column will be removed in v7.0 (2026-07). "
+        "Image ID: %s | Context: %s | See docs/plans/database/PHASE4_KEYWORDS_DEPRECATION.md",
+        image_id, context or "unknown"
+    )
+
+
 DB_CONFIG = config.get_config_section('database')
 DB_FILE = DB_CONFIG.get('filename', "scoring_history.fdb")
 DB_USER = str(DB_CONFIG.get('user', "sysdba") or "sysdba")
@@ -3676,6 +3694,23 @@ def get_images_by_folder(folder_path):
         """
         result = list(get_connector().query(sql, (folder_id,)))
 
+    # Phase 4c: Log legacy fallback for any images that returned keywords from legacy column
+    if result:
+        for row in result:
+            image_id = row.get('id') if isinstance(row, dict) else row[0]
+            keywords = (row.get('keywords', '').strip() if isinstance(row, dict)
+                       else row[13] if len(row) > 13 else '')
+            if keywords:
+                # Check if normalized source exists for this image
+                normalized_count_result = get_connector().query_one(
+                    "SELECT COUNT(*) as cnt FROM image_keywords WHERE image_id = ?",
+                    (image_id,)
+                )
+                normalized_count = (normalized_count_result['cnt'] if isinstance(normalized_count_result, dict)
+                                   else normalized_count_result[0])
+                if normalized_count == 0:
+                    _log_legacy_keyword_access(image_id, "get_images_by_folder")
+
     _folder_images_cache[folder_path] = (now, result)
     return result
 
@@ -5120,8 +5155,24 @@ def get_image_details(file_path):
         return {}
 
     data = dict(row)
-    data['file_paths'] = get_all_paths(data['id'])
-    data['resolved_path'] = get_resolved_path(data['id'], verified_only=False)
+    image_id = data['id']
+    keywords = data.get('keywords', '').strip()
+
+    # Phase 4c: Log if we accessed legacy IMAGES.KEYWORDS column
+    # (happens when COALESCE reached the fallback: normalized returned NULL/empty)
+    if keywords:
+        # Check if normalized source exists for this image
+        normalized_count_result = get_connector().query_one(
+            "SELECT COUNT(*) as cnt FROM image_keywords WHERE image_id = ?",
+            (image_id,)
+        )
+        normalized_count = (normalized_count_result['cnt'] if isinstance(normalized_count_result, dict)
+                           else normalized_count_result[0])
+        if normalized_count == 0:
+            _log_legacy_keyword_access(image_id, "get_image_details")
+
+    data['file_paths'] = get_all_paths(image_id)
+    data['resolved_path'] = get_resolved_path(image_id, verified_only=False)
     return data
 
 
