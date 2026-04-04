@@ -107,25 +107,11 @@ class SelectionService:
             )
 
         try:
-            # Stage 1: Resolve folders
+            # Stage 1: Resolve folders (same tree as get_folder_phase_summary / scope preview)
             self._progress(progress_cb, 0.01, "Scanning folders...")
-            
-            all_folders = db.get_all_folders()
-            target_folders = []
-            
-            # Normalize for matching
-            local_norm = os.path.normpath(local_path)
-            
-            for f in all_folders:
-                # Check if folder is the target or a subfolder
-                # Use os.path.commonpath to be safe with partial matches (e.g. /foo/bar vs /foo/bar_baz)
-                try:
-                    tgt = os.path.normpath(f)
-                    if tgt == local_norm or tgt.startswith(local_norm + os.sep):
-                        target_folders.append(tgt)
-                except ValueError:
-                    continue
-                    
+
+            target_folders = db.list_folder_paths_under_scope(local_path)
+
             if not target_folders:
                 return SelectionSummary(
                     0, 0, 0, 0, 0, 0, 0,

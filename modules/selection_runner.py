@@ -5,9 +5,11 @@ Matches Scoring/Keywords runner contract for polling-based UI integration.
 """
 
 import logging
+import os
 import threading
 from modules.selection import SelectionService, SelectionConfig
 from modules import db
+from modules import utils
 from modules.events import event_manager, broadcast_run_log_line
 from modules.phases import PhaseCode, PhaseStatus
 from modules.phases_policy import explain_phase_run_decision
@@ -122,7 +124,18 @@ class SelectionRunner:
         images = []
         images_for_phase = []
         try:
-            images = db.get_images_by_folder(input_path)
+            local_scope = utils.convert_path_to_local((input_path or "").strip())
+            seen_ids: set[int] = set()
+            if local_scope and os.path.isdir(local_scope):
+                for folder_path in db.list_folder_paths_under_scope(local_scope):
+                    for row in db.get_images_by_folder(folder_path) or []:
+                        iid = row.get("id")
+                        if iid is None or iid in seen_ids:
+                            continue
+                        seen_ids.add(iid)
+                        images.append(row)
+            if not images:
+                images = db.get_images_by_folder(input_path) or []
             if images:
                 if force_rescan:
                     # Skip per-image phase updates: clustering will set RUNNING when it processes.
@@ -157,7 +170,10 @@ class SelectionRunner:
             )
 
         cfg = SelectionConfig(force_rescan=force_rescan)
-        log(f"Starting clustering for {len(images_for_phase)} images (force_rescan={force_rescan})...")
+        log(
+            f"Starting clustering for {len(images_for_phase)} of {len(images)} image(s) in scope "
+            f"(force_rescan={force_rescan})..."
+        )
         try:
             # SelectionService operates at folder scope; phase status updates are limited
             # to policy-eligible images tracked in images_for_phase.

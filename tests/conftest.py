@@ -1,6 +1,5 @@
 import sys
 import os
-import re
 import glob
 import subprocess
 import logging
@@ -18,24 +17,27 @@ from modules.test_db_constants import (
 _log = logging.getLogger(__name__)
 
 
-def _postgres_tests_enabled(config):
+def _postgres_tests_enabled(_config):
+    """PostgreSQL tests are enabled by default (v6.4+).
+
+    Disable with SKIP_POSTGRES_TESTS=1 if no Postgres instance is available.
+    """
+    if os.environ.get("SKIP_POSTGRES_TESTS", "").strip().lower() in ("1", "true", "yes"):
+        return False
     if os.environ.get("RUN_POSTGRES_TESTS", "").strip().lower() in ("1", "true", "yes"):
         return True
-    markexpr = (getattr(config.option, "markexpr", None) or "").strip()
-    if not markexpr:
-        return False
-    return bool(re.search(r"\bpostgres\b", markexpr, re.IGNORECASE))
+    return True
 
 
 @pytest.fixture(scope="session")
 def postgres_test_session(request):
     """
     Isolated PostgreSQL database (image_scoring_test) with full app schema.
-    Opt-in: set RUN_POSTGRES_TESTS=1 or run ``pytest -m postgres``.
+    Enabled by default since v6.4. Disable with SKIP_POSTGRES_TESTS=1.
     """
     if not _postgres_tests_enabled(request.config):
         pytest.skip(
-            "PostgreSQL tests disabled; set RUN_POSTGRES_TESTS=1 or run pytest -m postgres"
+            "PostgreSQL tests disabled via SKIP_POSTGRES_TESTS=1"
         )
 
     try:
@@ -75,10 +77,11 @@ def clean_postgres(postgres_test_session):
 
 
 def pytest_sessionstart(session):
-    """
-    Called before performing collection and entering the test loop.
-    Ensures Postgres test catalog exists when the app engine is postgres (unless production escape hatch),
-    and the Firebird test database (scoring_history_test.fdb only — never SCORING_HISTORY.FDB) is ready.
+    """Ensure the PostgreSQL test catalog exists before running tests.
+
+    Since v6.4 the default engine is ``postgres`` for all environments.
+    Firebird test setup (``scripts/setup_test_db.py``) is no longer invoked
+    automatically — run it manually if you need a Firebird test database.
     """
     if not postgres_production_allowed_in_pytest():
         try:
@@ -86,7 +89,8 @@ def pytest_sessionstart(session):
         except Exception as e:
             _log.debug("pytest_sessionstart: skip config import: %s", e)
         else:
-            if config.get_database_engine() == "postgres":
+            engine = config.get_database_engine()
+            if engine == "postgres":
                 try:
                     from modules import db_postgres
                 except ModuleNotFoundError as e:
@@ -94,32 +98,32 @@ def pytest_sessionstart(session):
                 else:
                     try:
                         db_postgres.ensure_database_exists(POSTGRES_TEST_DB)
+                        print(f"\n[conftest] PostgreSQL test database '{POSTGRES_TEST_DB}' ready.\n")
                     except Exception as e:
                         _log.warning(
-                            "pytest_sessionstart: could not ensure database %s exists: %s",
+                            "pytest_sessionstart: could not ensure database %s exists: %s "
+                            "(Postgres may not be running)",
                             POSTGRES_TEST_DB,
                             e,
                         )
-
-    if os.environ.get("SKIP_TEST_DB_SETUP", "").strip().lower() in ("1", "true", "yes"):
-        print("\n[conftest] SKIP_TEST_DB_SETUP set — skipping scripts/setup_test_db.py (CI / no Firebird).\n")
-        return
-    script_path = os.path.join(project_root, "scripts", "setup_test_db.py")
-    print("\n[conftest] Setting up test database (scoring_history_test.fdb only)...")
-    
-    try:
-        # Run setup_test_db.py using a subprocess to recreate SCORING_HISTORY_TEST.FDB
-        subprocess.run([sys.executable, script_path], check=True, cwd=project_root)
-        print("[conftest] Test database initialized successfully.\n")
-    except subprocess.CalledProcessError as e:
-        print(f"\n[conftest] WARNING: Test database setup script failed: {e}")
-        print("Tests may run against an outdated or locked test DB.")
-    except Exception as e:
-        print(f"\n[conftest] ERROR: Could not run test database setup: {e}")
+            elif engine == "firebird":
+                # Legacy: manual Firebird setup still supported via env override
+                script_path = os.path.join(project_root, "scripts", "setup_test_db.py")
+                if os.path.exists(script_path):
+                    print("\n[conftest] Firebird engine detected — running setup_test_db.py...")
+                    try:
+                        subprocess.run([sys.executable, script_path], check=True, cwd=project_root)
+                    except Exception as e:
+                        print(f"[conftest] WARNING: Firebird test DB setup failed: {e}")
+                        print("Tests may fail for Firebird-dependent tests.")
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Best-effort removal of orphan Firebird test DBs and migration *.bak sidecars at repo root."""
+    """Best-effort removal of orphan Firebird test DBs and migration *.bak sidecars at repo root.
+
+    .. deprecated:: 6.4
+       Firebird test DB cleanup will be removed in v7.0 when Firebird support is dropped.
+    """
     patterns = (
         os.path.join(project_root, "TEST_*.fdb"),
         os.path.join(project_root, "TEST_*.fdb.*"),

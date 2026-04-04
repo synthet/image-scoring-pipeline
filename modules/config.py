@@ -107,46 +107,37 @@ def get_config_section(section):
 def get_database_engine() -> str:
     """Resolve ``database.engine`` from ``config.json``.
 
-    Any non-empty explicit value in ``config.json`` is returned lowercased (e.g. ``api`` 
-    for ``DbConnector``). This explicit value takes precedence over the pytest default.
+    Returns ``postgres`` in all cases unless explicitly overridden.
 
-    When the key is missing or blank:
+    Resolution order:
 
-    - If ``IMAGE_SCORING_DB_ENGINE_DEFAULT`` is ``firebird`` or ``postgres``, that value
-      wins (used by ``scripts/setup_test_db.py`` subprocesses where pytest is not loaded).
-    - Explicit ``engine`` in ``config.json`` wins first (honored under pytest and normal runs).
-    - Under pytest (``pytest`` in ``sys.modules`` or ``PYTEST_CURRENT_TEST``), default is
-      ``firebird`` if not set in config, so the existing ``scoring_history_test.fdb`` 
-      workflow works without setting ``engine`` in every config.
-    - Otherwise default is ``postgres`` (Docker stack and new installs).
+    1. Explicit ``engine`` value in ``config.json`` ``database`` section (any valid
+       engine: ``postgres``, ``firebird``, ``api``).
+    2. ``IMAGE_SCORING_DB_ENGINE_DEFAULT`` env var (``firebird`` or ``postgres``).
+    3. ``IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP`` env var — returns ``firebird``
+       (legacy escape hatch for ``scripts/setup_test_db.py``).
+    4. Default: ``postgres`` (for both production and pytest).
 
-    When ``IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP`` is set to a truthy value, returns
-    ``firebird`` (used by ``scripts/setup_test_db.py`` regardless of config).
+    .. deprecated:: 6.4
+       Firebird support is deprecated and will be removed in v7.0 (July 2026).
+       The default is now ``postgres`` for all environments including pytest.
     """
-    # Priority:
-    # 1. Force firebird (test setup)
-    if os.environ.get("IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP", "").strip().lower() in ("1", "true", "yes"):
-        return "firebird"
-
-    is_pytest = "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST")
-    forced = os.environ.get("IMAGE_SCORING_DB_ENGINE_DEFAULT", "").strip().lower()
-
-    # 3. Explicit config.json engine (honoured under pytest and normal runs)
+    # 1. Explicit config.json engine (highest priority)
     sec = get_config_section("database") or {}
     raw = sec.get("engine")
     if raw is not None and str(raw).strip():
         return str(raw).strip().lower()
 
-    # 4. Pytest: default firebird for scoring_history_test.fdb unless env forces engine
-    if is_pytest:
-        if forced in ("firebird", "postgres"):
-            return forced
-        return "firebird"
-
-    # 5. Environment default (non-pytest)
-    if forced in ("firebird", "postgres"):
+    # 2. Environment override
+    forced = os.environ.get("IMAGE_SCORING_DB_ENGINE_DEFAULT", "").strip().lower()
+    if forced in ("firebird", "postgres", "api"):
         return forced
 
+    # 3. Legacy escape hatch for Firebird test setup script
+    if os.environ.get("IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP", "").strip().lower() in ("1", "true", "yes"):
+        return "firebird"
+
+    # 4. Default: postgres (production, Docker, pytest — all environments)
     return "postgres"
 
 def save_config_section(section, section_data):

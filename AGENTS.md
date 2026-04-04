@@ -13,6 +13,12 @@ The Image Scoring project provides an MCP server that enables AI agents (like Cu
 - **Validate** configuration and file paths
 - **Access** debug logs
 
+## SDLC / agent-sdlc
+
+This repo vendors **[agent-sdlc](https://github.com/synthet/agent-sdlc)**-style Cursor rules (`.cursor/rules/`), slash commands (`.cursor/commands/`), and project skills (`.cursor/skills/`). **This `AGENTS.md` file** remains the source of truth for canonical commands, repository layout, and boundaries.
+
+**Cursor slash commands** (type `/` in chat): **`/spec`**, **`/plan`**, **`/implement`**, **`/test-and-fix`**, **`/pr-ready`**, **`/release-notes`**. This repo also defines **`/release`** (semver release for this backend). **Claude Code** mirrors the agent-sdlc commands under `.claude/commands/`.
+
 ## MCP servers (Image Scoring)
 
 The same FastMCP app exposes **43** tools; Cursor can attach it in two ways (separate `mcpServers` entries).

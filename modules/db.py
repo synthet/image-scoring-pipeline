@@ -7783,6 +7783,41 @@ def _derive_folder_phase_status(total, done, running, failed, skipped):
     return "not_started"
 
 
+def list_folder_paths_under_scope(local_fs_path: str) -> list:
+    """
+    Return `folders.path` for the scope root and every descendant folder.
+
+    Uses the same path key as `get_folder_phase_summary` (WSL-style keys in DB when
+    the host passes a Windows path). This keeps Selection / runners aligned with
+    scope preview counts, which aggregate descendants via SQL rather than string
+    prefix checks on `get_all_folders()`.
+    """
+    from modules import utils
+
+    if not local_fs_path or not str(local_fs_path).strip():
+        return []
+
+    wsl_path = utils.convert_path_to_wsl(local_fs_path) if hasattr(utils, "convert_path_to_wsl") else local_fs_path
+    target_path = wsl_path if wsl_path else local_fs_path
+    base_folder_id = get_or_create_folder(target_path)
+    if not base_folder_id:
+        return []
+
+    row = get_connector().query_one("SELECT path FROM folders WHERE id = ?", (base_folder_id,))
+    if not row or not row.get("path"):
+        return []
+
+    canonical = row["path"]
+    path_like_unix = canonical + "/%"
+    path_like_win = canonical + "\\%"
+
+    rows = get_connector().query(
+        "SELECT path FROM folders WHERE path = ? OR path LIKE ? OR path LIKE ? ORDER BY path",
+        (canonical, path_like_unix, path_like_win),
+    )
+    return [r["path"] for r in rows]
+
+
 def get_folder_phase_summary(folder_path, force_refresh=False):
     """
     Return phase status summary for a folder and descendants.

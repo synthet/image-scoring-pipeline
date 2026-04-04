@@ -6,8 +6,10 @@ Identify images in a lens folder whose EXIF lens does not match the folder
 (e.g., 105mm lens in 180-600mm folder), move them physically to the correct
 lens folder, and update all database path references.
 
-Folder convention: D:\\Photos\\Z8\\{lens}\\{year}\\{date}\\
+Folder convention: D:\\Photos\\{camera}\\{lens}\\{year}\\{date}\\ (same layout as gallery sync).
 The lens segment must match the lens used per EXIF.
+
+Requires ``image_exif.lens_model`` populated (images without an ``image_exif`` row are skipped).
 
 Usage:
     python scripts/maintenance/move_misplaced_by_lens.py --source "D:\\Photos\\Z8\\180-600mm\\2026" [--dry-run] [--yes]
@@ -16,6 +18,9 @@ Options:
     --source   Root folder to scan (required)
     --dry-run  Preview only, no file or DB changes
     --yes, -y  Skip confirmation prompt
+
+Works with ``database.engine: postgres`` (default) or legacy Firebird: ``get_db()`` uses the
+same SQL dialect translation as the app (``?`` placeholders, ``SELECT FIRST`` → ``LIMIT``).
 
 Run in WSL with app venv:
     source ~/.venvs/tf/bin/activate
@@ -130,7 +135,7 @@ def _extract_lens_from_model(lens_model: str | None) -> str | None:
 
 
 def _extract_lens_from_path(path: str) -> str | None:
-    """Extract lens segment from path: .../Camera/{lens}/year/... (Z8, Z6ii, D90, etc.)."""
+    """Extract lens folder segment: first path part containing a focal length like ``180-600mm``."""
     if not path:
         return None
     normalized = path.replace("\\", "/")
@@ -209,9 +214,14 @@ def find_misplaced(source_prefix: str) -> list[dict]:
 
     misplaced = []
     for row in rows:
-        image_id, file_path, file_name, thumb_path, thumb_path_win, folder_id, lens_model = row
-        file_path = str(file_path) if file_path else ""
-        lens_model = str(lens_model) if lens_model else ""
+        # RowWrapper iterates (key, value) pairs — use column names, not tuple unpack.
+        image_id = row["id"]
+        file_path = str(row["file_path"] or "")
+        file_name = row["file_name"]
+        thumb_path = row["thumbnail_path"]
+        thumb_path_win = row["thumbnail_path_win"]
+        folder_id = row["folder_id"]
+        lens_model = str(row["lens_model"] or "")
 
         path_lens = _extract_lens_from_path(file_path)
         exif_lens = _extract_lens_from_model(lens_model)
@@ -249,6 +259,17 @@ def _resolve_native_path(path: str) -> str:
     return path
 
 
+def _thumb_db_columns_from_disk(thumb_fs: str) -> tuple[str | None, str | None]:
+    """Derive thumbnail_path / thumbnail_path_win for the DB from an on-disk thumb path."""
+    if not thumb_fs or not os.path.exists(thumb_fs):
+        return None, None
+    norm = thumb_fs.replace("\\", "/")
+    if norm.startswith("/mnt/"):
+        return norm, thumb_path_to_win(thumb_fs)
+    wsl = thumb_path_to_wsl(thumb_fs)
+    return wsl, thumb_fs
+
+
 def move_and_update_db(misplaced: list[dict], dry_run: bool) -> dict:
     """
     For each misplaced item: move file + sidecars, copy thumbnail, update DB.
@@ -271,11 +292,13 @@ def move_and_update_db(misplaced: list[dict], dry_run: bool) -> dict:
         old_folder_id = item["folder_id"]
 
         try:
+            # Canonical DB path first — get_thumb_path() hashes this string; must match images.file_path.
+            new_path_db = _normalize_for_db(new_path)
             old_native = _resolve_native_path(old_path)
-            new_native = _resolve_native_path(new_path)
+            new_native = _resolve_native_path(new_path_db)
 
             if dry_run:
-                print(f"  [DRY-RUN] Would move:\n    {old_path}\n    -> {new_path}")
+                print(f"  [DRY-RUN] Would move:\n    {old_path}\n    -> {new_path_db} (DB form)")
                 updated += 1
                 continue
 
@@ -292,19 +315,11 @@ def move_and_update_db(misplaced: list[dict], dry_run: bool) -> dict:
                     failed.append((old_path, "Source file not found"))
                     continue
                 # Target exists, source gone -> DB update only; copy thumb if present
-                new_thumb_path_db = None
-                new_thumb_win_db = None
-                old_thumb = get_thumb_path(old_path)
-                new_thumb = get_thumb_path(new_path)
-                if os.path.exists(old_thumb) and not os.path.exists(new_thumb):
-                    os.makedirs(os.path.dirname(new_thumb), exist_ok=True)
-                    shutil.copy2(old_thumb, new_thumb)
-                    if new_thumb.startswith("/mnt/"):
-                        new_thumb_path_db = new_thumb
-                        new_thumb_win_db = thumb_path_to_win(new_thumb)
-                    else:
-                        new_thumb_path_db = thumb_path_to_wsl(new_thumb)
-                        new_thumb_win_db = new_thumb
+                old_thumb_fs = get_thumb_path(old_path)
+                new_thumb_fs = get_thumb_path(new_path_db)
+                if os.path.exists(old_thumb_fs) and not os.path.exists(new_thumb_fs):
+                    os.makedirs(os.path.dirname(new_thumb_fs), exist_ok=True)
+                    shutil.copy2(old_thumb_fs, new_thumb_fs)
             else:
                 # Create target dir
                 new_dir = os.path.dirname(new_native)
@@ -323,25 +338,20 @@ def move_and_update_db(misplaced: list[dict], dry_run: bool) -> dict:
                         if not os.path.exists(target_sidecar):
                             shutil.move(sidecar, target_sidecar)
 
-                # Copy thumbnail to new path (thumb path is keyed by image path hash)
-                old_thumb = get_thumb_path(old_path)
-                new_thumb = get_thumb_path(new_path)
-                new_thumb_path_db = None
-                new_thumb_win_db = None
-                if os.path.exists(old_thumb):
-                    os.makedirs(os.path.dirname(new_thumb), exist_ok=True)
-                    shutil.copy2(old_thumb, new_thumb)
-                    # DB stores both WSL and Windows thumbnail paths
-                    if new_thumb:
-                        if new_thumb.startswith("/mnt/"):
-                            new_thumb_path_db = new_thumb
-                            new_thumb_win_db = thumb_path_to_win(new_thumb)
-                        else:
-                            new_thumb_path_db = thumb_path_to_wsl(new_thumb)
-                            new_thumb_win_db = new_thumb
+                # Copy thumbnail (MD5 keyed to DB path string — use new_path_db, not new_path)
+                old_thumb_fs = get_thumb_path(old_path)
+                new_thumb_fs = get_thumb_path(new_path_db)
+                if os.path.exists(old_thumb_fs):
+                    os.makedirs(os.path.dirname(new_thumb_fs), exist_ok=True)
+                    shutil.copy2(old_thumb_fs, new_thumb_fs)
 
-            # Normalize paths for DB
-            new_path_db = _normalize_for_db(new_path)
+            # Thumbnail columns: prefer on-disk file for new_path_db hash; else keep existing DB values
+            new_thumb_path_db, new_thumb_win_db = _thumb_db_columns_from_disk(get_thumb_path(new_path_db))
+            if new_thumb_path_db is None:
+                tp, tw = item["thumbnail_path"], item["thumbnail_path_win"]
+                new_thumb_path_db = str(tp) if tp else None
+                new_thumb_win_db = str(tw) if tw else None
+
             new_folder = new_path_db.rsplit("/", 1)[0] if _DB_USES_WSL else str(Path(new_path_db).parent)
 
             # Create folder record
@@ -365,7 +375,10 @@ def move_and_update_db(misplaced: list[dict], dry_run: bool) -> dict:
             old_path_win = old_path if (len(old_path) >= 2 and old_path[1] == ":") else _to_win_path(old_path)
             cur.execute("SELECT id, path, path_type FROM file_paths WHERE image_id = ?", (image_id,))
             fp_rows = cur.fetchall()
-            for fp_id, fp_path, fp_type in fp_rows:
+            for fp_row in fp_rows:
+                fp_id = fp_row["id"]
+                fp_path = fp_row["path"]
+                fp_type = fp_row["path_type"]
                 fp_path_str = str(fp_path) if fp_path else ""
                 if fp_path_str in (old_path, old_path_wsl, old_path_win, old_native):
                     new_fp_path = new_path_wsl if (fp_type or "").upper() == "WSL" else new_path_win

@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Roadmap (not yet released)
+
+Phase 4c keyword legacy column soft deprecation (target a future release; see `docs/plans/database/PHASE4_KEYWORDS_DEPRECATION.md`):
+
+- **Deprecation logging**: `_log_legacy_keyword_access()` helper; warnings when legacy `IMAGES.KEYWORDS` column is accessed
+- **Instrumented functions**: `get_image_details()` and `get_images_by_folder()` detect and log legacy fallback usage
+- **Deprecation notice**: Users warned that legacy column will be removed in v7.0 (July 2026); guidance on migration path
+- **6-month notice**: Soft deprecation signals end-of-life before hard removal in v7.0
+
+#### Deprecated (roadmap)
+
+- **IMAGES.KEYWORDS legacy column**: Hard removal scheduled for v7.0 (July 2026). Migrate to `IMAGE_KEYWORDS` + `KEYWORDS_DIM`; dual-write remains for backward compatibility.
+
+#### Migration path (for consumers of `IMAGES.KEYWORDS`)
+
+1. Migrate keyword reads to `IMAGE_KEYWORDS` + `KEYWORDS_DIM` (transparent via `db.get_image_details()`, `db.get_images_by_folder()`)
+2. Update keyword writes to use `db.update_image_metadata()` (dual-write active)
+3. Monitor logs for deprecation warnings when Phase 4c ships
+4. Complete migration before v7.0 (July 2026)
+
+## [6.4.0] - 2026-04-04
+
+### Breaking changes (operators & CI)
+
+- **Default database engine**: `get_database_engine()` resolves to **`postgres`** for pytest and normal runs unless `config.json` sets `database.engine`, or **`IMAGE_SCORING_DB_ENGINE_DEFAULT`** / **`IMAGE_SCORING_FORCE_FIREBIRD_TEST_SETUP`** override. Pytest no longer defaults to Firebird when the key is unset.
+- **PostgreSQL tests**: Fixtures that need Postgres run **by default**. Set **`SKIP_POSTGRES_TESTS=1`** when no PostgreSQL instance is available. **`RUN_POSTGRES_TESTS=1`** remains supported as an explicit opt-in.
+- **Firebird test database**: `scripts/setup_test_db.py` is **not** run on every pytest session; it runs only when the resolved engine is **`firebird`**.
+
+### Added
+
+- **`db.list_folder_paths_under_scope()`**: Returns the scope root and descendant `folders.path` values using the same canonical keys as phase summaries / scope preview.
+- **Tests**: `tests/test_folder_scope_paths.py` covers scope folder listing.
+
+### Changed
+
+- **`get_database_engine()`**: Documented resolution order; **`IMAGE_SCORING_DB_ENGINE_DEFAULT`** may include **`api`**; Firebird support called out as deprecated for removal in v7.0 (July 2026).
+- **Contributor workflow**: PR template (motivation, testing, SDLC checklist); **AGENTS.md** notes on agent-sdlc; Claude Code command mirrors under `.claude/commands/`.
+
+### Fixed
+
+- **Selection & clustering scope**: Folder discovery uses the database folder tree (not host path prefix scans), aligning Selection with `get_folder_phase_summary` / scope preview when paths differ between Windows and WSL-style keys.
+- **`scripts/maintenance/move_misplaced_by_lens.py`**: Correct row handling for the DB connector, canonical DB paths for moves and thumbnail hashing, thumbnail column updates, and docs for Postgres + gallery-style `{camera}/{lens}/…` layout.
+
 ## [6.3.2] - 2026-04-04
 
 ### Changed
@@ -23,32 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Chore
 
 - **Built `/ui` static assets** refreshed (`static/app/assets/*`, `static/app/index.html`).
-
-## [6.4.0] - Planned (2026-05)
-
-### Phase 4c: Keyword Legacy Column Soft Deprecation
-
-- **Deprecation logging**: `_log_legacy_keyword_access()` helper added; warnings logged when legacy `IMAGES.KEYWORDS` column is accessed
-- **Instrumented functions**: `get_image_details()` and `get_images_by_folder()` now detect and log legacy fallback usage
-- **Deprecation notice**: Users warned that legacy column will be removed in v7.0 (July 2026); guidance provided on migration path
-- **6-month notice**: Soft deprecation in v6.4 signals end-of-life before hard removal in v7.0
-
-### Deprecated
-
-- **IMAGES.KEYWORDS legacy column**: Soft deprecated in v6.4; hard removal scheduled for v7.0 (July 2026)
-  * Logging warnings added when legacy column is accessed
-  * Migrate to `IMAGE_KEYWORDS` + `KEYWORDS_DIM` normalized schema
-  * Dual-write remains active for backward compatibility
-
-### Migration Path
-
-For applications using `IMAGES.KEYWORDS`:
-1. Migrate keyword reads to `IMAGE_KEYWORDS` + `KEYWORDS_DIM` (transparent via `db.get_image_details()`, `db.get_images_by_folder()`)
-2. Update keyword writes to use `db.update_image_metadata()` (dual-write active)
-3. Monitor logs for deprecation warnings in v6.4
-4. Complete migration before v7.0 (July 2026)
-
-See `docs/plans/database/PHASE4_KEYWORDS_DEPRECATION.md` for full timeline.
 
 ## [6.3.1] - 2026-04-03
 
