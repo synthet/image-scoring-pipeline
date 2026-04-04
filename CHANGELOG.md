@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.3.2] - 2026-04-04
+
+### Changed
+
+- **React `/ui` sidebar**: After submitting a new run, the folder tree refetches (via runs WebSocket version), expands ancestors for the run’s scope paths, and scrolls the first path into view; shared path helpers in `frontend/src/utils/treePaths.ts`.
+
+### Fixed
+
+- **Scope selector modal** (`ScopeSelector.tsx`): Reset local paths and preview when the modal opens so reopening with the same folder does not show stale state; clear `newRunInitialPath` when the modal closes so repeat opens re-sync.
+- **PostgreSQL tests** (`modules/db_postgres.py`): Re-seed the default `embedding_spaces` row after `truncate_app_tables()` so TRUNCATE + tests keep a valid default embedding space.
+
+### Chore
+
+- **Built `/ui` static assets** refreshed (`static/app/assets/*`, `static/app/index.html`).
+
 ## [6.4.0] - Planned (2026-05)
 
 ### Phase 4c: Keyword Legacy Column Soft Deprecation

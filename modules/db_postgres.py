@@ -148,6 +148,14 @@ POSTGRES_APP_TABLES = (
     "image_keywords",
 )
 
+# Default visual-embedding catalog row (re-applied after TRUNCATE in tests).
+_SEED_DEFAULT_EMBEDDING_SPACE_SQL = """
+            INSERT INTO embedding_spaces (code, dim, description, active)
+            SELECT 'mobilenet_v2_imagenet_gap', 1280,
+                   'MobileNetV2 ImageNet weights, GAP — visual similarity / culling', 1
+            WHERE NOT EXISTS (SELECT 1 FROM embedding_spaces WHERE code = 'mobilenet_v2_imagenet_gap')
+            """
+
 
 def ensure_database_exists(dbname: str, admin_dbname: str = "postgres") -> None:
     """
@@ -195,6 +203,7 @@ def truncate_app_tables() -> None:
     with PGConnectionManager(commit=True) as conn:
         with conn.cursor() as cur:
             cur.execute(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE")
+            cur.execute(_SEED_DEFAULT_EMBEDDING_SPACE_SQL)
 
 
 class PGConnectionManager:
@@ -440,12 +449,7 @@ def init_db():
               ON image_embeddings USING hnsw (embedding vector_cosine_ops);
             """)
 
-            cur.execute("""
-            INSERT INTO embedding_spaces (code, dim, description, active)
-            SELECT 'mobilenet_v2_imagenet_gap', 1280,
-                   'MobileNetV2 ImageNet weights, GAP — visual similarity / culling', 1
-            WHERE NOT EXISTS (SELECT 1 FROM embedding_spaces WHERE code = 'mobilenet_v2_imagenet_gap')
-            """)
+            cur.execute(_SEED_DEFAULT_EMBEDDING_SPACE_SQL)
 
             # Back-fill FK on stacks.best_image_id now that images exists
             # (Firebird adds this as a separate alter; we declare it inline above for stacks

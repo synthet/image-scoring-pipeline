@@ -24,7 +24,8 @@ function normalizeScopePathInput(p: string): string {
 }
 
 export function ScopeSelector() {
-  const { newRunModalOpen, setNewRunModalOpen, newRunInitialPath } = useUiStore()
+  const { newRunModalOpen, setNewRunModalOpen, newRunInitialPath, setPendingTreeRevealPaths } =
+    useUiStore()
   const qc = useQueryClient()
 
   const [scopeType, setScopeType] = useState<'folder_recursive' | 'folder' | 'file'>('folder_recursive')
@@ -36,11 +37,19 @@ export function ScopeSelector() {
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
+  // Modal stays mounted while closed (`return null`); reset local state whenever it opens
+  // so preview is not left from a previous folder and paths re-apply even if `newRunInitialPath`
+  // is unchanged (e.g. user cleared the field then double-clicked the same folder again).
   useEffect(() => {
+    if (!newRunModalOpen) return
     if (newRunInitialPath) {
       setPaths([newRunInitialPath])
+    } else {
+      setPaths([''])
     }
-  }, [newRunInitialPath])
+    setPreview(null)
+    setPreviewError(null)
+  }, [newRunModalOpen, newRunInitialPath])
 
   const validPaths = paths
     .map((p) => p.trim())
@@ -65,8 +74,11 @@ export function ScopeSelector() {
 
   const submitMut = useMutation({
     mutationFn: (req: RunSubmitRequest) => runsApi.submit(req),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['runs'] })
+      qc.invalidateQueries({ queryKey: ['folders-tree'] })
+      const paths = variables.scope_paths ?? []
+      setPendingTreeRevealPaths(paths.length > 0 ? [...paths] : null)
       setNewRunModalOpen(false)
       setPaths([''])
       setPreview(null)

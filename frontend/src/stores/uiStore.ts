@@ -12,6 +12,10 @@ interface UiStore {
   setNewRunModalOpen: (v: boolean) => void
   newRunInitialPath: string | null
   openNewRun: (path?: string) => void
+
+  /** After queuing a run: expand tree to these paths and refresh status dots */
+  pendingTreeRevealPaths: string[] | null
+  setPendingTreeRevealPaths: (paths: string[] | null) => void
 }
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -23,7 +27,15 @@ export const useUiStore = create<UiStore>((set) => ({
   setSelectedScopePath: (selectedScopePath) => set({ selectedScopePath }),
 
   newRunModalOpen: false,
-  setNewRunModalOpen: (newRunModalOpen) => set({ newRunModalOpen }),
+  setNewRunModalOpen: (newRunModalOpen) =>
+    set((s) => ({
+      newRunModalOpen,
+      // Avoid stale open context (same path re-open must re-sync local modal state).
+      newRunInitialPath: newRunModalOpen ? s.newRunInitialPath : null,
+    })),
   newRunInitialPath: null,
   openNewRun: (path) => set({ newRunModalOpen: true, newRunInitialPath: path ?? null }),
+
+  pendingTreeRevealPaths: null,
+  setPendingTreeRevealPaths: (pendingTreeRevealPaths) => set({ pendingTreeRevealPaths }),
 }))

@@ -1,10 +1,12 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Plus } from 'lucide-react'
 import { scopeApi } from '@/api/scope'
 import { useUiStore } from '@/stores/uiStore'
+import { useWsStore } from '@/stores/wsStore'
 import { Button } from '@/components/ui/button'
+import { normalizeTreePath, pathTargetsRevealFolder } from '@/utils/treePaths'
 import type { FolderNode } from '@/types/api'
 
 const STATUS_DOT: Record<string, string> = {
@@ -15,7 +17,10 @@ const STATUS_DOT: Record<string, string> = {
 }
 
 export function Sidebar() {
-  const { openNewRun, setSelectedScopePath, selectedScopePath } = useUiStore()
+  const qc = useQueryClient()
+  const { openNewRun, setSelectedScopePath, selectedScopePath, pendingTreeRevealPaths, setPendingTreeRevealPaths } =
+    useUiStore()
+  const runsVersion = useWsStore((s) => s.runsVersion)
 
   const { data: tree, isLoading } = useQuery({
     queryKey: ['folders-tree'],
@@ -23,6 +28,28 @@ export function Sidebar() {
       scopeApi.tree().catch(() => scopeApi.foldersTree()),
     refetchInterval: 30000,
   })
+
+  const prevRunsVersion = useRef<number | null>(null)
+  useEffect(() => {
+    if (prevRunsVersion.current === runsVersion) return
+    prevRunsVersion.current = runsVersion
+    if (runsVersion > 0) qc.invalidateQueries({ queryKey: ['folders-tree'] })
+  }, [runsVersion, qc])
+
+  useEffect(() => {
+    if (!pendingTreeRevealPaths?.length || !Array.isArray(tree) || tree.length === 0) return
+    const primary = pendingTreeRevealPaths[0]
+    const key = encodeURIComponent(normalizeTreePath(primary))
+    const scrollT = window.setTimeout(() => {
+      const el = document.querySelector(`[data-folder-key="${CSS.escape(key)}"]`)
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }, 150)
+    const clear = window.setTimeout(() => setPendingTreeRevealPaths(null), 1200)
+    return () => {
+      clearTimeout(scrollT)
+      clearTimeout(clear)
+    }
+  }, [pendingTreeRevealPaths, tree, setPendingTreeRevealPaths])
 
   return (
     <aside className="w-56 shrink-0 border-r border-[#3c3c3c] bg-[#252526] flex flex-col overflow-hidden">
@@ -53,6 +80,7 @@ export function Sidebar() {
             selected={selectedScopePath}
             onSelect={setSelectedScopePath}
             onNewRun={openNewRun}
+            revealPaths={pendingTreeRevealPaths}
           />
         ))}
         {!isLoading && (!Array.isArray(tree) || tree.length === 0) && (
@@ -69,18 +97,31 @@ interface FolderTreeNodeProps {
   selected: string | null
   onSelect: (path: string) => void
   onNewRun: (path: string) => void
+  revealPaths: string[] | null
 }
 
-function FolderTreeNode({ node, depth, selected, onSelect, onNewRun }: FolderTreeNodeProps) {
-  const [expanded, setExpanded] = useState(depth === 0)
+function FolderTreeNode({ node, depth, selected, onSelect, onNewRun, revealPaths }: FolderTreeNodeProps) {
   const hasChildren = node.children && node.children.length > 0
   const isSelected = selected === node.path
+  const folderKey = encodeURIComponent(normalizeTreePath(node.path))
+
+  const [expanded, setExpanded] = useState(() => {
+    if (depth === 0) return true
+    return pathTargetsRevealFolder(node.path, revealPaths)
+  })
+
+  useEffect(() => {
+    if (hasChildren && pathTargetsRevealFolder(node.path, revealPaths)) {
+      setExpanded(true)
+    }
+  }, [hasChildren, node.path, revealPaths])
 
   const dominantStatus = getDominantStatus(node.phase_statuses)
 
   return (
     <div>
       <div
+        data-folder-key={folderKey}
         className={clsx(
           'group flex items-center gap-1 rounded px-1 py-0.5 cursor-pointer text-xs',
           'hover:bg-[#3c3c3c] transition-colors',
@@ -127,6 +168,7 @@ function FolderTreeNode({ node, depth, selected, onSelect, onNewRun }: FolderTre
               selected={selected}
               onSelect={onSelect}
               onNewRun={onNewRun}
+              revealPaths={revealPaths}
             />
           ))}
         </div>
