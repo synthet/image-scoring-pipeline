@@ -3635,7 +3635,7 @@ def get_images_by_folder(folder_path):
             SELECT
                 i.id, i.file_path, i.file_name, i.folder_id, i.stack_id,
                 i.image_embedding, i.rating, i.label, i.title, i.description,
-                i.metadata, i.scores_json, i.created_at,
+                i.metadata, i.scores_json, i.created_at, i.updated_at,
                 COALESCE(
                     (SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
                      FROM image_keywords ik
@@ -3662,7 +3662,7 @@ def get_images_by_folder(folder_path):
             SELECT
                 i.id, i.file_path, i.file_name, i.folder_id, i.stack_id,
                 i.image_embedding, i.rating, i.label, i.title, i.description,
-                i.metadata, i.scores_json, i.created_at,
+                i.metadata, i.scores_json, i.created_at, i.updated_at,
                 COALESCE(
                     (SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
                      FROM image_keywords ik
@@ -5077,7 +5077,7 @@ def get_image_details(file_path):
             SELECT
                 i.id, i.file_path, i.file_name, i.folder_id, i.stack_id,
                 i.image_embedding, i.rating, i.label, i.title, i.description,
-                i.metadata, i.scores_json, i.created_at,
+                i.metadata, i.scores_json, i.created_at, i.updated_at,
                 COALESCE(
                     (SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
                      FROM image_keywords ik
@@ -5103,7 +5103,7 @@ def get_image_details(file_path):
             SELECT
                 i.id, i.file_path, i.file_name, i.folder_id, i.stack_id,
                 i.image_embedding, i.rating, i.label, i.title, i.description,
-                i.metadata, i.scores_json, i.created_at,
+                i.metadata, i.scores_json, i.created_at, i.updated_at,
                 COALESCE(
                     (SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
                      FROM image_keywords ik
@@ -7599,6 +7599,39 @@ def get_image_phase_statuses(image_id):
             "skipped_by": r["skipped_by"],
         }
     return result
+
+
+def get_image_phase_status(image_id, phase_code):
+    """
+    Return status dict for a single phase, or None if no row exists for that phase.
+
+    phase_code: PhaseCode enum or str matching pipeline_phases.code (e.g. "indexing").
+    """
+    key = getattr(phase_code, "value", phase_code)
+    key = (key or "").strip() if isinstance(key, str) else str(key).strip()
+    if not key:
+        return None
+    rows = get_connector().query(
+        "SELECT ips.status, ips.executor_version, ips.app_version, "
+        "       ips.updated_at, ips.attempt_count, ips.last_error, ips.skip_reason, ips.skipped_by "
+        "FROM image_phase_status ips "
+        "JOIN pipeline_phases pp ON pp.id = ips.phase_id "
+        "WHERE ips.image_id = ? AND TRIM(pp.code) = ?",
+        (image_id, key),
+    )
+    if not rows:
+        return None
+    r = rows[0]
+    return {
+        "status": (r["status"] or "not_started").strip(),
+        "executor_version": r["executor_version"],
+        "app_version": r["app_version"],
+        "updated_at": r["updated_at"],
+        "attempt_count": r["attempt_count"],
+        "last_error": r["last_error"],
+        "skip_reason": r["skip_reason"],
+        "skipped_by": r["skipped_by"],
+    }
 
 
 def get_all_phases(enabled_only=True):
