@@ -31,6 +31,36 @@ The integration relies on two primary shared components:
 * **Protocol**: **image-scoring-gallery** `config.json` references API URL, database connection, or paths that pair with **image-scoring-backend** deployment.
 * **Agent Action**: Moving the database container, changing credentials, or changing API base URL requires updates in both projects as applicable.
 
+### 4. Keyword Schema Migration (Phase 4)
+
+**Status (v6.3.1+):** The normalized keyword schema is now the **primary read source** on the Python backend. The gallery must be aware of this when querying keywords.
+
+| Phase | Version | Backend Status | Gallery Impact |
+|-------|---------|----------------|----------------|
+| 4a | v6.2 | ✅ Validation & benchmarks | None |
+| 4b | v6.3.1 | ✅ Primary source cutover | Gallery keyword queries should prefer `IMAGE_KEYWORDS` + `KEYWORDS_DIM` |
+| 4c | v6.4 | ✅ Soft deprecation logging | Deprecation warnings in backend logs when legacy `IMAGES.KEYWORDS` accessed |
+| 4d | v7.0 (Jul 2026) | 🔲 Hard removal | **Breaking:** `IMAGES.KEYWORDS` column removed; gallery MUST use normalized tables |
+
+**Keyword read path (backend v6.3.1+):**
+```sql
+-- COALESCE: normalized → legacy → empty
+COALESCE(
+    (SELECT STRING_AGG(kd.keyword_display, ', ')
+     FROM image_keywords ik
+     JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
+     WHERE ik.image_id = i.id),
+    i.keywords, ''
+) AS keywords
+```
+
+**Gallery action items:**
+- **Before v7.0:** Migrate keyword reads from `IMAGES.KEYWORDS` to `IMAGE_KEYWORDS` + `KEYWORDS_DIM` join
+- **Writes:** Use backend API (`PATCH /api/images/{id}`) which dual-writes to both schemas
+- **Filtering:** Use `IMAGE_KEYWORDS` join (not `LIKE` on `IMAGES.KEYWORDS`)
+
+**Docs:** [`PHASE4_KEYWORDS_DEPRECATION.md`](../plans/database/PHASE4_KEYWORDS_DEPRECATION.md), [`PHASE4_COMPLETION_SUMMARY.md`](../plans/database/PHASE4_COMPLETION_SUMMARY.md)
+
 ## 🔍 Troubleshooting with MCP
 
 Agents use **stdio** MCP against the Python backend: **`imgscore-py-stdio`** in the **image-scoring-backend** workspace; **`imgscore-el-stdio`** in **image-scoring-gallery** (same server, different `cwd`). For WebUI / **`execute_code`**, enable **`imgscore-py-sse`** or **`imgscore-el-sse`** (unique keys, same URL). Use these to diagnose cross-project issues:
