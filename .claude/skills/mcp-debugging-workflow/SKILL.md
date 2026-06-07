@@ -18,33 +18,33 @@ Apply this skill when the user asks to:
 
 ### 1. Get Error Overview
 
-Call **`search("scoring failures")`** then **`dispatch("diagnostics.get_error_summary", {})`** on **`is-be-mcp`** (or legacy **`get_error_summary`** on **`is-be-diag`**) to identify scope of failures: failed jobs, missing scores, orphaned records.
+On **`is-be-mcp`**: `search("scoring failures")` → `dispatch("diagnostics.get_error_summary", {})`.
 
 ### 2. Check Database Health
 
-Call `check_database_health` to validate data integrity (orphaned records, duplicates, inconsistencies).
+`dispatch("diagnostics.check_database_health", {})`
 
 ### 3. Get Failed Images (if errors found)
 
-Call `get_failed_images` with optional `limit` to list images that need reprocessing.
+`dispatch("jobs.get_failed_images", {"limit": 50})`
 
 ### 4. Check Model/GPU Status
 
-Call `get_model_status` to verify GPU availability, model loading, CUDA/PyTorch/TensorFlow status.
+`dispatch("diagnostics.get_model_status", {})`
 
 ### 5. Check Active Jobs (if processing expected)
 
-Call `get_runner_status` and `get_pipeline_stats` to see if jobs are running and pipeline state.
+Use **`is-be-webui`**: `get_runner_status`, `get_pipeline_stats` (not yet compact dispatch).
 
 ### 6. Read Debug Log (for detailed errors)
 
-Call `read_debug_log` with optional `lines` to see recent error messages.
+`dispatch("logs.read_debug_log", {"lines": 100})` or `dispatch("logs.search_logs", {"pattern": "error|failed"})`
 
 ## Server Selection
 
-- **Compact dispatch (preferred):** **`is-be-mcp`** → **`search`** / **`dispatch`**
-- **Legacy domain stdio:** **`is-be-diag`**, **`is-be-jobs`**, **`is-be-data`**
-- **WebUI / `execute_code`:** **`is-be-webui`** (requires `ENABLE_MCP_EXECUTE_CODE=1`)
+- **Default:** **`is-be-mcp`** → **`search`** / **`dispatch`**
+- **Legacy tools / runners:** **`is-be-webui`** (WebUI must be running)
+- **`execute_code`:** **`is-be-webui`** + `ENABLE_MCP_EXECUTE_CODE=1`
 
 ## Terminology
 
@@ -54,4 +54,4 @@ Align with product UI: pipeline stages are **Discovery → Inspection → Qualit
 
 - [AGENTS.md](../../../AGENTS.md) — Common Workflows, Quick Decision Tree
 - [.agent/mcp_tools_reference.md](../../../.agent/mcp_tools_reference.md) — Tool parameters
-- [.cursor/rules/image-scoring-mcp.mdc](../../rules/image-scoring-mcp.mdc) — image-scoring vs mcp-firebird
+- [.cursor/rules/image-scoring-mcp.mdc](../../rules/image-scoring-mcp.mdc)
