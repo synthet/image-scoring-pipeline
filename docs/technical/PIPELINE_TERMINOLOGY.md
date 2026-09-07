@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Pipeline Terminology
+description: Canonical mapping between user-facing stage names, DB phase_code values, submit tokens, and REST/runner identifiers.
+resource: technical/PIPELINE_TERMINOLOGY.md
+tags: [pipeline, terminology, phases, naming]
+timestamp: 2026-09-01T00:00:00Z
+okf_version: 0.1
+---
+
 # Pipeline terminology (Gradio, Vite UI, API, DB)
 
 User-visible names are aligned across the **Gradio Pipeline** tab (`/app`), the **React SPA** (`/ui/`, source under `frontend/`), and the **Electron gallery** ([image-scoring-gallery](https://github.com/synthet/image-scoring-gallery)). Internal identifiers (`phase_code`, REST paths, `job_type`) stay stable for compatibility; this page maps them to product language.
@@ -6,7 +16,7 @@ User-visible names are aligned across the **Gradio Pipeline** tab (`/app`), the 
 
 Source of truth in this repo: **`frontend/src/types/api.ts`** — `STAGE_DISPLAY` (and `STEP_DISPLAY` for sub-steps such as MUSIQ, LIQE).
 
-| `phase_code` (DB / `job_phases`) | POST `/api/pipeline/submit` `operations` token | User-facing name | Notes |
+| `phase_code` (DB / `job_phases`) | Submit `stage_codes` token | User-facing name | Notes |
 |----------------------------------|-----------------------------------------------|------------------|--------|
 | `indexing` | `indexing` | **Discovery** | Scan and register files |
 | `metadata` | `metadata` | **Inspection** | EXIF/XMP, thumbnails |
@@ -14,6 +24,16 @@ Source of truth in this repo: **`frontend/src/types/api.ts`** — `STAGE_DISPLAY
 | `culling` | `cluster` | **Similarity Clustering** | Stacks / similarity grouping |
 | `keywords` | `tag` | **Tagging** | Keywords and captions |
 | `bird_species` | (orchestrated separately) | **Bird Species ID** | Optional phase after Tagging |
+
+**Submit field name:** the canonical request field is **`stage_codes`**. `operations` is retained as a
+Pydantic `validation_alias` for older clients (`modules/api_models.py:604`,
+`AliasChoices("stage_codes", "operations")`) — prefer `stage_codes` in new code. Accepted tokens are
+validated at `modules/api/routers/pipeline_submit.py:98`; single-file submissions support only `score`
+and `tag`, and `cluster` requires a folder path.
+
+**Phase dependencies are a DAG, not the linear order above.** `culling` and `keywords` are siblings
+that both depend only on `scoring`. See
+[../architecture/pipeline/phase-graph.md](../architecture/pipeline/phase-graph.md).
 
 Gradio copies these titles on the Pipeline cards (e.g. “Quality Analysis”, “Similarity Clustering”, “Tagging”) and in the stepper microcopy: **Discovery → Inspection → Quality Analysis → Similarity Clustering → Tagging**.
 
@@ -43,7 +63,8 @@ These are **not** the same as stage titles; UIs should map them when showing not
 
 - [ELECTRON_SYNC_IMPORT_AND_PHASES.md](ELECTRON_SYNC_IMPORT_AND_PHASES.md) — After **image-scoring-gallery** “Sync from device”: IPS rows, `jobs`, and common confusion between **`indexing`** (Discovery) vs **Inspection** / downstream phases
 - [RUN_OPTIONS_MODE_MATRIX.md](RUN_OPTIONS_MODE_MATRIX.md) — New Run execution options vs `run_mode` / dispatcher (supplements stage naming above)
-- [PIPELINE_ARCHITECTURE.md](PIPELINE_ARCHITECTURE.md) — sequence and orchestrator
+- [../architecture/pipeline/INDEX.md](../architecture/pipeline/INDEX.md) — comprehensive pipeline set: phase graph, status machines, preconditions, control plane, persistence
+- [../architecture/pipeline-architecture.md](../architecture/pipeline-architecture.md) — short architecture summary
 - [GRADIO_UI_UX_SPEC_FOR_ELECTRON_MIGRATION.md](GRADIO_UI_UX_SPEC_FOR_ELECTRON_MIGRATION.md) — Gradio UX mirror for Electron
 - [API_CONTRACT.md](API_CONTRACT.md) — REST overview
 

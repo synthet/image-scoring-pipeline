@@ -1,6 +1,20 @@
+---
+type: Documentation Hub
+title: Image Pipeline
+description: Hub for ingestion, metadata, scoring, culling, keywords, embeddings, and RAW/NEF behavior.
+resource: IMAGE_PIPELINE.md
+tags: [pipeline, hub, scoring, culling, keywords, raw]
+timestamp: 2026-09-01T00:00:00Z
+okf_version: 0.1
+---
+
 # Image pipeline
 
 Hub page for ingestion, metadata, scoring, culling, keywords, embeddings, and RAW/NEF behavior. Keep phase names aligned with **[technical/PIPELINE_TERMINOLOGY.md](technical/PIPELINE_TERMINOLOGY.md)**.
+
+**Deep reference:** the comprehensive pipeline set — phases and sub-steps, the prerequisite DAG,
+all three status state machines, preconditions, control plane and persistence — is
+**[architecture/pipeline/INDEX.md](architecture/pipeline/INDEX.md)**.
 
 ## Ingestion And Indexing
 

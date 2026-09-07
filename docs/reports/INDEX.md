@@ -29,6 +29,7 @@ Historical reports, research, reviews, and debugging sessions.
 | [BRANCH_DOCS_SALVAGE_2026-07.md](BRANCH_DOCS_SALVAGE_2026-07.md) | Branch cleanup audit — docs-only gallery branches archived/deleted; UNMERGED code branches retained |
 | [PICKED_ADVISORY_GAP_195193_2026-06-21.md](PICKED_ADVISORY_GAP_195193_2026-06-21.md) | Agent cull picked-image advisory gap — forensics, strict_v2 A/B, production defaults |
 | [BIRD_BBOX_CROP_STUDY_2026-08-01.md](BIRD_BBOX_CROP_STUDY_2026-08-01.md) | Bird-bbox crop vs full frame per pipeline phase — pinned 236-image re-sweep; IQA 2.4–17.5× more sensitive, culling no benefit |
+| [bird-detection-recall-2026-09-07](bird-detection-recall-2026-09-07.md) | Bird detection recall floor — 39 of 59 eagle frames returned `{"detected": false}`; driver is subject size at `imgsz=640`, floor near `area_frac` 0.04 |
 | [BIRD_CROP_FOCUS_MEASURES_2026-08-03.md](BIRD_CROP_FOCUS_MEASURES_2026-08-03.md) | Classical focus measures + camera AF metadata for bird-crop focus decisions — measures at chance; AF geometry available on 91.5% and informative |
 | [RESEARCH_SESSIONS_2026-08-05.md](RESEARCH_SESSIONS_2026-08-05.md) | **Hub** — concurrent bird-crop (#317) and student-scorer E2 (#323) research sessions paused 2026-08-05; start here |
 | [SESSION_BIRD_CROP_FOCUS_2026-08-05.md](SESSION_BIRD_CROP_FOCUS_2026-08-05.md) | Session record (Claude Code) — pinned re-sweep → Phase 4 focus research → `modules/focus_quality.py`; 15 corrections |

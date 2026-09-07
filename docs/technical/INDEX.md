@@ -1,3 +1,13 @@
+---
+type: Documentation Index
+title: Technical — Index
+description: Index of stable technical reference and deep-dive feature documentation for image-scoring-backend.
+resource: technical/INDEX.md
+tags: [technical, index, reference, okf]
+timestamp: 2026-09-01T00:00:00Z
+okf_version: 0.1
+---
+
 # Technical — Index
 
 Existing features and implementation docs only. Plans and proposals → [planning/INDEX.md](../planning/INDEX.md)
@@ -8,6 +18,7 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 
 | Document | Description |
 |----------|-------------|
+| [pipeline/INDEX.md](../architecture/pipeline/INDEX.md) | **Comprehensive pipeline set** — phase graph, sub-steps, status machines, preconditions, control plane, persistence |
 | [system-overview.md](../architecture/system-overview.md) | System architecture (components, data flow, deployment) |
 | [pipeline-architecture.md](../architecture/pipeline-architecture.md) | Pipeline sequence, flowchart, and Electron integration diagrams |
 | [PIPELINE_PHASE_RUNNERS.md](PIPELINE_PHASE_RUNNERS.md) | Phase-by-phase runner ownership and step-by-step execution flow |

@@ -1,30 +1,72 @@
+---
+type: Technical Reference
+title: Pipeline Phases and Runners
+description: How the phase system is wired — which phases exist, which runner executes each, what each does step by step, and how the orchestrator advances.
+resource: technical/PIPELINE_PHASE_RUNNERS.md
+tags: [pipeline, phases, runners, orchestrator]
+timestamp: 2026-09-01T00:00:00Z
+okf_version: 0.1
+---
+
 # Pipeline Phases and Runners
 
 This document explains how the phase system is wired in the current codebase: which phases exist, which runner actually executes them, what each phase does step-by-step, and how the orchestrator advances through the pipeline.
 
+> **Scope of this page.** It is a prose walkthrough of runner ownership. For the complete
+> graph — prerequisite DAG, all three status state machines, gating logic, control plane and
+> persistence — see **[../architecture/pipeline/INDEX.md](../architecture/pipeline/INDEX.md)**.
+
 ## Quick Model
 
-There are 5 canonical phases:
+There are **6** canonical phases:
 
 1. `indexing`
 2. `metadata`
 3. `scoring`
 4. `culling`
 5. `keywords`
+6. `bird_species`
 
-Important detail: only 3 of these have standalone runners.
+Each has a standalone runner, and there are **8** runner classes in total:
 
-- `indexing` and `metadata` are real phases in the database and UI, but they execute inside the scoring pipeline's prep stage.
-- `scoring` is handled by `ScoringRunner`.
-- `culling` is usually handled by `SelectionRunner`. If that runner is unavailable, `ClusteringRunner` can be used instead.
-- `keywords` is handled by `TaggingRunner`.
+| Phase | Runner | Source |
+|---|---|---|
+| `indexing` | `IndexingRunner` | `modules/indexing_runner.py:358` |
+| `metadata` | `MetadataRunner` | `modules/metadata_runner.py:17` |
+| `scoring` | `ScoringRunner` | `modules/scoring.py:31` |
+| `culling` | `SelectionRunner`, fallback `ClusteringRunner` | `modules/selection_runner.py:24`, `modules/clustering.py:1085` |
+| `keywords` | `TaggingRunner` | `modules/tagging.py:461` |
+| `bird_species` | `BirdSpeciesRunner` | `modules/bird_species.py:317` |
+| (not a phase) | `MaintenanceRunner` | `modules/maintenance_runner.py:19` |
+
+`indexing` and `metadata` **do** have standalone runners registered as their executors. The
+`PrepWorker` inside the scoring pipeline additionally applies indexing and metadata actions
+opportunistically when scoring runs over files that were never separately indexed — that legacy
+path is described below and still works, but it is no longer the only way those phases execute.
+
+`culling` prefers `SelectionRunner`; `ClusteringRunner` is used only when selection is not
+registered, and produces stacks without pick/reject decisions.
+
+### Phase status values
+
+Per-image phase status has **9** values, not 5: `not_started`, `queued`, `running`, `paused`,
+`cancel_requested`, `restarting`, `done`, `skipped`, `failed` — constrained in the database by
+`ck_image_phase_status_status`. Run-stage state (`job_phases.state`) is a **different** vocabulary
+again, using `completed` rather than `done`. See
+[../architecture/pipeline/phase-status-machines.md](../architecture/pipeline/phase-status-machines.md).
+
+### Phase dependencies
+
+`culling` and `keywords` are **siblings** under `scoring`, not sequential
+(`PHASE_PREREQUISITES`, `modules/phases.py:54-61`). `bird_species` depends on `keywords`. See
+[../architecture/pipeline/phase-graph.md](../architecture/pipeline/phase-graph.md).
 
 ## Ownership Table
 
 | Phase | Standalone runner? | Actual implementation owner | What it does |
 |------|---------------------|-----------------------------|--------------|
-| `indexing` | No | `PrepWorker` in `modules/pipeline.py` | Resolve image identity in DB, register path/hash relationships, mark indexing done when image ID is known |
-| `metadata` | No | `PrepWorker` in `modules/pipeline.py` | Generate UUID, sync EXIF/XMP, extract metadata into DB, generate thumbnail |
+| `indexing` | Yes | `IndexingRunner`; also `PrepWorker` in `modules/pipeline.py` as a legacy inline path | Resolve image identity, compute identity hash, register path/hash relationships |
+| `metadata` | Yes | `MetadataRunner`; also `PrepWorker` as a legacy inline path | Generate UUID, sync EXIF/XMP, extract metadata into DB, generate thumbnail |
 | `scoring` | Yes | `ScoringRunner` -> `BatchImageProcessor` -> `PrepWorker`/`ScoringWorker`/`ResultWorker` | Prepare files, run models, normalize results, write DB/XMP, mark scoring status |
 | `culling` | Yes | Usually `SelectionRunner`; fallback `ClusteringRunner` | Build stacks, then optionally assign pick/reject/neutral decisions |
 | `keywords` | Yes | `TaggingRunner` | Run CLIP keyword tagging and optional BLIP captioning, update DB metadata, write sidecars |
@@ -33,8 +75,9 @@ Important detail: only 3 of these have standalone runners.
 
 Phase definitions live in `modules/phases.py` and are seeded into `PIPELINE_PHASES`.
 
-- `indexing` and `metadata` are registered with no `run_folder` executor.
-- `scoring`, `culling`, and `keywords` are registered when their runners are available.
+- `indexing` and `metadata` register even when their runner is `None`, in which case `run_folder`
+  is `None` and the UI shows the phase with a disabled trigger.
+- `scoring`, `culling`, `keywords`, and `bird_species` are registered only when their runners are available.
 - `culling` prefers `SelectionRunner`; `ClusteringRunner` is only used if selection is not registered.
 
 That means the UI can show all phases, while only some phases can be launched directly.
@@ -64,7 +107,8 @@ flowchart TD
 
 ### What the orchestrator actually skips
 
-- `indexing` and `metadata` are not launched as separate runners.
+- `indexing` and `metadata` are not launched as separate runners **by `PipelineOrchestrator`** — it relies on the scoring prep path. They are launched separately by `JobDispatcher` when a run plans them as their own stages.
+- `bird_species` is absent from `PipelineOrchestrator.PHASE_ORDER` entirely and is orchestrated separately.
 - If a phase is already `done`, it is omitted from the plan.
 - If an optional phase is `skipped`, it is omitted from the plan.
 - If an optional phase is marked `default_skip`, the orchestrator writes `skipped` status and bypasses it.
@@ -296,7 +340,7 @@ If you want to understand the runtime behavior quickly, read it this way:
 
 1. `PipelineOrchestrator` is the folder-level sequencer.
 2. `job_phases` stores which phase should run next.
-3. `ScoringRunner` owns `indexing`, `metadata`, and `scoring` work in practice.
+3. `ScoringRunner` owns `scoring`, and via `PrepWorker` can also carry out `indexing` and `metadata` work inline when a run reaches it with unprepared files. `IndexingRunner` and `MetadataRunner` own those phases when they are planned as their own stages.
 4. `SelectionRunner` usually owns the meaning of `culling`.
 5. `TaggingRunner` owns `keywords`.
 6. Folder UI state is just an aggregate of per-image phase rows.
@@ -316,4 +360,10 @@ Main files involved:
 - `modules/selection.py`
 - `modules/clustering.py`
 - `modules/tagging.py`
-- `modules/db.py`
+- `modules/db/` (facade) and `modules/db_legacy.py` (implementation)
+- `modules/indexing_runner.py`
+- `modules/metadata_runner.py`
+- `modules/bird_species.py`
+- `modules/run_phase_planner.py`
+- `modules/phase_work_claims.py`
+- `modules/runs_autodrive.py`

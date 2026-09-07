@@ -14,7 +14,7 @@ Use these files as authority before adding or changing APIs, database fields, ph
 
 | Topic | Authoritative file(s) |
 |---|---|
-| REST API contract | [technical/API_CONTRACT.md](technical/API_CONTRACT.md), [reference/api/openapi.yaml](reference/api/openapi.yaml), [reference/api/API.md](reference/api/API.md), [modules/api.py](../modules/api.py) |
+| REST API contract | [technical/API_CONTRACT.md](technical/API_CONTRACT.md), [reference/api/openapi.yaml](reference/api/openapi.yaml), [reference/api/API.md](reference/api/API.md), [modules/api/](../modules/api/) |
 | Application config (`config.json`, `environment.json`) | [technical/CONFIG.md](technical/CONFIG.md), [modules/config.py](../modules/config.py), [config.example.json](../config.example.json) |
 | OpenAPI generation / schema artifact | [reference/api/openapi.yaml](reference/api/openapi.yaml), [openapi.json](../openapi.json), [reference/api/API_SCHEMA_IMPLEMENTATION.md](reference/api/API_SCHEMA_IMPLEMENTATION.md) |
 | OpenAPI across backend / gallery / UI | [technical/OPENAPI_CROSS_PROJECT.md](technical/OPENAPI_CROSS_PROJECT.md) |
@@ -23,6 +23,7 @@ Use these files as authority before adding or changing APIs, database fields, ph
 | Pipeline terminology, phase codes, user labels | [technical/PIPELINE_TERMINOLOGY.md](technical/PIPELINE_TERMINOLOGY.md), [modules/phases.py](../modules/phases.py), [frontend/src/types/api.ts](../frontend/src/types/api.ts) |
 | Runs submit options and dispatcher modes | [technical/RUN_OPTIONS_MODE_MATRIX.md](technical/RUN_OPTIONS_MODE_MATRIX.md), [technical/RUNS_QUEUE_AND_RESTART.md](technical/RUNS_QUEUE_AND_RESTART.md) |
 | Image pipeline behavior | [IMAGE_PIPELINE.md](IMAGE_PIPELINE.md), [architecture/pipeline-architecture.md](architecture/pipeline-architecture.md), [technical/PIPELINE_PHASE_RUNNERS.md](technical/PIPELINE_PHASE_RUNNERS.md) |
+| Phase graph, prerequisites, status machines, control plane | [architecture/pipeline/INDEX.md](architecture/pipeline/INDEX.md), [modules/phases.py](../modules/phases.py), [modules/phases_policy.py](../modules/phases_policy.py), [modules/phase_executors.py](../modules/phase_executors.py) |
 | RAW/NEF preview and EXIF behavior | [technical/RAW_PROCESSING_GUIDE.md](technical/RAW_PROCESSING_GUIDE.md), [technical/INBROWSER_RAW_PREVIEW.md](technical/INBROWSER_RAW_PREVIEW.md), [technical/NEF_IMPLEMENTATION_REVIEW.md](technical/NEF_IMPLEMENTATION_REVIEW.md), [technical/NEF_FORMAT_REFERENCE.md](technical/NEF_FORMAT_REFERENCE.md) |
 | Embeddings and vector storage | [EMBEDDINGS.md](EMBEDDINGS.md), [technical/EMBEDDINGS.md](technical/EMBEDDINGS.md), [modules/embedding_spaces.py](../modules/embedding_spaces.py), [planning/database/DB_VECTORS_REFACTOR.md](planning/database/DB_VECTORS_REFACTOR.md) |
 | Diagnostics, doctor CLI, debug bundles | [DIAGNOSTICS.md](DIAGNOSTICS.md), [.agent/INFRA_QUICKSTART.md](../.agent/INFRA_QUICKSTART.md), [scripts/doctor.py](../scripts/doctor.py), [scripts/export_debug_bundle.py](../scripts/export_debug_bundle.py) |

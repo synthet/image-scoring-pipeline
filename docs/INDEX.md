@@ -27,6 +27,7 @@ Full categorized index for **image-scoring-backend**. Prefer small linked pages 
 | Page | Purpose |
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Architecture hub. |
+| [architecture/INDEX.md](architecture/INDEX.md) | Architecture folder index. |
 | [architecture/system-overview.md](architecture/system-overview.md) | Component and data-flow overview. |
 | [architecture/pipeline-architecture.md](architecture/pipeline-architecture.md) | Pipeline sequence and run model. |
 | [architecture/project-structure.md](architecture/project-structure.md) | Repository layout. |
@@ -51,9 +52,18 @@ Full categorized index for **image-scoring-backend**. Prefer small linked pages 
 | Page | Purpose |
 |---|---|
 | [IMAGE_PIPELINE.md](IMAGE_PIPELINE.md) | Pipeline hub: ingestion, metadata, scoring, culling, keywords, embeddings, RAW/NEF. |
+| [architecture/pipeline/INDEX.md](architecture/pipeline/INDEX.md) | **Comprehensive pipeline set**: phase graph, sub-steps, status machines, preconditions, control plane, persistence. |
+| [architecture/pipeline/phase-graph.md](architecture/pipeline/phase-graph.md) | Phase codes, canonical order, and the prerequisite DAG. |
+| [architecture/pipeline/phase-status-machines.md](architecture/pipeline/phase-status-machines.md) | The three phase status vocabularies and their transition maps. |
+| [architecture/pipeline/phase-preconditions.md](architecture/pipeline/phase-preconditions.md) | Gating, run/skip decisions, and completeness predicates. |
+| [architecture/pipeline/phases/INDEX.md](architecture/pipeline/phases/INDEX.md) | Per-phase deep references for all six phases. |
+| [architecture/pipeline/run-lifecycle.md](architecture/pipeline/run-lifecycle.md) | Submit through completion, as sequence diagrams. |
+| [architecture/pipeline/control-plane.md](architecture/pipeline/control-plane.md) | Dispatcher, orchestrator, JIT planner, auto-drive, heal sweeps. |
+| [architecture/pipeline/persistence.md](architecture/pipeline/persistence.md) | Phase tables, columns, constraints, and the folder rollup cache. |
+| [architecture/pipeline/terminology-map.md](architecture/pipeline/terminology-map.md) | Cross-naming traversal table for every phase. |
 | [EXPORT_PIPELINE.md](EXPORT_PIPELINE.md) | Export and output paths hub. |
 | [guides/CULLING_EMBEDDING_BACKFILL.md](guides/CULLING_EMBEDDING_BACKFILL.md) | Culling embedding backfill, sub-stack rebuild, library-wide re-cluster rollout. |
-| [technical/PIPELINE_TERMINOLOGY.md](technical/PIPELINE_TERMINOLOGY.md) | Canonical phase codes, operation tokens, and UI labels. |
+| [technical/PIPELINE_TERMINOLOGY.md](technical/PIPELINE_TERMINOLOGY.md) | Canonical phase codes, `stage_codes` submit tokens, and UI labels. |
 | [technical/PIPELINE_PHASE_RUNNERS.md](technical/PIPELINE_PHASE_RUNNERS.md) | Runner behavior by phase. |
 | [technical/RUN_OPTIONS_MODE_MATRIX.md](technical/RUN_OPTIONS_MODE_MATRIX.md) | Runs submit modes and dispatcher options. |
 | [technical/RUNS_QUEUE_AND_RESTART.md](technical/RUNS_QUEUE_AND_RESTART.md) | Queue and restart behavior. |
