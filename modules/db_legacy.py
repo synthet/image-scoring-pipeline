@@ -8871,6 +8871,11 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
 
 
     # Keywords & Metadata (if present)
+    # A scoring-only result carries no "keywords" key (or a None value). Treat that
+    # as "leave keywords alone", not "clear them": _sync_image_keywords() deletes
+    # every existing image_keywords row before reinserting, so syncing an empty CSV
+    # here would wipe tags written by an earlier keywords phase (see issue #347).
+    _keywords_provided = result.get("keywords") is not None
     keywords = result.get("keywords", [])
     if isinstance(keywords, list):
         keywords = ",".join(keywords)
@@ -8882,7 +8887,7 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
     if isinstance(metadata, dict):
         metadata = json.dumps(metadata)
 
-    _legacy_kw_write = _write_legacy_keywords_column()
+    _legacy_kw_write = _write_legacy_keywords_column() and _keywords_provided
     _legacy_sj_write = _write_legacy_scores_json_column()
     _scores_json_blob = _scores_json_column_value(result)
 
@@ -8985,7 +8990,8 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
                            thumbnail_path=?, thumbnail_path_win=?, image_hash=?, hash_version=?, folder_id=?
                            WHERE id=?'''
                 get_connector().execute(dup_sql, dup_params)
-                _sync_image_keywords(existing_id, keywords)
+                if _keywords_provided:
+                    _sync_image_keywords(existing_id, keywords)
                 _write_image_model_scores(existing_id, result, model_version)
                 _write_image_technical_failures(existing_id, result)
                 register_image_path(existing_id, image_path)
@@ -9107,7 +9113,8 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
     if image_id:
         # Sync keywords with retry on failure
         try:
-            _sync_image_keywords(image_id, keywords)
+            if _keywords_provided:
+                _sync_image_keywords(image_id, keywords)
         except Exception as kw_err:
             logger.error("Failed to sync keywords for image %s: %s; will retry on next access", image_id, kw_err)
             # Mark image for keyword resync on next update
