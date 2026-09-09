@@ -28,7 +28,7 @@ from modules.job_description import (
     augment_queue_payload_for_audit,
     build_run_submit_description,
 )
-from modules.phases import PhaseCode, sort_phase_value_strings
+from modules.phases import PhaseCode, job_type_for_phase, sort_phase_value_strings
 from modules.phases_policy import get_phase_executor_version
 from modules.pipeline_tool_folder_touch import upsert_pipeline_tool_folder_touch
 from modules.run_manifest import (
@@ -549,17 +549,8 @@ def _enqueue_heal_run(folder_path: str, phase_code: str):
         return None, None
     folder_path = resolved
 
-    # Mapping phase codes to job types (same as schedule_folder_quality_runs)
-    job_type_map = {
-        "indexing": "indexing",
-        "metadata": "metadata",
-        "scoring": "scoring",
-        "keywords": "tagging",
-        "culling": "selection",
-        "bird_species": "bird_species"
-    }
-
-    job_type = job_type_map.get(phase_code, "scoring")
+    # Phase -> entry runner (modules.phases.PHASE_TO_JOB_TYPE).
+    job_type = job_type_for_phase(phase_code)
 
     # Prepare phases list
     if phase_code == "bird_species":

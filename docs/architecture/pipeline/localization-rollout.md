@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-09-01T00:00:00Z
+timestamp: 2026-09-08T00:00:00Z
 okf_version: 0.1
 status: proposed
 ---
@@ -49,6 +49,8 @@ The initial behavior is deliberately conservative:
 - Let BioCLIP consume bird regions first and fall back to a full frame.
 - Add crop or fused inputs to other consumers only behind shadow flags and benchmark gates.
 - Import existing `images.bird_bbox` values before scheduling any broad backfill.
+- Keep shadow localization isolated from `bird_bbox` and every production completeness predicate;
+  enable normalized authority and the legacy projection together only when BioCLIP migrates.
 
 ## Current-state constraints carried into the rollout
 
@@ -66,11 +68,18 @@ The rollout must also preserve four independent convergence layers:
 3. per-run `job_phases` and image×phase work claims; and
 4. folder rollups, auto-drive buckets, and heal/reconcile behavior.
 
-`PhaseExecutor.depends_on` is currently informational (`modules/phases.py:376-394`), and submission
-paths do not enforce the same phase vocabulary or prerequisite policy
-(`modules/api/routers/electron_runs_lifecycle.py:127-140`;
-`modules/api/routers/pipeline_submit.py:98-120`). Stage 1 resolves those control-plane differences
-before a seventh phase is introduced.
+`PhaseExecutor.depends_on` has historically been informational, and the submission paths have not
+consistently enforced the same phase vocabulary, selector scope, ordering, or prerequisite policy.
+Stage 1 resolves those control-plane differences before a seventh phase is introduced. Some of
+that consolidation may already be in progress in the working tree; it remains part of the gate
+until its routing, continuation, and recovery behavior is verified.
+
+The September 7 recall audit found real boxes for only 20 of 59 frames in one bald-eagle set; the
+remaining 39 were valid `{"detected": false}` outcomes even though every frame visibly contained a
+bird. Subject size at `imgsz=640` is the leading mechanism, and one accepted box covered 93% of the
+frame. This is a regression cohort rather than a library-wide recall estimate, but it means the
+rollout must evaluate negative observations and suspicious geometry before relying on them
+downstream ([bird-detection-recall-2026-09-07.md](../../reports/bird-detection-recall-2026-09-07.md)).
 
 ## Rollout invariants
 
@@ -97,9 +106,9 @@ Use flags with explicit defaults so each stage is independently deployable:
 | `localization.enabled` | `false` | Register/schedule the new phase. |
 | `localization.new_images_only` | `true` | Prevent automatic legacy-library scanning. |
 | `localization.detectors.bird.enabled` | `false` | Enable the initial detector provider. |
-| `localization.dual_write_bird_bbox` | `true` | Maintain the legacy JSONB projection. |
+| `localization.dual_write_bird_bbox` | `false` | Maintain the legacy JSONB projection after normalized authority is enabled. |
 | `localization.read_normalized_first` | `false` | Prefer normalized regions over `bird_bbox`. |
-| `localization.repair.enabled` | `false` | Enable the independent repair lane. |
+| `localization.repair.enabled` | `false` | Enable bounded retry and the independent repair lane. |
 | `bird_species.use_regions` | `false` | Remove detection ownership from BioCLIP. |
 | `bird_species.multi_region_enabled` | `false` | Classify more than the primary bird region. |
 | `scoring.subject_crop_shadow` | `false` | Compute non-authoritative crop IQA metrics. |
@@ -126,17 +135,23 @@ unchanged except for correcting inconsistent or misleading phase state.
   `PhaseCode` member (`modules/phases.py:250-273`).
 - Apply the same prerequisite check to `/api/runs/submit`, `/api/pipeline/submit`, dedicated
   phase submission, auto-drive, and heal-generated runs.
+- Resolve the submitted selector before checking prerequisites so paths, folder IDs, image IDs,
+  exclusions, and mixed selectors use the same scope. Validate requested execution order: a hard
+  prerequisite may be satisfied already or appear earlier in the same plan, not merely anywhere
+  in the submitted set.
 - Bring `bird_species` under the same dispatcher/plan vocabulary while retaining its dedicated
   runner.
-- Replace the culling follow-up behavior that marks the parent phase complete before the child
-  runs (`modules/selection_runner.py:347-415`) with linked parent/child outcome propagation.
+- Replace culling follow-up behavior that marks or presents a delegated parent phase as terminal
+  before its child runs with durable parent/child linkage and outcome propagation. The parent
+  remains unfinished until the child succeeds, fails, or is canceled; enqueue failure is visible.
 - Define separate registry fields for hard prerequisites and preferred-before/artifact edges.
 
 ### Exit gate
 
 - Every phase accepted by one run-submission API is either accepted by the others or explicitly
   documented as unsupported.
-- Registry drift, phase normalization, prerequisite, resume/restart, and parent/child tests pass.
+- Registry drift, phase normalization, all selector forms, invalid ordering, resume/restart, and
+  parent/child success/failure/cancellation tests pass.
 - Existing six-phase runs have unchanged work selection and outputs.
 
 ### Rollback
@@ -163,7 +178,7 @@ Add `image_localization_runs` with:
 - source hash/hash version and canonical-rendition hash/version;
 - display-oriented coordinate space, orientation, width, and height;
 - status: `detected`, `no_detection`, `retryable_error`, `terminal_error`, or `disabled`;
-- retryability, error code, redacted error detail, attempt count, and next retry time; and
+- retryability, error code, redacted error detail, and immutable attempt timestamps; and
 - start, completion, and update timestamps.
 
 Add `image_regions` with:
@@ -178,6 +193,11 @@ Add `image_regions` with:
 Use one localization-run row even when zero regions are found. Absence of `image_regions` alone
 must never mean either “not attempted” or “no detection.”
 
+Keep immutable attempt history separate from mutable repair scheduling. Publish an attempt as the
+current artifact only in the same transaction that persists its regions, and only if its source,
+detector, configuration, and rendition identities still match the requested work. A source change
+during inference leaves the attempt as superseded history rather than current output.
+
 ### Legacy import
 
 Import without running inference:
@@ -190,20 +210,25 @@ Import without running inference:
 | other scan-failure sentinel | `terminal_error` unless explicitly classified retryable |
 | NULL | not attempted |
 
-Imported rows use a `legacy_unversioned` detector/rendition provenance. They are readable and
-compatible but eligible for controlled refresh.
+Imported rows use `legacy_unversioned` detector and rendition provenance and retain the original
+payload for exact compatibility, including malformed or unrecognized shapes. Do not infer a
+historical source hash, orientation, or rendition from the current image row. Legacy geometry is
+eligible for normalized crops only after its dimensions and orientation are verified; otherwise it
+remains readable through the compatibility representation and eligible for controlled refresh.
 
 ### Compatibility behavior
 
 - Continue reading `images.bird_bbox` while normalized reads are dark.
 - Add a normalized-first reader with legacy fallback.
-- Dual-write the current primary bird region or sentinel back to `bird_bbox`.
+- Keep dual-write disabled during migration and shadow execution because `bird_bbox` already
+  participates in production bird-species work selection.
 - Do not alter existing species keywords or force new classification.
 
 ### Exit gate
 
 - Migration is idempotent and preserves counts for every legacy shape.
 - A synthesized legacy payload matches the pre-migration API representation.
+- Unknown legacy provenance cannot silently become a current crop artifact.
 - Query plans cover current artifact lookup by image and detector without table scans.
 - Database growth per positive, negative, and error outcome is measured.
 
@@ -234,6 +259,13 @@ full frames and region crops without making metadata own detector inference.
   color-policy versions.
 - Add bounded decoded-image reuse inside a job/process. Do not make runner correctness depend on
   another runner retaining tensors or model state.
+- Retain up to the detector cap (initially 10) and rank by confidence, then stable geometry
+  tie-breakers. Preserve the existing best-box interface as a compatibility projection.
+- Reject out-of-range, inverted, or zero-area geometry. Record suspicious near-full-frame boxes in
+  evaluation metrics; do not set a universal `area_frac` ceiling from a single observed outlier.
+- Benchmark the current `imgsz=640` path against `imgsz=1280` and a targeted second-pass candidate
+  on a pinned set containing detector positives, misses, true negatives, small subjects, textured
+  backgrounds, and multiple species. Production defaults remain unchanged until the benchmark.
 
 Current thumbnail generation resizes the image and copies the orientation tag for RAW files rather
 than calling `bake_orientation` (`modules/thumbnails.py:671-739`). The service must therefore not
@@ -246,6 +278,8 @@ assume that stored thumbnail pixels already match display orientation.
 - Crop keys change when any provenance or padding input changes.
 - Cache eviction leaves durable metadata valid and crops reproducible.
 - Concurrent crop requests coalesce or safely produce the same artifact.
+- Detector evaluation reports recall, false positives, latency, and memory for the pinned cohort;
+  the 59-frame eagle set is retained as a regression slice, not presented as a population rate.
 
 ### Rollback
 
@@ -269,6 +303,12 @@ convergence without changing downstream results.
 - Default scope: every new or source-changed metadata-complete image.
 - Initial provider: the existing bird YOLO detector.
 - Persist every accepted region up to `max_regions_per_class`, ranked deterministically.
+- Define “new” with a persisted enablement boundary. Automatically select images indexed after
+  that boundary and images whose source identity changes; unchanged legacy images require an
+  explicit repair/backfill selection.
+- When localization and consumers are co-requested, attempt localization first, but release the
+  consumers to their full-frame paths after that attempt. Later retries run independently and do
+  not hold the core run open.
 
 ### Status semantics
 
@@ -280,30 +320,41 @@ convergence without changing downstream results.
 | detector disabled | `skipped` with versioned reason | enabling invalidates the skip |
 | retryable detector/runtime error | `failed` with backoff | repair lane retries; core phases continue |
 
-The run stage may finish with per-image failures summarized so a detector outage does not terminate
-the core run. It must not rewrite failed image outcomes as successful localization.
+The localization run stage remains failed when it contains retryable per-image failures, while the
+orchestrator continues independent core stages and exposes the auxiliary failure in diagnostics.
+It must not rewrite failed image outcomes as successful localization or report the entire run as
+unconditionally successful.
 
 ### Convergence work
 
 - Add localization to `image_phase_status`, `job_phases`, executor-version policy, work claims,
   folder summaries, JIT repair planning, restart/recovery, and diagnostics.
-- Define data completeness as a current localization-run outcome for every enabled provider, not
-  merely a non-empty region list.
+- Define data completeness as a matching `detected`, `no_detection`, or terminal outcome for every
+  enabled provider. A retryable error is an attempt but never proof of completeness.
 - Add safe phantom reconciliation only when a current terminal attempt proves work completion.
 - Report localization backlog separately from core completion.
+- Add bounded repair with this stage: at most three automatic attempts for one artifact identity,
+  with delays of one minute and five minutes after the initial failure. Exhausted failures require
+  an explicit retry or a changed source/detector/configuration/rendition identity.
+- Reuse the image×phase claim across normal and repair submissions. Admit at most one repair job
+  while core work is idle so repair cannot starve ingestion.
 
 ### Exit gate
 
-- Shadow localization never changes scores, tags, captions, culling, or species outputs.
+- Shadow localization changes only normalized artifacts and localization diagnostics. It never
+  changes `bird_bbox`, scores, tags, captions, culling, species outputs, embeddings, or production
+  work-selection predicates.
 - Duplicate submissions produce one open image×localization claim.
-- Detector outage, restart, cancellation, and stale-claim recovery converge.
+- Detector outage, restart, cancellation, retry exhaustion, and stale-claim recovery converge while
+  core phases continue.
 - Throughput, decode/inference time, GPU memory, region-count distribution, and failure taxonomy are
   available in metrics.
 
 ### Rollback
 
 Set `localization.enabled=false`. Existing normalized artifacts remain readable but no new phase
-work is planned.
+work is planned. Disable `localization.repair.enabled` to stop queued retry admission without
+invalidating artifacts.
 
 ---
 
@@ -331,24 +382,35 @@ the existing full-frame fallback for keyword-positive detector misses.
   region-linked predictions.
 - Use full frame when the image is keyword-positive and no usable region exists.
 - If a current `no_detection` conflicts with a later `birds` keyword, enqueue a targeted
-  relocalization attempt; do not wait indefinitely before allowing full-frame classification.
+  relocalization attempt once per artifact identity; do not wait before allowing full-frame
+  classification, and do not rescan forever because the discovery keyword persists.
 - Keep image-level `species:*` keyword projection for filtering and compatibility.
 - Separate full-frame and region BioCLIP embedding provenance. The current implementation can
   persist either input into one image-level space (`modules/bird_species.py:258-294`, `:344-378`).
+- Enable `localization.read_normalized_first`, `bird_species.use_regions`, and the legacy
+  `bird_bbox` projection together. While normalized authority is active, the embedded legacy
+  detector path must not overwrite that projection.
+- Preserve existing species results unless an operator explicitly requests refresh. Record input
+  mode, region/rendition identity, crop policy, and model identity on new predictions so later
+  changes can identify stale results. Treat existing mixed-input BioCLIP embeddings as legacy.
 
 ### Exit gate
 
 - With `bird_species.use_regions=false`, outputs match the legacy path.
 - Region mode handles no region, stale region, crop failure, multi-bird frames, and detector outage
   without losing full-frame fallback.
+- Detector-positive images without a `birds` keyword enter species scope, and keyword-positive
+  detector misses keep the existing full-frame fallback.
+- Planner decisions, SQL completeness, runner selection, and folder rollups agree on the expanded
+  candidate scope.
 - Human/expert evaluation covers species accuracy, calibration, small-subject images, and multiple
   subjects before multi-region results become authoritative.
 - The legacy detector-only bbox repair path is no longer needed for new work.
 
 ### Rollback
 
-Disable `bird_species.use_regions`. The legacy detector path and `bird_bbox` projection remain
-available during the compatibility period.
+Disable `bird_species.use_regions` and normalized-first reads together. The legacy detector path
+and existing `bird_bbox` values remain available during the compatibility period.
 
 ---
 
@@ -413,7 +475,8 @@ or starving core pipeline work.
 
 1. Import existing `bird_bbox` values and sentinels.
 2. Process new and source-changed images.
-3. Repair `birds`-keyword images with no current attempt or a retryable error.
+3. Repair `birds`-keyword images with no current attempt, a retryable error, or a deduplicated
+   keyword/negative-observation conflict.
 4. Process explicitly requested folders.
 5. Sample the remaining legacy-unversioned population.
 6. Expand to the remaining library only after cost and quality gates pass.
@@ -425,9 +488,10 @@ Do not make localization the one earliest blocking folder bucket. Maintain:
 - the existing core pipeline bucket; and
 - a separately rate-limited localization-repair lane.
 
-Retryable attempts use exponential backoff, a maximum automatic attempt count, and a next-retry
-timestamp. Exhaustion remains visible for operator action instead of looping. Source, detector,
-config, or rendition-version changes reset eligibility deliberately.
+Reuse Stage 4's bounded retry and claim mechanism. Exhaustion remains visible for operator action
+instead of looping. Source, detector, config, or rendition-version changes reset eligibility
+deliberately. Backfills persist their cursor/progress so an interruption resumes without replaying
+completed partitions.
 
 ### Cost gate
 
@@ -448,6 +512,7 @@ imported, not recomputed blindly.
 - Repair claims are idempotent under concurrent manual, auto-drive, and run-submission requests.
 - Core pipeline folders continue advancing while localization repairs are failed or cooling down.
 - Operators can see current, stale, negative, retryable, terminal, and legacy-unversioned counts.
+- Every broad backfill exposes a dry-run count and estimated detector/decode cost before execution.
 - A representative benchmark establishes whether direct all-image detection meets the agreed
   GPU-hour and ingest-latency budgets. A two-pass triage design is considered only if it does not.
 
@@ -471,17 +536,17 @@ localization artifacts.
 - No supported consumer performs authoritative reads directly from `images.bird_bbox`.
 - BioCLIP no longer owns detector loading or bbox-only repair.
 - Normalized artifacts, repair, restart/recovery, and auto-drive have completed a compatibility
-  period with no unresolved convergence regressions.
+  period of at least one complete release with no unresolved convergence regressions.
 - Rollback telemetry confirms that normalized-first reads can be disabled independently.
 
 ### Changes
 
 - Stop dual-writing `images.bird_bbox`.
-- Retain a synthesized compatibility field or database view for one release if external readers
-  still need the old shape.
+- Retain a synthesized compatibility field or database view for supported external readers.
 - Remove the embedded bird-detection path and legacy bbox-only repair code.
 - Remove legacy completeness predicates that make bird-species completion depend on `bird_bbox`.
-- Deprecate and later drop the JSONB column only through a separately reviewed migration.
+- Deprecate the JSONB column. Any physical drop is a later, separately reviewed migration after
+  compatibility consumers have been removed.
 - Promote only benchmark-approved crop/fusion modes; leave rejected experimental paths disabled or
   remove them.
 
@@ -505,9 +570,9 @@ database backup or rescanning image files.
 | Area | Required scenarios |
 |---|---|
 | Unit | coordinate transforms, orientation, padding, hashes, multi-box ranking, status mapping, invalidation, input-mode selection |
-| Integration | submit → plan → claim → localize → consume, both submission APIs, dual-read/write, region/full-frame fallback |
-| Migration | every legacy bbox/sentinel shape, NULL, existing species keywords, repeat upgrade, rollback projection |
-| Recovery | crash during detection, region transaction, crop creation, consumer inference, parent/child continuation |
+| Integration | submit → plan → claim → localize → consume, every selector form, ordering rejection, both submission APIs, dual-read/write, region/full-frame fallback, strict shadow isolation |
+| Migration | every legacy bbox/sentinel shape, malformed payload, NULL, unknown provenance, existing species keywords, repeat upgrade, rollback projection |
+| Recovery | crash during detection, region transaction, crop creation, consumer inference, parent/child success/failure/cancellation, enqueue failure |
 | Concurrency | duplicate runs, repair versus normal run, source change during inference, detector-version transition |
 | Auto-drive | retryable failures do not block core work, backoff converges, terminal outcomes stop requeueing, stale versions reopen work |
 | RAW/orientation | EXIF orientations 1–8, embedded preview/rawpy differences, display/source coordinate round trips |
@@ -539,6 +604,7 @@ legacy rescan, three consumer crops at most, full-frame culling, and full-frame 
 
 ## Related pages
 
+- [localization-rollout-supplement-2026-09-08.md](localization-rollout-supplement-2026-09-08.md) — review evidence, current implementation snapshot, and resolved design details
 - [phase-graph.md](phase-graph.md) — current phase order and prerequisites
 - [phase-preconditions.md](phase-preconditions.md) — completeness and work-claim gates
 - [phase-status-machines.md](phase-status-machines.md) — IPS, run-stage, and folder states
@@ -547,3 +613,4 @@ legacy rescan, three consumer crops at most, full-frame culling, and full-frame 
 - [phases/metadata.md](phases/metadata.md) — thumbnail and RAW-rendition boundary
 - [phases/bird-species.md](phases/bird-species.md) — current embedded detector and BioCLIP path
 - [../../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md](../../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md) — current crop evidence and limits
+- [../../reports/bird-detection-recall-2026-09-07.md](../../reports/bird-detection-recall-2026-09-07.md) — small-subject recall finding and detector benchmark rationale

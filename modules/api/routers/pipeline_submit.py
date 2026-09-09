@@ -23,6 +23,13 @@ from modules.job_description import (
     augment_queue_payload_for_audit,
     build_workflow_run_description,
 )
+from modules.phases import (
+    PIPELINE_PHASE_ORDER,
+    PhaseCode,
+    assert_prereqs_for_scope,
+    job_type_for_phase,
+    normalize_phase_codes,
+)
 from modules.phases_policy import explain_phase_run_decision
 from modules.pipeline_selector_composer import (
     serialize_queue_payload,
@@ -95,18 +102,32 @@ def create_pipeline_submit_router() -> APIRouter:
             exclude_image_paths_raw=request.exclude_image_paths,
             recursive=request.recursive,
         )
-        valid_ops = {"indexing", "metadata", "score", "tag", "cluster"}
-        invalid_ops = [op for op in request.stage_codes if op not in valid_ops]
-        if invalid_ops:
-            return ApiResponse(success=False, message=f"Invalid submission parameters: Invalid stage_codes: {invalid_ops}. Valid: {sorted(valid_ops)}")
         if not request.stage_codes:
             return ApiResponse(success=False, message="Invalid submission parameters: At least one stage_code is required")
 
+        # Resolve each token through the canonical alias table (modules.phases), which
+        # accepts both the legacy score/tag/cluster spellings and every PhaseCode value.
+        # Resolve one at a time so the client's submitted order is preserved: the stored
+        # phase_order is meaningful and is deliberately not re-sorted for display
+        # (see docs/architecture/pipeline/phase-graph.md).
+        phase_plan_codes: list[str] = []
+        invalid_ops: list[str] = []
+        for op in request.stage_codes:
+            resolved_phase = normalize_phase_codes([op])
+            if not resolved_phase:
+                invalid_ops.append(op)
+            elif resolved_phase[0].value not in phase_plan_codes:
+                phase_plan_codes.append(resolved_phase[0].value)
+        if invalid_ops:
+            valid_ops = sorted({p.value for p in PhaseCode} | {"score", "tag", "cluster"})
+            return ApiResponse(success=False, message=f"Invalid submission parameters: Invalid stage_codes: {invalid_ops}. Valid: {valid_ops}")
+
         first_op = request.stage_codes[0]
+        first_phase = phase_plan_codes[0]
 
         preview = api_mod.validate_and_preview(selector_request)
         resolved_count = int(preview.get("preview_count") or 0)
-        if resolved_count <= 0 and first_op != "indexing":
+        if resolved_count <= 0 and first_phase != PhaseCode.INDEXING.value:
             return ApiResponse(success=False, message="Invalid submission parameters: No images matched selectors")
 
         if wt and not any([request.image_ids, request.image_paths, request.folder_ids, request.folder_paths]):
@@ -114,10 +135,30 @@ def create_pipeline_submit_router() -> APIRouter:
                 return ApiResponse(success=False, message=f"Invalid submission parameters: Path not found: {wt}")
 
         is_file = bool(wt and os.path.isfile(wt))
-        if is_file and "cluster" in request.stage_codes:
+        wants_culling = PhaseCode.CULLING.value in phase_plan_codes
+        if is_file and wants_culling:
             return ApiResponse(success=False, message="Invalid submission parameters: Clustering requires a folder path, not a single file")
-        if "cluster" in request.stage_codes and not any([wt, request.folder_ids, request.folder_paths]):
+        if wants_culling and not any([wt, request.folder_ids, request.folder_paths]):
             return ApiResponse(success=False, message="Invalid submission parameters: Clustering requires a folder selector")
+
+        # Prerequisite gate — same DAG /api/runs/submit enforces.  Only folder-scoped
+        # submissions can be gated: compute_satisfied_phases_for_scope aggregates
+        # get_folder_phase_summary, and an empty scope reports every non-root phase as
+        # unsatisfied, which would reject legitimate image-id submissions.
+        gate_paths = [
+            p for p in ([wt] if wt and not is_file else []) + list(request.folder_paths or []) if p
+        ]
+        if gate_paths:
+            try:
+                prereq_miss = assert_prereqs_for_scope(phase_plan_codes, gate_paths)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"scope prerequisite check failed: {e}") from e
+            if prereq_miss:
+                return ApiResponse(
+                    success=False,
+                    message=f"Missing prerequisites: {prereq_miss}",
+                    data={"code": "missing_prerequisites", "missing": prereq_miss},
+                )
 
         queue_input_path = wt or "SELECTOR_PIPELINE"
 
@@ -137,13 +178,13 @@ def create_pipeline_submit_router() -> APIRouter:
             return normalized
 
         if is_file:
-            if first_op == "score":
+            if first_phase == PhaseCode.SCORING.value:
                 if _api_module()._scoring_runner is None:
                     return ApiResponse(success=False, message="Orchestrator unavailable: Scoring runner not available")
                 if _api_module()._scoring_runner.is_running:
                     return ApiResponse(success=False, message="Orchestrator busy: Scoring runner is busy", data={"is_running": True})
                 success, message = _api_module()._scoring_runner.run_single_image(wt)
-            elif first_op == "tag":
+            elif first_phase == PhaseCode.KEYWORDS.value:
                 if _api_module()._tagging_runner is None:
                     return ApiResponse(success=False, message="Orchestrator unavailable: Tagging runner not available")
                 if _api_module()._tagging_runner.is_running:
@@ -179,23 +220,6 @@ def create_pipeline_submit_router() -> APIRouter:
                 },
             )
 
-        # API operations map to persisted phase codes used by DB phase/status sync.
-        op_to_phase_code = {
-            "indexing": "indexing",
-            "metadata": "metadata",
-            "score": "scoring",
-            "tag": "keywords",
-            "cluster": "culling",
-        }
-        op_to_label = {
-            "indexing": "indexing",
-            "metadata": "metadata",
-            "score": "scoring",
-            "tag": "tagging",
-            "cluster": "clustering",
-        }
-        phase_plan_codes = [op_to_phase_code.get(op, op) for op in request.stage_codes]
-
         wf_desc = build_workflow_run_description(first_op, wt or queue_input_path, list(request.stage_codes))
 
         def _pipeline_queue_payload(base: dict) -> dict:
@@ -220,7 +244,7 @@ def create_pipeline_submit_router() -> APIRouter:
                 },
             )
 
-        if first_op == "indexing":
+        if first_phase == PhaseCode.INDEXING.value:
             if _api_module()._indexing_runner is None:
                 return ApiResponse(success=False, message="Orchestrator unavailable: Indexing runner not available")
             job_id, queue_position = db.enqueue_job(
@@ -238,7 +262,7 @@ def create_pipeline_submit_router() -> APIRouter:
                 ),
                 description=wf_desc,
             )
-        elif first_op == "metadata":
+        elif first_phase == PhaseCode.METADATA.value:
             if _api_module()._metadata_runner is None:
                 return ApiResponse(success=False, message="Orchestrator unavailable: Metadata runner not available")
             job_id, queue_position = db.enqueue_job(
@@ -256,12 +280,15 @@ def create_pipeline_submit_router() -> APIRouter:
                 ),
                 description=wf_desc,
             )
-        elif first_op == "score":
+        elif first_phase == PhaseCode.SCORING.value:
             if _api_module()._scoring_runner is None:
                 return ApiResponse(success=False, message="Orchestrator unavailable: Scoring runner not available")
             
             # Map operations to internal phase codes for the orchestrator
-            target_phases = [op_to_phase_code.get(op) for op in request.stage_codes if op in ["indexing", "metadata", "score"]]
+            target_phases = [
+                c for c in phase_plan_codes
+                if c in (PhaseCode.INDEXING.value, PhaseCode.METADATA.value, PhaseCode.SCORING.value)
+            ]
             
             job_id, queue_position = db.enqueue_job(
                 queue_input_path,
@@ -279,7 +306,7 @@ def create_pipeline_submit_router() -> APIRouter:
                 ),
                 description=wf_desc,
             )
-        elif first_op == "tag":
+        elif first_phase == PhaseCode.KEYWORDS.value:
             if _api_module()._tagging_runner is None:
                 return ApiResponse(success=False, message="Orchestrator unavailable: Tagging runner not available")
             job_id, queue_position = db.enqueue_job(
@@ -300,7 +327,7 @@ def create_pipeline_submit_router() -> APIRouter:
                 ),
                 description=wf_desc,
             )
-        else:
+        elif first_phase == PhaseCode.CULLING.value:
             if _api_module()._clustering_runner is None:
                 return ApiResponse(success=False, message="Orchestrator unavailable: Clustering runner not available")
             job_id, queue_position = db.enqueue_job(
@@ -321,6 +348,30 @@ def create_pipeline_submit_router() -> APIRouter:
                 description=wf_desc,
             )
 
+        elif first_phase == PhaseCode.BIRD_SPECIES.value:
+            if _api_module()._bird_species_runner is None:
+                return ApiResponse(success=False, message="Orchestrator unavailable: Bird species runner not available")
+            job_id, queue_position = db.enqueue_job(
+                queue_input_path,
+                phase_code=PhaseCode.BIRD_SPECIES.value,
+                job_type=job_type_for_phase(PhaseCode.BIRD_SPECIES),
+                queue_payload=_pipeline_queue_payload(
+                    {
+                        "input_path": wt or None,
+                        "workspace_target": wt or None,
+                        "workflow_template": request.workflow_template,
+                        "stage_codes": request.stage_codes,
+                        "skip_existing": request.skip_existing,
+                    },
+                ),
+                description=wf_desc,
+            )
+        else:
+            return ApiResponse(
+                success=False,
+                message=f"Invalid submission parameters: No entry runner for stage {first_phase!r}",
+            )
+
         if job_id is None:
             raise HTTPException(status_code=500, detail=f"Failed to enqueue WorkflowRun for StageRun: {first_op}")
 
@@ -329,7 +380,7 @@ def create_pipeline_submit_router() -> APIRouter:
 
         return ApiResponse(
             success=True,
-            message=f"WorkflowRun queued: {op_to_label[first_op]}",
+            message=f"WorkflowRun queued: {job_type_for_phase(first_phase, default=first_phase)}",
             data={
                 "workflow_run_id": job_id,
                 "job_id": job_id,
@@ -490,7 +541,7 @@ def create_pipeline_submit_router() -> APIRouter:
         from modules.ui.security import _check_rate_limit
         _check_rate_limit("pipeline_run_pause")
         stopped = []
-        for phase in ("indexing", "metadata", "scoring", "culling", "keywords"):
+        for phase in (p.value for p in PIPELINE_PHASE_ORDER):
             if state._stop_runner_for_phase(phase):
                 stopped.append(phase)
         return ApiResponse(
@@ -509,7 +560,7 @@ def create_pipeline_submit_router() -> APIRouter:
         _check_rate_limit("pipeline_run_cancel")
 
         stopped = []
-        for phase in ("indexing", "metadata", "scoring", "culling", "keywords"):
+        for phase in (p.value for p in PIPELINE_PHASE_ORDER):
             if state._stop_runner_for_phase(phase):
                 stopped.append(phase)
 
@@ -544,7 +595,7 @@ def create_pipeline_submit_router() -> APIRouter:
         if not os.path.exists(input_path):
             raise HTTPException(status_code=400, detail=f"Path not found: {input_path}")
 
-        for phase in ("indexing", "metadata", "scoring", "culling", "keywords"):
+        for phase in (p.value for p in PIPELINE_PHASE_ORDER):
             state._stop_runner_for_phase(phase)
 
         rp = attach_run_reason(

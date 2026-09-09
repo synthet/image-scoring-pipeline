@@ -583,11 +583,14 @@ class ImportRegisterRequest(BaseModel):
 class PipelineSubmitRequest(SelectorRequest):
     """Request model for submitting images/folders to the processing pipeline.
 
-    Chains requested StageRuns sequentially (indexing/metadata/score/tag/cluster).
+    Chains requested StageRuns sequentially. Accepts canonical phase codes and the
+    legacy score/tag/cluster aliases; prerequisites are enforced for folder scopes.
 
     Attributes:
         workspace_target: File or directory path to process.
-        stage_codes: Ordered stage run codes to execute (indexing|metadata|score|tag|cluster).
+        stage_codes: Ordered stage run codes to execute
+            (indexing|metadata|scoring|culling|keywords|bird_species, or the
+            score|tag|cluster aliases).
         workflow_template: Logical template name for the run (e.g., full_ingest, metadata_only, re_tag).
     """
     workspace_target: str | None = Field(
@@ -599,7 +602,14 @@ class PipelineSubmitRequest(SelectorRequest):
     )
     stage_codes: list[str] = Field(
         ["score", "tag"],
-        description="Ordered StageRun codes. Valid values: 'indexing', 'metadata', 'score', 'tag', 'cluster'.",
+        description=(
+            "Ordered StageRun codes. Canonical phase codes: 'indexing', 'metadata', "
+            "'scoring', 'culling', 'keywords', 'bird_species'. Legacy aliases "
+            "'score', 'tag', 'cluster' (and 'bird-species') are also accepted. "
+            "Prerequisites are enforced for folder-scoped submissions: a stage whose "
+            "prerequisite is neither complete for the scope nor co-requested in the "
+            "same call is rejected with code 'missing_prerequisites'."
+        ),
         example=["indexing", "metadata", "score"],
         validation_alias=AliasChoices("stage_codes", "operations"),
         serialization_alias="stage_codes",

@@ -61,6 +61,7 @@ def _init_webui_engines(clustering_runner=None):
         selection_runner=selection_runner,
         indexing_runner=indexing_runner,
         metadata_runner=metadata_runner,
+        bird_species_runner=_bird_species_runner,
         enable_background_tick=True,
     )
     recovery_info = orchestrator.recover_interrupted_jobs()

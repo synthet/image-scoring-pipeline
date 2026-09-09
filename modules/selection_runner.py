@@ -344,11 +344,16 @@ class SelectionRunner:
             input_path,
         )
 
-        if remaining:
-            # Enqueue a follow-up job for the next phase (e.g. bird_species)
-            next_phase = remaining[0]
-            next_code = next_phase.get("phase_code")
-            log(f"Advancing to next phase: {next_code}")
+        # Hand every remaining phase to one follow-up job.  Passing only remaining[0]
+        # used to strand later phases: a culling -> keywords -> bird_species plan
+        # enqueued keywords and dropped bird_species outright.
+        remaining_codes = [
+            c for c in ((p.get("phase_code") or "").strip() for p in remaining) if c
+        ]
+
+        if remaining_codes:
+            next_code = remaining_codes[0]
+            log(f"Advancing to next phase: {next_code} (handing off {remaining_codes})")
             try:
                 # Forward tagging-relevant flags from the parent payload so the
                 # keywords phase sees the same generate_captions/custom_keywords
@@ -391,7 +396,7 @@ class SelectionRunner:
                     tool_id="phase_followup",
                     criteria={
                         "parent_job_id": job_id,
-                        "enqueued_phases": [next_code],
+                        "enqueued_phases": list(remaining_codes),
                         "input_path": input_path,
                     },
                 )
@@ -403,11 +408,22 @@ class SelectionRunner:
                     description=f"Follow-up stage {next_code!r} after parent job #{job_id} (orchestrator advance).",
                 )
                 if follow_job_id:
-                    db.create_job_phases(follow_job_id, [next_code], first_phase_state="queued")
-                    logger.info("Enqueued follow-up %s job %s for parent job %s", next_code, follow_job_id, job_id)
-                # Mark the remaining phase as completed in the parent job
-                # so the parent shows as fully done in the UI
-                db.set_job_phase_state(job_id, next_code, "completed")
+                    db.create_job_phases(follow_job_id, remaining_codes, first_phase_state="queued")
+                    logger.info(
+                        "Enqueued follow-up %s job %s for parent job %s (phases=%s)",
+                        next_code, follow_job_id, job_id, remaining_codes,
+                    )
+                    # The parent did not run these phases -- the child will.  Mark them
+                    # terminal so the run stops showing as unfinished, but as `skipped`
+                    # with a delegation note rather than `completed`, which claimed work
+                    # had happened while the child job was still queued.
+                    for code in remaining_codes:
+                        db.set_job_phase_state(
+                            job_id,
+                            code,
+                            "skipped",
+                            error_message=f"delegated to job #{follow_job_id}",
+                        )
             except Exception as e:
                 logger.error("Failed to enqueue follow-up %s job for job %s: %s", next_code, job_id, e)
 

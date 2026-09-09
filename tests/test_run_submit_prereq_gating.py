@@ -152,6 +152,74 @@ def test_submit_returns_nothing_to_queue_when_planner_has_no_work(
     assert detail["code"] == "nothing_to_queue"
 
 
+def test_narrowing_to_bird_species_only_returns_a_response(
+    api_client,
+    tmp_path,
+    _stub_compute_scope_phases,
+    resolve_scope_stub,
+    monkeypatch,
+):
+    """Repair-plan narrowing down to ``["bird_species"]`` must route, not crash.
+
+    ``normalize_phase_codes`` used to drop the *string* ``"bird_species"`` while
+    letting the enum through, so the narrowed list normalized to ``[]`` and the
+    router's ``phases[0]`` raised ``IndexError`` -> 500 (issue #346 defect 2).
+    """
+    captured: dict = {}
+
+    def _fake_enqueue(input_path, phase_code, job_type, payload, description, phases, state):
+        captured.update(phase_code=phase_code, job_type=job_type, phases=list(phases or []))
+        return (77, 0)
+
+    monkeypatch.setattr("modules.db.enqueue_job_with_phases", _fake_enqueue)
+    monkeypatch.setattr(
+        "modules.runs_autodrive.phases_with_work_from_repair_plan",
+        lambda *_a, **_k: ["bird_species"],
+    )
+    _stub_compute_scope_phases.update(
+        {"indexing", "metadata", "scoring", "culling", "keywords"}
+    )
+
+    p = tmp_path / "scope"
+    p.mkdir()
+    r = api_client.post(
+        "/api/runs/submit",
+        json=_submit_body(str(p.resolve()), ["bird_species"]),
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json().get("success") is True
+    assert captured.get("job_type") == "bird_species"
+    assert captured.get("phase_code") == "bird_species"
+    assert captured.get("phases") == ["bird_species"]
+
+
+def test_narrowing_to_nothing_routable_returns_nothing_to_queue(
+    api_client,
+    tmp_path,
+    _stub_compute_scope_phases,
+    resolve_scope_stub,
+    monkeypatch,
+):
+    """An unroutable narrowing result is a 400, never an ``IndexError``."""
+    monkeypatch.setattr("modules.db.enqueue_job_with_phases", lambda *a, **k: (42, 0))
+    monkeypatch.setattr(
+        "modules.runs_autodrive.phases_with_work_from_repair_plan",
+        lambda *_a, **_k: ["localization"],
+    )
+    _stub_compute_scope_phases.update({"indexing", "metadata", "scoring"})
+
+    p = tmp_path / "scope"
+    p.mkdir()
+    r = api_client.post(
+        "/api/runs/submit",
+        json=_submit_body(str(p.resolve()), ["scoring"]),
+    )
+
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"]["code"] == "nothing_to_queue"
+
+
 def test_plan_preview_align_auto_drive_disables_stale_executor(api_client, monkeypatch):
     captured: dict = {}
 
