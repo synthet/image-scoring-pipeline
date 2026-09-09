@@ -10,9 +10,23 @@ Each executor binds:
 """
 import logging
 
-from modules.phases import PhaseCode, PhaseExecutor, PhaseRegistry
+from modules.phases import (
+    PHASE_PREREQUISITES,
+    PhaseCode,
+    PhaseExecutor,
+    PhaseRegistry,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _prereqs(code: PhaseCode) -> list[str]:
+    """Hard prerequisites for ``code``, read from the one authoritative table.
+
+    ``PHASE_PREREQUISITES`` is what ``assert_prereqs_for_scope`` actually enforces;
+    deriving ``depends_on`` from it makes the two structurally impossible to drift.
+    """
+    return list(PHASE_PREREQUISITES[code.value])
 
 
 def register_all(
@@ -37,14 +51,14 @@ def register_all(
             code=PhaseCode.INDEXING,
             executor_version="1.0.0",
             run_folder=indexing_runner.start_batch,
-            depends_on=[],
+            depends_on=_prereqs(PhaseCode.INDEXING),
         ))
     else:
         PhaseRegistry.register(PhaseExecutor(
             code=PhaseCode.INDEXING,
             executor_version="1.0.0",
             run_folder=None,
-            depends_on=[],
+            depends_on=_prereqs(PhaseCode.INDEXING),
         ))
 
     # Phase B — Metadata Prep
@@ -53,14 +67,14 @@ def register_all(
             code=PhaseCode.METADATA,
             executor_version="1.0.0",
             run_folder=metadata_runner.start_batch,
-            depends_on=[PhaseCode.INDEXING],
+            depends_on=_prereqs(PhaseCode.METADATA),
         ))
     else:
         PhaseRegistry.register(PhaseExecutor(
             code=PhaseCode.METADATA,
             executor_version="1.0.0",
             run_folder=None,
-            depends_on=[PhaseCode.INDEXING],
+            depends_on=_prereqs(PhaseCode.METADATA),
         ))
 
     # Phase C — Scoring
@@ -69,7 +83,7 @@ def register_all(
             code=PhaseCode.SCORING,
             executor_version=_get_scorer_version(scoring_runner),
             run_folder=scoring_runner.start_batch,
-            depends_on=[PhaseCode.METADATA],
+            depends_on=_prereqs(PhaseCode.SCORING),
         ))
 
     # Phase D — Culling & Stacks (clustering OR selection)
@@ -78,14 +92,14 @@ def register_all(
             code=PhaseCode.CULLING,
             executor_version="1.0.0",
             run_folder=selection_runner.start_batch,
-            depends_on=[PhaseCode.SCORING],
+            depends_on=_prereqs(PhaseCode.CULLING),
         ))
     elif clustering_runner:
         PhaseRegistry.register(PhaseExecutor(
             code=PhaseCode.CULLING,
             executor_version="1.0.0",
             run_folder=clustering_runner.start_batch,
-            depends_on=[PhaseCode.SCORING],
+            depends_on=_prereqs(PhaseCode.CULLING),
         ))
 
     # Phase E — Keywords
@@ -94,7 +108,7 @@ def register_all(
             code=PhaseCode.KEYWORDS,
             executor_version="1.0.0",
             run_folder=tagging_runner.start_batch,
-            depends_on=[PhaseCode.SCORING],
+            depends_on=_prereqs(PhaseCode.KEYWORDS),
         ))
 
     # Phase F — Bird Species
@@ -105,7 +119,7 @@ def register_all(
             code=PhaseCode.BIRD_SPECIES,
             executor_version=BIRD_SPECIES_RUNNER_VERSION,
             run_folder=bird_species_runner.start_batch,
-            depends_on=[PhaseCode.KEYWORDS],
+            depends_on=_prereqs(PhaseCode.BIRD_SPECIES),
         ))
 
     registered = [e.code for e in PhaseRegistry.get_all()]

@@ -20,6 +20,7 @@ from modules.phases import (
     PHASE_PREREQUISITES,
     PhaseCode,
     assert_prereqs_for_scope,
+    job_type_for_phase,
     sort_phase_value_strings,
 )
 from modules.run_manifest import (
@@ -1295,15 +1296,7 @@ def _plan_key(folder_path: str, phase_values: Sequence[str]) -> str:
 
 def _first_job_type(phase_values: Sequence[str]) -> tuple[str, str]:
     first = (phase_values[0] if phase_values else "scoring").strip().lower()
-    job_type_map = {
-        "indexing": "indexing",
-        "metadata": "metadata",
-        "scoring": "scoring",
-        "culling": "selection",
-        "keywords": "tagging",
-        "bird_species": "bird_species",
-    }
-    return first, job_type_map.get(first, first)
+    return first, job_type_for_phase(first, default=first)
 
 
 def _phase_prereq_blockers(

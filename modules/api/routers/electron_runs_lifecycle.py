@@ -50,6 +50,7 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
         from modules.phases import (
             PhaseCode,
             assert_prereqs_for_scope,
+            job_type_for_phase,
             normalize_phase_codes,
             sort_phase_value_strings,
         )
@@ -62,48 +63,21 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
         scope_paths = [scope_resolve_path(p) for p in scope_paths]
         primary_path = scope_paths[0]
 
-        # bird_species is not a pipeline PhaseCode — handle it before normalize_phase_codes.
+        # normalize_phase_codes resolves every PhaseCode, bird_species included,
+        # plus the score/tag/cluster/bird-species aliases.
         raw_stages = list(request.stages or [])
-        want_bird_species = "bird_species" in raw_stages
-        pipeline_stages = [s for s in raw_stages if s != "bird_species"]
-
-        phases = normalize_phase_codes(pipeline_stages) if pipeline_stages else None
+        phases = normalize_phase_codes(raw_stages) if raw_stages else None
         phase_values = [p.value for p in phases] if phases else None
 
-        # Derive job_type and phase_code from stages so JobDispatcher can route the job.
-        # Routing:
-        # - indexing -> IndexingRunner
-        # - metadata -> MetadataRunner
-        # - score    -> ScoringRunner
-        # - keywords -> TaggingRunner
-        # - culling  -> SelectionRunner
-        
+        # Derive job_type and phase_code from stages so JobDispatcher can route the
+        # job.  The phase -> entry-runner map lives in modules.phases.PHASE_TO_JOB_TYPE.
         phase_code = "scoring"
         job_type = "scoring"
         if phases:
-            # We use the first phase in the requested set to determine the entry runner
-            # (Subsequent phases are handled by the PipelineOrchestrator)
-            first_p = phases[0]
-            if first_p == PhaseCode.INDEXING:
-                phase_code = "indexing"
-                job_type = "indexing"
-            elif first_p == PhaseCode.METADATA:
-                phase_code = "metadata"
-                job_type = "metadata"
-            elif first_p == PhaseCode.SCORING:
-                phase_code = "scoring"
-                job_type = "scoring"
-            elif first_p == PhaseCode.KEYWORDS:
-                phase_code = "keywords"
-                job_type = "tagging"
-            elif first_p == PhaseCode.CULLING:
-                phase_code = "culling"
-                job_type = "selection"
-        elif want_bird_species:
-            # bird_species is the only requested stage
-            phase_code = "bird_species"
-            job_type = "bird_species"
-            phase_values = ["bird_species"]
+            # The first phase in the requested set determines the entry runner;
+            # subsequent phases are handled by the PipelineOrchestrator.
+            phase_code = phases[0].value
+            job_type = job_type_for_phase(phases[0])
 
         # SPA workflow expects job_phases rows; clients may omit `stages` (or send []).
         if not phase_values:
@@ -119,8 +93,6 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
                     PhaseCode.SCORING.value,
                 ]
 
-        if want_bird_species and phase_values and "bird_species" not in phase_values:
-            phase_values = list(phase_values) + ["bird_species"]
         if phase_values:
             phase_values = sort_phase_value_strings(phase_values)
 
@@ -165,25 +137,19 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
                 )
             phase_values = narrowed
             phases = normalize_phase_codes(phase_values)
-            first_p = phases[0]
-            if first_p == PhaseCode.INDEXING:
-                phase_code = "indexing"
-                job_type = "indexing"
-            elif first_p == PhaseCode.METADATA:
-                phase_code = "metadata"
-                job_type = "metadata"
-            elif first_p == PhaseCode.SCORING:
-                phase_code = "scoring"
-                job_type = "scoring"
-            elif first_p == PhaseCode.KEYWORDS:
-                phase_code = "keywords"
-                job_type = "tagging"
-            elif first_p == PhaseCode.CULLING:
-                phase_code = "culling"
-                job_type = "selection"
-            elif first_p == PhaseCode.BIRD_SPECIES:
-                phase_code = "bird_species"
-                job_type = "bird_species"
+            if not phases:
+                # Narrowing resolved to nothing we can route — treat as no work
+                # rather than indexing an empty list.
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "nothing_to_queue",
+                        "message": "No routable stages remain after run planning.",
+                        "requested_phases": requested_phases,
+                    },
+                )
+            phase_code = phases[0].value
+            job_type = job_type_for_phase(phases[0])
 
         mode_flags = resolve_run_mode_flags(CANONICAL_RUN_MODE)
 

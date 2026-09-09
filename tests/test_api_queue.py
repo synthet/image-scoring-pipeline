@@ -1,8 +1,29 @@
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from modules import api, db
 from modules.ui import security as ui_security
+
+
+@pytest.fixture(autouse=True)
+def _scope_prereqs_satisfied(monkeypatch):
+    """Treat every phase as prepared for the scope.
+
+    ``/api/pipeline/submit`` gained the same prerequisite gate ``/api/runs/submit``
+    enforces (issue #346), so submissions here — ``["cluster"]`` against a bare
+    ``tmp_path``, for instance — would otherwise be rejected before reaching the
+    payload and routing behaviour these tests are about, and would reach a live
+    Postgres through ``get_folder_phase_summary`` on the way.
+
+    The gate itself is covered in ``tests/test_pipeline_submit_prereq_gating.py``.
+    """
+    from modules.phases import PhaseCode
+
+    monkeypatch.setattr(
+        "modules.phases.compute_satisfied_phases_for_scope",
+        lambda _scope_paths: {p.value for p in PhaseCode},
+    )
 
 
 class _RunnerStub:

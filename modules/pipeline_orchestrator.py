@@ -2,7 +2,7 @@ import logging
 import threading
 
 from modules import config, db
-from modules.phases import PhaseCode
+from modules.phases import PIPELINE_PHASE_ORDER, PhaseCode
 from modules.pipeline_diagnostics import get_stall_detector, log_phase_transition
 
 logger = logging.getLogger(__name__)
@@ -11,13 +11,8 @@ logger = logging.getLogger(__name__)
 class PipelineOrchestrator:
     """Manages sequential execution across pipeline phases using persisted job phase plans."""
 
-    PHASE_ORDER = [
-        PhaseCode.INDEXING,
-        PhaseCode.METADATA,
-        PhaseCode.SCORING,
-        PhaseCode.CULLING,
-        PhaseCode.KEYWORDS
-    ]
+    # Derived from the canonical order so a new phase cannot be silently dropped here.
+    PHASE_ORDER = list(PIPELINE_PHASE_ORDER)
 
     def __init__(
         self,
@@ -26,6 +21,7 @@ class PipelineOrchestrator:
         selection_runner,
         indexing_runner=None,
         metadata_runner=None,
+        bird_species_runner=None,
         *,
         enable_background_tick: bool = True,
     ):
@@ -35,6 +31,7 @@ class PipelineOrchestrator:
             PhaseCode.SCORING.value: scoring_runner,
             PhaseCode.KEYWORDS.value: tagging_runner,
             PhaseCode.CULLING.value: selection_runner,
+            PhaseCode.BIRD_SPECIES.value: bird_species_runner,
         }
         self.folder_path: str | None = None
         self.root_job_id: int | None = None

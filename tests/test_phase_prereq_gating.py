@@ -203,3 +203,75 @@ def test_pipeline_prefix_through_unknown_phase_returns_self():
 
 def test_pipeline_prefix_through_blank_returns_empty():
     assert phases.pipeline_prefix_through("") == []
+
+
+# ---------------------------------------------------------------------------
+# normalize_phase_codes / job_type_for_phase  (issue #346 defects 1 and 7)
+# ---------------------------------------------------------------------------
+
+def test_normalize_keeps_bird_species_in_every_spelling():
+    """``bird_species`` is a real PhaseCode and must survive normalization.
+
+    It used to be dropped when supplied as a *string* while passing through as an
+    *enum*.  That asymmetry made ``/api/runs/submit`` raise ``IndexError`` once the
+    repair planner narrowed a run down to ``["bird_species"]``.
+    """
+    expected = [phases.PhaseCode.BIRD_SPECIES]
+    assert phases.normalize_phase_codes(["bird_species"]) == expected
+    assert phases.normalize_phase_codes(["bird-species"]) == expected
+    assert phases.normalize_phase_codes([phases.PhaseCode.BIRD_SPECIES]) == expected
+    assert phases.normalize_phase_codes(["PhaseCode.BIRD_SPECIES"]) == expected
+    assert phases.normalize_phase_codes([" BIRD_SPECIES "]) == expected
+
+
+def test_normalize_resolves_legacy_submission_aliases():
+    """``/api/pipeline/submit`` still accepts the score/tag/cluster vocabulary."""
+    assert phases.normalize_phase_codes(["score", "tag", "cluster"]) == [
+        phases.PhaseCode.SCORING,
+        phases.PhaseCode.CULLING,
+        phases.PhaseCode.KEYWORDS,
+    ]
+
+
+def test_normalize_sorts_canonically_and_dedupes():
+    """The result is canonical order, not submitted order.
+
+    ``/api/pipeline/submit`` deliberately preserves the client's ``stage_codes``
+    sequence, which is why it resolves one token at a time rather than handing the
+    whole list to this function.
+    """
+    assert phases.normalize_phase_codes(["tag", "keywords", "score"]) == [
+        phases.PhaseCode.SCORING,
+        phases.PhaseCode.KEYWORDS,
+    ]
+    assert phases.normalize_phase_codes(["bird_species", "indexing"]) == [
+        phases.PhaseCode.INDEXING,
+        phases.PhaseCode.BIRD_SPECIES,
+    ]
+
+
+def test_normalize_drops_unknown_tokens():
+    assert phases.normalize_phase_codes(["localization", "", None, "scoring"]) == [
+        phases.PhaseCode.SCORING,
+    ]
+
+
+def test_every_phase_has_an_entry_job_type():
+    """The first-phase -> job_type map used to be hand-written in four places."""
+    for code in phases.PhaseCode:
+        assert code.value in phases.PHASE_TO_JOB_TYPE
+        assert phases.job_type_for_phase(code) == phases.PHASE_TO_JOB_TYPE[code.value]
+        assert phases.job_type_for_phase(code.value) == phases.PHASE_TO_JOB_TYPE[code.value]
+
+
+def test_job_type_for_phase_falls_back_for_unknown_input():
+    assert phases.job_type_for_phase(None) == "scoring"
+    assert phases.job_type_for_phase("localization") == "scoring"
+    assert phases.job_type_for_phase("localization", default="localization") == "localization"
+
+
+def test_culling_and_keywords_route_to_their_own_runners():
+    """Regression for the two entries the hand-written copies disagreed about."""
+    assert phases.job_type_for_phase(phases.PhaseCode.CULLING) == "selection"
+    assert phases.job_type_for_phase(phases.PhaseCode.KEYWORDS) == "tagging"
+    assert phases.job_type_for_phase(phases.PhaseCode.BIRD_SPECIES) == "bird_species"

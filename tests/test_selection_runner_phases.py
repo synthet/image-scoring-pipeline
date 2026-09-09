@@ -7,9 +7,7 @@ phases instead of bulk-completing everything.
 """
 
 import json
-import threading
-import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import call, patch
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -175,96 +173,184 @@ def test_resolve_misc_job_status_returns_none():
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SelectionRunner._complete_phase_and_advance
+#
+# Delegation contract (issue #346, localization rollout stage 1): culling runs its
+# own phase, hands *every* remaining phase to one follow-up job, and marks the
+# delegated parent rows `skipped` with a "delegated to job #N" note.  They are not
+# marked `completed` — the parent never ran that work.
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_selection_runner_enqueues_bird_species():
-    """When culling finishes and bird_species phase is pending, a follow-up job should be enqueued."""
+def _phase_row(code: str, state: str, *, started: str | None = None, completed: str | None = None) -> dict:
+    return {
+        "phase_code": code,
+        "state": state,
+        "started_at": started,
+        "completed_at": completed,
+    }
+
+
+_CULLING_DONE = _phase_row(
+    "culling", "completed",
+    started="2026-03-24T00:00:00", completed="2026-03-24T00:01:00",
+)
+
+
+def _advance(job_phases, *, enqueue_return=(500, 1), enqueue_side_effect=None, job_id=449):
+    """Run ``_complete_phase_and_advance`` against a mocked db; return (mock_db, log_messages)."""
     from modules.selection_runner import SelectionRunner
 
     runner = SelectionRunner()
-    log_messages = []
+    log_messages: list[str] = []
 
-    phases_after_culling = [
-        {"phase_code": "culling", "state": "completed", "started_at": "2026-03-24T00:00:00", "completed_at": "2026-03-24T00:01:00"},
-        {"phase_code": "bird_species", "state": "pending", "started_at": None, "completed_at": None},
-    ]
+    with patch("modules.selection_runner.db") as mock_db,          patch("modules.selection_runner.event_manager"):
+        mock_db.get_job_phases.return_value = job_phases
+        if enqueue_side_effect is not None:
+            mock_db.enqueue_job.side_effect = enqueue_side_effect
+        else:
+            mock_db.enqueue_job.return_value = enqueue_return
 
-    with patch("modules.selection_runner.db") as mock_db, \
-         patch("modules.selection_runner.event_manager") as mock_em:
-        mock_db.get_job_phases.return_value = phases_after_culling
-        mock_db.enqueue_job.return_value = (500, 1)  # follow-up job_id, position
+        runner._complete_phase_and_advance(job_id, "/mnt/d/Photos/test", log_messages.append)
 
-        runner._complete_phase_and_advance(449, "/mnt/d/Photos/test", log_messages.append)
+    return mock_db, log_messages
 
-    # Should have set culling phase to completed
+
+def test_selection_runner_enqueues_bird_species():
+    """Culling finishes with bird_species pending -> a follow-up job is enqueued."""
+    mock_db, log_messages = _advance([
+        _CULLING_DONE,
+        _phase_row("bird_species", "pending"),
+    ])
+
+    # The runner's own phase really did run.
     mock_db.set_job_phase_state.assert_any_call(449, "culling", "completed")
 
-    # Should have enqueued a bird_species job
     mock_db.enqueue_job.assert_called_once()
     enqueue_args = mock_db.enqueue_job.call_args
-    assert enqueue_args[1].get("job_type") == "bird_species" or enqueue_args[0][2] == "bird_species"
+    assert enqueue_args[1].get("job_type") == "bird_species"
 
-    # Should have created job phases for the follow-up job
-    mock_db.create_job_phases.assert_called_once_with(500, ["bird_species"], first_phase_state="queued")
-
-    # Should mark bird_species as completed on the PARENT job so the UI shows it as fully done
-    mock_db.set_job_phase_state.assert_any_call(449, "bird_species", "completed")
-
-    # Should have completed the parent job
+    mock_db.create_job_phases.assert_called_once_with(
+        500, ["bird_species"], first_phase_state="queued",
+    )
     mock_db.update_job_status.assert_called_once_with(449, "completed")
-
-    # Log should mention advancing
     assert any("bird_species" in msg for msg in log_messages)
+
+
+def test_parent_delegated_phase_marked_skipped_with_note():
+    """The delegated parent row is terminal, but records the hand-off rather than claiming work.
+
+    Marking it `completed` (the pre-#346 behaviour) asserted that bird_species had
+    finished while the child job was still sitting in the queue, so a run that later
+    failed outright still reported every stage green.  `skipped` is terminal too — the
+    Runs UI still shows the parent finished — but the error_message says where the work
+    actually went.  ``job_phases.state`` has no CHECK constraint (migration 0014
+    deliberately excluded one) and `skipped` is already written by
+    ``pipeline_orchestrator``.
+    """
+    mock_db, _ = _advance(
+        [_CULLING_DONE, _phase_row("bird_species", "pending")],
+        enqueue_return=(501, 1),
+    )
+
+    phase_state_calls = mock_db.set_job_phase_state.call_args_list
+    assert call(449, "culling", "completed") in phase_state_calls
+    assert call(
+        449, "bird_species", "skipped", error_message="delegated to job #501",
+    ) in phase_state_calls
+    assert call(449, "bird_species", "completed") not in phase_state_calls
+
+
+def test_selection_runner_hands_all_remaining_phases_to_one_child():
+    """A culling -> keywords -> bird_species plan must not strand bird_species.
+
+    The pre-#346 code passed only ``remaining[0]`` to ``create_job_phases``, so the
+    child job was created with keywords alone and bird_species was silently dropped —
+    no job was ever enqueued for it.
+    """
+    mock_db, log_messages = _advance([
+        _CULLING_DONE,
+        _phase_row("keywords", "pending"),
+        _phase_row("bird_species", "pending"),
+    ], enqueue_return=(600, 1))
+
+    # One child job, entered at the first remaining phase.
+    mock_db.enqueue_job.assert_called_once()
+    assert mock_db.enqueue_job.call_args[1].get("job_type") == "keywords"
+
+    # ...carrying BOTH downstream phases.
+    mock_db.create_job_phases.assert_called_once_with(
+        600, ["keywords", "bird_species"], first_phase_state="queued",
+    )
+
+    phase_state_calls = mock_db.set_job_phase_state.call_args_list
+    for code in ("keywords", "bird_species"):
+        assert call(
+            449, code, "skipped", error_message="delegated to job #600",
+        ) in phase_state_calls
+
+    assert any("bird_species" in msg for msg in log_messages)
+
+
+def test_followup_records_every_enqueued_phase_in_the_run_reason():
+    """The audit trail names all delegated phases, not just the entry one."""
+    mock_db, _ = _advance([
+        _CULLING_DONE,
+        _phase_row("keywords", "pending"),
+        _phase_row("bird_species", "pending"),
+    ], enqueue_return=(601, 1))
+
+    payload = mock_db.enqueue_job.call_args[1]["queue_payload"]
+    blob = json.dumps(payload, default=str)
+    assert "keywords" in blob and "bird_species" in blob
 
 
 def test_selection_runner_no_followup_when_no_remaining():
     """When culling is the only phase, just complete the job normally."""
-    from modules.selection_runner import SelectionRunner
+    mock_db, _ = _advance([_CULLING_DONE])
 
-    runner = SelectionRunner()
-
-    phases_only_culling = [
-        {"phase_code": "culling", "state": "completed", "started_at": "2026-03-24T00:00:00", "completed_at": "2026-03-24T00:01:00"},
-    ]
-
-    with patch("modules.selection_runner.db") as mock_db, \
-         patch("modules.selection_runner.event_manager"):
-        mock_db.get_job_phases.return_value = phases_only_culling
-
-        runner._complete_phase_and_advance(449, "/mnt/d/Photos/test", lambda msg: None)
-
-    # Should NOT have enqueued any follow-up job
     mock_db.enqueue_job.assert_not_called()
-
-    # Should have completed the job
+    mock_db.create_job_phases.assert_not_called()
     mock_db.update_job_status.assert_called_once_with(449, "completed")
 
 
-def test_parent_job_bird_species_phase_marked_completed():
-    """Parent job's bird_species phase row is set to 'completed' so the UI shows the job fully done.
+def test_enqueue_returning_no_job_id_does_not_mark_parent_phase_terminal():
+    """A failed hand-off must not look like completed work.
 
-    This is intentional UI-completeness behaviour: the real work happens in the child
-    follow-up job, but the parent's phase row must not stay 'pending' indefinitely.
+    ``enqueue_job`` returning ``None`` means no child exists.  The delegated rows stay
+    non-terminal so the run still reads as unfinished instead of silently reporting a
+    stage that nothing will ever run.
     """
-    from modules.selection_runner import SelectionRunner
-    from unittest.mock import call
+    mock_db, _ = _advance(
+        [_CULLING_DONE, _phase_row("bird_species", "pending")],
+        enqueue_return=(None, None),
+    )
 
-    runner = SelectionRunner()
+    mock_db.create_job_phases.assert_not_called()
+    codes = [c.args[1] for c in mock_db.set_job_phase_state.call_args_list]
+    assert "bird_species" not in codes
+    # The runner's own phase is still legitimately completed.
+    assert codes == ["culling"]
 
-    phases = [
-        {"phase_code": "culling", "state": "completed", "started_at": "2026-03-24T00:00:00", "completed_at": "2026-03-24T00:01:00"},
-        {"phase_code": "bird_species", "state": "pending", "started_at": None, "completed_at": None},
-    ]
 
-    with patch("modules.selection_runner.db") as mock_db, \
-         patch("modules.selection_runner.event_manager"):
-        mock_db.get_job_phases.return_value = phases
-        mock_db.enqueue_job.return_value = (501, 1)
+def test_enqueue_raising_does_not_mark_parent_phase_terminal():
+    """Same invariant when ``enqueue_job`` raises instead of returning None."""
+    mock_db, _ = _advance(
+        [_CULLING_DONE, _phase_row("bird_species", "pending")],
+        enqueue_side_effect=RuntimeError("queue unavailable"),
+    )
 
-        runner._complete_phase_and_advance(449, "/mnt/d/Photos/test", lambda msg: None)
+    mock_db.create_job_phases.assert_not_called()
+    codes = [c.args[1] for c in mock_db.set_job_phase_state.call_args_list]
+    assert codes == ["culling"]
 
-    phase_state_calls = mock_db.set_job_phase_state.call_args_list
-    assert call(449, "culling", "completed") in phase_state_calls, "culling must be marked completed on parent"
-    assert call(449, "bird_species", "completed") in phase_state_calls, (
-        "bird_species must be marked completed on parent job for UI visibility"
+
+def test_running_phase_other_than_culling_is_also_delegated():
+    """``remaining`` covers pending, queued and running rows alike."""
+    mock_db, _ = _advance([
+        _CULLING_DONE,
+        _phase_row("keywords", "queued"),
+        _phase_row("bird_species", "running", started="2026-03-24T00:02:00"),
+    ], enqueue_return=(700, 1))
+
+    mock_db.create_job_phases.assert_called_once_with(
+        700, ["keywords", "bird_species"], first_phase_state="queued",
     )

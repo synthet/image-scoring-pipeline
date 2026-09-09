@@ -4,7 +4,7 @@ title: Pipeline Architecture — Index
 description: Entry point for the comprehensive backend pipeline documentation set — phases, sub-steps, transitions, preconditions, control plane, and persistence.
 resource: architecture/pipeline/INDEX.md
 tags: [pipeline, architecture, phases, index, okf]
-timestamp: 2026-09-01T00:00:00Z
+timestamp: 2026-09-08T00:00:00Z
 okf_version: 0.1
 ---
 
@@ -45,6 +45,7 @@ in a **Known gaps** section.
 | [persistence.md](persistence.md) | Tables, columns, constraints, and the folder aggregate cache. |
 | [terminology-map.md](terminology-map.md) | The one-row-per-phase traversal table across every naming system. |
 | [localization-rollout.md](localization-rollout.md) | Proposed eight-stage rollout for early, reusable object regions and crop-aware downstream inference. |
+| [localization-rollout-supplement-2026-09-08.md](localization-rollout-supplement-2026-09-08.md) | Review evidence, implementation snapshot, and fixed defaults supporting the localization rollout. |
 
 ## Per-phase pages
 

@@ -5,8 +5,11 @@ Phases are registered in the DB (PIPELINE_PHASES table) and bound to
 executors at runtime via PhaseRegistry.  A phase that exists in the DB
 but has no registered executor will appear in the UI but cannot be triggered.
 
-Status values (for IMAGE_PHASE_STATUS):
-    not_started | running | done | skipped | failed
+Status values (for IMAGE_PHASE_STATUS) -- see PhaseStatus and ALLOWED_TRANSITIONS below:
+    not_started | queued | running | paused | cancel_requested
+    | restarting | done | skipped | failed
+Enforced in the database by ck_image_phase_status_status. Note ``job_phases.state``
+is a *different* vocabulary (``completed`` rather than ``done``, plus ``interrupted``).
 
 Folder-level summaries are computed live (no stored table).
 """
@@ -59,6 +62,27 @@ PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
     PhaseCode.KEYWORDS.value: (PhaseCode.SCORING.value,),
     PhaseCode.BIRD_SPECIES.value: (PhaseCode.KEYWORDS.value,),
 }
+
+# Entry runner for a phase: the ``jobs.job_type`` used when a phase is the first
+# (or only) stage of a submitted plan.  Single source for a map that was previously
+# hand-written in electron_runs_lifecycle, runs_autodrive and workflow_healing.
+PHASE_TO_JOB_TYPE: dict[str, str] = {
+    PhaseCode.INDEXING.value: "indexing",
+    PhaseCode.METADATA.value: "metadata",
+    PhaseCode.SCORING.value: "scoring",
+    PhaseCode.CULLING.value: "selection",
+    PhaseCode.KEYWORDS.value: "tagging",
+    PhaseCode.BIRD_SPECIES.value: "bird_species",
+}
+
+
+def job_type_for_phase(phase: "PhaseCode | str | None", default: str = "scoring") -> str:
+    """Return the entry ``job_type`` that runs ``phase``, or ``default`` if unknown."""
+    if phase is None:
+        return default
+    code = phase.value if isinstance(phase, PhaseCode) else str(phase).strip().lower()
+    return PHASE_TO_JOB_TYPE.get(code, default)
+
 
 SCORING_EXECUTOR_VERSION = "5.0.0"
 
@@ -169,8 +193,6 @@ def sort_phase_codes_canonical(phases: list[PhaseCode]) -> list[PhaseCode]:
 def phase_string_sort_key(code: str) -> int:
     """Sort key for persisted phase_code strings; bird_species runs after keywords."""
     c = (code or "").strip()
-    if c == "bird_species":
-        return len(PIPELINE_PHASE_ORDER)
     try:
         return _PHASE_ORDER_INDEX[PhaseCode(c)]
     except ValueError:
@@ -241,6 +263,7 @@ PHASE_CODE_ALIASES = {
     "score": PhaseCode.SCORING.value,
     "tag": PhaseCode.KEYWORDS.value,
     "cluster": PhaseCode.CULLING.value,
+    "bird-species": PhaseCode.BIRD_SPECIES.value,
 }
 
 
@@ -257,9 +280,6 @@ def normalize_phase_codes(phase_codes: list[Any] | None) -> list[PhaseCode]:
             if raw.startswith("PhaseCode."):
                 raw = raw.split(".", 1)[1]
             raw = PHASE_CODE_ALIASES.get(raw.lower(), raw.lower())
-            # Separate job type (API / job_phases), not a PhaseCode enum value.
-            if raw == "bird_species":
-                continue
             try:
                 candidate = PhaseCode(raw)
             except ValueError:
@@ -404,15 +424,29 @@ class PhaseRegistry:
     """
     _executors: dict[str, PhaseExecutor] = {}
 
+    @staticmethod
+    def _key(code: "PhaseCode | str | None") -> str:
+        """Normalize to the plain phase_code string.
+
+        Registration passes ``PhaseCode`` members while nearly every caller looks up
+        a string.  Today those are interchangeable only because the ``str`` mixin's
+        ``__hash__``/``__eq__`` win over ``Enum``'s; dropping the mixin would silently
+        turn every string lookup into a miss.  Storing one canonical key form removes
+        that dependency, and also absorbs ``None`` and stray whitespace.
+        """
+        if isinstance(code, PhaseCode):
+            return code.value
+        return str(code or "").strip()
+
     @classmethod
     def register(cls, executor: PhaseExecutor):
         logger.info("PhaseRegistry: registered executor for '%s' (v%s)",
                      executor.code, executor.executor_version)
-        cls._executors[executor.code] = executor
+        cls._executors[cls._key(executor.code)] = executor
 
     @classmethod
     def get(cls, code: str) -> PhaseExecutor | None:
-        return cls._executors.get(code)
+        return cls._executors.get(cls._key(code))
 
     @classmethod
     def get_all(cls) -> list[PhaseExecutor]:
@@ -420,7 +454,7 @@ class PhaseRegistry:
 
     @classmethod
     def is_registered(cls, code: str) -> bool:
-        return code in cls._executors
+        return cls._key(code) in cls._executors
 
 
 # ---------------------------------------------------------------------------
