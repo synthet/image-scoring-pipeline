@@ -194,6 +194,43 @@ def test_co_requested_prerequisite_passes_the_gate(api_client, tmp_path, satisfi
     assert len(enqueued) == 1
 
 
+def test_co_requested_prerequisite_after_its_consumer_is_rejected(api_client, tmp_path, satisfied, enqueued):
+    """BREAKING (issue #351): accepted before, when the gate only checked membership.
+
+    This router resolves ``stage_codes`` one token at a time to preserve the client's
+    order, so ``["tag", "score"]`` really would run ``keywords`` first.
+    """
+    satisfied.update({"indexing", "metadata"})  # scoring NOT satisfied
+    r = _submit(api_client, _folder(tmp_path), ["tag", "score"])
+
+    body = r.json()
+    assert body["success"] is False
+    assert body["data"]["code"] == "missing_prerequisites"
+    assert body["data"]["missing"] == {"keywords": ["scoring"]}
+    assert enqueued == []
+
+
+def test_the_same_stages_in_canonical_order_are_accepted(api_client, tmp_path, satisfied, enqueued):
+    """Mirror of the case above: only the order differs."""
+    satisfied.update({"indexing", "metadata"})
+    r = _submit(api_client, _folder(tmp_path), ["score", "tag"])
+
+    assert r.status_code == 200, r.text
+    assert r.json()["success"] is True
+    assert enqueued[0]["phase_code"] == "scoring"
+
+
+@pytest.mark.parametrize("stages", [("cluster", "tag"), ("tag", "cluster")])
+def test_sibling_stages_are_accepted_in_either_order(api_client, tmp_path, satisfied, enqueued, stages):
+    """``culling`` and ``keywords`` are siblings under ``scoring``, not ordered pairwise."""
+    satisfied.update({"indexing", "metadata", "scoring"})
+    r = _submit(api_client, _folder(tmp_path), list(stages))
+
+    assert r.status_code == 200, r.text
+    assert r.json()["success"] is True
+    assert len(enqueued) == 1
+
+
 def test_satisfied_scope_passes_the_gate(api_client, tmp_path, satisfied, enqueued):
     satisfied.update({"indexing", "metadata"})
     r = _submit(api_client, _folder(tmp_path), ["score"])

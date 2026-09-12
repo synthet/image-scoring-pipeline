@@ -606,9 +606,11 @@ class PipelineSubmitRequest(SelectorRequest):
             "Ordered StageRun codes. Canonical phase codes: 'indexing', 'metadata', "
             "'scoring', 'culling', 'keywords', 'bird_species'. Legacy aliases "
             "'score', 'tag', 'cluster' (and 'bird-species') are also accepted. "
-            "Prerequisites are enforced for folder-scoped submissions: a stage whose "
-            "prerequisite is neither complete for the scope nor co-requested in the "
-            "same call is rejected with code 'missing_prerequisites'."
+            "This order is preserved as the run's execution order. Prerequisites are "
+            "enforced for folder-scoped submissions: a stage whose prerequisite is "
+            "neither complete for the scope nor listed *earlier in this list* is "
+            "rejected with code 'missing_prerequisites'. Listing a prerequisite after "
+            "the stage that needs it (e.g. ['tag', 'score']) is rejected."
         ),
         example=["indexing", "metadata", "score"],
         validation_alias=AliasChoices("stage_codes", "operations"),

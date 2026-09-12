@@ -564,6 +564,12 @@ def _enqueue_heal_run(folder_path: str, phase_code: str):
         # Default for index/meta/score
         phase_values = [PhaseCode(phase_code).value]
 
+    # Canonical pipeline order (e.g. metadata before culling).  Must precede the
+    # gate: assert_prereqs_for_scope reads phase_values as an execution order, so
+    # gating the unsorted ["culling", "metadata"] built above would check an order
+    # this run never executes.
+    phase_values = sort_phase_value_strings(phase_values)
+
     # Prereq gate: skip folders whose phases-of-interest can't run yet.
     prereq_miss = assert_prereqs_for_scope(phase_values, [folder_path])
     if prereq_miss:
@@ -572,9 +578,6 @@ def _enqueue_heal_run(folder_path: str, phase_code: str):
             folder_path, phase_code, prereq_miss,
         )
         return None, {"missing_prerequisites": prereq_miss}
-
-    # Canonical pipeline order (e.g. metadata before culling)
-    phase_values = sort_phase_value_strings(phase_values)
 
     mode_flags = resolve_run_mode_flags(CANONICAL_RUN_MODE)
 
