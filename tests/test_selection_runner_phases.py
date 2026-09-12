@@ -202,6 +202,11 @@ def _advance(job_phases, *, enqueue_return=(500, 1), enqueue_side_effect=None, j
     runner = SelectionRunner()
     log_messages: list[str] = []
 
+    # Mirror the real callable (selection_runner.py: ``log(msg, level="INFO")``) so a
+    # levelled call from production code does not fail only inside the harness.
+    def log(msg: str, level: str = "INFO") -> None:
+        log_messages.append(msg)
+
     with patch("modules.selection_runner.db") as mock_db,          patch("modules.selection_runner.event_manager"):
         mock_db.get_job_phases.return_value = job_phases
         if enqueue_side_effect is not None:
@@ -209,7 +214,7 @@ def _advance(job_phases, *, enqueue_return=(500, 1), enqueue_side_effect=None, j
         else:
             mock_db.enqueue_job.return_value = enqueue_return
 
-        runner._complete_phase_and_advance(job_id, "/mnt/d/Photos/test", log_messages.append)
+        runner._complete_phase_and_advance(job_id, "/mnt/d/Photos/test", log)
 
     return mock_db, log_messages
 
@@ -341,6 +346,84 @@ def test_enqueue_raising_does_not_mark_parent_phase_terminal():
     mock_db.create_job_phases.assert_not_called()
     codes = [c.args[1] for c in mock_db.set_job_phase_state.call_args_list]
     assert codes == ["culling"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Hand-off failure must fail the parent job, not complete it.
+#
+# Leaving the parent `completed` while its delegated phase rows stay pending puts
+# two convergence layers in conflict: the Runs UI reads the job as finished, and
+# auto-drive's post-audit follow-ups fire off a run whose stages never executed.
+# The same reasoning already governs the missing-prerequisites abort above.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _terminal_status_calls(mock_db) -> list[tuple]:
+    """(status, message) for each update_job_status call, message defaulting to None."""
+    out = []
+    for c in mock_db.update_job_status.call_args_list:
+        status = c.args[1] if len(c.args) > 1 else c.kwargs.get("status")
+        message = c.args[2] if len(c.args) > 2 else c.kwargs.get("log")
+        out.append((status, message))
+    return out
+
+
+def test_enqueue_returning_no_job_id_fails_the_parent_job():
+    """No child job means the delegated stages never run, so the parent is not complete."""
+    mock_db, _ = _advance(
+        [_CULLING_DONE, _phase_row("bird_species", "pending")],
+        enqueue_return=(None, None),
+    )
+
+    calls = _terminal_status_calls(mock_db)
+    assert [status for status, _ in calls] == ["failed"]
+    # The message has to name the stranded stage; a bare "failed" sends the operator
+    # hunting through logs for which stage went missing.
+    assert "bird_species" in (calls[0][1] or "")
+
+
+def test_enqueue_raising_fails_the_parent_job():
+    """Same outcome when enqueue raises, and the cause is carried into the job log."""
+    mock_db, _ = _advance(
+        [_CULLING_DONE, _phase_row("bird_species", "pending")],
+        enqueue_side_effect=RuntimeError("queue unavailable"),
+    )
+
+    calls = _terminal_status_calls(mock_db)
+    assert [status for status, _ in calls] == ["failed"]
+    message = calls[0][1] or ""
+    assert "bird_species" in message
+    assert "queue unavailable" in message
+
+
+def test_failed_handoff_broadcasts_failed_status():
+    """The Runs UI listens to the broadcast, so it must not hear `completed`."""
+    with patch("modules.selection_runner.db") as mock_db, \
+         patch("modules.selection_runner.event_manager") as mock_events:
+        from modules.selection_runner import SelectionRunner
+
+        mock_db.get_job_phases.return_value = [
+            _CULLING_DONE, _phase_row("bird_species", "pending"),
+        ]
+        mock_db.enqueue_job.return_value = (None, None)
+
+        SelectionRunner()._complete_phase_and_advance(449, "/mnt/d/Photos/test", lambda *_a, **_k: None)
+
+    statuses = [
+        c.args[1].get("status")
+        for c in mock_events.broadcast_threadsafe.call_args_list
+        if len(c.args) > 1 and isinstance(c.args[1], dict)
+    ]
+    assert statuses == ["failed"]
+
+
+def test_all_stages_handed_off_still_completes_the_parent():
+    """The happy path is unchanged: a real child job means the parent really is done."""
+    mock_db, _ = _advance(
+        [_CULLING_DONE, _phase_row("keywords", "pending"), _phase_row("bird_species", "pending")],
+        enqueue_return=(602, 1),
+    )
+
+    assert _terminal_status_calls(mock_db) == [("completed", None)]
 
 
 def test_running_phase_other_than_culling_is_also_delegated():
