@@ -143,6 +143,17 @@ def test_assert_co_requested_prereq_satisfies(monkeypatch):
     assert phases.assert_prereqs_for_scope(["metadata", "scoring"], ["/x"]) == {}
 
 
+def test_assert_co_requested_prereq_after_its_consumer_is_missing(monkeypatch):
+    """Issue #351: co-request is judged by plan position, not set membership."""
+    monkeypatch.setattr(
+        "modules.db.get_folder_phase_summary",
+        _fake_summary({"/x": [_row("indexing", total=10, done=10)]}),
+    )
+    assert phases.assert_prereqs_for_scope(["scoring", "metadata"], ["/x"]) == {
+        "scoring": ["metadata"],
+    }
+
+
 def test_assert_indexing_root_phase_never_blocked(monkeypatch):
     monkeypatch.setattr(
         "modules.db.get_folder_phase_summary",
@@ -174,6 +185,65 @@ def test_assert_empty_scope_returns_empty(monkeypatch, scope_paths):
     # With empty scope_paths, nothing is satisfied -> any non-root phase reports its prereq.
     miss = phases.assert_prereqs_for_scope(["scoring"], scope_paths or [])
     assert miss == {"scoring": ["metadata"]}
+
+
+# ---------------------------------------------------------------------------
+# missing_prerequisites — plan ordering (issue #351)
+# ---------------------------------------------------------------------------
+
+def test_prereq_earlier_in_plan_satisfies():
+    assert phases.missing_prerequisites(["scoring", "keywords"], {"indexing", "metadata"}) == {}
+
+
+def test_prereq_later_in_plan_does_not_satisfy():
+    """``["tag", "score"]`` schedules scoring after the phase that needs it."""
+    assert phases.missing_prerequisites(["keywords", "scoring"], {"indexing", "metadata"}) == {
+        "keywords": ["scoring"],
+    }
+
+
+@pytest.mark.parametrize(
+    "plan",
+    [
+        ["culling", "keywords"],
+        ["keywords", "culling"],
+    ],
+)
+def test_siblings_sharing_a_prereq_pass_in_either_order(plan):
+    """``culling`` and ``keywords`` both hang off ``scoring``; neither precedes the other."""
+    assert phases.missing_prerequisites(plan, {"indexing", "metadata", "scoring"}) == {}
+
+
+def test_already_satisfied_prereq_ignores_plan_position():
+    """A phase complete for the scope needs no place in the plan at all."""
+    satisfied = {"indexing", "metadata", "scoring", "culling", "keywords"}
+    assert phases.missing_prerequisites(["bird_species", "keywords"], satisfied) == {}
+
+
+def test_full_canonical_plan_is_self_satisfying():
+    plan = [p.value for p in phases.PIPELINE_PHASE_ORDER]
+    assert phases.missing_prerequisites(plan, set()) == {}
+
+
+def test_fully_reversed_plan_reports_every_non_root_phase():
+    plan = list(reversed([p.value for p in phases.PIPELINE_PHASE_ORDER]))
+    assert phases.missing_prerequisites(plan, set()) == {
+        "bird_species": ["keywords"],
+        "keywords": ["scoring"],
+        "culling": ["scoring"],
+        "scoring": ["metadata"],
+        "metadata": ["indexing"],
+    }
+
+
+def test_duplicate_tokens_keep_their_first_position():
+    """Dedupe must not move a prerequisite behind its consumer."""
+    assert phases.missing_prerequisites(["metadata", "scoring", "metadata"], {"indexing"}) == {}
+
+
+def test_unknown_phase_is_not_gated():
+    """An unregistered code (e.g. a future ``localization``) has no prereq entry."""
+    assert phases.missing_prerequisites(["localization"], set()) == {}
 
 
 # ---------------------------------------------------------------------------

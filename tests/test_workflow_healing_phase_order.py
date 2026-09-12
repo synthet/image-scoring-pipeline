@@ -9,10 +9,13 @@ def test_enqueue_heal_culling_phases_metadata_before_culling(monkeypatch, tmp_pa
     folder = tmp_path / "heal_folder"
     folder.mkdir()
 
-    monkeypatch.setattr(
-        "modules.phases.assert_prereqs_for_scope",
-        lambda _phase_values, _scope_paths: {},
-    )
+    gated: dict = {}
+
+    def fake_gate(phase_values, _scope_paths):
+        gated["phase_values"] = list(phase_values)
+        return {}
+
+    monkeypatch.setattr("modules.phases.assert_prereqs_for_scope", fake_gate)
 
     captured: dict = {}
 
@@ -39,3 +42,6 @@ def test_enqueue_heal_culling_phases_metadata_before_culling(monkeypatch, tmp_pa
     assert job_id == 999
     assert pos == 1
     assert captured["phase_codes"] == ["metadata", "culling"]
+    # Issue #351: the gate reads phase_values as an execution order, so it must see
+    # the sorted plan rather than the ["culling", "metadata"] the builder produces.
+    assert gated["phase_values"] == ["metadata", "culling"]

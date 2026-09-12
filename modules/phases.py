@@ -94,8 +94,19 @@ def missing_prerequisites(
     """Return phases whose direct prerequisites are not met.
 
     A prerequisite *pre* for requested phase *P* is satisfied when *pre* is in
-    ``satisfied`` (e.g. scope preview marks stage ``done``) or when *pre* is
-    also listed in ``requested`` (same-run inclusion).
+    ``satisfied`` (e.g. scope preview marks stage ``done``) or when *pre* appears
+    **earlier than** *P* in ``requested``.
+
+    Co-request is judged by plan position, not set membership: ``requested`` is an
+    execution order, so a prerequisite scheduled after the phase that needs it does
+    not satisfy it. ``["keywords", "scoring"]`` is rejected while
+    ``["scoring", "keywords"]`` is accepted. Siblings that share a prerequisite
+    (``culling`` and ``keywords``, both under ``scoring``) are unordered relative to
+    each other and pass either way.
+
+    Callers that ``sort_phase_value_strings`` before gating are unaffected —
+    canonical order already places every prerequisite first. ``/api/pipeline/submit``
+    is the one caller that preserves the client's submitted order.
     """
     requested_norm: list[str] = []
     seen_req: set[str] = set()
@@ -106,7 +117,9 @@ def missing_prerequisites(
         seen_req.add(c)
         requested_norm.append(c)
 
-    requested_set = set(requested_norm)
+    # Deduped above, so one position per code. Absent codes sort after everything.
+    position = {code: i for i, code in enumerate(requested_norm)}
+    not_requested = len(requested_norm)
     satisfied_set = {(str(s or "")).strip().lower() for s in satisfied}
 
     missing_map: dict[str, list[str]] = {}
@@ -116,7 +129,8 @@ def missing_prerequisites(
             continue
         missing_list = [
             pre for pre in prereqs
-            if pre not in satisfied_set and pre not in requested_set
+            if pre not in satisfied_set
+            and position.get(pre, not_requested) > position[phase]
         ]
         if missing_list:
             missing_map[phase] = missing_list
@@ -177,9 +191,11 @@ def assert_prereqs_for_scope(
     """Return the {phase: [missing_prereqs]} map for the given scope.
 
     Empty dict means all requested phases have their prereqs satisfied (or
-    co-requested in the same submission). Callers decide policy: ``submit_run``
-    raises 400 on a non-empty result; heal records a per-folder skip and
-    continues.
+    co-requested earlier in the same submission — see
+    :func:`missing_prerequisites`). ``phase_values`` is therefore the order the
+    plan will execute in, not an unordered set. Callers decide policy:
+    ``submit_run`` raises 400 on a non-empty result; heal records a per-folder
+    skip and continues.
     """
     satisfied = compute_satisfied_phases_for_scope(scope_paths)
     return missing_prerequisites(phase_values or [], satisfied)
