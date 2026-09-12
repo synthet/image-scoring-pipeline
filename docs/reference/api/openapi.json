@@ -5640,7 +5640,7 @@
           "Vexlum Scoring API"
         ],
         "summary": "Submit to processing pipeline",
-        "description": "Creates a WorkflowRun for sequential StageRuns on a WorkspaceTarget.\n\n        StageRuns are executed in order based on stage_codes.\n        For folder submissions, only the first applicable operation is queued immediately;\n        subsequent operations should be triggered by the Electron app after the previous\n        one completes (via status polling or WebSocket events).\n\n        For single-file submissions, the first StageRun runs immediately.\n\n        For single files, only 'score' and 'tag' StageRuns are supported.\n        'cluster' requires a folder path.",
+        "description": "Creates a WorkflowRun for sequential StageRuns on a WorkspaceTarget.\n\n        StageRuns are executed in order based on stage_codes.\n        For folder submissions, only the first applicable operation is queued immediately;\n        subsequent operations should be triggered by the Electron app after the previous\n        one completes (via status polling or WebSocket events).\n\n        For single-file submissions, the first StageRun runs immediately.\n\n        For single files, only 'score' and 'tag' StageRuns are supported.\n        'cluster' requires a folder path.\n\n        Folder-scoped submissions are checked against the phase DAG, the same gate\n        /api/runs/submit applies. A stage whose prerequisite is neither already complete\n        for the scope nor listed earlier in stage_codes returns success=false with\n        data.code = 'missing_prerequisites'. Because this endpoint preserves the submitted\n        order as the run's execution order, a prerequisite placed after the stage that\n        needs it (e.g. ['tag', 'score']) is rejected; siblings under one prerequisite\n        ('cluster' and 'tag', both under 'score') are accepted in either order. Image-id\n        and image-path selectors are not gated. This rejects some submissions accepted\n        before the localization control-plane consolidation (issues #346, #351).",
         "operationId": "submit_pipeline_api_pipeline_submit_post",
         "requestBody": {
           "content": {
@@ -10859,7 +10859,7 @@
             },
             "type": "array",
             "title": "Stage Codes",
-            "description": "Ordered StageRun codes. Valid values: 'indexing', 'metadata', 'score', 'tag', 'cluster'.",
+            "description": "Ordered StageRun codes. Canonical phase codes: 'indexing', 'metadata', 'scoring', 'culling', 'keywords', 'bird_species'. Legacy aliases 'score', 'tag', 'cluster' (and 'bird-species') are also accepted. This order is preserved as the run's execution order. Prerequisites are enforced for folder-scoped submissions: a stage whose prerequisite is neither complete for the scope nor listed *earlier in this list* is rejected with code 'missing_prerequisites'. Listing a prerequisite after the stage that needs it (e.g. ['tag', 'score']) is rejected.",
             "default": [
               "score",
               "tag"
@@ -10961,7 +10961,7 @@
         },
         "type": "object",
         "title": "PipelineSubmitRequest",
-        "description": "Request model for submitting images/folders to the processing pipeline.\n\nChains requested StageRuns sequentially (indexing/metadata/score/tag/cluster).\n\nAttributes:\n    workspace_target: File or directory path to process.\n    stage_codes: Ordered stage run codes to execute (indexing|metadata|score|tag|cluster).\n    workflow_template: Logical template name for the run (e.g., full_ingest, metadata_only, re_tag)."
+        "description": "Request model for submitting images/folders to the processing pipeline.\n\nChains requested StageRuns sequentially. Accepts canonical phase codes and the\nlegacy score/tag/cluster aliases; prerequisites are enforced for folder scopes.\n\nAttributes:\n    workspace_target: File or directory path to process.\n    stage_codes: Ordered stage run codes to execute\n        (indexing|metadata|scoring|culling|keywords|bird_species, or the\n        score|tag|cluster aliases).\n    workflow_template: Logical template name for the run (e.g., full_ingest, metadata_only, re_tag)."
       },
       "QueueReorderRequest": {
         "properties": {

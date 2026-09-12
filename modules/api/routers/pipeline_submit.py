@@ -71,6 +71,16 @@ def create_pipeline_submit_router() -> APIRouter:
 
         For single files, only 'score' and 'tag' StageRuns are supported.
         'cluster' requires a folder path.
+
+        Folder-scoped submissions are checked against the phase DAG, the same gate
+        /api/runs/submit applies. A stage whose prerequisite is neither already complete
+        for the scope nor listed earlier in stage_codes returns success=false with
+        data.code = 'missing_prerequisites'. Because this endpoint preserves the submitted
+        order as the run's execution order, a prerequisite placed after the stage that
+        needs it (e.g. ['tag', 'score']) is rejected; siblings under one prerequisite
+        ('cluster' and 'tag', both under 'score') are accepted in either order. Image-id
+        and image-path selectors are not gated. This rejects some submissions accepted
+        before the localization control-plane consolidation (issues #346, #351).
         """
     )
     def submit_pipeline(request: PipelineSubmitRequest):
