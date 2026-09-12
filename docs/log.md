@@ -6,6 +6,12 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-09-12] edit | A failed culling hand-off fails the parent run instead of completing it
+
+Second stage 1 follow-up for the [early-localization rollout](architecture/pipeline/localization-rollout.md) (epic #345), covering the exit-gate clause "the parent remains unfinished until the child succeeds, fails, or is canceled; enqueue failure is visible." `SelectionRunner._complete_phase_and_advance` hands every phase after `culling` to one follow-up job. Issue #346 made the delegated `job_phases` rows stay non-terminal when that hand-off fails, but the parent `jobs.status` was still set to `completed` on the way out — including from inside the `except` branch that had just logged the failure. A run whose downstream stages never got a child job therefore reported green.
+
+The parent now goes to `failed` with a message naming the stranded stages and the cause (`enqueue_job returned no job id`, or the exception text), and the `job_completed` broadcast carries `status="failed"`. Two convergence layers stop disagreeing: `run_post_completion_data_quality_audit` returns early for any non-`completed` job, so a failed hand-off no longer triggers `maybe_schedule_post_audit_followup` for work that never ran, and auto-drive's `_LOOP_GUARD_TERMINAL_STATUSES` already counts `failed` toward `max_repeats`, so nothing re-queues forever. Same reasoning the missing-prerequisites abort in that runner already applies. Successful hand-offs and culling-only runs are unchanged.
+
 ## [2026-09-12] edit | Prerequisite gate compares plan position, not set membership
 
 Closes the divergence the [stage 1 entry](#2026-09-09-edit--apipipelinesubmit-gains-the-phase-dag-prerequisite-gate) below filed as a follow-up (issue #351, stage 1 of the [early-localization rollout](architecture/pipeline/localization-rollout.md)). `missing_prerequisites` cleared a phase whose prerequisite appeared *anywhere* in the submitted set, so `{"stage_codes": ["tag", "score"]}` was accepted even though `keywords` was scheduled ahead of the `scoring` it requires. A prerequisite now clears the gate only when it is already complete for the scope or appears **earlier in the submitted list**, which is what the rollout's stage 1 exit gate asks for: "a hard prerequisite may be satisfied already or appear earlier in the same plan, not merely anywhere in the submitted set."
