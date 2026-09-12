@@ -78,9 +78,12 @@ def create_pipeline_submit_router() -> APIRouter:
         data.code = 'missing_prerequisites'. Because this endpoint preserves the submitted
         order as the run's execution order, a prerequisite placed after the stage that
         needs it (e.g. ['tag', 'score']) is rejected; siblings under one prerequisite
-        ('cluster' and 'tag', both under 'score') are accepted in either order. Image-id
-        and image-path selectors are not gated. This rejects some submissions accepted
-        before the localization control-plane consolidation (issues #346, #351).
+        ('cluster' and 'tag', both under 'score') are accepted in either order.
+        Folder scope means workspace_target, folder_paths, or folder_ids: ids are resolved
+        to their folder paths so every folder selector form is gated alike. Image-id and
+        image-path selectors are not gated, and neither is a folder_id that resolves to no
+        folder row. This rejects some submissions accepted before the localization
+        control-plane consolidation (issues #346, #351).
         """
     )
     def submit_pipeline(request: PipelineSubmitRequest):
@@ -158,6 +161,18 @@ def create_pipeline_submit_router() -> APIRouter:
         gate_paths = [
             p for p in ([wt] if wt and not is_file else []) + list(request.folder_paths or []) if p
         ]
+        # ``folder_ids`` names a folder scope exactly as ``folder_paths`` does -- the
+        # culling check above already treats it as one -- so resolve the ids to paths
+        # rather than leaving that selector form ungated.  An id we cannot resolve adds
+        # no gate path and so falls back to the ungated behaviour above.
+        for folder_id in (selector_request.get("folder_ids") or []):
+            try:
+                resolved_folder = db.get_folder_by_id(folder_id)
+            except Exception:
+                logger.warning("pipeline_submit: folder_id %s lookup failed; not gating on it", folder_id)
+                continue
+            if resolved_folder and resolved_folder not in gate_paths:
+                gate_paths.append(resolved_folder)
         if gate_paths:
             try:
                 prereq_miss = assert_prereqs_for_scope(phase_plan_codes, gate_paths)

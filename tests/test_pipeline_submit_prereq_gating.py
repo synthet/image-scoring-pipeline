@@ -256,6 +256,86 @@ def test_folder_paths_selector_is_gated(api_client, tmp_path, satisfied, enqueue
     assert r.json()["data"]["code"] == "missing_prerequisites"
 
 
+def test_folder_ids_selector_is_gated(api_client, satisfied, enqueued, monkeypatch):
+    """``folder_ids`` is a folder scope, so it must be gated like ``folder_paths``.
+
+    The router already counts ``folder_ids`` as a folder selector for the culling check
+    further down, but the gate only ever looked at ``workspace_target`` and
+    ``folder_paths``.  That made the whole DAG opt-out: submit the same folder by id and
+    every stage order was accepted.
+    """
+    monkeypatch.setattr("modules.db.get_folder_by_id", lambda fid: "/mnt/d/Photos/scope")
+    satisfied.update({"indexing", "metadata"})  # scoring NOT satisfied
+    r = api_client.post(
+        "/api/pipeline/submit",
+        json={"folder_ids": [12], "stage_codes": ["cluster"]},
+    )
+
+    body = r.json()
+    assert body["success"] is False
+    assert body["data"]["missing"] == {"culling": ["scoring"]}
+    assert enqueued == []
+
+
+def test_folder_ids_selector_gates_stage_order(api_client, satisfied, enqueued, monkeypatch):
+    """The issue #351 ordering rule has to hold on this selector form too."""
+    monkeypatch.setattr("modules.db.get_folder_by_id", lambda fid: "/mnt/d/Photos/scope")
+    satisfied.update({"indexing", "metadata"})
+    r = api_client.post(
+        "/api/pipeline/submit",
+        json={"folder_ids": [12], "stage_codes": ["tag", "score"]},
+    )
+
+    assert r.json()["data"]["missing"] == {"keywords": ["scoring"]}
+    assert enqueued == []
+
+
+def test_folder_ids_selector_passes_a_prepared_scope(api_client, satisfied, enqueued, monkeypatch):
+    """Resolving the ids must not turn into a blanket rejection."""
+    monkeypatch.setattr("modules.db.get_folder_by_id", lambda fid: "/mnt/d/Photos/scope")
+    satisfied.update({"indexing", "metadata", "scoring"})
+    r = api_client.post(
+        "/api/pipeline/submit",
+        json={"folder_ids": [12], "stage_codes": ["cluster"]},
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["success"] is True
+    assert len(enqueued) == 1
+
+
+def test_unresolvable_folder_id_leaves_the_submission_ungated(api_client, satisfied, enqueued, monkeypatch):
+    """An id with no folder row yields no gate path, which must not reject the run.
+
+    Same reasoning as the image-id case below: an empty scope reports every non-root
+    phase unsatisfied, so gating on nothing would fail legitimate work.
+    """
+    monkeypatch.setattr("modules.db.get_folder_by_id", lambda fid: None)
+    r = api_client.post(
+        "/api/pipeline/submit",
+        json={"folder_ids": [999], "stage_codes": ["cluster"]},
+    )
+
+    body = r.json()
+    assert body["success"] is True
+    assert (body.get("data") or {}).get("code") != "missing_prerequisites"
+
+
+def test_folder_id_lookup_failure_does_not_500(api_client, satisfied, enqueued, monkeypatch):
+    """A DB hiccup resolving one id degrades to ungated, not to a 500."""
+    def _boom(_fid):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr("modules.db.get_folder_by_id", _boom)
+    r = api_client.post(
+        "/api/pipeline/submit",
+        json={"folder_ids": [12], "stage_codes": ["cluster"]},
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["success"] is True
+
+
 def test_image_id_selector_is_not_gated(api_client, satisfied, enqueued):
     """Image-scoped submissions stay ungated on purpose.
 
