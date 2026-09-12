@@ -395,6 +395,29 @@ def test_enqueue_raising_fails_the_parent_job():
     assert "queue unavailable" in message
 
 
+def test_handoff_failure_after_enqueue_names_the_child_job():
+    """create_job_phases failing leaves a real queued child, so the message must not
+    claim the stages "did not run" -- that sends the operator hunting for a job that
+    exists but whose phase plan is incomplete."""
+    with patch("modules.selection_runner.db") as mock_db,          patch("modules.selection_runner.event_manager"):
+        from modules.selection_runner import SelectionRunner
+
+        mock_db.get_job_phases.return_value = [
+            _CULLING_DONE, _phase_row("bird_species", "pending"),
+        ]
+        mock_db.enqueue_job.return_value = (777, 1)
+        mock_db.create_job_phases.side_effect = RuntimeError("phase plan write failed")
+
+        SelectionRunner()._complete_phase_and_advance(449, "/mnt/d/Photos/test", lambda *_a, **_k: None)
+
+    calls = _terminal_status_calls(mock_db)
+    assert [status for status, _ in calls] == ["failed"]
+    message = calls[0][1] or ""
+    assert "#777" in message
+    assert "did not run" not in message
+    assert "phase plan write failed" in message
+
+
 def test_failed_handoff_broadcasts_failed_status():
     """The Runs UI listens to the broadcast, so it must not hear `completed`."""
     with patch("modules.selection_runner.db") as mock_db, \

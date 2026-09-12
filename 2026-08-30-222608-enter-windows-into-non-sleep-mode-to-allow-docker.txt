@@ -1,0 +1,2323 @@
+ ▐▛███▛█   Claude Code v2.1.251
+▝▜██████▀  Opus 5 · Claude Pro
+  ▝▝ ▝▝    D:\Projects\image-scoring-backend
+
+
+> enter windows into non-sleep mode to allow docker work while i am away        
+
+● Skill(windows-keep-awake)
+  ⎿  Successfully loaded skill
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Keep-awake is active — worker PID 17932, running as a hidden detached process
+  (survives this session ending). It blocks both system sleep and display
+  timeout.
+
+  To release it when you're back:
+
+  powershell -NoProfile -ExecutionPolicy Bypass -File
+  .\scripts\powershell\Keep-Awake.ps1 -Action Stop
+
+✻ Worked for 36s · done 11:55
+
+※ recap: Goal was to keep Windows from sleeping so Docker work continues while you're away. Keep-awake is running as detached worker PID 17932, blocking sleep and display timeout. Next: run Keep-Awake.ps1 -Action Stop when you no longer need it. (disable recaps in /config)
+
+> make sure bounding box is a part of "birding" phase by default and when       
+  running http://127.0.0.1:7860/ui/dashboard "Drive to complete" Dashboard      
+    Folder pipeline status, batch queueing, and background drive across the     
+  library.                                                                      
+
+● I'll explore the codebase to understand the birding phase and the dashboard's
+  drive-to-complete flow.
+
+● 2 background agents launched (↓ to manage)
+   ├ Explore birding phase + bbox
+   └ Explore dashboard drive-to-complete
+
+  Searched for 13 patterns, listed 1 directory, called is-be-data 4 times, ran 13 shell commands (ctrl+o to expand)
+
+● I've verified the current state end-to-end. Key findings before I finalize the
+  plan:
+
+  Bbox already runs inside the bird_species phase by default — BirdDetector
+  defaults to enabled: true (modules/bird_detection.py:105), config.json has no
+  bird_detection section so the code default applies, ultralytics 8.4.120 and
+  the synthet/bird-detect-v0 weights are both present and cached in
+  image-scoring-webui. The Dashboard's Drive "Full pipeline" preset (the
+  default) already includes bird_species (RunsBucketsPanel.tsx:291,
+  runs_autodrive.py:2025).
+
+  Live DB confirms it's working: 20,422 boxes found, 14,330 "no bird detected"
+  sentinels, only 3 decode errors, 0 classified images missing a bbox, 93
+  bird-tagged images still pending classification.
+
+  The real gaps are structural, not "off by default":
+
+  1. Bbox is invisible to completeness. get_phase_incomplete_sql("bird_species")
+     (modules/db_legacy.py:10064) and is_image_bird_species_complete
+     (modules/db/__init__.py:19) only check for a species:* keyword or the
+     exhausted marker — bird_bbox is never considered. An image that is
+     species-complete but has bird_bbox IS NULL (or a failed-scan sentinel) is
+     permanently invisible to Drive; only scripts/backfill_bird_bbox.py fixes
+     it.
+  2. Silent fail-open. If the detector is unavailable mid-run,
+     bird_species.py:247 writes a permanent {"detected": false, "error": 
+     "detector_unavailable"} sentinel and classifies the uncropped frame —
+     degraded species accuracy, never retried, nothing surfaced.
+  3. bird_detection is absent from config.json, so "enabled by default" is
+     implicit-in-code only.
+● User answered Claude's questions:
+  ⎿  · Bbox already runs by default. How far should I go to make that 
+     structurally guaranteed? → Make bbox a completeness criterion (Recommended)
+     · Should bbox gaps on already-classified images be repaired automatically 
+     by Drive? → Yes — Drive repairs them (Recommended)
+
+● Agent "Explore dashboard drive-to-complete" finished · 4m 5s
+
+  Searched for 2 patterns, ran 3 shell commands (ctrl+o to expand)
+
+● Agent "Explore birding phase + bbox" finished · 4m 54s
+
+● Updated plan
+  ⎿  /plan to preview
+
+● Agent "Explore birding phase + bbox" finished · 7m 13s
+
+● Plan written. Summary of what I found and propose:
+
+  Bbox is already on by default and already inside Drive to Complete — I
+  verified the detector deps and weights in image-scoring-webui, the enabled: 
+  true code default, and that the Dashboard's default "Full pipeline" preset
+  already ends in bird_species. Live DB shows 0 classified images missing a
+  bbox.
+
+  What's actually missing is that bird_bbox is invisible to every completeness
+  check, so a bbox gap on an already-classified or exhausted image can never be
+  seen or repaired by Drive — only by the offline backfill script. The plan
+  closes that: bbox becomes part of the bird_species incomplete predicate, and
+  the runner gains a detector-only repair pass so the state converges without
+  re-running BioCLIP or rewriting keywords.
+
+  One thing worth flagging: 14,330 of 34,844 bird-tagged images (41%) have a "no
+  bird detected" sentinel. That's a plausible detector/tagging-precision
+  question, but it's outside this scope — say the word if you want it looked at
+  separately.
+
+● User approved Claude's plan
+  ⎿  Plan saved to: 
+     C:\Users\owner\.claude\plans\make-sure-bounding-box-vast-puzzle.md · /plan 
+     to edit
+     Make bird bbox a first-class part of the bird_species phase
+
+     Context
+
+     The ask: guarantee that bird bounding-box detection is part of the
+     "birding" phase by default, including when the library is driven from
+     Dashboard → Drive to Complete (/ui/dashboard).
+
+     What's already true (verified live, 2026-08-30):
+
+     - There is no phase named birding. The phase is bird_species
+       (modules/phases.py:38, sort_order 60, optional: true, requires keywords).
+     - Bbox detection already runs inside the phase by default.
+       BirdDetector.enabled defaults to True (modules/bird_detection.py:105);
+       config.json has no bird_detection section, so the code defaults apply.
+       ultralytics 8.4.120 and the cached synthet/bird-detect-v0 weights are
+       both present in image-scoring-webui.
+     - Drive to Complete already includes it. The default preset is full →
+       FULL_PIPELINE_STAGE_CODES (frontend/src/constants/pipeline.ts:4) which
+       ends in bird_species; server-side _DRIVE_STATE["target_phases"] = None →
+       full pipeline (modules/runs_autodrive.py:2025).
+     - Live DB: 20,422 real boxes, 14,330 "no bird" sentinels, 3 decode errors,
+       0 classified images missing a bbox, 93 bird-tagged images still pending
+       classification.
+
+     The actual problem: bbox is a side effect of classification, invisible to
+     every completeness check.
+
+     1. get_phase_incomplete_sql("bird_species")
+        (modules/db_legacy.py:10064-10086) and is_image_bird_species_complete
+        (modules/db/__init__.py:19-70) test only "has a species:* keyword" or
+        "has the exhausted marker". bird_bbox is never consulted.
+     2. So an image that is species-complete (or exhausted) but has bird_bbox IS
+        NULL, or a transient {"detected": false, "error": 
+        "detector_unavailable"} sentinel, is permanently invisible to Drive.
+        Only scripts/backfill_bird_bbox.py can repair it.
+     3. BIRD_SPECIES_RUNNER_VERSION was never bumped when bbox persistence was
+        added (modules/bird_species.py:20), so every pre-bbox done row stays
+        done forever.
+
+     Intended outcome: a bbox gap is real, visible work. The folder shows
+     awaiting_bird_species, Drive enqueues it, and the runner repairs it with a
+     detector-only pass — no BioCLIP re-run, no keyword rewrites — so the state
+     converges instead of looping.
+
+     ---
+
+     Step 0 — Backlog contract
+
+     Per CLAUDE.md / .claude/rules/backlog-queue.md: file a GitHub issue and
+     claim it before the first commit (Stage = Claimed → In Progress), and the
+     PR body must carry Closes #<N>.
+
+     ▎ The github MCP server failed to connect this session (401 
+     ▎ AUTH_HEADER_REJECTED). Use the gh CLI, or fix the token first.
+
+     ---
+
+     Step 1 — Retryability helper (modules/bird_detection.py)
+
+     Add next to the existing sentinel helpers (BBOX_NOT_DETECTED at :50,
+     bbox_scan_failed at :53, bird_bbox_payload at :62):
+
+     #: Scan-failure reasons worth retrying — environment-transient, not 
+     data-terminal.
+     RETRYABLE_BBOX_ERRORS = frozenset({"detector_unavailable"})
+
+     def bbox_needs_scan(bbox) -> bool:
+         """True when ``images.bird_bbox`` should be (re)scanned: NULL, or a 
+     retryable failure."""
+
+     Rules, chosen deliberately so Drive always converges:
+
+     Stored value: NULL
+     Needs scan?: yes
+     Why: never scanned
+     ────────────────────────────────────────
+     Stored value: real xyxy box
+     Needs scan?: no
+     Why: done
+     ────────────────────────────────────────
+     Stored value: {"detected": false}
+     Needs scan?: no
+     Why: detector ran, no bird — a real answer
+     ────────────────────────────────────────
+     Stored value: {"detected": false, "error": "detector_unavailable"}
+     Needs scan?: yes
+     Why: env was broken; species was also computed on the uncropped frame
+     ────────────────────────────────────────
+     Stored value: file_missing, decode_error: …, detect_error: …,
+     classify_error: 
+     …, missing_decode_result
+     Needs scan?: no
+     Why: data-terminal; retrying loops forever (this is what keeps the 3 known
+     NEF
+     decode failures out of the queue)
+
+     Accept a dict, a JSON string, or None — bird_bbox arrives as parsed JSONB
+     from the connector but as text from some legacy reads.
+
+     Step 2 — Teach the SQL predicate about bbox (modules/db_legacy.py)
+
+     In the code == "bird_species" branch of get_phase_incomplete_sql (:10064),
+     OR in a bbox clause built by a new sibling helper next to
+     _sql_image_has_birds_keyword (:10005) / _sql_bird_species_in_scope
+     (:10015):
+
+     def _sql_bird_bbox_needs_scan(table_alias: str = "") -> str:
+         """Postgres-only: images.bird_bbox missing or holding a retryable 
+     failure sentinel."""
+
+     - Emit (prefix.bird_bbox IS NULL OR prefix.bird_bbox->>'error' IN 
+       ('detector_unavailable')).
+     - Guard on engine: bird_bbox is Postgres-only (modules/db_postgres.py:573,
+       migrations/versions/0033_image_bird_bbox.py) and ->> is Postgres syntax
+       the connector does not translate. Return "1=0" when _get_db_engine() != 
+       "postgres" — same shape as _images_table_has_legacy_keywords_column()
+       (:952).
+     - Keep the clause list-driven off RETRYABLE_BBOX_ERRORS so Step 1 stays the
+       single source of truth.
+
+     Resulting predicate: bird-tagged AND ( (no species AND not exhausted) OR
+     bbox-needs-scan ).
+
+     This alone makes folder_has_bird_species_work (:14532) true for bbox-gap
+     folders, which is what flips _resolve_phase_row
+     (modules/runs_autodrive.py:1314-1341) from a synthesized skipped row to
+     real work and puts the folder in the awaiting_bird_species bucket. No 
+     frontend change is needed — that bucket filter and the full Drive preset
+     already exist.
+
+     Step 3 — Align the per-image completeness check (modules/db/__init__.py:19)
+
+     Extend is_image_bird_species_complete with the same bbox condition so
+     explain_phase_run_decision (modules/phases_policy.py:166-169,
+     data-validation branch) agrees with the SQL. If these two disagree, Drive
+     enqueues folders the runner then filters empty → no-progress →
+     DRIVE_MAX_NOPROGRESS_TICKS stall.
+
+     Do not bump BIRD_SPECIES_RUNNER_VERSION. explain_phase_run_decision returns
+     executor_version_changed before data validation
+     (phases_policy.py:135-137), which would re-run BioCLIP over all ~35k
+     bird-tagged images.
+
+     Step 4 — Detector-only pass in the runner (modules/bird_species.py)
+
+     In _run_batch_internal (around the existing policy filter at :617-640),
+     partition the bird-tagged rows into two disjoint sets before
+     classification:
+
+     1. classify set — explain_phase_run_decision(...).should_run (today's
+        behaviour, unchanged; it writes bbox as a side effect).
+     2. bbox-only set — everything else where bbox_needs_scan(row["bird_bbox"]).
+        get_images_with_keyword is SELECT * (db_legacy.py:5631), so bird_bbox
+        is already on the row — no extra query.
+
+     Partitioning on the raw column rather than the policy decision is
+     deliberate: images marked IPS skipped (the no_species_match / exhausted
+     path) short-circuit at already_skipped_current_executor
+     (phases_policy.py:120-128) and never reach data validation, so a
+     policy-based split would leave exhausted rows permanently unrepairable
+     while the SQL kept advertising work.
+
+     Add a small helper, e.g.:
+
+     def scan_bird_bbox_only(row, detector) -> dict:
+         """Run the detector on one row and return a bird_bbox payload. No 
+     BioCLIP, no keywords."""
+
+     Reusing _resolve_inference_path (:405, full-resolution / RAW-preview path),
+     open_image_for_ml + bake_orientation, detector.detect_best_box, and
+     bird_bbox_payload / bbox_scan_failed. It writes only
+     db.update_image_bird_bbox (db_legacy.py:4114) — no image_keywords, no
+     bioclip_2_image embedding, no set_image_phase_status. Existing status
+     stays; completeness now flips because the column changed.
+
+     Loop/log details:
+     - Reuse self._ensure_detector() (:161-191) — when it returns None, skip the
+       bbox-only set entirely and log a warning; do not stamp
+       detector_unavailable sentinels, which would just re-queue on the next
+       tick.
+     - Count bbox-only rows into self.total_count so the progress bar and
+       /api/bird-species/status stay honest, and log them distinctly (e.g.
+       Rescanning N images for bird box only (no re-classification).).
+     - Respect self.stop_event / db.job_should_stop_processing in the loop, same
+       as the classify loop.
+     - When the classify set is empty, the BioCLIP model must not load —
+       _ensure_detector is already independent of self.classifier, so just don't
+       touch the classifier on the bbox-only path.
+
+     Convergence guarantee: every processed row ends with a non-NULL,
+     non-retryable payload, so it drops out of the predicate on the next pass.
+
+     Step 5 — Make the default explicit (config.json)
+
+     Add the bird_detection block, copied verbatim from
+     config.example.json:244-255 (enabled: true, model_repo: 
+     "synthet/bird-detect-v0", model_file: "bird_detect_v0.pt", local_path: "",
+     confidence: 0.25, padding: 0.1, imgsz: 640, max_det: 10, device: "auto",
+     fail_open: true). Behaviour-neutral — it just stops "on by default" from
+     being implicit-in-code. No secrets involved.
+
+     Step 6 — Tests
+
+     - tests/test_bird_detection.py — bbox_needs_scan truth table (all five
+       states above), including string-JSON input.
+     - tests/test_bird_species.py — partition logic: a species-complete +
+       NULL-bbox row lands in the bbox-only set and never reaches classify(); an
+       exhausted + NULL-bbox row does too; a decode_error row is excluded;
+       _ensure_detector() is None skips the set without writing sentinels.
+     - New/extended predicate test for get_phase_incomplete_sql("bird_species")
+       — assert the Postgres branch emits the bbox clause and the non-Postgres
+       branch does not (mock _get_db_engine). Follow whatever pattern tests/
+       already uses for get_phase_incomplete_sql.
+     - tests/test_backfill_bird_bbox.py must still pass — the script is not
+       modified.
+
+     Step 7 — Docs
+
+     docs/technical/BIRD_SPECIES_WALKTHROUGH.md — in the Detector notes and
+     §3.2.1 eligibility table, state that a missing/retryable bbox now counts as
+     bird_species work and is repaired by a detector-only pass, and that
+     scripts/backfill_bird_bbox.py is now the offline/out-of-scope path (e.g.
+     --all-null for non-bird-tagged rows) rather than the only repair route.
+     Append one line to docs/log.md.
+
+     ---
+
+     Files touched
+
+     ┌──────────────────────────────────────────┬──────────────────────────────┐
+     │                   File                   │            Change            │
+     ├──────────────────────────────────────────┼──────────────────────────────┤
+     │ modules/bird_detection.py                │ RETRYABLE_BBOX_ERRORS,       │
+     │                                          │ bbox_needs_scan()            │
+     ├──────────────────────────────────────────┼──────────────────────────────┤
+     │                                          │ _sql_bird_bbox_needs_scan(); │
+     │ modules/db_legacy.py                     │  OR it into the bird_species │
+     │                                          │  branch of                   │
+     │                                          │ get_phase_incomplete_sql     │
+     ├──────────────────────────────────────────┼──────────────────────────────┤
+     │ modules/db/__init__.py                   │ bbox condition in is_image_b │
+     │                                          │ ird_species_complete         │
+     ├──────────────────────────────────────────┼──────────────────────────────┤
+     │                                          │ classify / bbox-only         │
+     │ modules/bird_species.py                  │ partition +                  │
+     │                                          │ scan_bird_bbox_only()        │
+     ├──────────────────────────────────────────┼──────────────────────────────┤
+     │ config.json                              │ explicit bird_detection      │
+     │                                          │ section                      │
+     ├──────────────────────────────────────────┼──────────────────────────────┤
+     │ tests/test_bird_detection.py,            │                              │
+     │ tests/test_bird_species.py (+ predicate  │ coverage                     │
+     │ test)                                    │                              │
+     ├──────────────────────────────────────────┼──────────────────────────────┤
+     │ docs/technical/BIRD_SPECIES_WALKTHROUGH. │ docs                         │
+     │ md, docs/log.md                          │                              │
+     └──────────────────────────────────────────┴──────────────────────────────┘
+
+     Not touched: frontend/ (bucket + preset already cover it),
+     modules/phases.py, modules/runs_autodrive.py, openapi.yaml,
+     scripts/backfill_bird_bbox.py, any migration — no schema change.
+
+     ---
+
+     Verification
+
+     1. Fast unit subset
+
+     scripts\batch\docker_gpu_run.bat -m pytest tests/test_bird_detection.py
+     tests/test_bird_species.py tests/test_backfill_bird_bbox.py -q
+     scripts\batch\docker_gpu_run.bat -m pytest -m "not gpu and not db and not 
+     ml" --ignore=tests/test_probe.py -q
+
+     Plus ruff on the touched files only.
+
+     2. Predicate behaves — before/after counts (via is-be-data MCP execute_sql,
+     read-only). Baseline today is 0, so seed a controlled gap on a scratch
+     folder first:
+
+     -- pick one bird-tagged, species-complete image in a small test folder, 
+     note its id
+     UPDATE images SET bird_bbox = NULL WHERE id = :test_id;          -- setup 
+     (reversible)
+     UPDATE images SET bird_bbox =
+     '{"detected":false,"error":"detector_unavailable"}'::jsonb
+       WHERE id = :test_id_2;                                          -- 
+     retryable sentinel
+
+     Then confirm the folder reports work:
+
+     dispatch("diagnostics.diagnose_phase_consistency", {...})
+     GET /runs/folder-buckets   → that folder must move to bucket
+     "awaiting_bird_species"
+
+     and that a decode_error row does not appear.
+
+     3. End-to-end through the Dashboard — the real acceptance test:
+
+     1. docker compose up -d db webui, open http://127.0.0.1:7860/ui/dashboard.
+     2. Confirm the seeded folder now sits in the Awaiting Birds bucket with the
+        Bird Species ID icon pending.
+     3. Phases = Full pipeline, limit 1, Start drive.
+     4. Watch GET /runs/drive/status and the runner log: expect Rescanning 2 
+        images for bird box only (no re-classification)., no BioCLIP model load,
+        and no species: keyword writes.
+     5. Re-query: both rows have a real box or {"detected": false}; the folder
+        falls back to complete; the drive stops with stop_reason: "complete" and
+        not no_progress / stalled.
+     6. Confirm keywords are untouched:
+
+     SELECT kd.keyword_norm FROM image_keywords ik
+     JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id
+     WHERE ik.image_id IN (:test_id, :test_id_2) ORDER BY 1;
+
+     4. Regression guard — no mass re-classification. Before starting the drive,
+     record the library-wide pending count; after, it must be unchanged apart
+     from the seeded rows:
+
+     SELECT COUNT(*) FROM images i
+     WHERE EXISTS (SELECT 1 FROM image_keywords ik JOIN keywords_dim kd ON
+     ik.keyword_id=kd.keyword_id
+                   WHERE ik.image_id=i.id AND kd.keyword_norm='birds')
+       AND NOT EXISTS (SELECT 1 FROM image_keywords ik JOIN keywords_dim kd ON
+     ik.keyword_id=kd.keyword_id
+                       WHERE ik.image_id=i.id AND kd.keyword_norm LIKE
+     'species:%');
+     -- baseline 2026-08-30: 93
+
+     If this jumps toward ~35k, BIRD_SPECIES_RUNNER_VERSION was bumped or the
+     partition leaked — revert.
+
+  Searched for 1 pattern, ran 6 shell commands (ctrl+o to expand)
+
+● Now Step 1 — the retryability helper:
+
+● Update(modules\bird_detection.py)
+  ⎿  Added 33 lines
+      59      return {"detected": False, "error": (reason or "scan_failed
+          ")[:200]}
+      60  
+      61  
+      62 +#: Scan-failure reasons worth retrying — environment-transient,
+         + not data-terminal.                                            
+      63 +#: Terminal reasons (``file_missing``, ``decode_error: …``, ``d
+         +etect_error: …``,                                              
+      64 +#: ``classify_error: …``) are deliberately excluded: re-queuein
+         +g them would keep the                                          
+      65 +#: image in the ``bird_species`` backlog forever.              
+      66 +RETRYABLE_BBOX_ERRORS = frozenset({"detector_unavailable"})    
+      67 +                                                               
+      68 +                                                               
+      69 +def bbox_needs_scan(bbox) -> bool:                             
+      70 +    """True when ``images.bird_bbox`` should be (re)scanned.   
+      71 +                                                               
+      72 +    ``NULL`` means never scanned; a retryable sentinel means th
+         +e detector could not                                           
+      73 +    run for an environmental reason (see :data:`RETRYABLE_BBOX_
+         +ERRORS`). A real box                                           
+      74 +    and ``BBOX_NOT_DETECTED`` are both final answers.          
+      75 +                                                               
+      76 +    Accepts a ``dict`` (parsed JSONB), a JSON string, or ``None
+         +``.                                                            
+      77 +    """                                                        
+      78 +    if bbox is None:                                           
+      79 +        return True                                            
+      80 +    if isinstance(bbox, (str, bytes)):                         
+      81 +        text = bbox.decode() if isinstance(bbox, bytes) else bb
+         +ox                                                             
+      82 +        if not text.strip():                                   
+      83 +            return True                                        
+      84 +        import json                                            
+      85 +                                                               
+      86 +        try:                                                   
+      87 +            bbox = json.loads(text)                            
+      88 +        except ValueError:                                     
+      89 +            return False                                       
+      90 +    if not isinstance(bbox, dict):                             
+      91 +        return False                                           
+      92 +    return str(bbox.get("error") or "") in RETRYABLE_BBOX_ERROR
+         +S                                                              
+      93 +                                                               
+      94 +                                                               
+      95  def bird_bbox_payload(box: Optional[dict], *, error: Optional[s
+          tr] = None) -> dict:
+      96      """Normalize a detection outcome to a JSONB payload (never 
+          ``None``)."""
+      97      if error:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Update(modules\db_legacy.py)
+  ⎿  Added 20 lines
+      10017      return _sql_image_has_birds_keyword(table_alias)
+      10018  
+      10019  
+      10020 +def _sql_bird_bbox_needs_scan(table_alias: str = "") -> str:
+      10021 +    """``images.bird_bbox`` missing, or holding a retryable 
+            +scan-failure sentinel.                                      
+      10022 +                                                            
+      10023 +    Mirrors :func:`modules.bird_detection.bbox_needs_scan` i
+            +n SQL so the folder-level                                   
+      10024 +    predicate and the per-image policy check agree. ``bird_b
+            +box`` is a Postgres-only                                    
+      10025 +    JSONB column and ``->>`` is not translated for Firebird,
+            + so this yields ``1=0``                                     
+      10026 +    on any other engine.                                    
+      10027 +    """                                                     
+      10028 +    if _get_db_engine() != "postgres":                      
+      10029 +        return "1=0"                                        
+      10030 +    from modules.bird_detection import RETRYABLE_BBOX_ERRORS
+      10031 +                                                            
+      10032 +    prefix = f"{table_alias}." if table_alias else ""       
+      10033 +    retryable = ", ".join(f"'{err}'" for err in sorted(RETRY
+            +ABLE_BBOX_ERRORS))                                          
+      10034 +    return (                                                
+      10035 +        f"({prefix}bird_bbox IS NULL "                      
+      10036 +        f"OR {prefix}bird_bbox->>'error' IN ({retryable}))" 
+      10037 +    )                                                       
+      10038 +                                                            
+      10039 +                                                            
+      10040  def get_phase_incomplete_sql(phase_code: str, table_alias: s
+             tr = "") -> str:
+      10041      """Return an image-level WHERE clause identifying images
+              with missing data for a phase."""
+      10042      prefix = f"{table_alias}." if table_alias else ""
+  ⎿  Found 2 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● Update(modules\db_legacy.py)
+  ⎿  Added 9 lines, removed 2 lines
+      10099          # Mirror the alias handling of the birds/species pre
+             dicates above (unqualified columns
+      10100          # when no alias is given) so the exhausted clause ne
+             ver references a phantom ``i`` table.
+      10101          exhausted = _sql_exhausted_marker(table_alias)
+      10102 +        # A missing (or retryably-failed) bird_bbox is real 
+            +phase work too: the box is                                  
+      10103 +        # produced inside this phase, so without this clause
+            + a species-complete or                                      
+      10104 +        # exhausted image with no box stays invisible to aut
+            +o-drive forever and can only                                
+      10105 +        # be repaired by scripts/backfill_bird_bbox.py.     
+      10106 +        needs_bbox = _sql_bird_bbox_needs_scan(table_alias) 
+      10107          return f"""(
+      10108              ({_sql_image_has_birds_keyword(table_alias or ""
+             )})
+      10104 -            AND NOT ({species_present})                     
+      10105 -            AND NOT ({exhausted})                           
+      10109 +            AND (                                           
+      10110 +                (NOT ({species_present}) AND NOT ({exhausted
+            +}))                                                         
+      10111 +                OR ({needs_bbox})                           
+      10112 +            )                                               
+      10113          )"""
+      10114  
+      10115      return "1=0"  # Default to no matches for unknown phase
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● Update(modules\db\__init__.py)  ⎿  Added 36 lines, removed 19 lines
+      17  def _ensure_new_helpers(mod):
+      18      if not hasattr(mod, "is_image_bird_species_complete"):
+      19          def is_image_bird_species_complete(image_id: int) -> bo
+          ol:
+      20 +            """Mirror of ``db_legacy.get_phase_incomplete_sql('
+         +bird_species')`` per image.                                    
+      21 +                                                               
+      22 +            Keep the two in step: when they disagree, auto-driv
+         +e enqueues folders the                                         
+      23 +            runner then filters empty and the drive stalls on n
+         +o-progress ticks.                                              
+      24 +            """                                                
+      25 +            from modules.bird_detection import bbox_needs_scan 
+      26              from modules.bird_species_eligibility import (
+      27                  BIRDS_SPECIES_EXHAUSTED_NORM,
+      28                  _sql_exhausted_marker,
+     ...
+      36                  (image_id,),
+      37              )
+      38              has_birds = int((cnt_birds or {}).get("c") or 0) > 
+          0
+      33 -            exhausted_sql = _sql_exhausted_marker("i")         
+      34 -            row_ex = conn.query_one(                           
+      35 -                f"SELECT 1 AS x FROM images i WHERE i.id = ? AN
+         -D ({exhausted_sql})",                                          
+      36 -                (image_id,),                                   
+      37 -            )                                                  
+      38 -            if row_ex:                                         
+      39 -                return True                                    
+      39 +                                                               
+      40 +            kw_str = None                                      
+      41              if mod._images_table_has_legacy_keywords_column():
+      42                  row = conn.query_one(
+      43                      "SELECT keywords FROM images WHERE id = ?",
+           (image_id,)
+     ...
+      46                      return False
+      47                  kw_str = str(row.get("keywords") or "").lower()
+      48                  has_birds = has_birds or "birds" in kw_str
+      48 -                if BIRDS_SPECIES_EXHAUSTED_NORM in kw_str:     
+      49 -                    return True                                
+      50 -                if not has_birds:                              
+      51 -                    return True                                
+      52 -                cnt_species = conn.query_one(                  
+      53 -                    "SELECT COUNT(*) AS c FROM image_keywords i
+         -k "                                                            
+      54 -                    "JOIN keywords_dim kd ON kd.keyword_id = ik
+         -.keyword_id "                                                  
+      55 -                    "WHERE ik.image_id = ? AND LOWER(kd.keyword
+         -_norm) LIKE 'species:%'",                                      
+      56 -                    (image_id,),                               
+      57 -                )                                              
+      58 -                return "species:" in kw_str or int((cnt_species
+         - or {}).get("c") or 0) > 0                                     
+      49 +                                                               
+      50 +            # Not birds-tagged => out of scope for this phase e
+         +ntirely.                                                       
+      51              if not has_birds:
+      52                  return True
+      53 +                                                               
+      54 +            # The bird box is a product of this phase, so a bir
+         +ds-tagged image that was                                       
+      55 +            # never scanned (or whose scan failed retryably) st
+         +ill owes work — even when                                      
+      56 +            # species are already assigned or the species searc
+         +h is exhausted. Postgres                                       
+      57 +            # only: ``bird_bbox`` does not exist on the legacy 
+         +Firebird schema.                                               
+      58 +            if mod._get_db_engine() == "postgres":             
+      59 +                row_bbox = conn.query_one(                     
+      60 +                    "SELECT bird_bbox FROM images WHERE id = ?"
+         +, (image_id,)                                                  
+      61 +                )                                              
+      62 +                if row_bbox is not None and bbox_needs_scan(row
+         +_bbox.get("bird_bbox")):                                       
+      63 +                    return False                               
+      64 +                                                               
+      65 +            exhausted_sql = _sql_exhausted_marker("i")         
+      66 +            row_ex = conn.query_one(                           
+      67 +                f"SELECT 1 AS x FROM images i WHERE i.id = ? AN
+         +D ({exhausted_sql})",                                          
+      68 +                (image_id,),                                   
+      69 +            )                                                  
+      70 +            if row_ex:                                         
+      71 +                return True                                    
+      72 +            if kw_str is not None and BIRDS_SPECIES_EXHAUSTED_N
+         +ORM in kw_str:                                                 
+      73 +                return True                                    
+      74 +                                                               
+      75              cnt_species = conn.query_one(
+      76                  "SELECT COUNT(*) AS c FROM image_keywords ik "
+      77                  "JOIN keywords_dim kd ON kd.keyword_id = ik.key
+          word_id "
+      78                  "WHERE ik.image_id = ? AND LOWER(kd.keyword_nor
+          m) LIKE 'species:%'",
+      79                  (image_id,),
+      80              )
+      67 -            return int((cnt_species or {}).get("c") or 0) > 0  
+      81 +            has_species = int((cnt_species or {}).get("c") or 0
+         +) > 0                                                          
+      82 +            if kw_str is not None:                             
+      83 +                has_species = has_species or "species:" in kw_s
+         +tr                                                             
+      84 +            return has_species                                 
+      85          mod.is_image_bird_species_complete = is_image_bird_spec
+          ies_complete
+      86  
+      87      if not hasattr(mod, "is_image_culling_complete"):
+
+  Searched for 1 pattern, ran 4 shell commands (ctrl+o to expand)
+
+● Update(modules\db\__init__.py)
+  ⎿  Added 5 lines, removed 1 line
+      16  
+      17  def _ensure_new_helpers(mod):
+      18      if not hasattr(mod, "is_image_bird_species_complete"):
+      19 -        def is_image_bird_species_complete(image_id: int) -> bo
+         -ol:                                                            
+      19 +        def is_image_bird_species_complete(image_id: int, *, in
+         +clude_bbox: bool = True) -> bool:                              
+      20              """Mirror of ``db_legacy.get_phase_incomplete_sql('
+          bird_species')`` per image.
+      21  
+      22              Keep the two in step: when they disagree, auto-driv
+          e enqueues folders the
+      23              runner then filters empty and the drive stalls on n
+          o-progress ticks.
+      24 +                                                               
+      25 +            ``include_bbox=False`` answers the narrower questio
+         +n "is the *species* work                                       
+      26 +            done?", ignoring the bird box. ``BirdSpeciesRunner`
+         +` uses it to tell a row                                        
+      27 +            that needs full classification from one that only n
+         +eeds a detector rescan.                                        
+      28              """
+      29              from modules.bird_detection import bbox_needs_scan
+      30              from modules.bird_species_eligibility import (
+
+● Update(modules\db\__init__.py)
+  ⎿  Added 1 line, removed 1 line
+      59              # never scanned (or whose scan failed retryably) st
+          ill owes work — even when
+      60              # species are already assigned or the species searc
+          h is exhausted. Postgres
+      61              # only: ``bird_bbox`` does not exist on the legacy 
+          Firebird schema.
+      62 -            if mod._get_db_engine() == "postgres":             
+      62 +            if include_bbox and mod._get_db_engine() == "postgr
+         +es":                                                           
+      63                  row_bbox = conn.query_one(
+      64                      "SELECT bird_bbox FROM images WHERE id = ?"
+          , (image_id,)
+      65                  )
+  ⎿  Found 11 new diagnostic issues in 2 files (ctrl+o to expand)
+
+● Update(modules\bird_species.py)
+  ⎿  Added 36 lines
+       95          conn.close()
+       96  
+       97  
+       98 +def scan_bird_bbox_only(row: dict, detector) -> dict:         
+       99 +    """Detect the bird box for one image row and return a ``bi
+          +rd_bbox`` payload.                                            
+      100 +                                                              
+      101 +    Detector only: no BioCLIP inference, no keyword or embeddi
+          +ng writes. Repairs images                                     
+      102 +    whose species work is already done (or exhausted) but that
+          + never got a box. Always                                      
+      103 +    returns a payload, so the row stops matching ``bbox_needs_
+          +scan`` and the auto-drive                                     
+      104 +    queue converges instead of re-offering the same image ever
+          +y tick.                                                       
+      105 +    """                                                       
+      106 +    from modules.bird_detection import bbox_scan_failed, bird_
+          +bbox_payload                                                  
+      107 +    from modules.thumbnails import open_image_for_ml          
+      108 +                                                              
+      109 +    file_path = row.get("file_path") or ""                    
+      110 +    inference_path = _resolve_inference_path(row, file_path)  
+      111 +    if not inference_path or not os.path.exists(inference_path
+          +):                                                            
+      112 +        return bbox_scan_failed("file_missing")               
+      113 +                                                              
+      114 +    try:                                                      
+      115 +        img = open_image_for_ml(inference_path).convert("RGB")
+      116 +    except Exception as exc:  # noqa: BLE001 — record the fail
+          +ure, don't abort the batch                                    
+      117 +        return bbox_scan_failed(f"decode_error: {exc}")       
+      118 +                                                              
+      119 +    # Bake EXIF orientation so the stored coordinates are in d
+          +isplay orientation,                                           
+      120 +    # matching the classify path in ``BioCLIPClassifier.classi
+          +fy``.                                                         
+      121 +    try:                                                      
+      122 +        from modules.thumbnails import bake_orientation       
+      123 +                                                              
+      124 +        img = bake_orientation(img, inference_path)           
+      125 +    except Exception as orient_err:  # noqa: BLE001 — orientat
+          +ion is best-effort                                            
+      126 +        logger.debug("bake_orientation failed for %s: %s", inf
+          +erence_path, orient_err)                                      
+      127 +                                                              
+      128 +    try:                                                      
+      129 +        return bird_bbox_payload(detector.detect_best_box(img)
+          +)                                                             
+      130 +    except Exception as exc:  # noqa: BLE001 — record the fail
+          +ure, don't abort the batch                                    
+      131 +        return bbox_scan_failed(f"detect_error: {exc}")       
+      132 +                                                              
+      133 +                                                              
+      134  class BioCLIPClassifier:
+      135      """
+      136      Zero-shot bird species classifier using BioCLIP 2 via Open
+           CLIP.
+  ⎿  Found 20 new diagnostic issues in 2 files (ctrl+o to expand)
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Update(modules\bird_species.py)
+  ⎿  Added 11 lines, removed 4 lines
+      608  
+      609          log(f"Using {len(species_list)} candidate species.")
+      610  
+      611 -        # --- Load model (lazy, cached on self.classifier) ---
+      612 -        if not self.classifier:                               
+      611 +        def load_classifier() -> bool:                        
+      612 +            """Load BioCLIP lazily. Returns False (and fails t
+          +he job) on error.                                             
+      613 +                                                              
+      614 +            Deferred until after the work partition so a batch
+          + that only needs a bird-box                                   
+      615 +            rescan never pays for the BioCLIP model load.     
+      616 +            """                                               
+      617 +            if self.classifier:                               
+      618 +                return True                                   
+      619              try:
+      620                  log("Loading BioCLIP 2 model (first run may ta
+           ke a while)...")
+      621                  self.classifier = BioCLIPClassifier()
+      622                  self.classifier.load_model()
+      623                  log("Model loaded.")
+      624 +                return True                                   
+      625              except ImportError:
+      626                  log("Error: open_clip not installed. Run: pip 
+           install open_clip_torch", "ERROR")
+      627                  self.status_message = "Error: open_clip not in
+           stalled"
+      628                  if job_id:
+      629                      db.update_job_status(job_id, "failed")
+      623 -                return                                        
+      630 +                return False                                  
+      631              except Exception as exc:
+      632                  log(f"Error loading BioCLIP 2: {exc}", "ERROR"
+           )
+      633                  self.status_message = "Error loading model"
+      634                  if job_id:
+      635                      db.update_job_status(job_id, "failed")
+      629 -                return                                        
+      636 +                return False                                  
+      637  
+      638          # --- Fetch images that have "birds" keyword ---
+      639          log("Querying images with 'birds' keyword...")
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● Update(modules\bird_species.py)
+  ⎿  Added 33 lines, removed 3 lines
+      657                  event_manager.broadcast_threadsafe("job_comple
+           ted", {"job_id": job_id, "status": "completed"})
+      658              return
+      659  
+      660 -        # --- Skip images that are current per phase policy (u
+          -nless overwrite) ---                                          
+      660 +        # --- Partition: full classification vs bird-box-only 
+          +rescan (unless overwrite) ---                                 
+      661 +        # The bird box is a product of this phase, so an image
+          + whose species work is done                                   
+      662 +        # (or exhausted) but that never got a box still owes w
+          +ork. Those need the detector                                  
+      663 +        # only — re-running BioCLIP would rewrite species keyw
+          +ords for no reason.                                           
+      664 +        #                                                     
+      665 +        # The bbox branch is decided from the row's own column
+          + plus a species-only                                          
+      666 +        # completeness check, not from ``explain_phase_run_dec
+          +ision``: IPS-``skipped`` rows                                 
+      667 +        # (the ``no_species_match`` path) short-circuit at ``a
+          +lready_skipped_current_executor``                             
+      668 +        # before data validation, so a policy-based split woul
+          +d leave exhausted images                                      
+      669 +        # unrepairable while ``get_phase_incomplete_sql`` kept
+          + advertising them as work.                                    
+      670 +        bbox_only: list = []                                  
+      671          if not overwrite:
+      672 +            from modules.bird_detection import bbox_needs_scan
+      673              from modules.phases import PhaseCode
+      674              from modules.phases_policy import explain_phase_ru
+           n_decision
+      675  
+      676              filtered = []
+      677              skipped_policy = 0
+      678              for row in all_images:
+      679 +                if bbox_needs_scan(row.get("bird_bbox")) and d
+          +b.is_image_bird_species_complete(                             
+      680 +                    int(row["id"]), include_bbox=False        
+      681 +                ):                                            
+      682 +                    bbox_only.append(row)                     
+      683 +                    continue                                  
+      684                  decision = explain_phase_run_decision(
+      685                      int(row["id"]),
+      686                      PhaseCode.BIRD_SPECIES,
+     ...
+      698                  )
+      699              all_images = filtered
+      700  
+      685 -        self.total_count = len(all_images)                    
+      701 +        self.total_count = len(all_images) + len(bbox_only)   
+      702          self.current_count = 0
+      703  
+      704          if self.total_count == 0:
+     ...
+      709                  event_manager.broadcast_threadsafe("job_comple
+           ted", {"job_id": job_id, "status": "completed"})
+      710              return
+      711  
+      696 -        log(f"Classifying {self.total_count} images...")      
+      712          processed = 0
+      713          skipped = 0
+      714 +        rescanned = 0                                         
+      715  
+      716 +        # --- Bird-box-only rescan pass (no BioCLIP, no keywor
+          +d writes) ---                                                 
+      717 +        if bbox_only:                                         
+      718 +            rescanned, stopped = self._run_bbox_only_pass(    
+      719 +                bbox_only, job_id=job_id, log=log             
+      720 +            )                                                 
+      721 +            if stopped:                                       
+      722 +                all_images = []                               
+      723 +                                                              
+      724 +        if all_images and not load_classifier():              
+      725 +            return                                            
+      726 +                                                              
+      727 +        if all_images:                                        
+      728 +            log(f"Classifying {len(all_images)} images...")   
+      729 +                                                              
+      730          # Track phase status for each image
+      731          phase_code = "bird_species"
+      732  
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● Update(modules\bird_species.py)
+  ⎿  Added 2 lines, removed 1 line
+      759                      "total": self.total_count,
+      760                  })
+      761  
+      762 -        log(f"Done. Classified: {processed}, Skipped: {skipped
+          -}")                                                           
+      762 +        rescan_note = f", Box rescanned: {rescanned}" if resca
+          +nned else ""                                                  
+      763 +        log(f"Done. Classified: {processed}, Skipped: {skipped
+          +}{rescan_note}")                                              
+      764          self.status_message = f"Done ({processed} classified, 
+           {skipped} skipped)"
+      765  
+      766          if job_id:
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● Now the _run_bbox_only_pass method:
+
+● Update(modules\bird_species.py)
+  ⎿  Added 55 lines
+      564              logger.exception("BirdSpeciesRunner error on %s", 
+           file_path)
+      565              return 0, 1
+      566  
+      567 +    def _run_bbox_only_pass(self, rows: list, *, job_id, log) 
+          +-> tuple[int, bool]:                                          
+      568 +        """Rescan ``rows`` with the detector alone. Returns ``
+          +(rescanned, stopped)``.                                       
+      569 +                                                              
+      570 +        Writes ``images.bird_bbox`` and nothing else — no BioC
+          +LIP, no keywords, no                                          
+      571 +        embeddings, no phase-status changes. The rows are alre
+          +ady species-complete;                                         
+      572 +        only the box was missing.                             
+      573 +        """                                                   
+      574 +        from modules.events import event_manager              
+      575 +                                                              
+      576 +        # Borrow the classifier's cached detector without load
+          +ing BioCLIP: it is                                            
+      577 +        # resolved lazily and independently of ``load_model``.
+      578 +        if not self.classifier:                               
+      579 +            self.classifier = BioCLIPClassifier()             
+      580 +        detector = self.classifier._ensure_detector()         
+      581 +        if detector is None:                                  
+      582 +            log(                                              
+      583 +                f"Bird detector unavailable; leaving {len(rows
+          +)} images unscanned "                                         
+      584 +                f"(they stay queued for a later run).",       
+      585 +                "WARNING",                                    
+      586 +            )                                                 
+      587 +            self.total_count -= len(rows)                     
+      588 +            return 0, False                                   
+      589 +                                                              
+      590 +        log(f"Rescanning {len(rows)} images for bird box only 
+          +(no re-classification).")                                     
+      591 +        rescanned = 0                                         
+      592 +        for row in rows:                                      
+      593 +            if self.stop_event.is_set():                      
+      594 +                log("Stopped by user.", "WARNING")            
+      595 +                return rescanned, True                        
+      596 +            if job_id and db.job_should_stop_processing(job_id
+          +):                                                            
+      597 +                self.stop_event.set()                         
+      598 +                log("Paused (job status).", "WARNING")        
+      599 +                return rescanned, True                        
+      600 +                                                              
+      601 +            bbox = scan_bird_bbox_only(row, detector)         
+      602 +            try:                                              
+      603 +                db.update_image_bird_bbox(int(row["id"]), bbox
+          +)                                                             
+      604 +                rescanned += 1                                
+      605 +            except Exception:                                 
+      606 +                logger.warning(                               
+      607 +                    "bird_species: bird_bbox persist failed fo
+          +r image_id=%s",                                               
+      608 +                    row.get("id"),                            
+      609 +                    exc_info=True,                            
+      610 +                )                                             
+      611 +                                                              
+      612 +            self.current_count += 1                           
+      613 +            if self.current_count % 5 == 0:                   
+      614 +                event_manager.broadcast_threadsafe("job_progre
+          +ss", {                                                        
+      615 +                    "job_id": job_id,                         
+      616 +                    "job_type": "bird_species",               
+      617 +                    "current": self.current_count,            
+      618 +                    "total": self.total_count,                
+      619 +                })                                            
+      620 +        return rescanned, False                               
+      621 +                                                              
+      622      def _run_batch_internal(
+      623          self,
+      624          input_path: str,
+  ⎿  Found 20 new diagnostic issues in 2 files (ctrl+o to expand)
+
+  Searched for 1 pattern (ctrl+o to expand)
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+● Update(config.json)
+  ⎿  Added 12 lines
+      203          "bird_backlog_reserve_ratio": 0.15,
+      204          "bird_backlog_quota_threshold": 100
+      205      },
+      206 +    "bird_detection": {                                       
+      207 +        "enabled": true,                                      
+      208 +        "model_repo": "synthet/bird-detect-v0",               
+      209 +        "model_file": "bird_detect_v0.pt",                    
+      210 +        "local_path": "",                                     
+      211 +        "confidence": 0.25,                                   
+      212 +        "padding": 0.1,                                       
+      213 +        "imgsz": 640,                                         
+      214 +        "max_det": 10,                                        
+      215 +        "device": "auto",                                     
+      216 +        "fail_open": true                                     
+      217 +    },                                                        
+      218      "debug": true
+      219  }
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Update(tests\test_bird_detection.py)
+  ⎿  Added 1 line
+      16  from modules.bird_detection import (
+      17      BBOX_NOT_DETECTED,
+      18      BirdDetector,
+      19 +    bbox_needs_scan,                                           
+      20      bird_bbox_payload,
+      21      bbox_scan_failed,
+      22      select_best_box,
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● Update(tests\test_bird_detection.py)
+  ⎿  Added 22 lines
+      39      assert "img_w" not in bbox_scan_failed("x")
+      40  
+      41  
+      42 +def test_bbox_needs_scan_truth_table():                        
+      43 +    box = {"x1": 1, "y1": 2, "x2": 3, "y2": 4, "conf": 0.9, "im
+         +g_w": 10, "img_h": 10}                                         
+      44 +    # NULL == never scanned.                                   
+      45 +    assert bbox_needs_scan(None) is True                       
+      46 +    # Environment-transient failure: worth another attempt.    
+      47 +    assert bbox_needs_scan(bbox_scan_failed("detector_unavailab
+         +le")) is True                                                  
+      48 +    # Final answers — a real box, or the detector saying "no bi
+         +rd here".                                                      
+      49 +    assert bbox_needs_scan(box) is False                       
+      50 +    assert bbox_needs_scan(dict(BBOX_NOT_DETECTED)) is False   
+      51 +    # Data-terminal failures must not be re-queued or auto-driv
+         +e never converges.                                             
+      52 +    for reason in ("file_missing", "decode_error: boom", "detec
+         +t_error: boom",                                                
+      53 +                   "classify_error: boom", "missing_decode_resu
+         +lt"):                                                          
+      54 +        assert bbox_needs_scan(bbox_scan_failed(reason)) is Fal
+         +se                                                             
+      55 +                                                               
+      56 +                                                               
+      57 +def test_bbox_needs_scan_accepts_json_text():                  
+      58 +    assert bbox_needs_scan('{"detected": false, "error": "detec
+         +tor_unavailable"}') is True                                    
+      59 +    assert bbox_needs_scan('{"detected": false}') is False     
+      60 +    assert bbox_needs_scan("") is True                         
+      61 +    assert bbox_needs_scan("not json") is False                
+      62 +                                                               
+      63 +                                                               
+      64  def test_select_best_box_picks_highest_confidence():
+      65      boxes = [
+      66          {"xyxy": (0, 0, 10, 10), "conf": 0.30},
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+● Write(tests\test_phase_incomplete_sql_bird_bbox.py)
+  ⎿  Wrote 51 lines to tests\test_phase_incomplete_sql_bird_bbox.py
+       1 """The bird_species incomplete predicate must also count a missi
+         ng bird box.
+       3 ``images.bird_bbox`` is produced inside the ``bird_species`` pha
+         se, so a birds-tagged
+       4 image that never got a box still owes work — otherwise auto-driv
+       5 only ``scripts/backfill_bird_bbox.py`` can repair it.
+       6 """
+       7 
+       9 
+      10 from modules import db_legacy as db
+     … +52 lines (ctrl+o to expand)
+
+  Searched for 2 patterns, read 1 file, ran 9 shell commands (ctrl+o to expand)
+
+● All 4 new partition tests pass. Now the fast subset:
+
+  Ran 7 shell commands (ctrl+o to expand)
+
+● Update(docs\technical\BIRD_SPECIES_WALKTHROUGH.md)
+  ⎿  Added 3 lines, removed 1 line
+      31  - **RAW uses the full preview, not the 512px thumbnail.** `_res
+          olve_inference_path` returns the original file so `open_image_f
+          or_ml` decodes RAW via embedded JPEG (≥1000px) → `rawpy` → Imag
+          eMagick (2048px). Localizing on a 512px thumbnail would yield a
+           tiny, low-detail crop. The cached thumbnail is used only when 
+          the original file is missing. The trade-off is a per-image RAW 
+          decode instead of a cached thumbnail read.
+      32  - **EXIF orientation is baked** (`bake_orientation`) before det
+          ection, so the crop and the stored `bird_bbox` coordinates are 
+          both in display orientation.
+      33  - **`bird_bbox` payload:** `{"x1", "y1", "x2", "y2", "conf", "i
+          mg_w", "img_h", "area_frac"}` in pixels; `area_frac` is the box
+           area as a fraction of the image. **`NULL` means never scanned*
+          *; **`{"detected": false}`** means the detector ran and found n
+          o bird; **`{"detected": false, "error": "..."}`** means a scan 
+          was attempted but could not produce a box (e.g. `detector_unava
+          ilable`, decode/IO failure).
+      34 -- **Backfill without re-classifying species.** `scripts/backfil
+         -l_bird_bbox.py` runs the detector only (no BioCLIP / keyword wr
+         -ites) for bird-tagged rows where `bird_bbox IS NULL`. Resume is
+         - automatic: re-running skips rows that already have a box or se
+         -ntinel. Example: `python scripts/backfill_bird_bbox.py --folder
+         - /path/to/folder --workers 4`.                                 
+      34 +- **A missing box is phase work.** `bird_bbox` is a product of 
+         +this phase, so `get_phase_incomplete_sql("bird_species")` and `
+         +is_image_bird_species_complete` both treat a bird-tagged image 
+         +as incomplete when `bird_bbox IS NULL` **or** it holds a retrya
+         +ble failure sentinel (`modules/bird_detection.RETRYABLE_BBOX_ER
+         +RORS`, currently just `detector_unavailable`). Such folders sur
+         +face as `awaiting_bird_species` and **Drive to Complete** repai
+         +rs them on its own. Data-terminal sentinels (`decode_error`, `f
+         +ile_missing`, `detect_error`, `classify_error`) are deliberatel
+         +y *not* retryable — re-queueing them would never converge.     
+      35 +- **Detector-only repair pass.** When an image's species work i
+         +s already done (or exhausted) but the box is missing, `BirdSpec
+         +iesRunner` routes it through `scan_bird_bbox_only` instead of c
+         +lassification: it writes `images.bird_bbox` and nothing else — 
+         +no BioCLIP forward pass, no keyword or embedding writes, no pha
+         +se-status change. A batch consisting only of such rows never lo
+         +ads the BioCLIP model. If the detector itself is unavailable, t
+         +he rows are left untouched (and therefore still queued) rather 
+         +than stamped with a sentinel.                                  
+      36 +- **Offline backfill.** `scripts/backfill_bird_bbox.py` runs th
+         +e detector only (no BioCLIP / keyword writes) for bird-tagged r
+         +ows where `bird_bbox IS NULL`. Resume is automatic: re-running 
+         +skips rows that already have a box or sentinel. Now that the ph
+         +ase repairs its own gaps, this is mainly for scope the phase do
+         +es not cover — notably `--all-null`, which drops the bird-keywo
+         +rd gate. Example: `python scripts/backfill_bird_bbox.py --folde
+         +r /path/to/folder --workers 4`.                                
+      37  - **Embeddings.** Because the crop (not the whole frame) is wha
+          t BioCLIP encodes, the persisted `bioclip_2_image` embedding de
+          scribes the bird crop — re-run with `overwrite` to refresh embe
+          ddings stored before this step existed.
+      38  
+      39  > **Future work (not implemented):** the model repo's `docs/gui
+          des/BACKEND_INTEGRATION.md` also specifies an `eye_quality` pha
+          se (eye localization + focus scoring, an `image_eye_quality` ta
+          ble, an API detail block, and optional technical-score fusion).
+           None of that exists in this backend yet.
+
+● Update(docs\technical\BIRD_SPECIES_WALKTHROUGH.md)
+  ⎿  Added 1 line
+      142  | **Pending** | `birds`, no `species:*`, not exhausted | Backl
+           og / autodrive queue |
+      143  | **Complete** | Has `species:…` | Done |
+      144  | **Exhausted** | Run found no species above threshold | Keywo
+           rd `birds:species-exhausted` — excluded from pending |
+      145 +| **Box gap** | Species done or exhausted, but `bird_bbox` is 
+          +`NULL` / retryable | Detector-only rescan; counted as pending 
+          +until the box is written |                                    
+      146  
+      147  When BioCLIP returns no species above threshold, the runner wr
+           ites `birds:species-exhausted` and sets IPS `skipped` / `no_sp
+           ecies_match` so folders do not stay in `awaiting_bird_species`
+            forever.
+      148  
+
+  Read 2 files (ctrl+o to expand)
+
+● Now commit and flip the board to In Progress:
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● A library-wide Drive is already running (14 folders queued) — I won't restart
+  the webui and kill it. I'll verify against the live DB from gpu-shell instead,
+  which has the new code mounted.
+  Called is-be-data 2 times (ctrl+o to expand)
+
+● That returned far more rows than expected — the folder has 92 completed bird
+  images. Let me run the end-to-end verification as a scoped script in gpu-shell
+  (leaving the running Drive untouched):
+
+  Searched for 1 pattern, listed 1 directory (ctrl+o to expand)
+
+● Write(.agent\scratch\verify_bird_bbox_338.py)
+  ⎿  Wrote 121 lines to .agent\scratch\verify_bird_bbox_338.py
+       1 """Live verification for #338 — bird_bbox as bird_species phase 
+       2 
+       3 Seeds two reversible bbox gaps on one folder, checks that the fo
+       4 bird_species work (i.e. Drive would pick it up), runs BirdSpecie
+       5 that folder, and asserts the detector-only path repaired them wi
+         thout loading
+         at the end.
+       7 
+         -shell \
+      10 """
+     … +136 lines (ctrl+o to expand)
+  ⎿  Found 9 new diagnostic issues in 1 file (ctrl+o to expand)
+
+  Searched for 1 pattern, ran 3 shell commands (ctrl+o to expand)
+
+● Write(.agent\scratch\debug_predicate_338.py)
+  ⎿  Wrote 10 lines to .agent\scratch\debug_predicate_338.py
+       1 from modules import db_legacy as dbl
+       2 
+       3 print("engine:", dbl._get_db_engine())
+       4 print("legacy kw column:", dbl._images_table_has_legacy_keywords
+         _column())
+       6 print("--- _sql_bird_bbox_needs_scan('i') ---")
+       7 print(dbl._sql_bird_bbox_needs_scan("i"))
+       8 print()
+       9 print("--- get_phase_incomplete_sql('bird_species', 'i') ---")
+      10 print(dbl.get_phase_incomplete_sql("bird_species", "i"))
+     … +1 line (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Write(.agent\scratch\debug_predicate_338.py)
+  ⎿  Added 41 lines, removed 7 lines
+       1 +import json                                                    
+       2 +                                                               
+       3  from modules import db_legacy as dbl
+       4 +from modules import utils                                      
+       5  
+       6 +FOLDER = "/mnt/d/Photos/D90/28-105mm/2015/2015-09-15"          
+       7 +NULL_ID = 29029                                                
+       8 +SENTINEL = {"detected": False, "error": "detector_unavailable"}
+       9 +                                                               
+      10 +conn = dbl.get_connector()                                     
+      11 +incomplete = dbl.get_phase_incomplete_sql("bird_species", "i") 
+      12 +                                                               
+      13  print("engine:", dbl._get_db_engine())
+       4 -print("legacy kw column:", dbl._images_table_has_legacy_keyword
+         -s_column())                                                    
+       5 -print()                                                        
+       6 -print("--- _sql_bird_bbox_needs_scan('i') ---")                
+       7 -print(dbl._sql_bird_bbox_needs_scan("i"))                      
+       8 -print()                                                        
+       9 -print("--- get_phase_incomplete_sql('bird_species', 'i') ---") 
+      10 -print(dbl.get_phase_incomplete_sql("bird_species", "i"))       
+      14 +print("wsl path:", utils.convert_path_to_wsl(FOLDER))          
+      15 +                                                               
+      16 +orig = conn.query_one("SELECT bird_bbox FROM images WHERE id = 
+         +?", (NULL_ID,))["bird_bbox"]                                   
+      17 +print("orig bbox:", json.dumps(orig)[:80])                     
+      18 +                                                               
+      19 +try:                                                           
+      20 +    conn.execute("UPDATE images SET bird_bbox = NULL WHERE id =
+         + ?", (NULL_ID,))                                               
+      21 +    print("after seed:", conn.query_one(                       
+      22 +        "SELECT bird_bbox FROM images WHERE id = ?", (NULL_ID,)
+         +)["bird_bbox"])                                                
+      23 +                                                               
+      24 +    row = conn.query_one(                                      
+      25 +        f"SELECT 1 AS x FROM images i WHERE i.id = ? AND ({inco
+         +mplete})", (NULL_ID,)                                          
+      26 +    )                                                          
+      27 +    print("predicate matches this image directly?:", row is not
+         + None)                                                         
+      28 +                                                               
+      29 +    row2 = conn.query_one(                                     
+      30 +        f"""SELECT 1 AS x FROM images i JOIN folders f ON f.id 
+         += i.folder_id                                                  
+      31 +            WHERE (f.path = ? OR f.path LIKE ? OR f.path LIKE ?
+         +)                                                              
+      32 +              AND ({incomplete}) LIMIT 1""",                   
+      33 +        (FOLDER, FOLDER + "/%", FOLDER + "\\%"),               
+      34 +    )                                                          
+      35 +    print("folder-scoped query matches?:", row2 is not None)   
+      36 +    print("folder_has_bird_species_work:", dbl.folder_has_bird_
+         +species_work(FOLDER))                                          
+      37 +                                                               
+      38 +    fid = conn.query_one("SELECT folder_id FROM images WHERE id
+         + = ?", (NULL_ID,))["folder_id"]                                
+      39 +    print("image folder_id:", fid,                             
+      40 +          "path:", conn.query_one("SELECT path FROM folders WHE
+         +RE id = ?", (fid,))["path"])                                   
+      41 +finally:                                                       
+      42 +    conn.execute("UPDATE images SET bird_bbox = ?::jsonb WHERE 
+         +id = ?", (json.dumps(orig), NULL_ID))                          
+      43 +    print("restored:", conn.query_one(                         
+      44 +        "SELECT bird_bbox FROM images WHERE id = ?", (NULL_ID,)
+         +)["bird_bbox"] == orig)                                        
+  ⎿  Found 9 new diagnostic issues in 1 file (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Write(.agent\scratch\debug_predicate_338.py)
+  ⎿  Added 16 lines, removed 29 lines
+       1  import json
+       2  
+       3  from modules import db_legacy as dbl
+       4 -from modules import utils                                      
+       4  
+       6 -FOLDER = "/mnt/d/Photos/D90/28-105mm/2015/2015-09-15"          
+       5  NULL_ID = 29029
+       8 -SENTINEL = {"detected": False, "error": "detector_unavailable"}
+       9 -                                                               
+       6  conn = dbl.get_connector()
+      11 -incomplete = dbl.get_phase_incomplete_sql("bird_species", "i") 
+       7  
+      13 -print("engine:", dbl._get_db_engine())                         
+      14 -print("wsl path:", utils.convert_path_to_wsl(FOLDER))          
+      15 -                                                               
+       8  orig = conn.query_one("SELECT bird_bbox FROM images WHERE id = 
+          ?", (NULL_ID,))["bird_bbox"]
+      17 -print("orig bbox:", json.dumps(orig)[:80])                     
+       9  
+      10 +PARTS = {                                                      
+      11 +    "birds_kw": dbl._sql_image_has_birds_keyword("i"),         
+      12 +    "bbox_needs_scan": dbl._sql_bird_bbox_needs_scan("i"),     
+      13 +    "bbox_is_null_only": "i.bird_bbox IS NULL",                
+      14 +    "bbox_err_only": "i.bird_bbox->>'error' IN ('detector_unava
+         +ilable')",                                                     
+      15 +    "full": dbl.get_phase_incomplete_sql("bird_species", "i"), 
+      16 +}                                                              
+      17 +                                                               
+      18  try:
+      19      conn.execute("UPDATE images SET bird_bbox = NULL WHERE id =
+           ?", (NULL_ID,))
+      21 -    print("after seed:", conn.query_one(                       
+      22 -        "SELECT bird_bbox FROM images WHERE id = ?", (NULL_ID,)
+         -)["bird_bbox"])                                                
+      23 -                                                               
+      24 -    row = conn.query_one(                                      
+      25 -        f"SELECT 1 AS x FROM images i WHERE i.id = ? AND ({inco
+         -mplete})", (NULL_ID,)                                          
+      26 -    )                                                          
+      27 -    print("predicate matches this image directly?:", row is not
+         - None)                                                         
+      28 -                                                               
+      29 -    row2 = conn.query_one(                                     
+      30 -        f"""SELECT 1 AS x FROM images i JOIN folders f ON f.id 
+         -= i.folder_id                                                  
+      31 -            WHERE (f.path = ? OR f.path LIKE ? OR f.path LIKE ?
+         -)                                                              
+      32 -              AND ({incomplete}) LIMIT 1""",                   
+      33 -        (FOLDER, FOLDER + "/%", FOLDER + "\\%"),               
+      34 -    )                                                          
+      35 -    print("folder-scoped query matches?:", row2 is not None)   
+      36 -    print("folder_has_bird_species_work:", dbl.folder_has_bird_
+         -species_work(FOLDER))                                          
+      37 -                                                               
+      38 -    fid = conn.query_one("SELECT folder_id FROM images WHERE id
+         - = ?", (NULL_ID,))["folder_id"]                                
+      39 -    print("image folder_id:", fid,                             
+      40 -          "path:", conn.query_one("SELECT path FROM folders WHE
+         -RE id = ?", (fid,))["path"])                                   
+      20 +    for name, sql in PARTS.items():                            
+      21 +        try:                                                   
+      22 +            row = conn.query_one(                              
+      23 +                f"SELECT 1 AS x FROM images i WHERE i.id = ? AN
+         +D ({sql})", (NULL_ID,)                                         
+      24 +            )                                                  
+      25 +            print(f"{name:<20} -> {row is not None}")          
+      26 +        except Exception as exc:                               
+      27 +            print(f"{name:<20} -> ERROR {type(exc).__name__}: {
+         +str(exc)[:200]}")                                              
+      28  finally:
+      29      conn.execute("UPDATE images SET bird_bbox = ?::jsonb WHERE 
+          id = ?", (json.dumps(orig), NULL_ID))
+      30      print("restored:", conn.query_one(
+  ⎿  Found 5 new diagnostic issues in 1 file (ctrl+o to expand)
+
+  Called is-be-data, ran 1 shell command (ctrl+o to expand)
+
+● Test fixture error on my side — those images have boxes but no birds keyword.
+  Let me pick genuinely bird-tagged, species-complete images:
+
+  Called is-be-data 2 times, ran 2 shell commands (ctrl+o to expand)
+
+● Core path works — but the Dashboard bucket still says complete. Let me look at
+  the bucket resolver:
+
+  Searched for 1 pattern, ran 4 shell commands (ctrl+o to expand)
+
+● The rollup aggregate is the missing link — it never consults bird_bbox. Fixing
+  that:
+
+● Update(modules\db_legacy.py)
+  ⎿  Added 14 lines
+      14918              bs_done_extra = (
+      14919                  f"(LOWER(TRIM(pp.code)) = 'bird_species' AND
+              ips.status IS NULL AND {bs_classified})"
+      14920              )
+      14921 +            # ``bird_bbox`` is a product of the bird_species
+            + phase, so an image still                                   
+      14922 +            # missing its box has not finished the phase eve
+            +n when IPS says ``done`` or                                 
+      14923 +            # ``skipped``. Excluding it from both terminal c
+            +ounts is what lets the folder                               
+      14924 +            # rollup — and therefore the Dashboard bucket an
+            +d auto-drive — see the gap.                                 
+      14925 +            # Mirrors ``get_phase_incomplete_sql('bird_speci
+            +es')``.                                                     
+      14926 +            bbox_needs_scan_sql = _sql_bird_bbox_needs_scan(
+            +"i")                                                        
+      14927 +            if bbox_needs_scan_sql == "1=0":                
+      14928 +                bs_bbox_gap = "1=0"                         
+      14929 +                agg_image_cols = "id"                       
+      14930 +            else:                                           
+      14931 +                bs_bbox_gap = (                             
+      14932 +                    f"(LOWER(TRIM(pp.code)) = 'bird_species'
+            + AND ({bbox_needs_scan_sql}))"                              
+      14933 +                )                                           
+      14934 +                agg_image_cols = "id, bird_bbox"            
+      14935              try:
+      14936                  rows = get_connector().query(
+      14937                      f"""
+
+● Update(modules\db_legacy.py)
+  ⎿  Added 1 line, removed 1 line
+      14940                          pp.name,
+      14941                          pp.sort_order,
+      14942                          COUNT(CASE WHEN {agg_scope} THEN i.i
+             d END) as total_images,
+      14943 -                        COALESCE(SUM(CASE WHEN {agg_scope} A
+            -ND (ips.status = 'done' OR {bs_done_extra}) THEN 1 ELSE 0 EN
+            -D), 0) as done_count,                                       
+      14943 +                        COALESCE(SUM(CASE WHEN {agg_scope} A
+            +ND NOT ({bs_bbox_gap}) AND (ips.status = 'done' OR {bs_done_
+            +extra}) THEN 1 ELSE 0 END), 0) as done_count,               
+      14944                          COALESCE(SUM(CASE WHEN {agg_scope} A
+             ND ips.status = 'failed' THEN 1 ELSE 0 END), 0) as failed_co
+             unt,
+      14945                          COALESCE(SUM(CASE WHEN {agg_scope} A
+             ND ips.status = 'running' THEN 1 ELSE 0 END), 0) as running_
+             count,
+      14946                          COALESCE(SUM(CASE WHEN {agg_scope} A
+             ND ips.status = 'queued' THEN 1 ELSE 0 END), 0) as queued_co
+             unt,
+  ⎿  Found 30 new diagnostic issues in 3 files (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)  ⎿  Found 20 new diagnostic issues in 2 files (ctrl+o to expand)
+
+● Now make a bbox write invalidate the folder rollup cache:
+
+● Update(modules\db_legacy.py)
+  ⎿  Added 16 lines
+      4123          get_connector().execute(
+      4124              "UPDATE images SET bird_bbox = ?::jsonb WHERE id 
+            = ?", (payload, image_id)
+      4125          )
+      4126 +        # The folder rollup counts a missing box as outstandi
+           +ng bird_species work, so a                                   
+      4127 +        # box write changes the aggregate. Without this the c
+           +ached ``phase_agg_json``                                     
+      4128 +        # would keep the folder in ``awaiting_bird_species`` 
+           +after the repair and                                         
+      4129 +        # auto-drive would re-enqueue it until the loop guard
+           + fires.                                                      
+      4130 +        try:                                                 
+      4131 +            row = get_connector().query_one(                 
+      4132 +                "SELECT folder_id FROM images WHERE id = ?", 
+           +(image_id,)                                                  
+      4133 +            )                                                
+      4134 +            if row and row.get("folder_id"):                 
+      4135 +                invalidate_folder_phase_aggregates(folder_id=
+           +row["folder_id"])                                            
+      4136 +        except Exception:                                    
+      4137 +            logging.debug(                                   
+      4138 +                "bird_bbox: folder aggregate invalidation fai
+           +led for image %s",                                           
+      4139 +                image_id,                                    
+      4140 +                exc_info=True,                               
+      4141 +            )                                                
+      4142          return True
+      4143      except Exception as e:
+      4144          logging.error(f"Failed to update bird_bbox for image 
+            {image_id}: {e}")
+  ⎿  Found 12 new diagnostic issues in 2 files (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  Found 14 new diagnostic issues in 2 files (ctrl+o to expand)
+
+● Full chain verified. Now checking the aggregate change can't flip the library:
+
+  Called is-be-data, ran 8 shell commands (ctrl+o to expand)
+
+● Now the full fast subset again, to confirm the aggregate change broke nothing:
+
+  Ran 6 shell commands (ctrl+o to expand)
+
+● Done. Two commits on feat/bird-bbox-phase-completeness-338, issue #338 filed
+  and claimed (Stage = In Progress).
+
+  What I found first: bbox detection was already on by default and already
+  inside the Drive's default "Full pipeline" preset — BirdDetector.enabled
+  defaults to True, and ultralytics 8.4.120 plus the cached
+  synthet/bird-detect-v0 weights are present in image-scoring-webui. The real
+  gap was that bird_bbox was written only as a side effect of BioCLIP
+  classification and was invisible to every completeness check, so a
+  species-complete image with no box could never be seen or repaired by the
+  Drive.
+
+  What changed:
+
+  - modules/bird_detection.py:62 — bbox_needs_scan() + RETRYABLE_BBOX_ERRORS.
+    NULL and detector_unavailable are retryable; a real box, {"detected": 
+    false}, and data-terminal errors (decode_error, file_missing, …) are not, so
+    the queue converges.
+  - modules/db_legacy.py — _sql_bird_bbox_needs_scan() OR'd into the
+    bird_species branch of get_phase_incomplete_sql, mirrored in
+    is_image_bird_species_complete (modules/db/__init__.py:19).
+  - modules/bird_species.py — batches now split into full classification vs a
+    detector-only rescan that writes bird_bbox and nothing else. A box-only
+    batch never loads BioCLIP.
+  - BIRD_SPECIES_RUNNER_VERSION deliberately not bumped — that would
+    short-circuit before data validation and re-run BioCLIP over all ~35k
+    bird-tagged images.
+
+  One thing the plan missed, caught during live verification: the predicate
+  change alone wasn't enough. The Dashboard bucket reads folders.phase_agg_json
+  from get_folder_phase_summary, which counts IPS rows and never looked at
+  bird_bbox — a seeded gap made folder_has_bird_species_work true while the
+  bucket still read complete. Second commit fixes the rollup (excluding a box
+  gap from both done_count and skipped_count) and makes update_image_bird_bbox
+  invalidate the folder aggregate so a repaired box flips the bucket back.
+
+  Verification (.agent/scratch/verify_bird_bbox_338.py, against the live library
+  with two reversible seeded gaps, then restored):
+
+  bucket                    awaiting_bird_species
+  next_phases               ['bird_species']
+  | Rescanning 2 images for bird box only (no re-classification).
+  | Done. Classified: 0, Skipped: 0, Box rescanned: 2
+  BioCLIP model loaded?     False
+  keywords unchanged?       True     phase status unchanged?  True
+  folder_has_bird_species_work (after)  False
+
+  Fast subset: 2270 passed. The 5 tests/test_runs_autodrive.py failures are
+  pre-existing — I confirmed them on clean master by stashing.
+
+  Two things for you:
+
+  1. The webui is still running the old code. A library-wide Drive is currently
+     in flight (14 folders queued), and drive state is in-process — restarting
+     image-scoring-webui would kill it. I left it alone. Restart when the run
+     finishes to pick up the change.
+  2. config.json is git-ignored, so the explicit bird_detection section I added
+     is local-only. config.example.json already documents the same defaults, so
+     nothing is lost — and behaviour was identical either way.
+
+  I stopped short of pushing or opening the PR since you didn't ask; say the
+  word and I'll push and open it with Closes #338, moving the card to Review.
+  Keep-awake is still running (PID 17932).
+
+✻ Crunched for 37m 29s · done 19:26
+
+※ recap: Goal was making bird bbox real work for the birding phase and the Dashboard drive; that's implemented, tested, and committed on a branch for issue 338. Next: restart the webui once the running drive finishes so the change takes effect. (disable recaps in /config)
+
+> /backup-db                                                                    
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Backup complete, exit code 0.
+
+  ┌────────┬───────────────────────────────────────────────────────┬────────┐
+  │        │                         Path                          │  Size  │
+  ├────────┼───────────────────────────────────────────────────────┼────────┤
+  │ Primar │ backups\postgres\image_scoring_20260830_195936.dump   │ 1034.5 │
+  │ y      │                                                       │ 9 MB   │
+  ├────────┼───────────────────────────────────────────────────────┼────────┤
+  │ Mirror │ D:\Dropbox\Photos\Scoring\image_scoring_20260830_1959 │ 1034.5 │
+  │        │ 36.dump                                               │ 9 MB   │
+  └────────┴───────────────────────────────────────────────────────┴────────┘
+
+  Used the docker exec fallback (no local pg_dump); custom format, took ~2 min.
+  Retention held at 3 in both folders — image_scoring_20260815_084640.dump
+  pruned from each.
+
+  Both locations now hold the same three dumps: today 19:59 (1034.59 MB), today
+  00:08 (1005.40 MB), and 2026-08-29 15:47 (993.65 MB). The steady growth is
+  consistent with the Drive run still adding rows.
+
+✻ Sautéed for 2m 31s · done 20:01
+
+※ recap: Goal was making bird bounding-box detection visible to the Drive-to-Complete dashboard; that's implemented, tested, and committed on a branch, and a fresh DB backup just finished. Next: restart the webui to load the new code, once the running Drive finishes. (disable recaps in /config)
+
+> backfill bounding boxes                                                       
+
+● Let me size the job before starting anything.
+
+  Read 1 file, called is-be-data 2 times, ran 1 shell command (ctrl+o to expand)
+
+● Two things worth knowing before I start:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Default scope is empty — the running Drive already classified the 93 pending
+  bird images, so backfill_bird_bbox.py with no flags reports 0 candidates. The
+  only remaining work is --all-null:
+
+  - 8,520 images have bird_bbox IS NULL, none of them bird-tagged
+  - 6,412 are completely untagged (keywords phase hasn't reached them — the
+    Drive is working through those exact folders right now, 2026-08-22/23)
+  - 2,108 are tagged but not birds
+  - 0 retryable detector_unavailable sentinels
+  - Prior run logged ~2.6–2.9 img/s, so ≈50 minutes
+
+  The catch: .claude/rules/python-wsl-webapp-env.md says not to run heavy ML in
+  webui and gpu-shell simultaneously on the 8 GB card, and the Drive is
+  mid-batch (batch_in_progress: true, 13 folders awaiting scoring). GPU is at
+  491 MiB / 8188 MiB right now, but scoring will spike it.
+● User answered Claude's questions:
+  ⎿  · The only backfill scope with work left is --all-null (8,520 non-bird 
+     images, ~50 min). The Drive is mid-batch on the same GPU. How do you want 
+     to run it? → (Image attached)
+  ⎿  [Image #3]
+  ⎿  [Image #4]
+
+● The Drive has stopped — "schedulable folders could not be queued (loop guard
+  or enqueue failures)", 13 folders skipped with loop detected (2 attempts). So
+  the GPU is free. Let me confirm and launch.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Before launching anything — the webui restarted at 19:59 local, after my
+  commits, so it's running my new code. Let me check one thing in that SQL
+  first:
+
+  Called is-be-data (ctrl+o to expand)
+
+● Confirmed — I introduced a three-valued-logic bug. For 67,095 rows with a real
+  box, bird_bbox->>'error' is NULL, so NULL IN (...) → NULL, NOT (NULL) → NULL,
+  and the CASE WHEN never fires. Every bird-tagged image with a box stopped
+  counting as done in the rollup. Fixing:
+
+● Update(modules\db_legacy.py)
+  ⎿  Added 5 lines, removed 1 line
+      10047  
+      10048      prefix = f"{table_alias}." if table_alias else ""
+      10049      retryable = ", ".join(f"'{err}'" for err in sorted(RETRY
+             ABLE_BBOX_ERRORS))
+      10050 +    # COALESCE is load-bearing: ``bird_bbox->>'error'`` is N
+            +ULL for a real box and for                                  
+      10051 +    # ``{"detected": false}``, and ``NULL IN (...)`` yields 
+            +NULL, not FALSE. Callers that                               
+      10052 +    # negate this (the folder rollup's ``NOT (...)``) would 
+            +then get NULL and silently                                  
+      10053 +    # stop counting those images as done.                   
+      10054      return (
+      10055          f"({prefix}bird_bbox IS NULL "
+      10052 -        f"OR {prefix}bird_bbox->>'error' IN ({retryable}))" 
+      10056 +        f"OR COALESCE({prefix}bird_bbox->>'error', '') IN ({
+            +retryable}))"                                               
+      10057      )
+      10058  
+      10059  
+
+  Read 1 file, called is-be-data, ran 8 shell commands (ctrl+o to expand)
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● Background command "Wait for webui to come back up" completed (exit code 0)
+
+● Now clear the folder aggregates poisoned by the buggy SQL, so they recompute
+  with the fix:
+
+  Called is-be-data, ran 5 shell commands (ctrl+o to expand)
+
+● bird_species now reads correctly in the rollup. The 13 stalled folders are
+  scoring: not_started — a separate scoring backlog, not a bbox problem. GPU is
+  free, so launching the backfill:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Running on CUDA, 8,520 candidates. Watching for completion or failure:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● I read the screenshot as "the Drive has stopped, GPU is free — go ahead," so I
+  launched it. Backfill is running detached; I'll report when it finishes.
+
+  But the screenshot led somewhere more important first. The webui had restarted
+  at 19:59 (just after my commits), so it was live on my new code — and
+  checking the rollup SQL against the DB found a bug I introduced:
+
+  bird_bbox->>'error' is NULL both for a real box and for {"detected": false},
+  and NULL IN (...) is NULL, not FALSE. The folder rollup negates that
+  expression, so NOT (gap) was NULL and the CASE WHEN never fired — 67,095 
+  bird-tagged images with a valid box silently stopped counting toward 
+  done_count. The live DB confirmed it: 67,095 rows evaluating to NULL, only 3
+  to FALSE.
+
+  Fixed with COALESCE(..., '') (commit eba6bf2), plus a regression test. Now:
+  67,098 FALSE / 8,520 TRUE, no NULL bucket. I restarted the webui to load the
+  fix and marked all 671 folder aggregates dirty so the poisoned caches
+  recompute. Re-reading the buckets confirms bird_species is back to skipped on
+  a sample folder.
+
+  My earlier live verification missed this because the WHERE-clause callers
+  (folder_has_bird_species_work) treat NULL as FALSE — only the negating caller
+  broke, and I checked the predicate rather than the rollup after repair.
+
+  Separately, and not caused by me: the 13 stalled folders are scoring: 
+  not_started, keywords: partial — a real scoring backlog. The Drive enqueued
+  scoring twice, made no progress, and the loop guard stopped it. That's a
+  pre-existing pipeline problem worth its own look; say the word and I'll dig
+  in.
+
+  Backfill now running: --all-null, 8,520 candidates, CUDA, workers 4, logging
+  to .agent/scratch/bird_bbox_backfill_allnull_20260831.log. The default
+  bird-tagged scope reported 0 candidates — the Drive had already classified the
+  93 pending images.
+
+✻ Sautéed for 7m 35s · done 21:17
+
+● Background command "Peek at backfill throughput" completed (exit code 0)
+
+  Read 1 file (ctrl+o to expand)
+
+● Backfill is moving faster than the earlier run — the free GPU helps:
+
+  Progress 600/8520 (4.9 img/s, ETA 1630s) — detected=123 none=477 skipped=0
+
+  ~27 minutes remaining, 706 MiB VRAM. Detection rate is ~20% on these
+  non-bird-tagged images, which is plausible — birds turn up in shots that
+  BLIP/CLIP never tagged as such. I'll report when it completes.
+
+✻ Worked for 10s · done 21:19
+
+>  [Image #5] analyze the root cause of this ~50% overall progress              
+  ⎿  [Image #5]
+● Let me dig into the actual data. The phase bars show something odd: culling is
+  done while scoring is not_started — culling depends on scoring, so that
+  ordering shouldn't happen naturally.
+
+  Called is-be-data 6 times (ctrl+o to expand)
+
+● Scoring jobs are failing — 4 consecutive attempts on this folder. Let me get
+  the error:
+
+  Called is-be-jobs (ctrl+o to expand)
+
+● Root cause is visible in job 6680. The decisive fields:
+
+  log:              "Culling aborted: missing score_general (run scoring /
+  finalize phantoms first)"
+  current_phase:    "culling"        next_phase_index: 1     ← scoring was
+  skipped
+  stage_queues:     culling: [256]   keywords: [248]   scoring: []   ← empty
+  issue_counts:     scoring_needs_work: 0, scoring_incomplete: 0
+
+  Let me confirm why the data-level scoring predicate reports zero work:
+
+  Searched for 1 pattern, called is-be-data 2 times (ctrl+o to expand)
+
+● Confirmed the exact contradiction. All 256 images have per-model scores, but
+  score_general is NULL:
+
+  Called is-be-data (ctrl+o to expand)
+
+● All 13 folders — 6,400 images — show the identical signature. Let me find
+  where score_general is supposed to be written vs. where culling demands it:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● There's a dedicated repair module for exactly this state. Let me see why it
+  isn't firing:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The module's own docstring describes this exact wedge — and its only caller is
+  a manual maintenance script. Let me quantify the library-wide extent:
+
+  Called is-be-data, ran 2 shell commands (ctrl+o to expand)
+
+● Root cause found, and validated end-to-end with a dry run.
+
+  The 50% is not "half-processed" — it's a wedge
+
+  Every one of the 13 folders has the identical signature. Taking
+  Z8/40mm/2026/2026-08-27 (256 images):
+
+  ┌──────────────┬──────────────────┬───────────────────────────────────────┐
+  │    Phase     │    IPS status    │              Actual data              │
+  ├──────────────┼──────────────────┼───────────────────────────────────────┤
+  │ indexing     │ done ✓           │ 256/256 hashes                        │
+  ├──────────────┼──────────────────┼───────────────────────────────────────┤
+  │ metadata     │ done ✓           │ 256/256 thumbnails                    │
+  ├──────────────┼──────────────────┼───────────────────────────────────────┤
+  │              │                  │ per-model scores present (arniqa,     │
+  │ scoring      │ not_started      │ ava, liqe, spaq, topiq — all success, │
+  │              │                  │  positive)                            │
+  ├──────────────┼──────────────────┼───────────────────────────────────────┤
+  │ culling      │ done             │ 0/256 stacks — falsely done           │
+  ├──────────────┼──────────────────┼───────────────────────────────────────┤
+  │ keywords     │ failed (248) /   │ 0/256 keywords                        │
+  │              │ skipped (8)      │                                       │
+  ├──────────────┼──────────────────┼───────────────────────────────────────┤
+  │ bird_species │ no rows          │ —                                     │
+  └──────────────┴──────────────────┴───────────────────────────────────────┘
+
+  Three of six phases read terminal, so overall_percent lands at ~50%. Culling's
+  done is itself a phantom — that's why it shows 50% instead of ~33%.
+
+  Root cause: phantom-scored images
+
+  A scoring job was interrupted between ScoringWorker (persists per-model rows
+  to image_model_scores) and the ResultWorker finalize step (writes
+  images.score_general and flips the phase to done). Result: per-model rows
+  exist, score_general is NULL, IPS says not_started.
+
+  That leaves three mutually inconsistent definitions of "scored":
+
+  1. _incomplete_images_where_sql (modules/db_legacy.py:9874) — scored ⇔ ≥1
+     successful non-shadow per-model row > 0. Satisfied. It deliberately ignores
+     score_general (issue #162: the composite can legitimately be 0) — but
+     "legitimately 0" got conflated with "legitimately NULL".
+  2. Folder rollup / bucketer — reads IPS not_started. Not scored → bucket
+     awaiting_scoring.
+  3. modules/selection_runner.py:231 (culling) — requires images.score_general
+     non-NULL. Not scored → aborts.
+
+  The loop, step by step
+
+  bucket says awaiting_scoring  →  drive enqueues [scoring, culling, keywords]
+          ↓
+  JIT re-planner: scoring_needs_work=0, stage_queues.scoring=[]   ← scoring
+  dropped
+          ↓
+  job starts at current_phase="culling", next_phase_index=1
+          ↓
+  "Culling aborted: missing score_general"  →  job failed, zero state change
+          ↓
+  next tick is byte-identical  →  after 2 attempts the loop guard skips it
+          ↓
+  all 13 candidates skipped  →  drive stop_reason="stalled"
+
+  Jobs 6633, 6650, 6667, 6680 are four such attempts on that one folder.
+
+  Why it never self-heals
+
+  The fix exists — modules/phantom_score_finalize.py, whose docstring describes
+  this wedge verbatim, down to "auto-drive re-enqueues it forever while never
+  actually finalizing anything." Its only caller is 
+  scripts/maintenance/finalize_phantom_scores.py, a manual script. Nothing in
+  the drive, the dispatcher, or workflow healing calls it.
+
+  What auto-drive does call is reconcile_phantom_complete_image_phases — the
+  repair plan shows scoring_fix_targets: 0. That function only flips phase
+  status and never backfills the composite columns (its own docstring says it),
+  and it evaluates the same already-satisfied predicate, so it correctly finds
+  nothing.
+
+  Scope and remedy
+
+  Exactly 6,400 images across 13 folders match the phantom-score signature
+  library-wide — 100% of the stall, nothing else affected.
+
+  Dry run on the sample folder confirms the repair works, recomputing composites
+  from the stored model rows with no re-inference:
+
+  candidates: 256   composites backfilled: 256   phase finalized: 256
+    img 215981: prev_phase=not_started null_general=True -> score_general=0.8605
+    img 216009: prev_phase=not_started null_general=True -> score_general=0.2654
+
+  To clear it:
+
+  scripts\batch\docker_gpu_run.bat
+  scripts/maintenance/finalize_phantom_scores.py --all          # preview
+  scripts\batch\docker_gpu_run.bat
+  scripts/maintenance/finalize_phantom_scores.py --all --apply  # write
+
+  Then restart the Drive — with score_general populated, culling proceeds, and
+  the 248 keywords: failed rows (heal artifacts: "heal: keywords phase marked 
+  done but data incomplete") get re-run behind it.
+
+  I haven't applied it — it writes score_general, score_technical,
+  score_aesthetic, rating, and label across 6,400 images. Say the word and I'll
+  run the full preview then apply. Worth filing separately: the drive should
+  invoke finalize_phantom_scores itself, otherwise this recurs on the next
+  interrupted scoring run.
+
+  Unrelated, still running: bbox backfill at 1,800/8,520, ETA ~24 min.
+
+✻ Cooked for 3m 20s · done 21:24
+
+> [Image #6] pictures without overall calculated scores (general, technical,    
+  artistics) e.g. http://127.0.0.1:7860/ui/images/216083                        
+  ⎿  [Image #6]
+
+● That's the same wedge, seen from the user side. Let me confirm on that exact
+  image:
+
+  Called is-be-data 2 times (ctrl+o to expand)
+
+● Exact match to what the Gallery shows — ARNIQA 62, AVA 38, LIQE 50, SPAQ 60,
+  TOPIQ 50, all success. The three composites are NULL, and the UI renders NULL
+  as 0%. scoring_status = not_started, last_error = null.
+
+  So 216083 is one of the 6,400 phantom-scored images. Here's what the finalizer
+  computes for it from the rows already stored:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● score_general = 0.4382 (44%) — consistent with the 38–62% model spread. Before
+  I recommend applying this to 6,400 images, let me check whether it would
+  clobber any user-set ratings or labels:
+
+  Called is-be-data, ran 1 shell command (ctrl+o to expand)
+● The finalizer writes rating and label unconditionally alongside the
+  composites, so I checked for collateral: of the 6,400 candidates, 0 have a 
+  user-set rating and 0 have a label. Nothing to clobber. And it only touches
+  rows where score_general IS NULL, so already-scored images are untouched.
+
+● User answered Claude's questions:
+  ⎿  · Apply the phantom-score finalize? It recomputes 
+     general/technical/aesthetic from the per-model rows already in the DB — no 
+     re-inference — and flips the scoring phase to done. → All 13 folders — 
+     6,400 images (Recommended)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+> can we also fix the root cause bug                                            
+
+● Note the run capped at 5,000 candidates — 1,400 remain. Finishing the pass,
+  and yes, let's fix the root cause too.
+
+  Called is-be-data, ran 1 shell command (ctrl+o to expand)
+
+● Data side is clean — 0 phantom images remain, and 216083 now reads general
+  0.4382 / technical 0.4615 / aesthetic 0.5041. Now the root cause. Let me find
+  where auto-drive computes its repair actions:
+
+  Searched for 2 patterns, ran 1 shell command (ctrl+o to expand)
+
+● _apply_preflight is exactly the right hook — it runs only on the real
+  (non-dry-run) enqueue path, before the stage queues are computed. Let me check
+  the function's signature:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now wiring it into the auto-drive preflight:
+
+● Update(modules\run_phase_planner.py)
+  ⎿  Added 16 lines, removed 1 line
+      60  
+      61  
+      62  def _apply_preflight(scope_paths: list[str]) -> dict[str, int]:
+      63 -    actions = {"reconciled_rows": 0, "backfilled_index_meta": 0
+         -}                                                              
+      63 +    actions = {"reconciled_rows": 0, "backfilled_index_meta": 0
+         +, "phantom_scores_finalized": 0}                               
+      64      try:
+      65          actions["reconciled_rows"] = int(
+      66              db.reconcile_stale_running_phases_for_terminal_jobs
+          (limit=5000)
+     ...
+      72              actions["backfilled_index_meta"] += int(db.backfill
+          _index_meta_for_folder(p))
+      73      except Exception:
+      74          logger.exception("run_phase_planner: backfill index/met
+          a failed")
+      75 +    # Finalize phantom-scored images before the stage queues ar
+         +e built. Such an image has                                     
+      76 +    # per-model rows but a NULL ``images.score_general`` and a 
+         +non-terminal scoring phase                                     
+      77 +    # row, which wedges auto-drive: the scoring predicate below
+         + reports no work (the model                                    
+      78 +    # rows exist) so the phase is dropped from the run, while t
+         +he folder bucketer keeps                                       
+      79 +    # reading ``not_started`` and re-queues the folder — and cu
+         +lling then aborts with                                         
+      80 +    # "missing score_general". Finalizing here recomputes the c
+         +omposites from the stored                                      
+      81 +    # rows (no re-inference) and flips the phase, so the scope 
+         +actually converges.                                            
+      82 +    try:                                                       
+      83 +        from modules.phantom_score_finalize import finalize_pha
+         +ntom_scores                                                    
+      84 +                                                               
+      85 +        for p in scope_paths or []:                            
+      86 +            summary = finalize_phantom_scores(scope_path=p, dry
+         +_run=False)                                                    
+      87 +            actions["phantom_scores_finalized"] += int(summary.
+         +get("composites_backfilled") or 0)                             
+      88 +    except Exception:                                          
+      89 +        logger.exception("run_phase_planner: phantom score fina
+         +lize failed")                                                  
+      90      return actions
+      91  
+      92  
+  ⎿  Found 4 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● Update(modules\run_phase_planner.py)
+  ⎿  Added 6 lines, removed 1 line
+      133      if not selected:
+      134          selected = set(DEFAULT_STAGES)
+      135  
+      136 -    actions = {"reconciled_rows": 0, "backfilled_index_meta": 
+          -0, "scoring_fix_targets": 0}                                  
+      136 +    actions = {                                               
+      137 +        "reconciled_rows": 0,                                 
+      138 +        "backfilled_index_meta": 0,                           
+      139 +        "phantom_scores_finalized": 0,                        
+      140 +        "scoring_fix_targets": 0,                             
+      141 +    }                                                         
+      142      if not dry_run:
+      143          actions.update(_apply_preflight(scope_paths))
+      144  
+
+● Update(modules\run_phase_planner.py)
+  ⎿  Added 7 lines, removed 1 line
+      203          "stage_queues": stage_queues,
+      204          "actions": actions,
+      205          "issue_hits": int(sum(issue_counts_by_reason.values())
+           ),
+      206 -        "repaired": actions["reconciled_rows"] + actions["back
+          -filled_index_meta"] if not dry_run else 0,                    
+      206 +        "repaired": (                                         
+      207 +            actions["reconciled_rows"]                        
+      208 +            + actions["backfilled_index_meta"]                
+      209 +            + actions["phantom_scores_finalized"]             
+      210 +        )                                                     
+      211 +        if not dry_run                                        
+      212 +        else 0,                                               
+      213          "skipped": len(unique_issue_ids) if dry_run else 0,
+      214          "failed": 0,
+      215          "dry_run": bool(dry_run),
+  ⎿  Found 11 new diagnostic issues in 2 files (ctrl+o to expand)
+
+  Listed 1 directory, ran 4 shell commands (ctrl+o to expand)
+  ⎿  Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● Same 5 pre-existing test_runs_autodrive.py failures (verified identical on
+  clean master earlier); 2,273 passed. Now filing this as its own issue and
+  branch:
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Now verifying the live system actually unwedged — the data repair alone should
+  be enough, since the code fix only prevents recurrence:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The wedge is broken. 13 folders → 10 outstanding, awaiting_scoring is gone,
+  and overall jumped from ~50% to 67–69%:
+
+  scoring: not_started → done      culling: done      keywords: partial
+  awaiting_scoring (13) → awaiting_keywords (9) + awaiting_culling (1)
+
+  Restoring the working tree to match what the live webui process has loaded:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Both parts are done.
+
+  Data repaired
+
+  finalize_phantom_scores --all --apply, two passes (the script caps at 5,000
+  candidates per call): 5,000 + 1,400 = 6,400 images finalized, composites
+  recomputed from the stored per-model rows with no re-inference. Phantom count
+  is now 0.
+
+  Your example image:
+
+  ┌─────────────────┬────────────────────┬──────────────┐
+  │                 │       before       │    after     │
+  ├─────────────────┼────────────────────┼──────────────┤
+  │ score_general   │ NULL → shown as 0% │ 0.4382 (44%) │
+  ├─────────────────┼────────────────────┼──────────────┤
+  │ score_technical │ NULL → 0%          │ 0.4615 (46%) │
+  ├─────────────────┼────────────────────┼──────────────┤
+  │ score_aesthetic │ NULL → 0%          │ 0.5041 (50%) │
+  ├─────────────────┼────────────────────┼──────────────┤
+  │ scoring phase   │ not_started        │ done         │
+  └─────────────────┴────────────────────┴──────────────┘
+
+  The live pipeline unwedged immediately: 13 folders → 10 outstanding,
+  awaiting_scoring gone, buckets now awaiting_keywords (9) and awaiting_culling
+  (1), overall 50% → 67–69%. Three folders completed outright.
+
+  Root cause fixed — issue #339, branch fix/phantom-score-preflight-339
+
+  finalize_phantom_scores is now called from run_phase_planner._apply_preflight,
+  which runs only on the real (non-dry-run) enqueue path and before the stage
+  queues are built. So a scope containing phantom-scored images gets finalized
+  first, the planner then sees genuinely-complete scoring, the bucketer agrees,
+  and culling finds its composite. Added a phantom_scores_finalized counter to
+  actions and repaired, plus two tests: one asserting the real path finalizes
+  with writes enabled, one asserting a dry-run plan never writes.
+
+  Fast subset: 2,273 passed. The 5 test_runs_autodrive.py failures are the same
+  pre-existing ones I verified on clean master earlier.
+
+  Two things to note
+
+  Branch state. The phantom fix branched off master, so it does not contain the
+  bbox work from #338. I've checked the tree back to
+  feat/bird-bbox-phase-completeness-338 so disk matches what the running webui
+  has in memory — otherwise a webui restart would silently drop #338. To get
+  both live you'll need to merge them; neither is pushed yet.
+
+  Follow-ups I noted in #339 but did not change: selection_runner aborts the
+  entire culling stage on one missing composite where skip-and-continue might be
+  better, and the comment on is_image_scoring_complete conflates "composite
+  legitimately 0" (issue #162) with "composite NULL" — that conflation is what
+  made the predicate blind to this state in the first place.
+
+  Bbox backfill still running: 4,400/8,520, 1,183 boxes found, ETA ~19 min.
+
+✻ Cooked for 13m 17s · done 21:38
+※ recap: Goal was making bird bbox part of the birding phase and Drive; along the way I fixed a scoring livelock that had stalled 13 folders, which are now progressing again. The bbox backfill is still running, roughly 4,400 of 8,520 done.
+
+> collect all the fixes on master branch                                        
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● No overlapping files — both merge cleanly.
+
+  Merged feat/bird-bbox-phase-completeness-338 (ctrl+o to expand)
+
+● Both merged cleanly. Verifying the combined result:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+> once ready run .\docker_refresh_webui.bat                                     
+
+● 2,273 passed on merged master; the same 5 pre-existing test_runs_autodrive.py
+  failures. Refreshing the webui now:
+
+  Read 1 file, listed 1 directory, ran 1 shell command (ctrl+o to expand)
+
+● Background command "Wait for bbox backfill to finish or fail" completed (exit
+code 0)
+
+● Bbox backfill finished: 8,520 processed, 2,874 boxes detected, 5,646 no-bird, 
+  0 errors, 8,520 written in 43.5 min. Checking coverage and the refresh:
+
+  Read 1 file, called is-be-data (ctrl+o to expand)
+
+● Bbox coverage is now 100% — 0 NULL across all 75,618 images (40,630 real
+  boxes, 34,985 no-bird, 3 known NEF decode failures). The refresh is still
+  running:
+
+  Searched for 1 pattern, ran 1 shell command (ctrl+o to expand)
+
+● docker_refresh_webui.bat is a full refresh — npm Vite build → docker compose 
+  build webui → recreate container → wait for readiness (up to 360 s). It's
+  running in the background (output buffers until the batch finishes), Postgres
+  volume untouched. I'll report when it lands.
+
+  Meanwhile, here's where master stands:
+
+  master now has both fixes (no push — everything is local):
+
+  55eed90  Merge: finalize phantom scores in the auto-drive preflight (#339)
+  71ea610  Merge: bird_bbox is first-class bird_species phase work (#338)
+  1997a14  chore: release v8.15.1
+
+  ┌────────────────┬────────────────────────────────────────────────────────┐
+  │     Change     │                         Effect                         │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ #338 —         │ A missing or retryable box now counts as bird_species  │
+  │ bird_bbox as   │ work in the predicate, the per-image check, and the    │
+  │ phase work     │ folder rollup; the runner repairs it with a            │
+  │                │ detector-only pass (no BioCLIP, no keyword writes)     │
+  ├────────────────┼────────────────────────────────────────────────────────┤
+  │ #339 —         │ finalize_phantom_scores runs in                        │
+  │ phantom-score  │ run_phase_planner._apply_preflight, so an interrupted  │
+  │ preflight      │ scoring job can't wedge auto-drive again               │
+  └────────────────┴────────────────────────────────────────────────────────┘
+
+  Verified on the merged tree: 2,273 passed in the fast subset, with the same 5
+  pre-existing test_runs_autodrive.py failures I confirmed on clean master
+  before touching anything.
+
+  Data work completed this session:
+
+  - 6,400 phantom-scored images finalized → awaiting_scoring cleared, 13 folders
+    → 10, overall 50% → 67–69%
+  - 8,520 bounding boxes backfilled → 100% bird_bbox coverage (40,630 boxes,
+    34,985 no-bird, 3 NEF decode failures)
+  - Postgres backup at 20:01 (1,034 MB, mirrored to Dropbox) predates every
+    write
+
+  Two things still open: nothing is pushed, so issues #338 and #339 stay open on
+  the board (both at Stage = In Progress), and keep-awake is still holding at
+  PID 17932.
+
+● Ran 1 stop hook (ctrl+o to expand)
+  ⎿  Stop hook error: Hook output looks like a JSON object but is not
+  valid JSON — JSON Parse error: Unterminated string. Emit the payload
+  with a JSON encoder (jq, ConvertTo-Json, json.dumps) rather than
+  string concatenation so backslashes and quotes inside strings are
+  escaped.
+
+✻ Cooked for 18m 0s · done 22:05
+
+> docker refreshg status                                                        
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Webui shows as up but isn't answering HTTP. Let me look closer:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The refresh has moved on — the container was recreated 20 seconds ago from a
+  freshly built image-scoring:latest and is booting now ("Launching WebUI...").
+  My earlier docker ps read was taken seconds before the recreate. The script is
+  in its wait-for-ready phase.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Refresh status: in progress, past the slow part.
+
+  ┌──────────────────────────┬──────────────────────────────────────────────┐
+  │           Step           │                    State                     │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ Vite SPA build (npm run  │ done                                         │
+  │ build)                   │                                              │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ docker compose build     │ done — new image-scoring:latest              │
+  │ webui                    │                                              │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ docker compose up -d     │ done — container recreated 20 s ago, port    │
+  │ webui                    │ 7860 bound                                   │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ Wait for readiness       │ in progress — app booting, "Launching        │
+  │                          │ WebUI..."                                    │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ Postgres                 │ untouched, Up 10 hours (healthy)             │
+  └──────────────────────────┴──────────────────────────────────────────────┘
+
+  The http=000 a moment ago was just the container mid-recreate; my earlier "Up
+  53 minutes" reading was taken seconds before the swap. Nothing failed.
+
+  The batch script buffers its console output until it exits, so its log is
+  still 0 bytes — that's expected, not a hang. I've armed a waiter on the health
+  endpoint and will report the moment it answers. Once it does, both #338 and
+  #339 are live in the running process for the first time.
+
+✻ Brewed for 33s · done 22:07
+
+● Background command "Wait for webui to become ready" completed (exit code 0)
+
+  Read 1 file, listed 1 directory (ctrl+o to expand)
+
+● Background command "Run webui refresh script" completed (exit code 0)
+● Refresh complete — [SUCCESS], exit 0.
+
+  ┌──────────────────┬──────────────────────────────────────────────────────┐
+  │       Step       │                        Result                        │
+  ├──────────────────┼──────────────────────────────────────────────────────┤
+  │ Vite SPA build   │ done                                                 │
+  ├──────────────────┼──────────────────────────────────────────────────────┤
+  │ docker compose   │ new image-scoring:latest (sha256:8949b102…), ~370 s  │
+  │ build webui      │ pip layer + 341 s export                             │
+  ├──────────────────┼──────────────────────────────────────────────────────┤
+  │ Recreate         │ Postgres waited on and healthy, webui started        │
+  │ container        │                                                      │
+  ├──────────────────┼──────────────────────────────────────────────────────┤
+  │ Readiness probe  │ passed — /api/bird-species/status returns            │
+  │                  │ {"is_running": false, "status_message": "Idle"}      │
+  ├──────────────────┼──────────────────────────────────────────────────────┤
+  │ Postgres data    │ untouched (no down -v)                               │
+  │ volume           │                                                      │
+  ├──────────────────┼──────────────────────────────────────────────────────┤
+  │ Agent cull       │ Antigravity CLI, bridge script, auth mount all OK    │
+  │ review preflight │                                                      │
+  └──────────────────┴──────────────────────────────────────────────────────┘
+
+  Both fixes are now live in the running process for the first time: #338
+  (bird_bbox as bird_species phase work, including the detector-only repair pass
+  and the NULL-safe rollup SQL) and #339 (phantom-score finalize in the
+  auto-drive preflight).
+
+  Session end state
+
+  - master holds both merges — 55eed90, 71ea610 — local only, nothing pushed
+  - 6,400 phantom-scored images finalized; buckets moved from 13 ×
+    awaiting_scoring to 9 × awaiting_keywords + 1 × awaiting_culling, overall
+    50% → 67–69%
+  - bird_bbox coverage 100% of 75,618 images (40,630 boxes, 34,985 no-bird, 3
+    NEF decode failures)
+  - Backup from 20:01 (1,034 MB, mirrored to Dropbox) predates every write
+
+  Still open, at your discretion: nothing is pushed, so issues #338 and #339
+  remain at Stage = In Progress on the board rather than closing via Closes #N.
+  Drive to Complete is stopped and ready to start when you want it. Keep-awake
+  is still holding at PID 17932 — Keep-Awake.ps1 -Action Stop when you're back.
+
+✻ Cooked for 20s · done 22:08
+
+> commit and push                                                               
+  ⎿  You've hit your session limit · resets 10:30pm (America/Chicago)
+     /upgrade to increase your usage limit.
+
+✻ Brewed for 0s · done 22:12

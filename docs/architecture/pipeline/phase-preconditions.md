@@ -33,23 +33,28 @@ flowchart TD
 
 Runs at submit time. Prevents enqueuing a phase whose upstream work has not happened.
 
-`assert_prereqs_for_scope(phase_values, scope_paths)` (`modules/phases.py:149-161`) composes:
+`assert_prereqs_for_scope(phase_values, scope_paths)` (`modules/phases.py:187-201`) composes:
 
-1. `compute_satisfied_phases_for_scope` (`:102-146`) — sums `db.get_folder_phase_summary` over
+1. `compute_satisfied_phases_for_scope` (`:140-185`) — sums `db.get_folder_phase_summary` over
    every scope path. A phase is **satisfied** when `total_count == 0`, or
    `done + skipped >= total` **and** `failed == 0`.
-2. `missing_prerequisites` (`:66-99`) — for each requested phase, lists prerequisites that are
-   neither satisfied nor co-requested in the same submission.
+2. `missing_prerequisites` (`:90-137`) — for each requested phase, lists prerequisites that are
+   neither satisfied nor listed **earlier** in the same submission. The requested list is read as an
+   execution order, so `["tag", "score"]` is rejected while `["score", "tag"]` passes; siblings under
+   one prerequisite (`cluster` and `tag`, both under `score`) pass in either order. Callers that
+   `sort_phase_value_strings` first are unaffected — canonical order already puts prerequisites
+   first.
 
 An empty result means go. Callers pick their own policy:
 
 | Caller | On missing prerequisites |
 |---|---|
-| `POST /api/runs/submit` (`modules/api/routers/electron_runs_lifecycle.py:125-140`) | HTTP 400, body `{"code": "missing_prerequisites", "missing": {...}}` |
+| `POST /api/runs/submit` (`modules/api/routers/electron_runs_lifecycle.py:99-112`) | HTTP 400, body `{"code": "missing_prerequisites", "missing": {...}}` |
 | `workflow_healing._enqueue_heal_run` (`:544`) | Returns a structured skip, continues with other folders |
-| `POST /api/pipeline/submit` | **Does not check at all** |
+| `POST /api/pipeline/submit` (`modules/api/routers/pipeline_submit.py:163-173`) | `success=false`, body `data.code = "missing_prerequisites"` (HTTP 200) |
 
-That last row is a real inconsistency — see Known gaps.
+`/api/pipeline/submit` gates folder-scoped submissions only: image-id and image-path selectors
+resolve to no scope path, and an empty scope would report every non-root phase as unsatisfied.
 
 The scope-satisfaction rule mirrors `_compute_scope_preview_for_resolved_paths` on purpose, so
 submit-time gating and heal-time gating cannot disagree.
@@ -283,7 +288,7 @@ entirely.
 | Component | Gate |
 |---|---|
 | `POST /api/runs/submit` | 1, then 2 |
-| `POST /api/pipeline/submit` | 2 only |
+| `POST /api/pipeline/submit` | 1 (folder-scoped only), then 2 |
 | `JobDispatcher._jit_replan_phase` | 2, then 3 |
 | `PrepWorker._apply_scoring_prep` | 4 |
 | `TaggingRunner`, `SelectionRunner`, `ClusteringEngine`, `MetadataRunner`, `IndexingRunner` | 4 |
@@ -292,10 +297,10 @@ entirely.
 
 ## Known gaps
 
-- **`/api/pipeline/submit` skips Gate 1.** It validates operation tokens
-  (`modules/api/routers/pipeline_submit.py:98`) but never calls `assert_prereqs_for_scope`, so it
-  can enqueue a downstream phase whose prerequisites are unmet — something `/api/runs/submit`
-  rejects with HTTP 400.
+- **`/api/pipeline/submit` reports Gate 1 failures differently.** It calls
+  `assert_prereqs_for_scope` like `/api/runs/submit` does, but returns HTTP 200 with
+  `success=false` and `data.code = "missing_prerequisites"` instead of HTTP 400. Selector-only
+  submissions (image ids or paths, no folder) are still ungated.
 - **The metadata predicate divergence** above is intentional but undocumented outside a code
   comment, and reliably surprises people.
 - `is_image_scoring_complete` still names the legacy model set (`spaq`, `ava`, `liqe`,

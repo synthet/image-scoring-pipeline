@@ -110,8 +110,8 @@ Full transition maps in [phase-status-machines.md](phase-status-machines.md).
 Four gates, in order. Any one can turn a submitted run into a no-op.
 
 1. **Submit-time prerequisites** — `assert_prereqs_for_scope` rejects a run whose requested phases
-   have unsatisfied upstream phases (HTTP 400 `missing_prerequisites`). Only `/api/runs/submit`
-   enforces this; `/api/pipeline/submit` does not.
+   have unsatisfied upstream phases (HTTP 400 `missing_prerequisites`). Both `/api/runs/submit` and
+   `/api/pipeline/submit` enforce it; the latter gates folder-scoped submissions only.
 2. **Scope planning** — `run_phase_planner.plan_scope` asks, per image and per stage, whether there
    is real work. A stage with an empty queue is dropped; a run with nothing anywhere is rejected
    with `nothing_to_queue`.

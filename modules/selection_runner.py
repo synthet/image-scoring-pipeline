@@ -352,6 +352,7 @@ class SelectionRunner:
         ]
 
         handoff_error: str | None = None
+        follow_job_id = None
         if remaining_codes:
             next_code = remaining_codes[0]
             log(f"Advancing to next phase: {next_code} (handing off {remaining_codes})")
@@ -432,14 +433,25 @@ class SelectionRunner:
                 handoff_error = str(e) or e.__class__.__name__
 
         if handoff_error:
-            # Culling itself succeeded, but the delegated stages have no child job and
-            # their phase rows are still non-terminal.  Completing here would make the
-            # run read as finished and re-trigger auto-drive post-audit follow-ups for
-            # work that never ran -- the same trap as the missing-prerequisites abort.
-            message = (
-                f"Culling finished but stages {remaining_codes} were not handed off "
-                f"({handoff_error}); they did not run."
-            )
+            # Culling itself succeeded, but the delegated stages are not cleanly handed
+            # off: either there is no child job, or the child's phase plan / the parent's
+            # delegation markers were never written.  Completing here would make the run
+            # read as finished and re-trigger auto-drive post-audit follow-ups for work
+            # that never ran -- the same trap as the missing-prerequisites abort.
+            if follow_job_id:
+                # enqueue_job succeeded and the follow-up work is queued; what failed was
+                # create_job_phases or the delegation markers.  Saying "did not run" here
+                # would send the operator looking for a job that exists.
+                message = (
+                    f"Culling finished but the hand-off of stages {remaining_codes} to "
+                    f"job #{follow_job_id} did not complete ({handoff_error}); that job is "
+                    "queued but its phase plan may be incomplete."
+                )
+            else:
+                message = (
+                    f"Culling finished but stages {remaining_codes} were not handed off "
+                    f"({handoff_error}); they did not run."
+                )
             log(message, "ERROR")
             db.update_job_status(job_id, "failed", message)
             event_manager.broadcast_threadsafe("job_completed", {

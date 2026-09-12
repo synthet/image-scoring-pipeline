@@ -20,7 +20,7 @@ How a request becomes processed images. A **run** is a `jobs` row; its plan is a
 | Source | `modules/api/routers/electron_runs_lifecycle.py:47` | `modules/api/routers/pipeline_submit.py:51` |
 | Consumer | React Runs UI, Electron gallery, auto-drive | Gradio, legacy clients |
 | Stage field | `stage_codes` (alias `operations`) | `stage_codes` (alias `operations`) |
-| Prerequisite check | **yes** — `assert_prereqs_for_scope` | **no** |
+| Prerequisite check | **yes** — `assert_prereqs_for_scope`, HTTP 400 | **yes**, folder-scoped only — `success=false`, `data.code` |
 | Empty-work check | **yes** — `nothing_to_queue` | no |
 | Creates | job + full phase plan in one transaction | job for the first op, then the phase plan |
 
@@ -249,7 +249,9 @@ The queue survives a WebUI restart because it lives in `jobs`
 
 ## Known gaps
 
-- `/api/pipeline/submit` does not validate prerequisites; `/api/runs/submit` does.
+- `/api/pipeline/submit` signals a prerequisite failure as HTTP 200 + `success=false`, while
+  `/api/runs/submit` raises HTTP 400; a client handling only the status code sees the first as a
+  success. It also leaves image-id and image-path selectors ungated.
 - `_seed_phase_scope` (`modules/job_dispatcher.py:416-444`) creates a throwaway `ReportCollector`
   purely to populate `job_phases.images_in_scope` and `images_targeted` for the tag, cluster and
   selection runners, which do not yet accept a collector. Per-image progress is not recorded for
