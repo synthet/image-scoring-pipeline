@@ -265,5 +265,9 @@
       "bioclip_2_image": "hf-hub:imageomics/bioclip-2"
     }
   },
-  "debug": false
+  "debug": false,
+  "typesafe": {
+    "enabled": false,
+    "model": ""
+  }
 }
