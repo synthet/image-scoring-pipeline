@@ -71,6 +71,16 @@ _RUBRICS: tuple[Rubric, ...] = (
         ),
     ),
     Rubric(
+        key="keywords.relevance",
+        version="v1",
+        question_type=NOUL,
+        instructions=(
+            "Is the keyword under review genuinely supported by the supplied "
+            "caption and metadata for this photograph? Judge only from the "
+            "supplied text; do not guess at visual detail that is absent."
+        ),
+    ),
+    Rubric(
         key="evidence.sufficiency",
         version="v1",
         question_type=NOUL,
@@ -87,6 +97,16 @@ REGISTRY: dict[str, Rubric] = {r.key: r for r in _RUBRICS}
 # confidence and evidence completeness stay separable (design doc: "A confident
 # answer based on incomplete evidence is unsafe.").
 EVIDENCE_SUFFICIENCY_KEY = "evidence.sufficiency"
+
+# Separates a rubric key from the subject it is being asked about, so the same
+# rubric can be asked about many subjects (e.g. every candidate keyword on one
+# image) inside a single System One call.
+SUBJECT_SEPARATOR = "::"
+
+
+def subject_question_id(rubric_key: str, subject: str) -> str:
+    """Question id addressing ``rubric_key`` at one ``subject``."""
+    return f"{rubric_key}{SUBJECT_SEPARATOR}{subject}"
 
 
 def get_rubric(key: str) -> Rubric:

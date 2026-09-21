@@ -177,3 +177,82 @@ class TypeSafeClient:
             if judgment is not None:
                 out[rubric.key] = judgment
         return out
+
+    def judge_subjects(
+        self,
+        state: Any,
+        rubric_key: str,
+        subjects: list[str],
+        *,
+        check_evidence: bool = True,
+    ) -> dict[str, Judgment]:
+        """Ask one rubric about many ``subjects`` in a **single** call.
+
+        Used where the same question applies per item — every candidate keyword
+        on one image, say — so the cost is one request per image rather than one
+        per keyword. Returns judgments keyed by subject.
+
+        Returns an empty dict if the adapter is unavailable or the call fails.
+        Never raises.
+        """
+        if not self.available:
+            return {}
+
+        wanted = [s for s in dict.fromkeys(subjects) if s]
+        if not wanted:
+            return {}
+
+        try:
+            rubric = rubrics_mod.get_rubric(rubric_key)
+        except KeyError:
+            logger.error("Unknown TypeSafe rubric %r", rubric_key)
+            return {}
+
+        evidence_key = rubrics_mod.EVIDENCE_SUFFICIENCY_KEY
+        evidence_rubric = rubrics_mod.get_rubric(evidence_key)
+
+        try:
+            questions = {
+                rubrics_mod.subject_question_id(rubric_key, s): (
+                    rubrics_mod.build_question(rubric)
+                )
+                for s in wanted
+            }
+            if check_evidence:
+                questions[evidence_key] = rubrics_mod.build_question(evidence_rubric)
+        except Exception:
+            logger.exception("Failed to build TypeSafe questions")
+            return {}
+
+        kwargs: dict[str, Any] = {"state": state, "questions": questions}
+        if self.model:
+            kwargs["model"] = self.model
+
+        try:
+            with self._sdk.TypeSafeClient() as client:
+                response = client.system_one(**kwargs)
+        except Exception:
+            logger.exception("TypeSafe system_one call failed")
+            return {}
+
+        completeness: float | None = None
+        if check_evidence:
+            evidence_judgment = normalize(response, evidence_rubric, state=state)
+            if evidence_judgment is not None:
+                try:
+                    completeness = float(evidence_judgment.value)
+                except (TypeError, ValueError):
+                    completeness = None
+
+        out: dict[str, Judgment] = {}
+        for subject in wanted:
+            judgment = normalize(
+                response,
+                rubric,
+                completeness=completeness,
+                state=state,
+                answer_key=rubrics_mod.subject_question_id(rubric_key, subject),
+            )
+            if judgment is not None:
+                out[subject] = judgment
+        return out

@@ -69,7 +69,7 @@ def noul_confidence(value: Any) -> float | None:
     return min(1.0, max(0.0, abs(2.0 * v - 1.0)))
 
 
-def _answer_for(response: Any, rubric: Rubric) -> Any:
+def _answer_for(response: Any, rubric: Rubric, answer_key: str) -> Any:
     """Pull the per-type answer object out of a System One response."""
     bucket = {NOUL: "nouls", CHOICE: "choices", SCORE: "scores"}.get(
         rubric.question_type
@@ -80,7 +80,7 @@ def _answer_for(response: Any, rubric: Rubric) -> Any:
     if container is None:
         return None
     try:
-        return container[rubric.key]
+        return container[answer_key]
     except (KeyError, TypeError, IndexError):
         return None
 
@@ -91,16 +91,22 @@ def normalize(
     *,
     completeness: float | None = None,
     state: Any = None,
+    answer_key: str | None = None,
 ) -> Judgment | None:
     """Turn one answer in ``response`` into a :class:`Judgment`.
+
+    ``answer_key`` defaults to ``rubric.key``; pass it when the same rubric was
+    asked about several subjects in one call and the question ids are therefore
+    suffixed (see :func:`modules.typesafe.rubrics.subject_question_id`).
 
     Returns ``None`` if the response carries no answer for ``rubric`` — callers
     treat that as "no verdict" rather than an error, so a partial response still
     yields the answers that did arrive.
     """
-    answer = _answer_for(response, rubric)
+    key = answer_key or rubric.key
+    answer = _answer_for(response, rubric, key)
     if answer is None:
-        logger.warning("TypeSafe response carried no answer for %r", rubric.key)
+        logger.warning("TypeSafe response carried no answer for %r", key)
         return None
 
     value = getattr(answer, rubric.question_type, None)
