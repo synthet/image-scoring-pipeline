@@ -152,6 +152,10 @@ POSTGRES_APP_TABLES = (
     "keywords_dim",
     "image_keywords",
     "deleted_images",
+    # Localization artifacts (#370). CASCADE from `images` would clear these anyway,
+    # but naming them keeps the list honest as the schema grows.
+    "image_localization_runs",
+    "image_regions",
 )
 
 # Default visual-embedding catalog row (re-applied after TRUNCATE in tests).
