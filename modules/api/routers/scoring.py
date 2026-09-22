@@ -186,7 +186,13 @@ def create_scoring_router() -> APIRouter:
         )
         if job_id is None:
             raise HTTPException(status_code=500, detail="Failed to enqueue scoring job")
-        db.create_job_phases(job_id, ["indexing", "metadata", "scoring"], first_phase_state="queued")
+        # Derive the prefix instead of hardcoding it, as /tagging/start and
+        # /clustering/start already do -- a hardcoded list silently goes stale when
+        # the phase DAG gains a stage.
+        from modules.phases import pipeline_prefix_through
+        db.create_job_phases(
+            job_id, pipeline_prefix_through("scoring"), first_phase_state="queued"
+        )
 
         return ApiResponse(
             success=True,

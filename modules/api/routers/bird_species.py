@@ -17,6 +17,7 @@ from modules.job_description import (
     augment_queue_payload_for_audit,
     build_bird_species_job_description,
 )
+from modules.phases import pipeline_prefix_through
 from modules.run_manifest import (
     REASON_SOURCE_LEGACY_API,
     attach_run_reason,
@@ -123,7 +124,7 @@ def create_bird_species_router() -> APIRouter:
         )
         job_id, queue_position = db.enqueue_job(
             job_source,
-            phase_code=None,
+            phase_code="bird_species",
             job_type="bird_species",
             queue_payload=bs_payload,
             description=build_bird_species_job_description(request.input_path),
@@ -131,7 +132,14 @@ def create_bird_species_router() -> APIRouter:
         if job_id is None:
             raise HTTPException(status_code=500, detail="Failed to enqueue bird species job")
 
-        await asyncio.to_thread(db.create_job_phases, job_id, ["bird_species"], "queued")
+        # Enqueue the full dependency prefix, as the three sibling /start endpoints do.
+        # Queuing bird_species alone let a run start with no upstream plan at all.
+        await asyncio.to_thread(
+            db.create_job_phases,
+            job_id,
+            pipeline_prefix_through("bird_species"),
+            "queued",
+        )
 
         return ApiResponse(
             success=True,
