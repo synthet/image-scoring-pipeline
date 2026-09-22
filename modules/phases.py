@@ -63,6 +63,19 @@ PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
     PhaseCode.BIRD_SPECIES.value: (PhaseCode.KEYWORDS.value,),
 }
 
+# Advisory ("preferred-before") edges: the key SHOULD be attempted before each listed
+# consumer when both are co-requested, but its artifact is a *preferred input, not a hard
+# prerequisite*.  A missing, negative, stale or failed result must never suppress the
+# consumer's own full-frame path.
+#
+# Deliberately NOT consulted by ``missing_prerequisites`` or ``pipeline_prefix_through``:
+# those two decide whether work is *blocked*, and a soft edge never blocks.  Keeping the
+# two tables separate is what lets a phase be scheduled early without becoming a gate.
+#
+# Empty today.  ``localization`` populates it with (scoring, keywords, bird_species) when
+# the phase lands — see docs/architecture/pipeline/localization-rollout.md stage 4.
+PHASE_PREFERRED_BEFORE: dict[str, tuple[str, ...]] = {}
+
 # Entry runner for a phase: the ``jobs.job_type`` used when a phase is the first
 # (or only) stage of a submitted plan.  Single source for a map that was previously
 # hand-written in electron_runs_lifecycle, runs_autodrive and workflow_healing.
@@ -417,14 +430,23 @@ class PhaseExecutor:
                           or algorithm changes — independent of APP_VERSION.
         run_folder:       ``fn(folder_path, job_id) -> None``
         run_image:        ``fn(image_path, job_id) -> None``  (optional)
-        depends_on:       List of phase codes that must be ``done`` before
-                          this phase can run.  (Enforcement deferred to v2.)
+        depends_on:       Hard prerequisites — phase codes that must be ``done``
+                          before this phase can run.  Derived from
+                          :data:`PHASE_PREREQUISITES` by
+                          ``phase_executors.register_all`` so the two cannot
+                          drift; the gate itself runs in
+                          :func:`assert_prereqs_for_scope` at submit time, not
+                          off this field.
+        preferred_before: Advisory consumers — phases this one SHOULD be
+                          attempted before when co-requested, but never blocks.
+                          Derived from :data:`PHASE_PREFERRED_BEFORE`.
     """
     code:             str
     executor_version: str
     run_folder:       Callable[..., Any] | None = None
     run_image:        Callable[..., Any] | None = None
     depends_on:       list[str] = field(default_factory=list)
+    preferred_before: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
