@@ -154,6 +154,32 @@ unchanged except for correcting inconsistent or misleading phase state.
   parent/child success/failure/cancellation tests pass.
 - Existing six-phase runs have unchanged work selection and outputs.
 
+### Status — met, with one item deferred
+
+Landed as #346 (PRs #350, #352, #353, #354) plus #364, #365, #366 and #367.
+
+| Item | Where |
+|---|---|
+| Canonical registry for ordering, prerequisites, executors, planning | `modules/phases.py`, `modules/phase_executors.py`, `modules/pipeline_orchestrator.py:15` |
+| `normalize_phase_codes` keeps `bird_species` | `modules/phases.py:286-306` |
+| Same gate on `/api/runs/submit`, `/api/pipeline/submit`, auto-drive, heal | #351, #363 |
+| Selector resolution before the gate (paths, folder ids, ordering) | #354, #352 |
+| `bird_species` in the dispatcher/plan vocabulary | `tests/test_phase_submission_vocabulary_parity.py` |
+| Hard vs preferred-before registry fields | `PHASE_PREREQUISITES` / `PHASE_PREFERRED_BEFORE` (#364) |
+| Enqueue failure on a delegated hand-off is visible | #353 |
+
+Two things this stage did **not** resolve, both carried forward:
+
+- **Delegated parent/child lifecycle.** `modules/selection_runner.py:419-461` still marks the
+  parent's remaining stages `skipped` with a delegation note and completes the parent regardless
+  of the child's outcome. The planned contract — persist the link, leave the parent unfinished,
+  propagate child success/failure/cancellation — needs a durable link column and DB-backed
+  recovery tests, so it is scheduled with the schema work rather than here.
+- **Dedicated `/start` endpoints are prefix-expanding, not gated.** Gating them would be dead
+  code; the reasoning is recorded in
+  [phase-preconditions.md](phase-preconditions.md#why-the-start-endpoints-are-not-in-that-table)
+  and satisfies the "explicitly documented as unsupported" clause above.
+
 ### Rollback
 
 This stage contains correctness and consolidation work rather than a runtime feature. Revert the
