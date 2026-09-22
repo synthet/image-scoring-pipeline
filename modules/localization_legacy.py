@@ -287,6 +287,10 @@ def import_legacy_bird_bbox(
 ) -> dict[str, int]:
     """Copy ``images.bird_bbox`` into the normalized tables. Runs no inference.
 
+    ``conn`` is a **raw psycopg2 connection**, not a connector: this needs
+    ``execute_values`` for batching and owns its own commit boundaries.
+    :func:`read_bird_bbox` takes a connector instead -- do not mix them up.
+
     Idempotent by construction: the insert targets the partial unique index
     ``ux_ilr_current_image_detector`` with ``ON CONFLICT DO NOTHING``, so an image that
     already has a current ``bird`` run is skipped rather than duplicated. Re-running
@@ -457,6 +461,11 @@ def read_bird_bbox(
     prefer_normalized: bool | None = None,
 ) -> Any:
     """Return an image's ``bird_bbox`` value, from whichever source is authoritative.
+
+    ``conn`` is a **connector** (``modules.db_connector``): ``query_one``/``query`` with
+    ``?`` placeholders, the same object production read paths already hold. Note this
+    differs from :func:`import_legacy_bird_bbox`, which takes a raw psycopg2 connection
+    because it needs ``execute_values`` and its own transaction boundaries.
 
     With the flag off (the default) this is exactly ``SELECT bird_bbox FROM images`` --
     same value, same semantics, including ``None`` for never-scanned. That is what makes
