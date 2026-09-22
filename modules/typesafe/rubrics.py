@@ -120,18 +120,29 @@ def get_rubric(key: str) -> Rubric:
     return REGISTRY[key]
 
 
-def build_question(rubric: Rubric) -> Any:
+def build_question(rubric: Rubric, *, subject: str | None = None) -> Any:
     """Build the SDK question object for ``rubric``.
 
     Imports ``typesafe_sdk`` lazily so the package stays importable (and the
     flag stays inspectable) without the optional dependency installed.
+
+    ``subject`` is included in model-visible instructions. Question mapping
+    keys are response correlation IDs and TypeSafe does not send them to the
+    model, so a per-subject question must not rely on its key for meaning.
     """
     from typesafe_sdk import Choice, Noul, Score
 
+    instructions: Any = rubric.instructions
+    if subject is not None:
+        instructions = {
+            "judgment": rubric.instructions,
+            "subject_under_review": subject,
+        }
+
     if rubric.question_type == NOUL:
-        return Noul(instructions=rubric.instructions)
+        return Noul(instructions=instructions)
     if rubric.question_type == SCORE:
-        return Score(instructions=rubric.instructions, criteria=rubric.criteria)
+        return Score(instructions=instructions, criteria=rubric.criteria)
     if rubric.question_type == CHOICE:
-        return Choice(instructions=rubric.instructions, criteria=rubric.criteria)
+        return Choice(instructions=instructions, criteria=rubric.criteria)
     raise ValueError(f"Unsupported question type: {rubric.question_type!r}")

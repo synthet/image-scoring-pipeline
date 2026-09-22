@@ -287,6 +287,12 @@ def test_judge_subjects_batches_into_one_call(monkeypatch):
     assert out["osprey"].evidence_completeness == pytest.approx(0.9)
     # One request covered every subject plus the sufficiency check.
     assert set(sdk.captured["questions"]) == set(nouls)
+    assert sdk.captured["questions"]["keywords.relevance::osprey"].kw[
+        "instructions"
+    ]["subject_under_review"] == "osprey"
+    assert sdk.captured["questions"]["keywords.relevance::fish"].kw[
+        "instructions"
+    ]["subject_under_review"] == "fish"
 
 
 def test_judge_subjects_rejects_unknown_rubric(monkeypatch):

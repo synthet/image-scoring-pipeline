@@ -179,6 +179,15 @@ def test_model_pinned_only_when_configured(with_key, install_fake_sdk):
     assert sdk2.captured["model"] == "jev-2026-01"
 
 
+def test_timeout_is_explicit_and_configurable(with_key, install_fake_sdk):
+    answer = {"culling.redundancy": _Answer(noul=0.5)}
+    sdk = install_fake_sdk(_fake_sdk(_Response(nouls=answer)))
+    TypeSafeClient(enabled=True, timeout_seconds=12.5).judge(
+        _STATE, ["culling.redundancy"]
+    )
+    assert sdk.captured["timeout"] == pytest.approx(12.5)
+
+
 def test_api_failure_returns_empty_and_does_not_raise(with_key, install_fake_sdk):
     """AC-2: a paid network judge must never break the caller."""
     install_fake_sdk(_fake_sdk(raises=RuntimeError("502 upstream")))
