@@ -1,0 +1,32 @@
+{
+  "schema_version": "jev-culling-phase0-manifest/3",
+  "generated_at": "2026-09-22T01:39:38.914481+00:00",
+  "read_only": true,
+  "output": "/app/.agent/scratch/typesafe-culling/phase0-evidence-v3.jsonl",
+  "output_gitignored": true,
+  "stack_count": 1497,
+  "candidate_image_count": 6986,
+  "labeled_candidate_records": 5893,
+  "historical_label_counts": {
+    "pick": 3028,
+    "reject": 2865
+  },
+  "missing_concepts": 47,
+  "missing_neighbours": 865,
+  "concept_count": 23748,
+  "default_one_relevance_weight_count": 23058,
+  "default_one_relevance_weight_rate": 0.9709449216776149,
+  "embedding_space": "openclip_l14_laion2b_image",
+  "model_score_metrics": [
+    "spaq",
+    "ava",
+    "liqe",
+    "topiq",
+    "arniqa",
+    "clip_quality_v0",
+    "koniq",
+    "paq2piq"
+  ],
+  "pairwise_visual_differences": "not_evaluated",
+  "jev_calls": 0
+}

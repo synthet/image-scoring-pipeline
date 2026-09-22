@@ -1,0 +1,273 @@
+{
+  "schema_version": "typesafe-culling-real-data/1",
+  "generated_at": "2026-09-22T01:37:21.684110+00:00",
+  "issue": 359,
+  "read_only": true,
+  "selection": {
+    "criteria": "mixed historical pick/reject stacks, 2..max_stack_size images",
+    "max_stack_size": 10,
+    "limit_stacks": 0,
+    "candidate_rows": 11590,
+    "labeled_rows": 9754,
+    "stacks": 2304,
+    "folders": 328,
+    "picked": 5123,
+    "rejected": 4631,
+    "wildlife_hint_rows": 7370
+  },
+  "caption_evidence": {
+    "stack_count": 2304,
+    "exactly_collapsed_stack_count": 1070,
+    "exactly_collapsed_stack_rate": 0.4644097222222222,
+    "mean_distinct_caption_ratio": 0.4183264784501763,
+    "missing_caption_count": 4347,
+    "missing_caption_rate": 0.37506471095772215,
+    "picked_count": 5123,
+    "picked_caption_duplicated_by_reject_count": 1521,
+    "picked_caption_duplicated_by_reject_rate": 0.296896349795042
+  },
+  "deterministic_score_baseline": {
+    "all_mixed": {
+      "stacks": 2304,
+      "picks": 5123,
+      "pick_recall": 0.7454616435682218,
+      "random_expected_recall": 0.5323605185453684
+    },
+    "fully_captioned": {
+      "stacks": 1497,
+      "picks": 3028,
+      "pick_recall": 0.7004623513870541,
+      "random_expected_recall": 0.5228984504413834
+    }
+  },
+  "embedding_novelty_coverage": {
+    "mobilenet_v2_imagenet_gap": {
+      "rows": 9754,
+      "rate": 1.0
+    },
+    "clip_vit_b32_image": {
+      "rows": 9754,
+      "rate": 1.0
+    },
+    "bioclip_2_image": {
+      "rows": 9749,
+      "rate": 0.9994873897888046
+    },
+    "openclip_l14_laion2b_image": {
+      "rows": 9700,
+      "rate": 0.9944638097190897
+    }
+  },
+  "model_score_coverage": {
+    "spaq": {
+      "rows": 11590,
+      "rate": 1.1882304695509533
+    },
+    "ava": {
+      "rows": 11590,
+      "rate": 1.1882304695509533
+    },
+    "liqe": {
+      "rows": 11590,
+      "rate": 1.1882304695509533
+    },
+    "topiq": {
+      "rows": 11590,
+      "rate": 1.1882304695509533
+    },
+    "arniqa": {
+      "rows": 11590,
+      "rate": 1.1882304695509533
+    },
+    "clip_quality_v0": {
+      "rows": 11590,
+      "rate": 1.1882304695509533
+    },
+    "koniq": {
+      "rows": 5403,
+      "rate": 0.5539265942177568
+    },
+    "paq2piq": {
+      "rows": 5403,
+      "rate": 0.5539265942177568
+    }
+  },
+  "evaluation": {
+    "method": "5-fold StratifiedGroupKFold; groups are folder_id",
+    "target": "historical pick_status (proxy label, not ground truth)",
+    "variants": {
+      "scores": {
+        "features": [
+          "score_general",
+          "score_technical",
+          "score_aesthetic"
+        ],
+        "roc_auc": 0.6272133501187142,
+        "average_precision": 0.626972163721398,
+        "wildlife_hint": {
+          "rows": 7370,
+          "roc_auc": 0.6287265813986403,
+          "average_precision": 0.625263952120985
+        }
+      },
+      "scores_plus_caption": {
+        "features": [
+          "score_general",
+          "score_technical",
+          "score_aesthetic",
+          "caption_uniqueness",
+          "caption_missing"
+        ],
+        "roc_auc": 0.6266407801889118,
+        "average_precision": 0.6282126206379152,
+        "wildlife_hint": {
+          "rows": 7370,
+          "roc_auc": 0.6293143006793991,
+          "average_precision": 0.6267583035930337
+        }
+      },
+      "scores_plus_mobilenet_v2_imagenet_gap": {
+        "features": [
+          "score_general",
+          "score_technical",
+          "score_aesthetic",
+          "novelty:mobilenet_v2_imagenet_gap"
+        ],
+        "roc_auc": 0.6276210280015948,
+        "average_precision": 0.6253484056377443,
+        "wildlife_hint": {
+          "rows": 7370,
+          "roc_auc": 0.6283869446283529,
+          "average_precision": 0.6218104445785363
+        }
+      },
+      "scores_plus_clip_vit_b32_image": {
+        "features": [
+          "score_general",
+          "score_technical",
+          "score_aesthetic",
+          "novelty:clip_vit_b32_image"
+        ],
+        "roc_auc": 0.6272764069955535,
+        "average_precision": 0.6265991676808426,
+        "wildlife_hint": {
+          "rows": 7370,
+          "roc_auc": 0.6286373898293998,
+          "average_precision": 0.6245158215571962
+        }
+      },
+      "scores_plus_bioclip_2_image": {
+        "features": [
+          "score_general",
+          "score_technical",
+          "score_aesthetic",
+          "novelty:bioclip_2_image"
+        ],
+        "roc_auc": 0.6270348856691571,
+        "average_precision": 0.6257848066880682,
+        "wildlife_hint": {
+          "rows": 7370,
+          "roc_auc": 0.6280980318713669,
+          "average_precision": 0.6233830805670519
+        }
+      },
+      "scores_plus_openclip_l14_laion2b_image": {
+        "features": [
+          "score_general",
+          "score_technical",
+          "score_aesthetic",
+          "novelty:openclip_l14_laion2b_image"
+        ],
+        "roc_auc": 0.6282654642248537,
+        "average_precision": 0.624665046368423,
+        "wildlife_hint": {
+          "rows": 7370,
+          "roc_auc": 0.6289853698507836,
+          "average_precision": 0.6211890012877109
+        }
+      },
+      "all_model_scores": {
+        "features": [
+          "model:spaq",
+          "model:ava",
+          "model:liqe",
+          "model:topiq",
+          "model:arniqa",
+          "model:clip_quality_v0",
+          "model:koniq",
+          "model:paq2piq"
+        ],
+        "roc_auc": 0.6581180902719046,
+        "average_precision": 0.6370037001995101,
+        "wildlife_hint": {
+          "rows": 7370,
+          "roc_auc": 0.6539076945522484,
+          "average_precision": 0.6308900675536203
+        }
+      },
+      "composites_plus_all_model_scores": {
+        "features": [
+          "score_general",
+          "score_technical",
+          "score_aesthetic",
+          "model:spaq",
+          "model:ava",
+          "model:liqe",
+          "model:topiq",
+          "model:arniqa",
+          "model:clip_quality_v0",
+          "model:koniq",
+          "model:paq2piq"
+        ],
+        "roc_auc": 0.6582031496151275,
+        "average_precision": 0.6377165672735382,
+        "wildlife_hint": {
+          "rows": 7370,
+          "roc_auc": 0.6546743138100519,
+          "average_precision": 0.632031449164709
+        }
+      },
+      "all_evidence": {
+        "features": [
+          "score_general",
+          "score_technical",
+          "score_aesthetic",
+          "caption_uniqueness",
+          "caption_missing",
+          "novelty:mobilenet_v2_imagenet_gap",
+          "novelty:clip_vit_b32_image",
+          "novelty:bioclip_2_image",
+          "novelty:openclip_l14_laion2b_image",
+          "model:spaq",
+          "model:ava",
+          "model:liqe",
+          "model:topiq",
+          "model:arniqa",
+          "model:clip_quality_v0",
+          "model:koniq",
+          "model:paq2piq"
+        ],
+        "roc_auc": 0.6583454490912033,
+        "average_precision": 0.6390628825200501,
+        "wildlife_hint": {
+          "rows": 7370,
+          "roc_auc": 0.6551064646832028,
+          "average_precision": 0.631928220311965
+        }
+      }
+    }
+  },
+  "jev_arm": {
+    "status": "available",
+    "api_key_configured": true,
+    "sdk_installed": true,
+    "network_calls_made": 0,
+    "note": "Capability is available, but this baseline intentionally makes no paid calls."
+  },
+  "limitations": [
+    "Historical pick_status reflects prior workflow and user preference, not objective truth.",
+    "The wildlife subset is a metadata hint and can contain false-positive tags.",
+    "Embedding novelty measures geometric difference, not photographic significance.",
+    "Exact caption diversity misses paraphrases and cannot recover omitted visual facts."
+  ]
+}

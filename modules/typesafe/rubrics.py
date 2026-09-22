@@ -71,6 +71,25 @@ _RUBRICS: tuple[Rubric, ...] = (
         ),
     ),
     Rubric(
+        key="culling.action",
+        version="v1",
+        question_type=CHOICE,
+        instructions=(
+            "Choose the culling label for the candidate image under this policy. "
+            "Use only the supplied scores, captions, concepts, comparison context, "
+            "and stated limitations. Pick means promote as a preferred selection. "
+            "Keep means intentionally retain as a useful alternate without promotion. "
+            "Reject means exclude from the working selection because evidenced "
+            "limitations or redundancy outweigh retention value. Do not infer visual "
+            "properties that the evidence does not report."
+        ),
+        criteria={
+            "pick": "Promote as a preferred selection for editing or presentation.",
+            "keep": "Retain intentionally as a useful alternate without promotion.",
+            "reject": "Exclude from the working selection under the stated policy.",
+        },
+    ),
+    Rubric(
         key="keywords.relevance",
         version="v1",
         question_type=NOUL,
