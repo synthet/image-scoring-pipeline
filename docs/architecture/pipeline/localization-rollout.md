@@ -352,6 +352,38 @@ assume that stored thumbnail pixels already match display orientation.
 - Detector evaluation reports recall, false positives, latency, and memory for the pinned cohort;
   the 59-frame eagle set is retained as a regression slice, not presented as a population rate.
 
+### Status — descriptor, crop policy and cache keys landed; benchmark split out
+
+Issue #375. `modules/rendition.py` supplies the identity half of this stage:
+
+| Piece | What it fixes |
+|---|---|
+| `RenditionDescriptor` | Pixel identity — source hash, decode route, orientation, display dimensions, colour-policy and descriptor versions. Frozen; `source_path` is excluded from the hash so reorganising a folder does not invalidate cached crops for bytes that did not change. |
+| `DecodeRoute` | Records *which* of embedded-preview / `rawpy` / ImageMagick produced the pixels. They differ in size, colour and sometimes crop, so two runs that picked different routes did not see the same image. |
+| `CropPolicy` | Replaces the bare `padding` float `BirdDetector.crop_to_box` reads from config. As a float, a config edit silently changed every crop with no way to tell old from new; as a named, versioned policy it moves the cache key instead. |
+| `crop_cache_key` | Content address over rendition identity + geometry + full policy. Geometry is quantised to 6 decimals, because float noise below a thousandth of a pixel would otherwise miss the cache for byte-identical crops. |
+| `padded_pixel_box` | Pads by a fraction of the box's own size, then clamps at the frame edge rather than shifting inward — shifting would move the subject off-centre and pull in context the detector never saw on that side. |
+| `normalize_pixel_box`, `is_suspicious_geometry` | Rejects inverted / zero-area / out-of-frame geometry rather than clamping; near-full-frame boxes are **recorded, never rejected**. |
+
+`COORD_SPACE_DISPLAY` (`display_normalized`) is the verified counterpart to the
+`legacy_unverified` space stage 2's import had to use, since historical orientation could not be
+recovered.
+
+**Exit-gate progress.** Orientation fixtures 1–8 pass: synthetic JPEGs built the way a camera
+writes one (upright pixels through the inverse display transform, then tagged) round-trip to the
+same frame and crop the same subject from one normalized region. Crop keys are verified to change
+on every provenance and policy input and to stay stable under sub-pixel noise. Cache eviction and
+concurrent-request coalescing are **not yet covered** — they need the on-disk cache, which is the
+next slice.
+
+**The detector benchmark is split out.** `torch` and `ultralytics` are not installed in the
+non-Docker environment and the GPU is unavailable, so the `imgsz=640` vs `1280` vs second-pass
+comparison needs its own issue in a GPU environment. Production detector defaults remain unchanged
+until it is reviewed, exactly as this plan requires.
+
+Still open for this stage: decode-route plumbing through `open_image_for_ml`, the on-disk crop
+cache, and the multi-box detector API with deterministic ranking.
+
 ### Rollback
 
 Disable cache reads and regenerate through the legacy full-frame path. No downstream consumer is
@@ -771,6 +803,8 @@ legacy rescan, three consumer crops at most, full-frame culling, and full-frame 
 - [control-plane.md](control-plane.md) — dispatcher, planner, auto-drive, and healing
 - [persistence.md](persistence.md) — current phase persistence
 - [phases/metadata.md](phases/metadata.md) — thumbnail and RAW-rendition boundary
+- [../../reports/localization-stage1-control-plane-2026-09-22.md](../../reports/localization-stage1-control-plane-2026-09-22.md) — stage 1 completion report
+- [../../reports/localization-stage2-normalized-persistence-2026-09-22.md](../../reports/localization-stage2-normalized-persistence-2026-09-22.md) — stage 2 completion report
 - [phases/bird-species.md](phases/bird-species.md) — current embedded detector and BioCLIP path
 - [../../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md](../../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md) — current crop evidence and limits
 - [../../reports/bird-detection-recall-2026-09-07.md](../../reports/bird-detection-recall-2026-09-07.md) — small-subject recall finding and detector benchmark rationale
