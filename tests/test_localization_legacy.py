@@ -241,3 +241,157 @@ def test_synthesis_without_dimensions_does_not_invent_a_box():
            "display_width": None, "display_height": None, "error_code": None}
     regions = [{"rank": 0, "x1": 0.1, "y1": 0.1, "x2": 0.5, "y2": 0.5, "confidence": 0.5}]
     assert legacy_payload_from_normalized(run, regions) == {"detected": False}
+
+
+# ---------------------------------------------------------------------------
+# read_bird_bbox — the compatibility reader (no database; fake connector)
+# ---------------------------------------------------------------------------
+
+class _FakeConn:
+    """Minimal query_one/query connector recording what was asked.
+
+    Deliberately not a mock: the point is to assert *which source was consulted*, which
+    is the whole behavioural contract of a normalized-first reader with fallback.
+    """
+
+    def __init__(self, *, legacy=None, run=None, regions=None, fail_on=()):
+        self.legacy = legacy
+        self.run = run
+        self.regions = regions or []
+        self.fail_on = fail_on
+        self.queries: list[str] = []
+
+    def _tag(self, sql: str) -> str:
+        if "image_localization_runs" in sql:
+            return "run"
+        if "image_regions" in sql:
+            return "regions"
+        return "legacy"
+
+    def query_one(self, sql, params=()):
+        tag = self._tag(sql)
+        self.queries.append(tag)
+        if tag in self.fail_on:
+            raise RuntimeError("boom")
+        if tag == "run":
+            return dict(self.run) if self.run else None
+        return {"bird_bbox": self.legacy}
+
+    def query(self, sql, params=()):
+        tag = self._tag(sql)
+        self.queries.append(tag)
+        if tag in self.fail_on:
+            raise RuntimeError("boom")
+        return list(self.regions)
+
+
+def _read(conn, **kw):
+    from modules.localization_legacy import read_bird_bbox
+
+    return read_bird_bbox(conn, 42, **kw)
+
+
+def test_reader_is_a_plain_column_read_when_disabled():
+    """Flag off must be indistinguishable from today's SELECT -- that is what makes it
+    safe to land before anything writes the normalized tables."""
+    conn = _FakeConn(legacy=REAL_BOX, run={"id": 1, "status": "detected"})
+    assert _read(conn, prefer_normalized=False) == REAL_BOX
+    assert conn.queries == ["legacy"], "normalized tables must not be touched"
+
+
+def test_reader_returns_none_for_never_scanned_when_disabled():
+    conn = _FakeConn(legacy=None)
+    assert _read(conn, prefer_normalized=False) is None
+
+
+def test_reader_prefers_an_imported_run_and_replays_its_payload():
+    conn = _FakeConn(
+        legacy={"detected": False},  # deliberately different, to prove which one wins
+        run={"id": 1, "status": "detected", "legacy_payload": REAL_BOX,
+             "display_width": 8256, "display_height": 5504, "error_code": None},
+    )
+    assert _read(conn, prefer_normalized=True) == REAL_BOX
+    assert "legacy" not in conn.queries
+    assert "regions" not in conn.queries, "an imported run replays its payload, no region read"
+
+
+def test_reader_synthesizes_from_regions_for_a_native_run():
+    conn = _FakeConn(
+        legacy=None,
+        run={"id": 7, "status": "detected", "legacy_payload": None,
+             "display_width": 8256, "display_height": 5504, "error_code": None},
+        regions=[{"object_class": "bird", "rank": 0,
+                  "x1": 4460 / 8256, "y1": 934 / 5504,
+                  "x2": 7709 / 8256, "y2": 3959 / 5504, "confidence": 0.6913}],
+    )
+    out = _read(conn, prefer_normalized=True)
+    assert (out["x1"], out["y1"], out["x2"], out["y2"]) == (4460, 934, 7709, 3959)
+    assert conn.queries == ["run", "regions"]
+
+
+def test_reader_falls_back_to_the_column_when_no_current_run():
+    """During the import, and for any image it skipped, the column is still the only
+    source. A missing run must not read as 'no bird'."""
+    conn = _FakeConn(legacy=REAL_BOX, run=None)
+    assert _read(conn, prefer_normalized=True) == REAL_BOX
+    assert conn.queries == ["run", "legacy"]
+
+
+def test_missing_run_is_distinguished_from_a_run_projecting_to_none():
+    """A never-scanned image and a missing run both look 'empty' -- they must not be
+    conflated, or the legacy fallback silently stops firing."""
+    conn = _FakeConn(legacy=None, run=None)
+    assert _read(conn, prefer_normalized=True) is None
+    assert conn.queries == ["run", "legacy"], "fallback must still be attempted"
+
+
+def test_reader_projects_no_detection_without_consulting_the_column():
+    conn = _FakeConn(
+        legacy=REAL_BOX,
+        run={"id": 2, "status": "no_detection", "legacy_payload": {"detected": False},
+             "display_width": None, "display_height": None, "error_code": None},
+    )
+    assert _read(conn, prefer_normalized=True) == {"detected": False}
+    assert "legacy" not in conn.queries
+
+
+@pytest.mark.parametrize("fail_on,expected_tail", [
+    (("run",), ["run", "legacy"]),
+    (("regions",), ["run", "regions", "legacy"]),
+])
+def test_a_normalized_lookup_failure_falls_back_instead_of_raising(fail_on, expected_tail):
+    """A reader must never take down a caller that has a working legacy column."""
+    conn = _FakeConn(
+        legacy=REAL_BOX, fail_on=fail_on,
+        run={"id": 3, "status": "detected", "legacy_payload": None,
+             "display_width": 100, "display_height": 100, "error_code": None},
+    )
+    assert _read(conn, prefer_normalized=True) == REAL_BOX
+    assert conn.queries == expected_tail
+
+
+def test_flag_defaults_to_false(monkeypatch):
+    """Normalized reads ship dark; enabling them must be a deliberate act."""
+    from modules import localization_legacy as mod
+
+    monkeypatch.setattr(
+        "modules.config.get_config_value",
+        lambda key, default=None: default,
+    )
+    assert mod.read_normalized_first_enabled() is False
+
+
+def test_reader_consults_the_flag_when_not_overridden(monkeypatch):
+    from modules import localization_legacy as mod
+
+    seen = {}
+
+    def _fake_get(key, default=None):
+        seen["key"] = key
+        return True
+
+    monkeypatch.setattr("modules.config.get_config_value", _fake_get)
+    conn = _FakeConn(legacy=REAL_BOX, run=None)
+    mod.read_bird_bbox(conn, 42)
+    assert seen["key"] == mod.READ_NORMALIZED_FIRST_KEY
+    assert conn.queries == ["run", "legacy"], "flag on => normalized consulted first"

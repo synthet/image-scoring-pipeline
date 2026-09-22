@@ -415,3 +415,96 @@ def import_legacy_bird_bbox(
         write_cur.close()
 
     return counts
+
+
+# ---------------------------------------------------------------------------
+# Compatibility reader — normalized-first with legacy fallback
+# ---------------------------------------------------------------------------
+
+#: Config key gating the reader. Default ``False``: normalized reads stay dark while the
+#: import runs and shadow localization is evaluated, so enabling it is a deliberate,
+#: reversible act (rollout stage 2 "compatibility behaviour").
+READ_NORMALIZED_FIRST_KEY = "localization.read_normalized_first"
+
+_CURRENT_RUN_SQL = """
+    SELECT id, status, legacy_payload, display_width, display_height, error_code
+    FROM image_localization_runs
+    WHERE image_id = ? AND detector_key = ? AND is_current
+"""
+
+_RUN_REGIONS_SQL = """
+    SELECT object_class, rank, x1, y1, x2, y2, confidence
+    FROM image_regions
+    WHERE localization_run_id = ?
+    ORDER BY rank
+"""
+
+_LEGACY_BBOX_SQL = "SELECT bird_bbox FROM images WHERE id = ?"
+
+
+def read_normalized_first_enabled() -> bool:
+    """Whether the reader should prefer normalized rows. Defaults to ``False``."""
+    from modules import config
+
+    return bool(config.get_config_value(READ_NORMALIZED_FIRST_KEY, default=False))
+
+
+def read_bird_bbox(
+    conn,
+    image_id: int,
+    *,
+    detector_key: str = LEGACY_DETECTOR_KEY,
+    prefer_normalized: bool | None = None,
+) -> Any:
+    """Return an image's ``bird_bbox`` value, from whichever source is authoritative.
+
+    With the flag off (the default) this is exactly ``SELECT bird_bbox FROM images`` --
+    same value, same semantics, including ``None`` for never-scanned. That is what makes
+    the reader safe to land before anything writes the normalized tables.
+
+    With the flag on it reads the current normalized run and projects it back to the
+    legacy shape, falling back to the column when no current run exists. The fallback is
+    not an optimisation: during the import, and for any image the import skipped, the
+    column is still the only source, and a missing run must not read as "no bird".
+
+    ``prefer_normalized`` overrides the config for callers that need both behaviours in
+    one process (diagnostics, migration verification, tests).
+    """
+    if prefer_normalized is None:
+        prefer_normalized = read_normalized_first_enabled()
+
+    if prefer_normalized:
+        projected = _read_normalized_bbox(conn, image_id, detector_key)
+        if projected is not _NO_CURRENT_RUN:
+            return projected
+
+    row = conn.query_one(_LEGACY_BBOX_SQL, (image_id,))
+    return (row or {}).get("bird_bbox")
+
+
+#: Distinguishes "no current run" from a run that legitimately projects to ``None``.
+#: Returning ``None`` for both would make a missing run indistinguishable from a
+#: never-scanned image, and silently skip the legacy fallback.
+_NO_CURRENT_RUN = object()
+
+
+def _read_normalized_bbox(conn, image_id: int, detector_key: str) -> Any:
+    try:
+        run = conn.query_one(_CURRENT_RUN_SQL, (image_id, detector_key))
+    except Exception:
+        # A reader must never take down a caller that has a working legacy column.
+        logger.exception("read_bird_bbox: normalized lookup failed for image %s", image_id)
+        return _NO_CURRENT_RUN
+    if not run:
+        return _NO_CURRENT_RUN
+
+    regions: list[dict[str, Any]] = []
+    if run.get("status") == _STATUS_DETECTED and run.get("legacy_payload") is None:
+        # Only the synthesis path needs regions; an imported run replays its payload.
+        try:
+            regions = list(conn.query(_RUN_REGIONS_SQL, (run["id"],)) or [])
+        except Exception:
+            logger.exception("read_bird_bbox: region lookup failed for run %s", run["id"])
+            return _NO_CURRENT_RUN
+
+    return legacy_payload_from_normalized(dict(run), regions)

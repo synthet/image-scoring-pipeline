@@ -27,6 +27,7 @@ The current PostgreSQL initializer creates or maintains these application tables
 | Culling and stacks | `stacks`, `sub_stacks`, `stack_cache`, `cluster_progress`, `culling_sessions`, `culling_picks`, `agent_cull_review_groups`, `agent_cull_recommendations` |
 | Keywords | `keywords_dim`, `image_keywords`, legacy keyword text fields where retained for compatibility |
 | Embeddings | `embedding_spaces`, `image_embeddings`, `image_embeddings_512`, `image_embeddings_768` (legacy `images.image_embedding` dropped in migration 0024) |
+| Localization | `image_localization_runs`, `image_regions` (migration 0034; legacy `images.bird_bbox` remains the authority until `localization.read_normalized_first` is enabled) |
 
 ## PostgreSQL / pgvector Notes
 
@@ -41,6 +42,7 @@ The current PostgreSQL initializer creates or maintains these application tables
 - Alembic revisions live under [migrations/versions/](../../migrations/versions/).
 - The initial schema starts at `0001_initial_schema.py`; subsequent revisions add normalized keywords, embeddings, hash/version identity, job execution trails, incidents, GPS/geocode fields, status constraints, model-score rows, pick status, and job status checks.
 - Runtime greenfield DDL in [modules/db_postgres.py](../../modules/db_postgres.py) should stay aligned with Alembic-created objects.
+- A new table belongs in **three** places: the migration, the runtime DDL, and `POSTGRES_APP_TABLES` in `modules/db_postgres.py` (which drives `truncate_app_tables` between tests).
 
 ## Historical Firebird Context
 

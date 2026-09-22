@@ -94,6 +94,11 @@ Every stage must preserve these invariants:
 - Detector boxes are unpadded facts. Padding belongs to a versioned consumer crop policy.
 - Region coordinates use one documented, display-oriented coordinate space.
 - Multiple detections are retained up to a configured cap; consumers decide how many to use.
+- A text-only decision model cannot create, validate, or complete a localization artifact. It may
+  consume separately versioned evidence derived from a region, but never satisfies localization
+  completeness or replaces pixel-conditioned confidence.
+- Detector confidence, visual-evidence confidence, and downstream decision confidence remain
+  separate signals. They are never multiplied into one undocumented score.
 - A rollout stage can be disabled without deleting normalized region history.
 - No stage requires an unbenchmarked full-library rescan.
 
@@ -114,9 +119,13 @@ Use flags with explicit defaults so each stage is independently deployable:
 | `scoring.subject_crop_shadow` | `false` | Compute non-authoritative crop IQA metrics. |
 | `tagging.crop_fusion_shadow` | `false` | Evaluate full-frame plus region keyword/caption signals. |
 | `accessibility.crop_fusion_shadow` | `false` | Evaluate supplemental subject descriptions. |
+| `typesafe.enabled` | `false` | Enable the shared text-only Jev client; never enables a consumer by itself. |
+| `typesafe.keyword_shadow.enabled` | `false` | Report-only Jev keyword verification over allowlisted textual evidence. |
+| `typesafe.culling_shadow.enabled` | `false` | Proposed stack-scoped Jev culling experiment; no production effect. |
 
 Flags are configuration controls, not provenance. Detector/model/config and crop-policy versions
-must still be persisted with artifacts.
+must still be persisted with artifacts. Calibration-sensitive Jev experiments pin a versioned model
+ID rather than a moving alias and persist the resolved model returned by the service.
 
 ---
 
@@ -257,6 +266,42 @@ remains readable through the compatibility representation and eligible for contr
 - Unknown legacy provenance cannot silently become a current crop artifact.
 - Query plans cover current artifact lookup by image and detector without table scans.
 - Database growth per positive, negative, and error outcome is measured.
+
+### Status — schema, import and reader landed; the live import has not been run
+
+Issue #370. `migrations/versions/0034_image_localization.py` creates both tables, mirrored in
+`modules/db_postgres.py` and registered in `POSTGRES_APP_TABLES`.
+`modules/localization_legacy.py` carries the classification, the import
+(`scripts/import_legacy_localization.py`) and the normalized-first reader.
+
+Live-column survey (read-only, 2026-09-22) — the population is more uniform than this plan
+assumed:
+
+| Rows | Legacy shape | Normalized |
+|---:|---|---|
+| 41,001 | box, uniform keys `area_frac,conf,img_h,img_w,x1,x2,y1,y2` | `detected` |
+| 35,085 | `{"detected": false}` | `no_detection` |
+| 3 | `decode_error: …` | `terminal_error` |
+| 320 | `NULL` | not attempted (no row) |
+
+Zero constraint violations among the 41,001 boxes, and **no `detector_unavailable` sentinels at
+all**, so nothing currently classifies as `retryable_error`. The plan's retryable-import row is
+still implemented, just unexercised by this library.
+
+Two clarifications the implementation forced:
+
+- Coordinates are normalized against the `img_w`/`img_h` **in the payload itself**, and land in
+  `coord_space = legacy_unverified` rather than the verified display space. The plan says not to
+  infer orientation or rendition from the current image row; the payload's own dimensions are not
+  such an inference, but the orientation genuinely is unrecoverable, so the space is marked.
+- Unusable geometry (inverted, zero-area, missing dimensions) produces a `detected` run with **no
+  region** rather than a clamped box. The detection is a historical fact; clamping would invent a
+  box nobody detected.
+
+Still open for this stage: the import has **not** been run against the production library, and the
+reader is not yet wired into any production read path — that wiring changes
+`is_image_bird_species_complete`, which feeds work selection, so it wants database-backed
+verification.
 
 ### Rollback
 
@@ -457,6 +502,55 @@ Every experimental output records one of:
 The input artifact hash, region ID, crop-policy version, model version, and fusion version are part
 of provenance.
 
+### Text-evidence and Jev decision boundary
+
+Jev is a text/structured-state decision model, not a vision model. It cannot receive image bytes,
+validate a detector box, measure crop quality, or recover visual facts omitted by an upstream
+captioner. A Jev experiment therefore uses an explicit downstream boundary rather than becoming a
+localization provider:
+
+```text
+region/crop -> visual evidence extractor -> versioned structured evidence
+            -> Jev atomic judgments -> code-owned gate/policy -> shadow recommendation
+```
+
+The visual evidence extractor owns pixel-conditioned facts and their reliability: grounded subject
+attributes, named quality bands, region/full-frame agreement, and pairwise differences within a
+burst. Jev owns only semantic judgments over that state, such as keyword support, distinctiveness,
+redundancy, or a bounded action choice. Geometry validation, thresholds, ranking, probability
+composition, and all arithmetic remain in code.
+
+Prefer compact, typed attributes over long prose or raw numeric dumps. Convert detector and quality
+values to named, versioned bands for model-visible state while retaining the raw values in the
+durable evidence record. Allowlist model-visible fields: file paths, GPS/EXIF, credentials, arbitrary
+metadata, and unfiltered diagnostic text must not enter the hosted request.
+
+Persist visual evidence separately from semantic judgments:
+
+- an evidence artifact records its scope (`image`, `region`, or `stack`), source/rendition and
+  region identities, extractor/model/config versions, evidence-schema version, raw measurements,
+  model-visible state hash, evidence-confidence signal, and stated limitations; and
+- a Jev judgment records the evidence hash, pinned and resolved model IDs, rubric key/version,
+  primitive and option/level definitions, full probability vector, model confidence,
+  evidence-sufficiency result, calibration version, decision-policy version, and shadow/authority
+  state.
+
+Stack judgments additionally record the ordered member-set hash and retained-set hash. A culling
+judgment is stale when either context changes even if every image and region artifact remains
+current. It must not reuse the image-scoped localization work claim as proof of group-scoped
+completion.
+
+Ask evidence sufficiency and the atomic consumer questions in the same request when they share one
+state, matching the existing batched client behavior. The answers are independent: application code
+must ignore or route a recommendation when evidence sufficiency, evidence confidence, or calibrated
+decision confidence misses its action-specific gate. Never treat Jev confidence as confidence in
+the original pixels.
+
+Run Jev through a separate bounded, rate-limited queue with timeouts, `429` backoff, a circuit
+breaker, and evidence-hash deduplication. SDK absence, missing credentials, timeout, or service
+failure produces no verdict and never fails localization, scoring, tagging, or culling. Jev retry
+work does not share or consume the localization GPU-repair lane.
+
 ### Consumer policy
 
 | Consumer | Stage-6 mode |
@@ -469,24 +563,58 @@ of provenance.
 | Captioning | canonical scene caption plus optional subject-region clause |
 | Accessibility | full-frame description plus optional subject detail |
 | BioCLIP | region-first with full-frame fallback after Stage 5 gates |
+| Keyword verification with Jev | report-only region-aware evidence; never removes or adds a production keyword |
+| Culling with Jev | stack-scoped shadow only after pairwise visual evidence exists |
 
 The existing crop study supports experimentation, not unconditional replacement: crop IQA is more
 sensitive to constructed subject degradation, captions become more distinct, and culling does not
 show a material crop benefit (`docs/reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md:23-29`, `:72-100`).
 Its species and caption results are not human accuracy evidence (`:118-125`).
 
+The existing Jev Phase-0 arm is also a control, not promotion evidence. On 5,893 shadow calls over
+whole-frame scores, captions, concepts, and retained-set similarity, direct historical-label
+agreement was 0.256, pick recall was 0.017, multiclass Brier score was 0.997, mean decision
+confidence was 0.454, and mean evidence sufficiency was 0.482
+(`reports/typesafe-culling-real-data/phase0-jev-full-score-summary.md`). Typed output held under load,
+but the supplied evidence did not support the requested decision.
+
+Evaluate new region/pairwise evidence and Jev separately on folder-grouped splits:
+
+| Arm | Evidence | Decision | Question answered |
+|---|---|---|---|
+| A | existing scores | deterministic/ranker baseline | what does the current evidence support? |
+| B | scores plus region/pairwise evidence | the same ranker | does the new evidence add signal? |
+| C | exactly Arm B evidence | Jev | does Jev add value over code/ranking? |
+| D | existing whole-frame captions | Jev | does the known weak-evidence control reproduce? |
+
+Arm B must beat Arm A before Arm C can be credited to Jev. Arm C must then beat Arm B on the same
+evidence and meet calibration, coverage-risk, cost, and latency gates. Otherwise retain the ranker
+and restrict Jev to narrower shadow judgments such as distinctiveness, redundancy, or keyword
+support.
+
 ### Exit gate
 
 - Full-frame, region-only, and fusion modes are evaluated on the same pinned population.
 - Accuracy/factuality, false-negative propagation, throughput, GPU memory, model loading, and
   end-to-end runtime are reported.
+- Region-aware keyword shadowing compares against genuine source confidence/similarity and human
+  labels rather than treating default-filled `image_keywords.relevance_weight` values as a
+  calibrated baseline.
+- Evidence extractors are evaluated independently before their output is credited to Jev; the
+  four-arm comparison reports folder-grouped discrimination, calibration, coverage, cost, and
+  latency.
+- Detector, evidence, evidence-sufficiency, and Jev decision confidence are reported separately,
+  with action-specific thresholds calibrated on held-out data.
+- Stack membership and retained-set changes invalidate group-scoped judgments, while Jev outage and
+  retry exhaustion leave core and localization convergence unchanged.
 - A consumer ships crop/fusion only when its own quality gate passes; there is no global “crops
   enabled” switch.
 
 ### Rollback
 
-Disable the individual consumer flag. Shadow rows may remain for research but cannot influence
-production scores, culling, keywords, or metadata.
+Disable the individual consumer flag. Disabling `typesafe.enabled` stops all new Jev calls without
+invalidating evidence artifacts. Shadow rows may remain for research but cannot influence production
+scores, culling, keywords, or metadata.
 
 ---
 
@@ -603,6 +731,7 @@ database backup or rescanning image files.
 | Auto-drive | retryable failures do not block core work, backoff converges, terminal outcomes stop requeueing, stale versions reopen work |
 | RAW/orientation | EXIF orientations 1–8, embedded preview/rawpy differences, display/source coordinate round trips |
 | ML quality | full frame vs region vs fusion, false-negative recovery, multi-subject accuracy, calibration and small-subject slices |
+| Semantic decisions | evidence-schema and rubric versioning, allowlisted state, evidence-hash deduplication, image/region/stack invalidation, independent confidence gates, same-evidence ranker-vs-Jev comparison, model pinning, timeout/429/outage fail-open behavior |
 | Performance | decode/detector/crop/model time, throughput, GPU memory, model-load overhead, cache hit rate, DB growth, end-to-end run time |
 
 ## Promotion checklist
@@ -613,6 +742,8 @@ Before promoting any stage:
 - Metrics and failure taxonomy are available before enabling the feature broadly.
 - Rollback is configuration-only or additive-data-safe.
 - New output carries source, model, detector, input-mode, and crop-policy provenance.
+- Text-only judgments additionally carry the evidence hash/schema, scope identity, rubric and policy
+  versions, full probabilities, calibration version, and pinned/resolved model IDs.
 - Core full-frame inference has an explicit fail-open path.
 - Tests cover restart, concurrent claims, auto-drive convergence, and stale-artifact invalidation.
 - A release note states which behavior is authoritative and which remains shadow-only.
@@ -623,7 +754,10 @@ The rollout does not pre-decide:
 
 1. whether direct all-new-image detection meets the processing budget or needs validated triage;
 2. which non-BioCLIP consumers should promote crop/fusion output; or
-3. how many simultaneous subject regions should be authoritative in product-facing species results.
+3. how many simultaneous subject regions should be authoritative in product-facing species results;
+   or
+4. whether Jev adds a calibrated decision benefit over a deterministic/ranker consumer of the exact
+   same region and pairwise evidence.
 
 Defaults until those decisions are made are direct localization for new/changed images, no broad
 legacy rescan, three consumer crops at most, full-frame culling, and full-frame production scoring.
