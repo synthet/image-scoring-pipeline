@@ -1,0 +1,48 @@
+{
+  "schema_version": "jev-culling-phase0-results/1",
+  "generated_at": "2026-09-22T02:32:28.114506+00:00",
+  "model": "jev-1.13.0",
+  "probability_status": "uncalibrated",
+  "comparison_scope": "full_labeled_pool_random_seed42",
+  "records": 5893,
+  "successful": 5893,
+  "failed": 0,
+  "historical_label_counts": {
+    "reject": 2865,
+    "pick": 3028
+  },
+  "predicted_label_counts": {
+    "keep": 3055,
+    "reject": 2644,
+    "pick": 194
+  },
+  "confusion": {
+    "reject": {
+      "keep": 1264,
+      "reject": 1459,
+      "pick": 142
+    },
+    "pick": {
+      "keep": 1791,
+      "reject": 1185,
+      "pick": 52
+    }
+  },
+  "direct_historical_label_agreement": 0.2564059053113864,
+  "pick_preservation_rate": 0.6086525759577279,
+  "reject_recall": 0.5092495636998254,
+  "reject_precision": 0.5518154311649016,
+  "pick_recall": 0.017173051519154558,
+  "pick_precision": 0.26804123711340205,
+  "multiclass_log_loss": 5.205756962399135,
+  "multiclass_brier_score": 0.9974105888342101,
+  "mean_confidence": 0.45392160190055997,
+  "mean_evidence_completeness": 0.4818123197013406,
+  "probability_sum_error_count": 0,
+  "limitations": [
+    "Historical pick/reject labels are behavior targets, not proof of safe deletion.",
+    "No historical keep labels exist in this cohort.",
+    "Pairwise visual differences were not supplied.",
+    "Probabilities are uncalibrated."
+  ]
+}

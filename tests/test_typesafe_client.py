@@ -97,11 +97,24 @@ def test_disabled_by_default_makes_no_call(monkeypatch):
 def test_missing_api_key_degrades(monkeypatch):
     """AC-2: enabled but no credential -> unavailable, no raise."""
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("JEV_TOKEN", raising=False)
     monkeypatch.setattr(config, "get_secret", lambda svc: None)
     client = TypeSafeClient(enabled=True)
     assert client.available is False
     assert "no API key" in (client.unavailable_reason or "")
     assert client.judge(_STATE, ["culling.redundancy"]) == {}
+
+
+def test_jev_token_alias_is_exported_for_sdk(monkeypatch, install_fake_sdk):
+    install_fake_sdk(_fake_sdk(_Response()))
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setenv("JEV_TOKEN", "jev-operator-key")
+    monkeypatch.setattr(config, "get_secret", lambda svc: None)
+
+    client = TypeSafeClient(enabled=True)
+
+    assert client.available is True
+    assert os.environ["TYPESAFE_API_KEY"] == "jev-operator-key"
 
 
 def test_missing_sdk_degrades(monkeypatch, with_key):
@@ -235,6 +248,35 @@ def test_normalize_derives_confidence_for_noul():
     assert judgment is not None
     assert judgment.value == 0.9
     assert judgment.confidence == pytest.approx(0.8)
+
+
+def test_culling_action_is_one_coherent_choice_distribution(
+    with_key, install_fake_sdk
+):
+    response = _Response(
+        choices={
+            "culling.action": _Answer(
+                choice="reject",
+                confidence=0.72,
+                probabilities={"pick": 0.08, "keep": 0.20, "reject": 0.72},
+            )
+        },
+        nouls={"evidence.sufficiency": _Answer(noul=0.85)},
+    )
+    install_fake_sdk(_fake_sdk(response))
+
+    judgment = TypeSafeClient(enabled=True).judge(
+        _STATE, ["culling.action"]
+    )["culling.action"]
+
+    assert judgment.value == "reject"
+    assert judgment.probabilities == {
+        "pick": 0.08,
+        "keep": 0.20,
+        "reject": 0.72,
+    }
+    assert sum(judgment.probabilities.values()) == pytest.approx(1.0)
+    assert judgment.evidence_completeness == pytest.approx(0.85)
 
 
 def test_every_rubric_is_versioned_and_typed():

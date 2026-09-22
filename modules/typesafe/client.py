@@ -28,7 +28,7 @@ from modules.typesafe.normalize import Judgment, normalize
 
 logger = logging.getLogger(__name__)
 
-_API_KEY_ENV = "TYPESAFE_API_KEY"
+_API_KEY_ENVS = ("TYPESAFE_API_KEY", "JEV_TOKEN")
 _SECRETS_SERVICE = "typesafe"
 
 
@@ -68,9 +68,10 @@ class TypeSafeClient:
 
     def _resolve_api_key(self) -> str | None:
         """Prefer an already-exported env var, else fall back to secrets.json."""
-        env_key = os.environ.get(_API_KEY_ENV)
-        if env_key:
-            return env_key
+        for name in _API_KEY_ENVS:
+            env_key = os.environ.get(name)
+            if env_key:
+                return env_key
         secret = config.get_secret(_SECRETS_SERVICE)
         if isinstance(secret, dict):
             return secret.get("api_key") or None
@@ -90,14 +91,14 @@ class TypeSafeClient:
         api_key = self._resolve_api_key()
         if not api_key:
             self._unavailable_reason = (
-                f"no API key ({_API_KEY_ENV} unset and secrets.json has no "
+                f"no API key ({' or '.join(_API_KEY_ENVS)} unset and secrets.json has no "
                 f"'{_SECRETS_SERVICE}.api_key')"
             )
             logger.warning("TypeSafe disabled: %s", self._unavailable_reason)
             return False
         # The SDK reads the key from the environment; export it only if the
         # operator has not already done so themselves.
-        os.environ.setdefault(_API_KEY_ENV, api_key)
+        os.environ.setdefault("TYPESAFE_API_KEY", api_key)
 
         try:
             import typesafe_sdk
