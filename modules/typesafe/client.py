@@ -35,7 +35,13 @@ _SECRETS_SERVICE = "typesafe"
 class TypeSafeClient:
     """Lazy, fail-safe wrapper around ``typesafe_sdk.TypeSafeClient``."""
 
-    def __init__(self, *, enabled: bool | None = None, model: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        enabled: bool | None = None,
+        model: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> None:
         section = config.get_config_section("typesafe") or {}
         self.enabled = (
             bool(section.get("enabled", False)) if enabled is None else bool(enabled)
@@ -43,6 +49,17 @@ class TypeSafeClient:
         # Pin the model for reproducibility-sensitive runs; empty means "let the
         # SDK choose", which is fine for exploration but not for experiments.
         self.model = (model if model is not None else section.get("model") or "").strip()
+        configured_timeout = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else section.get("timeout_seconds", 30.0)
+        )
+        try:
+            self.timeout_seconds = float(configured_timeout)
+        except (TypeError, ValueError):
+            self.timeout_seconds = 30.0
+        if self.timeout_seconds <= 0:
+            self.timeout_seconds = 30.0
         self._sdk: Any = None
         self._checked = False
         self._unavailable_reason: str | None = None
@@ -143,6 +160,7 @@ class TypeSafeClient:
             return {}
 
         kwargs: dict[str, Any] = {"state": state, "questions": questions}
+        kwargs["timeout"] = self.timeout_seconds
         if self.model:
             kwargs["model"] = self.model
 
@@ -214,7 +232,7 @@ class TypeSafeClient:
         try:
             questions = {
                 rubrics_mod.subject_question_id(rubric_key, s): (
-                    rubrics_mod.build_question(rubric)
+                    rubrics_mod.build_question(rubric, subject=s)
                 )
                 for s in wanted
             }
@@ -225,6 +243,7 @@ class TypeSafeClient:
             return {}
 
         kwargs: dict[str, Any] = {"state": state, "questions": questions}
+        kwargs["timeout"] = self.timeout_seconds
         if self.model:
             kwargs["model"] = self.model
 

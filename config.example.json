@@ -269,6 +269,7 @@
   "typesafe": {
     "enabled": false,
     "model": "",
+    "timeout_seconds": 30,
     "keyword_shadow": {
       "enabled": false,
       "max_keywords_per_image": 10
