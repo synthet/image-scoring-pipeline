@@ -3,20 +3,37 @@
   "mcpServers": {
     "is-be-mcp": {
       "command": "node",
-      "args": ["mcp-server/dist/compactIndex.js"],
+      "args": [
+        "mcp-server/dist/compactIndex.js"
+      ],
       "cwd": "${workspaceFolder:image-scoring-backend}"
     },
     "fff-be": {
-      "_comment": "Fast file search — must launch inside a git repo (not user home or FS root). Install: see AGENTS.md § fff.",
+      "_comment": "Fast file search \u2014 must launch inside a git repo (not user home or FS root). Install: see AGENTS.md \u00a7 fff.",
       "command": "fff-mcp",
-      "args": ["${workspaceFolder:image-scoring-backend}"],
+      "args": [
+        "${workspaceFolder:image-scoring-backend}"
+      ],
       "cwd": "${workspaceFolder:image-scoring-backend}"
     },
     "graphify-be": {
-      "_comment": "Optional — requires graphify-mcp on PATH (uv tool install \"graphifyy[mcp]\") and graphify-out/graph.json (graphify . --code-only). Soft; see AGENTS.md § Graphify and .cursor/skills/graphify/SKILL.md.",
+      "_comment": "Optional \u2014 requires graphify-mcp on PATH (uv tool install \"graphifyy[mcp]\") and graphify-out/graph.json (graphify . --code-only). Soft; see AGENTS.md \u00a7 Graphify and .cursor/skills/graphify/SKILL.md.",
       "command": "graphify-mcp",
-      "args": ["graphify-out/graph.json"],
+      "args": [
+        "graphify-out/graph.json"
+      ],
       "cwd": "${workspaceFolder:image-scoring-backend}"
+    },
+    "llmwiki-ro-core": {
+      "_comment": "Shared evidence-bound LLM Wiki (read/search). Skill: .cursor/skills/llm-wiki/SKILL.md. Root: D:/Projects/synthet-llm-wiki",
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "D:/Projects/synthet-llm-wiki",
+        "python",
+        "D:/Projects/synthet-llm-wiki/scripts/run_llmwiki_mcp.py"
+      ]
     }
   }
 }

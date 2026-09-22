@@ -51,6 +51,7 @@ Compact **search + dispatch** is the default agent surface. **Naming:** `is-` = 
 2. `cd mcp-server && npm install && npm run build`
 3. Attach **`is-be-mcp`** (stdio Node) — **`search`**, **`dispatch`**, **`sse_status`**. Browser automation (`browser.*` actions) is built in; no separate Playwright MCP key.
 4. Optional **`is-be-live`** (SSE) when WebUI is running.
+5. **`llmwiki-ro-core`** — shared evidence-bound LLM Wiki at `D:\Projects\synthet-llm-wiki` (included in [`.cursor/mcp.example.json`](.cursor/mcp.example.json)). Skill: [`.cursor/skills/llm-wiki/SKILL.md`](.cursor/skills/llm-wiki/SKILL.md). Prefer MCP `search`/`ask` over inventing project facts.
 
 Templates: [`.cursor/mcp.pair.example.json`](.cursor/mcp.pair.example.json) (multi-root), gallery [`.cursor/mcp.example.json`](https://github.com/synthet/image-scoring-gallery/blob/main/.cursor/mcp.example.json).
 
@@ -70,6 +71,7 @@ Side-effecting dispatch (e.g. **`support.export_debug_bundle`**) requires **`con
 |-------------------|-----------|---------------|
 | **`is-be-mcp`** | stdio | **`search`**, **`dispatch`**, **`sse_status`** — always loads; Playwright `browser.*` via lazy child; optional proxy to **`is-be-live`** |
 | **`is-be-live`** | SSE | **`search`**, **`dispatch`** (same registry as `is-be-mcp`); set **`MCP_SSE_PROFILE=full`** for legacy ~54-tool SSE |
+| **`llmwiki-ro-core`** | stdio | Shared LLM Wiki read/search (`ask`, `search`, sources/claims). Skill: [`.cursor/skills/llm-wiki/SKILL.md`](.cursor/skills/llm-wiki/SKILL.md) |
 
 **Debug-only (not in default mcp.json):** `scripts/batch/run_mcp_server_windows.bat` with `MCP_TOOL_PROFILE=diagnostics|jobs|data|maintenance|full`.
 

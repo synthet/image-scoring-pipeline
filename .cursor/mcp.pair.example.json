@@ -48,6 +48,17 @@
       "command": "graphify-mcp",
       "args": ["graphify-out/graph.json"],
       "cwd": "${workspaceFolder:image-scoring-gallery}"
+    },
+    "llmwiki-ro-core": {
+      "_comment": "Shared evidence-bound LLM Wiki. Skill: .cursor/skills/llm-wiki/SKILL.md",
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "D:/Projects/synthet-llm-wiki",
+        "python",
+        "D:/Projects/synthet-llm-wiki/scripts/run_llmwiki_mcp.py"
+      ]
     }
   }
 }

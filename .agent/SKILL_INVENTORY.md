@@ -33,6 +33,7 @@ Central list of **first-party** `SKILL.md` files in this repository for governan
 | wsl-environment | `.cursor/skills/wsl-environment/SKILL.md` | WSL2 lifecycle — venv provision, long GPU jobs, recovery, disk | L2 | Yes | 2026-05-30 |
 | windows-keep-awake | `.cursor/skills/windows-keep-awake/SKILL.md` | Detached Windows sleep/display lock via SetThreadExecutionState | L2 | — (Cursor only) | 2026-06-21 |
 | docs-wiki | `.cursor/skills/docs-wiki/SKILL.md` | Backend docs wiki maintenance | L1 | — (Cursor only; `.agent/skills/docs-wiki` is thin alias) | 2026-05-31 |
+| llm-wiki | `.cursor/skills/llm-wiki/SKILL.md` | Shared evidence-bound LLM Wiki via MCP `llmwiki-ro-core` / CLI | L2 | Yes | 2026-09-21 |
 | subagent-review | `.cursor/skills/subagent-review/SKILL.md` | External Codex/Gemini review via subagent-orchestrator MCP | L2 | Yes | 2026-05-26 |
 | codebase-size-audit | `.cursor/skills/codebase-size-audit/SKILL.md` | Large-file / long-method read-only audit script + report | L1 | Yes | 2026-06-30 |
 | validate-implementation | `.cursor/skills/validate-implementation/SKILL.md` | Per-AC gate via compiled harness `scripts/agent_skills/validate_implementation.py` | L1 | Yes | 2026-07-19 |
