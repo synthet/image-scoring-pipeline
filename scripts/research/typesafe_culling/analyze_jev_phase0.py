@@ -28,13 +28,17 @@ DEFAULT_OUTPUT = (
     / "phase0-jev-full-score-summary.json"
 )
 LABELS = ("pick", "keep", "reject")
+DEFAULT_SCOPE = "deterministic_prefix_exploration"
+_PREFIX_LIMITATION = (
+    "The deterministic prefix is exploratory, not a locked session-level test split."
+)
 
 
 def _safe_rate(numerator: int, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
 
 
-def analyze(path: Path) -> dict[str, Any]:
+def analyze(path: Path, *, comparison_scope: str = DEFAULT_SCOPE) -> dict[str, Any]:
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     successful = [row for row in rows if row.get("status") == "success"]
     target_counts: Counter[str] = Counter()
@@ -75,12 +79,21 @@ def analyze(path: Path) -> dict[str, Any]:
     historical_rejects = target_counts["reject"]
     predicted_rejects = prediction_counts["reject"]
     direct_matches = sum(confusion[label][label] for label in ("pick", "reject"))
+    limitations = [
+        "Historical pick/reject labels are behavior targets, not proof of safe deletion.",
+        "No historical keep labels exist in this cohort.",
+        _PREFIX_LIMITATION,
+        "Pairwise visual differences were not supplied.",
+        "Probabilities are uncalibrated.",
+    ]
+    if comparison_scope != DEFAULT_SCOPE:
+        limitations.remove(_PREFIX_LIMITATION)
     return {
         "schema_version": "jev-culling-phase0-results/1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "model": "jev-1.13.0",
         "probability_status": "uncalibrated",
-        "comparison_scope": "deterministic_prefix_exploration",
+        "comparison_scope": comparison_scope,
         "records": len(rows),
         "successful": len(successful),
         "failed": len(rows) - len(successful),
@@ -95,18 +108,16 @@ def analyze(path: Path) -> dict[str, Any]:
         ),
         "reject_recall": _safe_rate(confusion["reject"]["reject"], historical_rejects),
         "reject_precision": _safe_rate(confusion["reject"]["reject"], predicted_rejects),
+        "pick_recall": _safe_rate(confusion["pick"]["pick"], historical_picks),
+        "pick_precision": _safe_rate(
+            confusion["pick"]["pick"], prediction_counts["pick"]
+        ),
         "multiclass_log_loss": mean(log_losses) if log_losses else None,
         "multiclass_brier_score": mean(brier_scores) if brier_scores else None,
         "mean_confidence": mean(confidences) if confidences else None,
         "mean_evidence_completeness": mean(completeness) if completeness else None,
         "probability_sum_error_count": probability_sum_errors,
-        "limitations": [
-            "Historical pick/reject labels are behavior targets, not proof of safe deletion.",
-            "No historical keep labels exist in this cohort.",
-            "The deterministic prefix is exploratory, not a locked session-level test split.",
-            "Pairwise visual differences were not supplied.",
-            "Probabilities are uncalibrated.",
-        ],
+        "limitations": limitations,
     }
 
 
@@ -133,6 +144,8 @@ file paths, or historical labels.
 - Pick preservation (pick or keep rather than reject): {fmt(result['pick_preservation_rate'])}
 - Reject recall: {fmt(result['reject_recall'])}
 - Reject precision: {fmt(result['reject_precision'])}
+- Pick recall: {fmt(result['pick_recall'])}
+- Pick precision: {fmt(result['pick_precision'])}
 - Multiclass log loss: {fmt(result['multiclass_log_loss'])}
 - Multiclass Brier score: {fmt(result['multiclass_brier_score'])}
 - Mean Jev confidence: {fmt(result['mean_confidence'])}
@@ -148,8 +161,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--comparison-scope",
+        default=DEFAULT_SCOPE,
+        help=(
+            "Label describing what the input rows cover, e.g. "
+            "'full_labeled_pool_random_seed42' for a full-coverage run. "
+            "Only the default value keeps the deterministic-prefix limitation note."
+        ),
+    )
     args = parser.parse_args()
-    result = analyze(args.input.resolve())
+    result = analyze(args.input.resolve(), comparison_scope=args.comparison_scope)
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

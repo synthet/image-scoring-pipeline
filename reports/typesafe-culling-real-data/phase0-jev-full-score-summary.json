@@ -1,45 +1,47 @@
 {
   "schema_version": "jev-culling-phase0-results/1",
-  "generated_at": "2026-09-22T01:40:23.690053+00:00",
+  "generated_at": "2026-09-22T02:32:28.114506+00:00",
   "model": "jev-1.13.0",
   "probability_status": "uncalibrated",
-  "comparison_scope": "deterministic_prefix_exploration",
-  "records": 50,
-  "successful": 50,
+  "comparison_scope": "full_labeled_pool_random_seed42",
+  "records": 5893,
+  "successful": 5893,
   "failed": 0,
   "historical_label_counts": {
-    "reject": 24,
-    "pick": 26
+    "reject": 2865,
+    "pick": 3028
   },
   "predicted_label_counts": {
-    "keep": 23,
-    "reject": 24,
-    "pick": 3
+    "keep": 3055,
+    "reject": 2644,
+    "pick": 194
   },
   "confusion": {
     "reject": {
-      "keep": 9,
-      "reject": 12,
-      "pick": 3
+      "keep": 1264,
+      "reject": 1459,
+      "pick": 142
     },
     "pick": {
-      "keep": 14,
-      "reject": 12
+      "keep": 1791,
+      "reject": 1185,
+      "pick": 52
     }
   },
-  "direct_historical_label_agreement": 0.24,
-  "pick_preservation_rate": 0.5384615384615384,
-  "reject_recall": 0.5,
-  "reject_precision": 0.5,
-  "multiclass_log_loss": 4.313546196483006,
-  "multiclass_brier_score": 1.002848,
-  "mean_confidence": 0.4328,
-  "mean_evidence_completeness": 0.4704,
+  "direct_historical_label_agreement": 0.2564059053113864,
+  "pick_preservation_rate": 0.6086525759577279,
+  "reject_recall": 0.5092495636998254,
+  "reject_precision": 0.5518154311649016,
+  "pick_recall": 0.017173051519154558,
+  "pick_precision": 0.26804123711340205,
+  "multiclass_log_loss": 5.205756962399135,
+  "multiclass_brier_score": 0.9974105888342101,
+  "mean_confidence": 0.45392160190055997,
+  "mean_evidence_completeness": 0.4818123197013406,
   "probability_sum_error_count": 0,
   "limitations": [
     "Historical pick/reject labels are behavior targets, not proof of safe deletion.",
     "No historical keep labels exist in this cohort.",
-    "The deterministic prefix is exploratory, not a locked session-level test split.",
     "Pairwise visual differences were not supplied.",
     "Probabilities are uncalibrated."
   ]
