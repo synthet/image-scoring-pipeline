@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Database Schema
+description: Routing catalog for the PostgreSQL + pgvector schema — table inventory by area, pgvector notes, and where the authoritative DDL lives.
+resource: technical/DB_SCHEMA.md
+tags: [database, postgres, pgvector, schema, migrations]
+timestamp: 2026-09-22T00:00:00Z
+okf_version: 0.1
+---
+
 # Database Schema
 
 PostgreSQL + pgvector is the primary database schema for Vexlum Scoring. Older Firebird schema descriptions are historical/migration context only unless current code and docs explicitly say otherwise.
