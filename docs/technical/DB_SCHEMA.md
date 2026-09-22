@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Database Schema
+description: Routing catalog for the PostgreSQL + pgvector schema — table inventory by area, pgvector notes, and where the authoritative DDL lives.
+resource: technical/DB_SCHEMA.md
+tags: [database, postgres, pgvector, schema, migrations]
+timestamp: 2026-09-22T00:00:00Z
+okf_version: 0.1
+---
+
 # Database Schema
 
 PostgreSQL + pgvector is the primary database schema for Vexlum Scoring. Older Firebird schema descriptions are historical/migration context only unless current code and docs explicitly say otherwise.
@@ -27,6 +37,7 @@ The current PostgreSQL initializer creates or maintains these application tables
 | Culling and stacks | `stacks`, `sub_stacks`, `stack_cache`, `cluster_progress`, `culling_sessions`, `culling_picks`, `agent_cull_review_groups`, `agent_cull_recommendations` |
 | Keywords | `keywords_dim`, `image_keywords`, legacy keyword text fields where retained for compatibility |
 | Embeddings | `embedding_spaces`, `image_embeddings`, `image_embeddings_512`, `image_embeddings_768` (legacy `images.image_embedding` dropped in migration 0024) |
+| Localization | `image_localization_runs`, `image_regions` (migration 0034; legacy `images.bird_bbox` remains the authority until `localization.read_normalized_first` is enabled) |
 
 ## PostgreSQL / pgvector Notes
 
@@ -41,6 +52,7 @@ The current PostgreSQL initializer creates or maintains these application tables
 - Alembic revisions live under [migrations/versions/](../../migrations/versions/).
 - The initial schema starts at `0001_initial_schema.py`; subsequent revisions add normalized keywords, embeddings, hash/version identity, job execution trails, incidents, GPS/geocode fields, status constraints, model-score rows, pick status, and job status checks.
 - Runtime greenfield DDL in [modules/db_postgres.py](../../modules/db_postgres.py) should stay aligned with Alembic-created objects.
+- A new table belongs in **three** places: the migration, the runtime DDL, and `POSTGRES_APP_TABLES` in `modules/db_postgres.py` (which drives `truncate_app_tables` between tests).
 
 ## Historical Firebird Context
 
