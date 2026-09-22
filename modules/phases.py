@@ -89,12 +89,39 @@ PHASE_TO_JOB_TYPE: dict[str, str] = {
 }
 
 
+# Inverse of ``PHASE_TO_JOB_TYPE``, plus the legacy ``jobs.job_type`` spellings that
+# have no ``PhaseCode`` twin.  ``clustering`` and ``selection`` are two runners for the
+# same phase (see ``phase_executors.register_all``), so both map to ``culling``.
+JOB_TYPE_TO_PHASE: dict[str, str] = {
+    **{job_type: phase for phase, job_type in PHASE_TO_JOB_TYPE.items()},
+    "clustering": PhaseCode.CULLING.value,
+    "bird-species": PhaseCode.BIRD_SPECIES.value,
+}
+
+
 def job_type_for_phase(phase: "PhaseCode | str | None", default: str = "scoring") -> str:
     """Return the entry ``job_type`` that runs ``phase``, or ``default`` if unknown."""
     if phase is None:
         return default
     code = phase.value if isinstance(phase, PhaseCode) else str(phase).strip().lower()
     return PHASE_TO_JOB_TYPE.get(code, default)
+
+
+def phase_for_job_type(job_type: "PhaseCode | str | None", default: str = "scoring") -> str:
+    """Return the ``phase_code`` a ``jobs.job_type`` belongs to.
+
+    Inverse of :func:`job_type_for_phase`, and the one place the legacy job-type
+    spellings (``tagging``, ``clustering``, ``selection``) are resolved.  A value that
+    is already a phase code passes through unchanged.
+    """
+    if job_type is None:
+        return default
+    code = job_type.value if isinstance(job_type, PhaseCode) else str(job_type).strip().lower()
+    if not code:
+        return default
+    if code in PHASE_PREREQUISITES:
+        return code
+    return JOB_TYPE_TO_PHASE.get(code, default)
 
 
 SCORING_EXECUTOR_VERSION = "5.0.0"

@@ -81,7 +81,7 @@ def resume_job_inplace(job: dict) -> tuple[int, int]:
 def create_retry_job(original_job: dict, source: str) -> tuple[int, int]:
     """Create a retry job from an original job. Returns (new_job_id, queue_position)."""
     from modules import db
-    from modules.phases import sort_phase_value_strings
+    from modules.phases import phase_for_job_type, sort_phase_value_strings
 
     payload_raw = original_job.get("queue_payload") or "{}"
     try:
@@ -93,15 +93,7 @@ def create_retry_job(original_job: dict, source: str) -> tuple[int, int]:
     payload["skip_done"] = True
 
     orig_job_type = original_job.get("job_type", "scoring")
-    _phase_code_map = {
-        "indexing": "indexing",
-        "metadata": "metadata",
-        "scoring": "scoring",
-        "tagging": "keywords",
-        "clustering": "culling",
-        "selection": "culling",
-    }
-    phase_code = _phase_code_map.get(orig_job_type, "scoring")
+    phase_code = phase_for_job_type(orig_job_type)
 
     prior = original_job.get("description")
     _retry_ui = "(retry from Runs UI)"
