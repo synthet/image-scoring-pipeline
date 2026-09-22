@@ -71,6 +71,16 @@ _RUBRICS: tuple[Rubric, ...] = (
         ),
     ),
     Rubric(
+        key="keywords.relevance",
+        version="v1",
+        question_type=NOUL,
+        instructions=(
+            "Is the keyword under review genuinely supported by the supplied "
+            "caption and metadata for this photograph? Judge only from the "
+            "supplied text; do not guess at visual detail that is absent."
+        ),
+    ),
+    Rubric(
         key="evidence.sufficiency",
         version="v1",
         question_type=NOUL,
@@ -88,6 +98,16 @@ REGISTRY: dict[str, Rubric] = {r.key: r for r in _RUBRICS}
 # answer based on incomplete evidence is unsafe.").
 EVIDENCE_SUFFICIENCY_KEY = "evidence.sufficiency"
 
+# Separates a rubric key from the subject it is being asked about, so the same
+# rubric can be asked about many subjects (e.g. every candidate keyword on one
+# image) inside a single System One call.
+SUBJECT_SEPARATOR = "::"
+
+
+def subject_question_id(rubric_key: str, subject: str) -> str:
+    """Question id addressing ``rubric_key`` at one ``subject``."""
+    return f"{rubric_key}{SUBJECT_SEPARATOR}{subject}"
+
 
 def get_rubric(key: str) -> Rubric:
     """Return the registered rubric for ``key``.
@@ -100,18 +120,29 @@ def get_rubric(key: str) -> Rubric:
     return REGISTRY[key]
 
 
-def build_question(rubric: Rubric) -> Any:
+def build_question(rubric: Rubric, *, subject: str | None = None) -> Any:
     """Build the SDK question object for ``rubric``.
 
     Imports ``typesafe_sdk`` lazily so the package stays importable (and the
     flag stays inspectable) without the optional dependency installed.
+
+    ``subject`` is included in model-visible instructions. Question mapping
+    keys are response correlation IDs and TypeSafe does not send them to the
+    model, so a per-subject question must not rely on its key for meaning.
     """
     from typesafe_sdk import Choice, Noul, Score
 
+    instructions: Any = rubric.instructions
+    if subject is not None:
+        instructions = {
+            "judgment": rubric.instructions,
+            "subject_under_review": subject,
+        }
+
     if rubric.question_type == NOUL:
-        return Noul(instructions=rubric.instructions)
+        return Noul(instructions=instructions)
     if rubric.question_type == SCORE:
-        return Score(instructions=rubric.instructions, criteria=rubric.criteria)
+        return Score(instructions=instructions, criteria=rubric.criteria)
     if rubric.question_type == CHOICE:
-        return Choice(instructions=rubric.instructions, criteria=rubric.criteria)
+        return Choice(instructions=instructions, criteria=rubric.criteria)
     raise ValueError(f"Unsupported question type: {rubric.question_type!r}")

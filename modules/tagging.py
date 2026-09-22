@@ -9,6 +9,7 @@ from modules.events import event_manager
 from modules.indexing_policy import filter_image_rows_for_nef_policy
 from modules.phases import PhaseCode, PhaseStatus
 from modules.phases_policy import explain_phase_run_decision
+from modules.typesafe import keyword_shadow
 from modules.version import APP_VERSION
 
 TAGGER_VERSION = "1.0.0"  # bump when CLIP model or tagging logic changes
@@ -853,6 +854,19 @@ class TaggingRunner:
 
                         relevance_map=relevance_map,
 
+                    )
+
+                    # Shadow-mode observation only: record a Jev verdict
+                    # beside the CLIP relevance weights. Never alters tags
+                    # or weights, and swallows its own failures.
+                    keyword_shadow.verify_image(
+                        int(row['id']),
+                        path,
+                        caption,
+                        tags,
+                        relevance_map,
+                        title=title,
+                        job_id=job_id,
                     )
 
                 if alt_text or extended_description:
