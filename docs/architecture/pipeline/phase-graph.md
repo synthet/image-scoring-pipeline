@@ -28,20 +28,19 @@ class PhaseCode(str, Enum):
 ```
 
 The `str` mixin means these serialise directly to JSON and SQL. Values must match
-`pipeline_phases.code` in the database, seeded from `SEED_PHASES` (`modules/phases.py:430-481`).
+`pipeline_phases.code` in the database, seeded from `SEED_PHASES` (`modules/phases.py:529-580`).
 
 ## Canonical order
 
-`modules/phases.py:42-49` defines `PIPELINE_PHASE_ORDER` as
+`modules/phases.py:45-52` defines `PIPELINE_PHASE_ORDER` as
 `indexing, metadata, scoring, culling, keywords, bird_species`.
 
 This order governs display and sorting, not dependency. Two helpers use it:
 
-- `sort_phase_codes_canonical` (`:164`) — sorts `PhaseCode` values; unknown sorts to 999.
-- `phase_string_sort_key` (`:169-177`) — sorts persisted strings, special-casing `bird_species`
-  to `len(PIPELINE_PHASE_ORDER)` so it always lands after `keywords`.
+- `sort_phase_codes_canonical` (`:244-246`) — sorts `PhaseCode` values; unknown sorts to 999.
+- `phase_string_sort_key` (`:249-256`) — sorts persisted strings; an unknown code sorts to 999.
 
-`sort_job_phase_rows_for_display` (`:217-237`) deliberately does **not** re-sort into canonical
+`sort_job_phase_rows_for_display` (`:295-316`) deliberately does **not** re-sort into canonical
 order. A run stores the plan the client submitted, which need not be canonical — a
 `metadata, score, tag, cluster` submission stores `keywords` before `culling`. Sorting by
 canonical order would report stages in an order the run never executed, so the stored
@@ -49,7 +48,7 @@ canonical order would report stages in an order the run never executed, so the s
 
 ## The prerequisite DAG
 
-This is the real dependency structure. `modules/phases.py:54-61`:
+This is the real dependency structure. `modules/phases.py:57-64`:
 
 ```python
 PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
@@ -61,6 +60,28 @@ PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
     "bird_species": ("keywords",),
 }
 ```
+
+### Two kinds of edge
+
+`PHASE_PREREQUISITES` holds **hard** edges: a prerequisite that is not satisfied for the
+scope blocks the phase at submit time. A second table holds **advisory** edges:
+
+```python
+PHASE_PREFERRED_BEFORE: dict[str, tuple[str, ...]] = {}   # modules/phases.py:66-77
+```
+
+An advisory edge says the key *should* be attempted before each listed consumer when both
+are co-requested, but its artifact is a preferred input rather than a prerequisite — a
+missing, negative, stale or failed result must never suppress the consumer's own
+full-frame path. `missing_prerequisites` and `pipeline_prefix_through` read
+`PHASE_PREREQUISITES` only, deliberately: those two decide whether work is *blocked*, and
+a soft edge never blocks.
+
+The table is empty today. `localization` populates it with `(scoring, keywords,
+bird_species)` when that phase lands — see
+[localization-rollout.md](localization-rollout.md) stage 4. Both tables project onto the
+executor as `depends_on` / `preferred_before`, derived in `modules/phase_executors.py` so
+neither can drift from its table.
 
 ```mermaid
 flowchart TD
@@ -109,14 +130,15 @@ co-requested in the same run.
 folders, either `total_count == 0` (nothing to gate on) or
 `done + skipped >= total AND failed == 0`.
 
-`assert_prereqs_for_scope(phase_values, scope_paths)` (`:149-161`) composes the two. An empty
+`assert_prereqs_for_scope(phase_values, scope_paths)` (`:227-242`) composes the two. An empty
 dict means every requested phase can proceed. Callers choose policy: `/api/runs/submit` raises
 HTTP 400, while heal records a per-folder skip and continues.
 
 ## Executors and versions
 
-Registration happens once at startup in `modules/phase_executors.py:18-113`. Each phase binds a
-`run_folder` callable and a declared `depends_on`.
+Registration happens once at startup in `modules/phase_executors.py:44-147`. Each phase binds a
+`run_folder` callable, a declared `depends_on` (hard) and a `preferred_before` (advisory);
+both are derived from their tables by `_prereqs()` / `_preferred()` rather than written out.
 
 | Phase | `executor_version` | `run_folder` | `depends_on` | Source |
 |---|---|---|---|---|
@@ -171,39 +193,39 @@ The API and job payloads use shorter tokens than the DB. `modules/phases.py:240-
 
 ```python
 PHASE_CODE_ALIASES = {
-    "score":   "scoring",
-    "tag":     "keywords",
-    "cluster": "culling",
+    "score":         "scoring",
+    "tag":           "keywords",
+    "cluster":       "culling",
+    "bird-species":  "bird_species",
 }
 ```
 
-`normalize_phase_codes` (`:247-270`) strips a `PhaseCode.` prefix, lowercases, applies the
-aliases, dedupes, and returns canonically sorted values.
+`normalize_phase_codes` (`:326-346`) strips a `PhaseCode.` prefix, lowercases, applies the
+aliases, dedupes, and returns canonically sorted values. It resolves every `PhaseCode`
+member, `bird_species` included — the pre-#346 version dropped that one string while letting
+the enum through, which forced every caller to special-case it.
 
 The run planner carries a wider alias set (`modules/run_phase_planner.py:24-31`), adding
-`clustering` and `selection` to `culling`, `tagging` to `keywords`, and `bird-species` to
-`bird_species`. The dispatcher has its own map again at `modules/job_dispatcher.py:531-538`.
-
-### The bird_species asymmetry
-
-`normalize_phase_codes` **explicitly drops `bird_species`** (`modules/phases.py:261`), commented
-as a *"separate job type (API / job_phases), not a PhaseCode enum value"* — even though it very
-much is a `PhaseCode` member. Consequently every caller must special-case it, for example
-`modules/api/routers/electron_runs_lifecycle.py:65-70` strips it before normalising and
-re-attaches it afterwards.
-
-Treat this as a known wart, not a rule with a clean rationale.
+`clustering` and `selection` to `culling` and `tagging` to `keywords`. The dispatcher has its
+own queue-key map again at `modules/job_dispatcher.py:531-538`. The **job_type** direction —
+`tagging`/`clustering`/`selection` back to a phase code — has one home,
+`phase_for_job_type` (`modules/phases.py:110-123`), which `db_legacy.job_type_for_phase_dispatch`
+and the Runs-UI retry path both delegate to (#366).
 
 ## Known gaps
 
-- **`PhaseExecutor.depends_on` is inert.** Its own docstring says *"Enforcement deferred to v2."*
-  (`modules/phases.py:385`). Real gating lives in `PHASE_PREREQUISITES` plus
-  `assert_prereqs_for_scope`. The two are kept in step by convention only — the comment at
-  `modules/phases.py:53` asks you to keep them aligned, and nothing checks it.
-- **`PipelineOrchestrator.PHASE_ORDER` is not `PIPELINE_PHASE_ORDER`.** The orchestrator list
-  (`modules/pipeline_orchestrator.py:14-20`) has five entries; `bird_species` is absent, and there
-  is no bird-species runner slot in its runner map (`:32-38`). The comment at
-  `modules/phases.py:41` claiming they are the same order is misleading.
+- **`PhaseExecutor.depends_on` has no runtime reader.** It is *derived* from
+  `PHASE_PREREQUISITES` by `modules/phase_executors.py:25-31`, and
+  `tests/test_phase_prerequisites_registry_sync.py` fails if the two drift — so the field
+  is accurate. Nothing consults it at run time, though: the gate is
+  `assert_prereqs_for_scope` reading `PHASE_PREREQUISITES` directly. The field is
+  documentation the registry cannot contradict, not an enforcement point.
+- **`JobDispatcher.runner_map` is still hand-written** (`modules/job_dispatcher.py:485-500`),
+  with a second alias table for queue keys at `:531-538`. It binds job types to live runner
+  *instances*, which the registry cannot supply, so it was not folded into
+  `PHASE_TO_JOB_TYPE` (#366). `tests/test_phase_job_type_registry.py` guards it instead: a
+  phase whose job type is missing from that map fails the build rather than becoming
+  silently unroutable.
 - **`SEED_PHASES` is inconsistently typed.** The first two rows use integers for `enabled` and
   `optional`; the last four use booleans and omit `enabled` entirely.
 

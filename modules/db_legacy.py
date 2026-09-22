@@ -5787,15 +5787,18 @@ def update_job_log(job_id, log):
 
 
 def job_type_for_phase_dispatch(phase_code: str) -> str:
-    """Map ``job_phases.phase_code`` to ``jobs.job_type`` for JobDispatcher routing."""
+    """Map ``job_phases.phase_code`` to ``jobs.job_type`` for JobDispatcher routing.
+
+    Reads ``modules.phases.PHASE_TO_JOB_TYPE`` rather than repeating it.  ``cluster`` /
+    ``clustering`` are not phase codes -- they are the legacy ClusteringRunner job type,
+    which the dispatcher accepts alongside ``selection`` -- so they pass through.
+    """
+    from modules.phases import PHASE_TO_JOB_TYPE
+
     pc = (phase_code or "").strip().lower()
-    if pc == "keywords":
-        return "tagging"
-    if pc == "culling":
-        return "selection"
     if pc in ("cluster", "clustering"):
-        return "clustering"
-    return pc or "scoring"
+        return pc
+    return PHASE_TO_JOB_TYPE.get(pc, pc or "scoring")
 
 
 def get_running_job_for_phase_continuation():

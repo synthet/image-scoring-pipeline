@@ -176,6 +176,15 @@ def test_narrowing_to_bird_species_only_returns_a_response(
         "modules.runs_autodrive.phases_with_work_from_repair_plan",
         lambda *_a, **_k: ["bird_species"],
     )
+    # This is the one test here that gets past the 400 paths into run planning, which
+    # calls db.build_validation_repair_plan -> live PostgreSQL. Stub it: the assertion
+    # below is about phase-code routing, not about what the repair plan contains.
+    # Without this the test 500s with "PostgreSQL connection pool is not initialized"
+    # on any machine where the database is not up, despite carrying no db marker.
+    monkeypatch.setattr(
+        "modules.db.build_validation_repair_plan",
+        lambda *_a, **_k: {"stage_queues": {"bird_species": [1, 2, 3]}},
+    )
     _stub_compute_scope_phases.update(
         {"indexing", "metadata", "scoring", "culling", "keywords"}
     )

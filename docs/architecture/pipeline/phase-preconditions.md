@@ -51,10 +51,40 @@ An empty result means go. Callers pick their own policy:
 |---|---|
 | `POST /api/runs/submit` (`modules/api/routers/electron_runs_lifecycle.py:99-112`) | HTTP 400, body `{"code": "missing_prerequisites", "missing": {...}}` |
 | `workflow_healing._enqueue_heal_run` (`:544`) | Returns a structured skip, continues with other folders |
-| `POST /api/pipeline/submit` (`modules/api/routers/pipeline_submit.py:163-173`) | `success=false`, body `data.code = "missing_prerequisites"` (HTTP 200) |
+| `POST /api/pipeline/submit` (`modules/api/routers/pipeline_submit.py:157-186`) | `success=false`, body `data.code = "missing_prerequisites"` (HTTP 200) |
+| `runs_autodrive` (`modules/runs_autodrive.py:1593-1595`) | Returns `reason: missing_prerequisites`, folder stays in its bucket |
 
 `/api/pipeline/submit` gates folder-scoped submissions only: image-id and image-path selectors
 resolve to no scope path, and an empty scope would report every non-root phase as unsatisfied.
+`folder_ids` are resolved to their folder paths (#363), so every folder selector form is gated
+alike; an id that resolves to no folder row contributes no scope path and stays ungated.
+
+### Why the `/start` endpoints are not in that table
+
+`POST /api/scoring/start`, `/tagging/start`, `/clustering/start` and `/bird-species/start` do
+**not** call `assert_prereqs_for_scope`, and that is deliberate rather than an oversight. They
+are *prefix-expanding*, not plan-validating: each writes `pipeline_prefix_through(<phase>)` into
+`job_phases`, so its effective plan already contains every prerequisite ahead of the phase that
+needs it. Since `missing_prerequisites` counts a prerequisite listed earlier in the same plan as
+satisfied, the gate could never reject — it would be dead code:
+
+```text
+pipeline_prefix_through("bird_species")
+  -> ["indexing", "metadata", "scoring", "keywords", "bird_species"]
+missing_prerequisites(that, satisfied=set())  ->  {}
+```
+
+Gating them on the *single requested* phase instead would reject a brand-new folder from
+`/scoring/start` (`{"scoring": ["metadata"]}` on an unindexed scope) and break the
+point-at-a-folder-and-press-Score workflow that prefix expansion exists to support. The two
+contracts are different on purpose: `/api/runs/submit` and `/api/pipeline/submit` validate a
+plan the client composed; the `/start` endpoints compose the plan themselves.
+
+This is the "explicitly documented as unsupported" half of the stage 1 exit gate in
+[localization-rollout.md](localization-rollout.md); `tests/test_phase_submission_vocabulary_parity.py`
+enforces the other half. `/bird-species/start` was the one real divergence — it queued
+`["bird_species"]` alone with `phase_code=None`, so its plan named no upstream stage at all
+(#365, fixed).
 
 The scope-satisfaction rule mirrors `_compute_scope_preview_for_resolved_paths` on purpose, so
 submit-time gating and heal-time gating cannot disagree.
@@ -300,7 +330,8 @@ entirely.
 - **`/api/pipeline/submit` reports Gate 1 failures differently.** It calls
   `assert_prereqs_for_scope` like `/api/runs/submit` does, but returns HTTP 200 with
   `success=false` and `data.code = "missing_prerequisites"` instead of HTTP 400. Selector-only
-  submissions (image ids or paths, no folder) are still ungated.
+  submissions (image ids or paths, no folder) are still ungated, and `exclude_image_paths`
+  never narrows the gated scope — the exclusion reaches the selector but not `gate_paths`.
 - **The metadata predicate divergence** above is intentional but undocumented outside a code
   comment, and reliably surprises people.
 - `is_image_scoring_complete` still names the legacy model set (`spaq`, `ava`, `liqe`,
