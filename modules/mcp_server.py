@@ -21,12 +21,35 @@ from functools import lru_cache
 from typing import Any
 
 # MCP SDK imports
+#
+# This module is written against the MCP v1 API. ``mcp`` 2.x renamed ``FastMCP`` to
+# ``MCPServer``, so on 2.x the first import raises ModuleNotFoundError and the whole
+# block falls through -- which is fine, that is what ``_MockMCP`` below exists for, but
+# only if every name the module goes on to use at import time is still bound.
+#
+# ``ToolAnnotations`` is used unguarded at module scope (``_RO``/``_RW`` below), so
+# leaving it unbound turned a graceful degradation into a NameError at import, taking
+# the entire pytest collection down with it (#371). Bind a stub instead: annotations are
+# inert metadata, and the mock server ignores them.
 try:
     from mcp.server.fastmcp import FastMCP
     from mcp.types import ToolAnnotations
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
+
+    class ToolAnnotations:  # type: ignore[no-redef]
+        """Inert stand-in used only when the MCP SDK is unavailable or incompatible.
+
+        Accepts and stores whatever the real annotations take, so ``_RO``/``_RW`` keep
+        working and ``@mcp.tool(annotations=...)`` still receives an object.
+        """
+
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        def __repr__(self) -> str:
+            return f"ToolAnnotations(unavailable, {self.__dict__!r})"
 
 try:
     import importlib.util
