@@ -161,7 +161,7 @@ Landed as #346 (PRs #350, #352, #353, #354) plus #364, #365, #366 and #367.
 | Item | Where |
 |---|---|
 | Canonical registry for ordering, prerequisites, executors, planning | `modules/phases.py`, `modules/phase_executors.py`, `modules/pipeline_orchestrator.py:15` |
-| `normalize_phase_codes` keeps `bird_species` | `modules/phases.py:286-306` |
+| `normalize_phase_codes` keeps `bird_species` | `modules/phases.py:326-346` |
 | Same gate on `/api/runs/submit`, `/api/pipeline/submit`, auto-drive, heal | #351, #363 |
 | Selector resolution before the gate (paths, folder ids, ordering) | #354, #352 |
 | `bird_species` in the dispatcher/plan vocabulary | `tests/test_phase_submission_vocabulary_parity.py` |
@@ -174,7 +174,7 @@ Two things this stage did **not** resolve, both carried forward:
   parent's remaining stages `skipped` with a delegation note and completes the parent regardless
   of the child's outcome. The planned contract — persist the link, leave the parent unfinished,
   propagate child success/failure/cancellation — needs a durable link column and DB-backed
-  recovery tests, so it is scheduled with the schema work rather than here.
+  recovery tests, so it is scheduled with the schema work rather than here (#368).
 - **Dedicated `/start` endpoints are prefix-expanding, not gated.** Gating them would be dead
   code; the reasoning is recorded in
   [phase-preconditions.md](phase-preconditions.md#why-the-start-endpoints-are-not-in-that-table)
