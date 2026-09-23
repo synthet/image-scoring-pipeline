@@ -352,7 +352,7 @@ assume that stored thumbnail pixels already match display orientation.
 - Detector evaluation reports recall, false positives, latency, and memory for the pinned cohort;
   the 59-frame eagle set is retained as a regression slice, not presented as a population rate.
 
-### Status — code complete (#375); exit gate waits on the benchmark (#377)
+### Status — code complete (#375); detector evaluation complete, pending review (#377)
 
 Issue #375. `modules/rendition.py` supplies the identity half of this stage:
 
@@ -378,7 +378,7 @@ Part 2 added the three remaining pieces:
 | `modules/crop_cache.py` | Content-addressed crops under `thumbnails/crops/{key[:2]}/`. Atomic temp-file + `os.replace` writes, per-key in-process locks, deterministic encoding, `prune_crop_cache` oldest-first. |
 | `BirdDetector.detect_boxes`, `bird_detection.rank_boxes` | Up to `max_det` boxes ranked by confidence then `(y1, x1, y2, x2)`, geometry validated, near-full-frame flagged. |
 
-**Exit-gate progress.** Four of five items are met:
+**Exit-gate progress.** All five deliverables are present; the detector findings await review:
 
 - *Orientation fixtures 1–8* — pass (part 1).
 - *Crop keys change on any provenance or padding input* — pass (part 1).
@@ -387,8 +387,14 @@ Part 2 added the three remaining pieces:
 - *Concurrent requests coalesce or safely produce the same artifact* — pass, both halves. Sixteen
   threads on one key render once. With the in-process lock removed to simulate separate processes,
   sixteen uncoordinated writers still never error.
-- *Detector evaluation on a pinned cohort* — **open**, tracked as #377. It needs a GPU with `torch`
-  and `ultralytics`; production detector defaults stay unchanged until it is reviewed.
+- *Detector evaluation on a pinned cohort* — **complete, pending review**, tracked as #377.
+  The [339-frame report](../../reports/detector-benchmark-2026-09.md) versions the cohort,
+  human labels, results, and GPU allocation measurements. At 1280 the eagle slice improves
+  from 20/59 to 53/59 detections, but 35/54 verified negatives in the no-keyword miss stratum
+  become false detections (versus 0/54 at 640); tile-on-miss also has substantial false positives.
+  The report includes confidence intervals and sampling/provenance limits. Keep production
+  defaults unchanged; stage 4 may be designed in disabled shadow mode, with promotion and
+  downstream crop use still gated on false-positive and localization-quality evaluation.
 
 **Two findings from part 2.**
 
