@@ -176,6 +176,22 @@ subsequently vanished.
 - `_process_metadata_image_row` spans roughly 360 lines for about 120 lines of logic
   (`:70-432`) — an artefact of a bad reformat, harmless but hard to read.
 
+## Rendition boundary
+
+This phase does **not** own the pixels downstream inference sees, and the difference matters for
+localization. `generate_thumbnail` resizes and, for RAW, merely *copies* the EXIF Orientation tag
+(`modules/thumbnails.py:736-739`) rather than calling `bake_orientation` (`:400-417`) — so stored
+thumbnail pixels are **not** display-oriented. Anything cropping from a thumbnail is cropping from
+an unknown orientation.
+
+Separately, `open_image_for_ml` (`:489-527`) decodes RAW through embedded preview → `rawpy` →
+ImageMagick and returns a bare `Image`, with no report of which route ran. The routes differ in
+size, colour and sometimes crop.
+
+`modules/rendition.py` (rollout stage 3, #375) is where that identity lives: `DecodeRoute`,
+`RenditionDescriptor` and `COORD_SPACE_DISPLAY`. Treat a rendition as a property of the *inference
+run*, not of this phase's thumbnail output.
+
 ## Related
 
 - [indexing.md](indexing.md) — the prerequisite phase
