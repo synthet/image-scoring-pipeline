@@ -493,12 +493,30 @@ def open_image_for_ml(read_path: str) -> Image.Image:
     Raster formats use :func:`PIL.Image.open` directly. RAW files use the same decode
     chain as thumbnail generation (embedded JPEG → rawpy → ImageMagick) so tagging
     and similar jobs work when no thumbnail row/path exists yet.
+
+    Use :func:`open_rendition_for_ml` when you also need to know which route ran.
     """
+    return open_rendition_for_ml(read_path)[0]
+
+
+def open_rendition_for_ml(read_path: str):
+    """:func:`open_image_for_ml` plus the :class:`~modules.rendition.DecodeRoute` taken.
+
+    The routes are not interchangeable: an embedded preview, a ``rawpy`` postprocess and an
+    ImageMagick decode of the same NEF differ in size, colour and sometimes crop, and the
+    ImageMagick path also resizes to 2048px. A region found in one does not necessarily sit
+    in the same place in another, so the route is part of the rendition's identity.
+
+    Returns ``(image, route)``.
+    """
+    from modules.rendition import DecodeRoute
+
     read_path = str(read_path)
     ext = Path(read_path).suffix.lower()
     if ext not in _RAW_EXT_ML:
-        return Image.open(read_path)
+        return Image.open(read_path), DecodeRoute.DIRECT
 
+    route = DecodeRoute.RAW_EMBEDDED_PREVIEW
     img = extract_embedded_jpeg(read_path, min_size=1000)
     if img is None:
         try:
@@ -507,6 +525,7 @@ def open_image_for_ml(read_path: str) -> Image.Image:
             with rawpy.imread(read_path) as raw:
                 rgb = raw.postprocess(use_camera_wb=True, bright=1.0, user_sat=None)
                 img = Image.fromarray(rgb)
+                route = DecodeRoute.RAW_RAWPY
         except ImportError:
             pass
         except Exception:
@@ -518,13 +537,14 @@ def open_image_for_ml(read_path: str) -> Image.Image:
             if res.returncode == 0 and len(res.stdout) > 100 and res.stdout.startswith(b"\xff\xd8"):
                 img = Image.open(io.BytesIO(res.stdout))
                 img.load()
+                route = DecodeRoute.RAW_IMAGEMAGICK
         except Exception:
             pass
     if img is None:
         from PIL import UnidentifiedImageError
 
         raise UnidentifiedImageError(f"cannot identify or decode RAW image file {read_path!r}")
-    return img
+    return img, route
 
 
 def _thumb_hash(image_path):

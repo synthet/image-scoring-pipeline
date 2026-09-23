@@ -19,6 +19,7 @@ from modules.rendition import (
     CROP_POLICY_TIGHT,
     SUSPICIOUS_AREA_FRAC,
     CropPolicy,
+    RESIZING_ROUTES,
     DecodeRoute,
     RenditionDescriptor,
     area_frac,
@@ -336,3 +337,123 @@ def test_suspicious_geometry_is_recorded_not_rejected():
     assert padded_pixel_box(near_full, 100, 100, CROP_POLICY_TIGHT)
     assert not is_suspicious_geometry((0.0, 0.0, 0.5, 0.5))
     assert SUSPICIOUS_AREA_FRAC < 1.0
+
+
+# ---------------------------------------------------------------------------
+# Decode route (AC-5) — open_rendition_for_ml reports which branch ran
+# ---------------------------------------------------------------------------
+
+def _raw_path(tmp_path):
+    """A file with a RAW extension. Content is irrelevant: every decoder is stubbed."""
+    p = tmp_path / "shot.nef"
+    p.write_bytes(b"not really a nef")
+    return str(p)
+
+
+@pytest.fixture
+def no_decoders(monkeypatch):
+    """Every RAW route fails unless a test re-enables one."""
+    from modules import thumbnails
+
+    monkeypatch.setattr(thumbnails, "extract_embedded_jpeg", lambda *a, **k: None)
+    monkeypatch.setattr(thumbnails.shutil, "which", lambda name: None)
+
+    import rawpy
+    def _fail(*a, **k):
+        raise RuntimeError("rawpy disabled for this test")
+    monkeypatch.setattr(rawpy, "imread", _fail)
+    return thumbnails
+
+
+def test_raster_file_reports_direct(tmp_path):
+    from modules.thumbnails import open_rendition_for_ml
+
+    p = tmp_path / "a.jpg"
+    Image.new("RGB", (8, 4)).save(p)
+    img, route = open_rendition_for_ml(str(p))
+    assert route is DecodeRoute.DIRECT
+    assert img.size == (8, 4)
+
+
+def test_raw_embedded_preview_route(tmp_path, no_decoders, monkeypatch):
+    preview = Image.new("RGB", (1200, 800))
+    monkeypatch.setattr(no_decoders, "extract_embedded_jpeg", lambda *a, **k: preview)
+    img, route = no_decoders.open_rendition_for_ml(_raw_path(tmp_path))
+    assert route is DecodeRoute.RAW_EMBEDDED_PREVIEW
+    assert img is preview
+
+
+def test_raw_rawpy_route_when_no_preview(tmp_path, no_decoders, monkeypatch):
+    import numpy as np
+    import rawpy
+
+    class _Raw:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def postprocess(self, **kw):
+            return np.zeros((30, 40, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(rawpy, "imread", lambda p: _Raw())
+    img, route = no_decoders.open_rendition_for_ml(_raw_path(tmp_path))
+    assert route is DecodeRoute.RAW_RAWPY
+    assert img.size == (40, 30)
+
+
+def test_raw_imagemagick_route_as_last_resort(tmp_path, no_decoders, monkeypatch):
+    import io
+    import types
+
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 48)).save(buf, "JPEG")
+    monkeypatch.setattr(no_decoders.shutil, "which", lambda name: "/usr/bin/magick")
+    monkeypatch.setattr(
+        no_decoders.subprocess, "run",
+        lambda *a, **k: types.SimpleNamespace(returncode=0, stdout=buf.getvalue()),
+    )
+    img, route = no_decoders.open_rendition_for_ml(_raw_path(tmp_path))
+    assert route is DecodeRoute.RAW_IMAGEMAGICK
+    assert route in RESIZING_ROUTES, "the one route that resizes as a side effect"
+    assert img.size == (64, 48)
+
+
+def test_raw_with_every_route_failing_still_raises(tmp_path, no_decoders):
+    from PIL import UnidentifiedImageError
+
+    with pytest.raises(UnidentifiedImageError):
+        no_decoders.open_rendition_for_ml(_raw_path(tmp_path))
+
+
+def test_open_image_for_ml_is_unchanged_for_callers(tmp_path, no_decoders, monkeypatch):
+    """Eleven callers across seven modules depend on the bare-Image return type."""
+    preview = Image.new("RGB", (1200, 800))
+    monkeypatch.setattr(no_decoders, "extract_embedded_jpeg", lambda *a, **k: preview)
+    out = no_decoders.open_image_for_ml(_raw_path(tmp_path))
+    assert out is preview
+    assert not isinstance(out, tuple)
+
+
+# ---------------------------------------------------------------------------
+# build_rendition_descriptor
+# ---------------------------------------------------------------------------
+
+def test_build_descriptor_takes_dimensions_from_the_oriented_image(tmp_path):
+    """For orientation 6 the display frame is the transpose of the stored one."""
+    from modules.rendition import build_rendition_descriptor
+
+    path, upright = _oriented_source(tmp_path, 6)
+    displayed = ImageOps.exif_transpose(Image.open(path))
+    d = build_rendition_descriptor(str(path), displayed, DecodeRoute.DIRECT, 6)
+    assert (d.display_width, d.display_height) == upright.size
+    assert d.orientation == 6
+    assert d.source_hash
+
+
+def test_build_descriptor_defaults_missing_orientation_to_1(tmp_path):
+    from modules.rendition import build_rendition_descriptor
+
+    p = tmp_path / "a.jpg"
+    Image.new("RGB", (10, 5)).save(p)
+    d = build_rendition_descriptor(str(p), Image.open(p), DecodeRoute.DIRECT, None)
+    assert d.orientation == 1

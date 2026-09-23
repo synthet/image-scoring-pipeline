@@ -352,7 +352,7 @@ assume that stored thumbnail pixels already match display orientation.
 - Detector evaluation reports recall, false positives, latency, and memory for the pinned cohort;
   the 59-frame eagle set is retained as a regression slice, not presented as a population rate.
 
-### Status — descriptor, crop policy and cache keys landed; benchmark split out
+### Status — code complete (#375); exit gate waits on the benchmark (#377)
 
 Issue #375. `modules/rendition.py` supplies the identity half of this stage:
 
@@ -369,20 +369,49 @@ Issue #375. `modules/rendition.py` supplies the identity half of this stage:
 `legacy_unverified` space stage 2's import had to use, since historical orientation could not be
 recovered.
 
-**Exit-gate progress.** Orientation fixtures 1–8 pass: synthetic JPEGs built the way a camera
-writes one (upright pixels through the inverse display transform, then tagged) round-trip to the
-same frame and crop the same subject from one normalized region. Crop keys are verified to change
-on every provenance and policy input and to stay stable under sub-pixel noise. Cache eviction and
-concurrent-request coalescing are **not yet covered** — they need the on-disk cache, which is the
-next slice.
+Part 2 added the three remaining pieces:
 
-**The detector benchmark is split out.** `torch` and `ultralytics` are not installed in the
-non-Docker environment and the GPU is unavailable, so the `imgsz=640` vs `1280` vs second-pass
-comparison needs its own issue in a GPU environment. Production detector defaults remain unchanged
-until it is reviewed, exactly as this plan requires.
+| Piece | What it fixes |
+|---|---|
+| `thumbnails.open_rendition_for_ml` | Returns `(image, DecodeRoute)`. `open_image_for_ml` is now a one-line wrapper over it, so its 11 callers across 7 modules are unchanged. |
+| `rendition.build_rendition_descriptor` | Builds a descriptor from already-decoded, already-oriented pixels. Display dimensions come from the *oriented* image — for EXIF 5..8 the transpose of the stored file. |
+| `modules/crop_cache.py` | Content-addressed crops under `thumbnails/crops/{key[:2]}/`. Atomic temp-file + `os.replace` writes, per-key in-process locks, deterministic encoding, `prune_crop_cache` oldest-first. |
+| `BirdDetector.detect_boxes`, `bird_detection.rank_boxes` | Up to `max_det` boxes ranked by confidence then `(y1, x1, y2, x2)`, geometry validated, near-full-frame flagged. |
 
-Still open for this stage: decode-route plumbing through `open_image_for_ml`, the on-disk crop
-cache, and the multi-box detector API with deterministic ranking.
+**Exit-gate progress.** Four of five items are met:
+
+- *Orientation fixtures 1–8* — pass (part 1).
+- *Crop keys change on any provenance or padding input* — pass (part 1).
+- *Cache eviction leaves metadata valid and crops reproducible* — pass. The key is the durable
+  identity; encoding is deterministic, so an evicted crop regenerates **byte-identically**.
+- *Concurrent requests coalesce or safely produce the same artifact* — pass, both halves. Sixteen
+  threads on one key render once. With the in-process lock removed to simulate separate processes,
+  sixteen uncoordinated writers still never error.
+- *Detector evaluation on a pinned cohort* — **open**, tracked as #377. It needs a GPU with `torch`
+  and `ultralytics`; production detector defaults stay unchanged until it is reviewed.
+
+**Two findings from part 2.**
+
+*Windows breaks the "last rename wins" assumption.* Removing the per-key lock made the losing
+`os.replace` raise `PermissionError` 13 — a sharing violation, since Windows will not replace a file
+another writer has open. POSIX would simply swap the inode. Nothing locks across processes, so this
+was a real failure mode for webui + gpu-shell writing the same crop, hidden in tests only by the
+in-process lock. The losing writer now treats the refusal as success once the winner's file is in
+place (the bytes are identical by construction); a refusal with no winner still raises.
+
+*`detect_best_box` is deliberately left non-deterministic.* It resolves equal confidences to
+whichever box the model emitted first, and does not validate geometry. `images.bird_bbox` was
+written under exactly that behaviour, so changing it would silently move stored boxes.
+`detect_boxes` is the deterministic, validated API; the two are expected to disagree on malformed
+predictions.
+
+**Deferred to stage 5:** bounded decoded-image reuse. It was listed in the stage 3 scope but carries
+no acceptance criterion, and while nothing may consume this service for authoritative output an
+image cache would have no caller. BioCLIP becomes the first consumer in stage 5, which is where the
+reuse pattern can be designed against a real access pattern.
+
+**Also unchanged by design:** no production caller uses any of this yet. `bird_species.py` still
+calls `detect_best_box` and `crop_to_box`; moving it onto regions is stage 5.
 
 ### Rollback
 

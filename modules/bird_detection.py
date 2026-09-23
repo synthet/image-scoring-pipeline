@@ -113,6 +113,51 @@ def select_best_box(boxes: List[dict]) -> Optional[dict]:
     return max(boxes, key=lambda b: b.get("conf", 0.0))
 
 
+def rank_boxes(boxes: List[dict], img_w: int, img_h: int, max_det: int) -> List[dict]:
+    """Validate, rank and cap raw ``{"xyxy", "conf"}`` boxes.
+
+    Pure helper, no ultralytics. Ordering is by confidence descending, then by geometry
+    ``(y1, x1, y2, x2)`` ascending. The geometry keys exist so equal confidences cannot
+    reorder between runs: :func:`select_best_box` resolves a tie by whichever box the model
+    emitted first, which makes the answer depend on inference internals.
+
+    Geometry that is inverted, zero-area or outside the frame is **dropped**, not clamped
+    -- clamping would manufacture a plausible box nobody detected. Near-full-frame boxes
+    are kept and flagged ``suspicious``; one outlier is not grounds for a ceiling.
+
+    Each returned dict carries pixel ``x1..y2``, ``conf``, ``rank`` (0 = best), the
+    normalized ``region`` in display space, ``area_frac`` and ``suspicious``.
+    """
+    from modules.rendition import area_frac, is_suspicious_geometry, normalize_pixel_box
+
+    valid = []
+    for box in boxes:
+        region = normalize_pixel_box(box.get("xyxy"), img_w, img_h)
+        if region is None:
+            continue
+        x1, y1, x2, y2 = (float(v) for v in box["xyxy"])
+        valid.append((float(box.get("conf", 0.0)), x1, y1, x2, y2, region))
+
+    valid.sort(key=lambda b: (-b[0], b[2], b[1], b[4], b[3]))
+
+    ranked = []
+    for rank, (conf, x1, y1, x2, y2, region) in enumerate(valid[: max(0, int(max_det))]):
+        ranked.append({
+            "rank": rank,
+            "x1": int(round(x1)),
+            "y1": int(round(y1)),
+            "x2": int(round(x2)),
+            "y2": int(round(y2)),
+            "conf": round(conf, 4),
+            "img_w": int(img_w),
+            "img_h": int(img_h),
+            "region": region,
+            "area_frac": round(area_frac(region), 6),
+            "suspicious": is_suspicious_geometry(region),
+        })
+    return ranked
+
+
 def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
@@ -176,13 +221,11 @@ class BirdDetector:
         self.model = YOLO(weights)
         logger.info("Bird detector loaded.")
 
-    def detect_best_box(self, image) -> Optional[dict]:
-        """Detect birds in a PIL image; return the highest-confidence box or None.
+    def _predict_raw_boxes(self, image) -> List[dict]:
+        """Run the detector and return every box as ``{"xyxy", "conf"}``, in model order.
 
-        Returns a dict ``{"x1", "y1", "x2", "y2", "conf", "img_w", "img_h", "area_frac"}``
-        with integer pixel coordinates, or ``None`` when nothing is detected.
-        ``area_frac`` is the box area as a fraction of the image area (mirrors
-        ``BirdBox.area_frac`` in the model repo).
+        Shared by :meth:`detect_best_box` and :meth:`detect_boxes` so both see the same
+        predictions from one ``predict()`` call signature.
         """
         self.load_model()
         results = self.model.predict(
@@ -203,8 +246,31 @@ class BirdDetector:
                 xyxy = box.xyxy[0].tolist()
                 conf = float(box.conf[0].item())
                 boxes.append({"xyxy": tuple(xyxy), "conf": conf})
+        return boxes
 
-        best = select_best_box(boxes)
+    def detect_boxes(self, image) -> List[dict]:
+        """Every detected box, validated and deterministically ranked. See :func:`rank_boxes`.
+
+        Unlike :meth:`detect_best_box` this rejects unusable geometry, so on a malformed
+        prediction the two can disagree -- by design, since the legacy method must keep
+        returning what it always has.
+        """
+        img_w, img_h = image.size
+        return rank_boxes(self._predict_raw_boxes(image), img_w, img_h, self.max_det)
+
+    def detect_best_box(self, image) -> Optional[dict]:
+        """Detect birds in a PIL image; return the highest-confidence box or None.
+
+        Returns a dict ``{"x1", "y1", "x2", "y2", "conf", "img_w", "img_h", "area_frac"}``
+        with integer pixel coordinates, or ``None`` when nothing is detected.
+        ``area_frac`` is the box area as a fraction of the image area (mirrors
+        ``BirdBox.area_frac`` in the model repo).
+
+        Compatibility projection: equal confidences resolve to the first box the model
+        emitted, and geometry is not validated. ``images.bird_bbox`` was written under
+        exactly this behaviour, so it is kept. Use :meth:`detect_boxes` for new code.
+        """
+        best = select_best_box(self._predict_raw_boxes(image))
         if best is None:
             return None
 
