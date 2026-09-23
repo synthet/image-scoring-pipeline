@@ -78,6 +78,7 @@ def test_load_production_models_fails_when_enabled_model_missing():
 
 
 def test_load_production_models_allows_shadow_only_failure():
+    pytest.importorskip("torch")  # LIQE is enabled and needs torch; runs in gpu-shell / coverage CI (#381)
     from modules.engines.topiq_model import TopiqModelWrapper
 
     reg = ModelRegistry()

@@ -478,6 +478,8 @@ python -m pytest -m "not gpu and not db and not ml" --ignore=tests/test_probe.py
 ```
 
 - `tests/test_probe.py` must be ignored — it executes DB calls at import time and crashes collection.
+- **Where to run it:** `image-scoring-gpu-shell` has the full stack (`torch`, `mcp` v1), and that is where this subset is meant to pass completely. A Python without `torch` (e.g. the Windows host) **skips** ~21 ML-dependent tests instead of running them (#381), so a green run there is narrower than it looks. Don't `pip install "mcp<2"` into a shared Windows Python to "fix" the mcp skip: `jev-mcp` and the `mcp-server-*` tools need `mcp` 2.x (#378).
+- `tests/test_runs_autodrive.py` hangs whenever PostgreSQL is reachable (#336) — add `--ignore=tests/test_runs_autodrive.py` while the database is up.
 - Some tests in `test_culling.py` and `test_db_consistency.py` are missing the `db` marker and will ERROR during collection; this is a pre-existing issue.
 - Some tests may be slow (e.g., `test_events.py::test_websocket_connection` can hang); use `timeout` if needed.
 

@@ -66,6 +66,7 @@ def test_extract_bioclip_image_features_normalizes_raw_tensor_like():
 
 
 def test_extract_blip_image_features_with_mocked_vision_model():
+    pytest.importorskip("torch")  # needs the ML stack; runs in gpu-shell / coverage CI (#381)
     from modules.embeddings_extract import extract_blip_image_features
 
     class _PoolerOut:
@@ -150,6 +151,7 @@ def test_update_image_embeddings_batch_for_space_raises_on_dim_mismatch(monkeypa
 
 def test_tagging_runner_persist_embeddings_gated_by_flags(monkeypatch):
     """TaggingRunner._persist_tagging_embeddings only flushes what flags allow."""
+    pytest.importorskip("torch")  # needs the ML stack; runs in gpu-shell / coverage CI (#381)
     from modules import tagging
 
     calls: list[tuple[str, int, int]] = []
