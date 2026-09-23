@@ -313,3 +313,12 @@ reports/gallery-visual-review/
 .agents/mcp_config.json
 
 
+
+# Agent session transcripts. These capture whatever was pasted into a session,
+# including credentials: a live TypeSafe API key reached a commit this way
+# (recovered before it reached master, but the orphaned blob stayed fetchable on
+# GitHub by SHA, which a force-push does not undo). Keep them local.
+# Four transcripts predating this rule stay tracked and were rescanned clean;
+# `git rm --cached` them if you would rather they were not in the history.
+codex-session-*.md
+2026-??-??-*.txt
