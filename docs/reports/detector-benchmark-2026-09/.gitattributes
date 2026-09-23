@@ -1,0 +1,2 @@
+# Preserve evidence bytes so manifest SHA-256 hashes survive checkout on any OS.
+*.csv text eol=lf

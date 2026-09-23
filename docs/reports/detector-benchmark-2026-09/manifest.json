@@ -1,0 +1,38 @@
+{
+  "issue": 377,
+  "run_date": "2026-09-23",
+  "harness_commit": "67c68ac",
+  "seed": 377,
+  "max_frames_per_folder_per_sampled_stratum": 3,
+  "frames": 339,
+  "human_labels": {
+    "bird": 179,
+    "no_bird": 99,
+    "unsure": 2
+  },
+  "eagle_labels": {
+    "bird": 59,
+    "source": "prior 2026-09-07 audit, not re-labelled in this session"
+  },
+  "environment_from_saved_session": {
+    "gpu": "NVIDIA RTX 4060 Laptop, 8 GB",
+    "torch": "2.10 CUDA (exact build not captured)",
+    "ultralytics": "8.4.120",
+    "runtime": "image-scoring-gpu-shell"
+  },
+  "model": {
+    "repo": "synthet/bird-detect-v0",
+    "file": "bird_detect_v0.pt",
+    "weights_sha256": null,
+    "revision": null,
+    "note": "Weight hash and resolved Hub revision were not recorded by the original harness."
+  },
+  "privacy": "Photo and thumbnail paths removed; IDs preserve local joins. No images included.",
+  "serialization": "Published CSV line endings normalized to LF; field values unchanged.",
+  "sha256": {
+    "cohort.csv": "5b0bf194ff633df491ad19ab833edd8a896022e90d65ff166d75522770b8f078",
+    "gpu_peak_bytes.csv": "41b28e6e0890cbb3bf82104f71404e5f681447ca4700c37de0ea5b77767e1da6",
+    "labels.csv": "4368a6996b569217cf4929c79aabc2f559cab5e0cdfc60cfc4ee0b5007a3c52d",
+    "results.csv": "17475ac3c5274c993382d2ae9b6598e7c96f248cee801f1f53014c6f2943288d"
+  }
+}
