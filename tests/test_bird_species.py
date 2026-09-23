@@ -177,6 +177,7 @@ def test_get_image_ids_with_species_keyword_chunking(monkeypatch):
 
 def test_bioclip_classifier_model_none_before_load(monkeypatch):
     """Model should not be loaded on instantiation."""
+    pytest.importorskip("torch")  # needs the ML stack; runs in gpu-shell / coverage CI (#381)
     monkeypatch.setattr("builtins.__import__", __import__)  # no-op guard
     import torch as _torch
     monkeypatch.setattr(_torch.cuda, "is_available", lambda: False)
@@ -566,6 +567,7 @@ def test_runner_persists_detector_unavailable_sentinel_with_species(monkeypatch)
 
 def test_classify_sets_detector_unavailable_when_ensure_returns_none(monkeypatch):
     """classify() must set last_bbox even when the detector never loads."""
+    pytest.importorskip("torch")  # needs the ML stack; runs in gpu-shell / coverage CI (#381)
     from PIL import Image
 
     import modules.bird_species as bs

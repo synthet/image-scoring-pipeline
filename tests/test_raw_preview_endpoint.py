@@ -7,6 +7,8 @@ def _imports():
     fastapi = pytest.importorskip("fastapi")
     pytest.importorskip("fastapi.testclient")
     pil_image = pytest.importorskip("PIL.Image")
+    # modules.ui.app imports torch at module level (#381).
+    pytest.importorskip("torch")
 
     from modules import api, api_db
     from modules.ui import app as ui_app

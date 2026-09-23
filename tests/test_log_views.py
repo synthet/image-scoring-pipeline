@@ -82,6 +82,7 @@ def test_build_log_tails_payload_webui_only(tmp_path, monkeypatch):
 
 
 def test_webui_rotation_from_config_defaults():
+    pytest.importorskip("torch")  # needs the ML stack; runs in gpu-shell / coverage CI (#381)
     from webui import _DEFAULT_LOG_BACKUP_COUNT, _DEFAULT_LOG_MAX_BYTES, _webui_rotation_from_config
 
     mx, bc = _webui_rotation_from_config({})
@@ -90,6 +91,7 @@ def test_webui_rotation_from_config_defaults():
 
 
 def test_webui_rotation_from_config_custom():
+    pytest.importorskip("torch")  # needs the ML stack; runs in gpu-shell / coverage CI (#381)
     from webui import _webui_rotation_from_config
 
     mx, bc = _webui_rotation_from_config({"system": {"log_max_bytes": 4096, "log_backup_count": 2}})

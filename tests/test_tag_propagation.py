@@ -4,6 +4,11 @@ import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
 
+from tests.support.optional_deps import require_torch
+
+# Every test patches modules.tagging, which imports torch at module level (#381).
+require_torch()
+
 
 # ---------------------------------------------------------------------------
 # Helper: build synthetic data

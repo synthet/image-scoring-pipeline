@@ -12,6 +12,12 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 class TestCaptioning(unittest.TestCase):
     def test_model_loading(self):
+        # unittest-native skip (not pytest.importorskip) so this also behaves under
+        # `python -m unittest`; needs the ML stack, runs in gpu-shell / coverage CI (#381).
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            self.skipTest("torch not installed")
         print("Testing CaptionGenerator initialization...")
         from modules.tagging import CaptionGenerator
 
