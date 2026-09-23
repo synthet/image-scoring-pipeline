@@ -31,6 +31,24 @@ def _phase(code: str, status: str, total: int = 10, done: int = 0, skipped: int 
     }
 
 
+@pytest.fixture(autouse=True)
+def _no_live_db(monkeypatch):
+    """Keep this module off the database, whether or not one is reachable (#336).
+
+    The in-flight job count is an explicit input (tests needing a non-zero count
+    re-patch it); any other unstubbed DB access fails fast instead of reading or
+    reconciling a live library.
+    """
+    from modules import db_connector, db_legacy
+
+    def _refuse(*_a, **_k):
+        raise RuntimeError("tests/test_runs_autodrive.py must not touch a live database")
+
+    monkeypatch.setattr(runs_autodrive.db, "count_running_pipeline_jobs", lambda **_k: 0)
+    monkeypatch.setattr(db_connector, "get_connector", _refuse)
+    monkeypatch.setattr(db_legacy, "get_db", _refuse)
+
+
 def test_build_folder_buckets_plans_suffix_from_first_incomplete(monkeypatch):
     folder = "/mnt/d/Photos/2026-05-01"
     summary = [
