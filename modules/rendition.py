@@ -170,6 +170,34 @@ def source_identity(path: str, *, read_bytes: int = 65536) -> tuple[str, str]:
     return h.hexdigest(), SOURCE_HASH_VERSION
 
 
+def build_rendition_descriptor(
+    source_path: str,
+    image: Any,
+    decode_route: DecodeRoute,
+    orientation: int,
+) -> RenditionDescriptor:
+    """Describe pixels that have **already** been decoded and oriented.
+
+    ``image`` must be the display-oriented image a detector will actually see -- its size
+    is taken as the display dimensions, which for orientations 5..8 is the transpose of
+    the stored file's. Passing the pre-orientation image would record the wrong frame and
+    every normalized region against it would point at the wrong pixels.
+
+    ``orientation`` is the EXIF value that was applied (1 when none was).
+    """
+    source_hash, source_hash_version = source_identity(source_path)
+    width, height = image.size
+    return RenditionDescriptor(
+        source_path=str(source_path),
+        source_hash=source_hash,
+        source_hash_version=source_hash_version,
+        decode_route=decode_route,
+        orientation=int(orientation or 1),
+        display_width=int(width),
+        display_height=int(height),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Crop policy — padding is a versioned decision, not a bare float
 # ---------------------------------------------------------------------------
