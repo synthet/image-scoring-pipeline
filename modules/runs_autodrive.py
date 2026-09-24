@@ -87,7 +87,11 @@ def _log_drive_tick_result(
     logger.info(msg, *args)
 
 
-DEFAULT_TARGET_PHASES: tuple[str, ...] = tuple(p.value for p in PhaseCode)
+# Localization is shadow-only and never auto-driven in this slice (#387 AC-5); it runs
+# only when explicitly submitted.
+DEFAULT_TARGET_PHASES: tuple[str, ...] = tuple(
+    p.value for p in PhaseCode if p is not PhaseCode.LOCALIZATION
+)
 ACTIVE_JOB_STATUSES = {"pending", "queued", "running", "paused"}
 ACTIVE_PHASE_STATUSES = {"queued", "running", "paused", "cancel_requested", "restarting"}
 COMPLETE_PHASE_STATUSES = {"done", "skipped"}

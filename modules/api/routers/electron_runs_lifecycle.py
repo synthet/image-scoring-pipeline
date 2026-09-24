@@ -50,6 +50,7 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
         from modules.phases import (
             PhaseCode,
             assert_prereqs_for_scope,
+            disabled_phase_submission_error,
             job_type_for_phase,
             normalize_phase_codes,
             sort_phase_value_strings,
@@ -68,6 +69,13 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
         raw_stages = list(request.stages or [])
         phases = normalize_phase_codes(raw_stages) if raw_stages else None
         phase_values = [p.value for p in phases] if phases else None
+
+        disabled = disabled_phase_submission_error(phase_values or [])
+        if disabled:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "phase_disabled", "message": disabled},
+            )
 
         # Derive job_type and phase_code from stages so JobDispatcher can route the
         # job.  The phase -> entry-runner map lives in modules.phases.PHASE_TO_JOB_TYPE.

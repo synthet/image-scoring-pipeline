@@ -29,6 +29,7 @@ def reset_ghost_runners() -> list[str]:
         ("indexing", api_module()._indexing_runner),
         ("metadata", api_module()._metadata_runner),
         ("bird_species", api_module()._bird_species_runner),
+        ("localization", api_module()._localization_runner),
     ]:
         if runner is None:
             continue

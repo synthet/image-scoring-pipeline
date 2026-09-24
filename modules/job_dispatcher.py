@@ -29,6 +29,7 @@ class JobDispatcher:
         metadata_runner=None,
         maintenance_runner=None,
         poll_interval: float = 1.0,
+        localization_runner=None,
     ):
         self.scoring_runner = scoring_runner
         self.tagging_runner = tagging_runner
@@ -38,13 +39,14 @@ class JobDispatcher:
         self.indexing_runner = indexing_runner
         self.metadata_runner = metadata_runner
         self.maintenance_runner = maintenance_runner
+        self.localization_runner = localization_runner
         self.poll_interval = max(0.2, float(poll_interval or 1.0))
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._dispatch_lock = threading.Lock()
         self._last_busy_logged: float = 0
 
-    def set_runners(self, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None, bird_species_runner=None, indexing_runner=None, metadata_runner=None, maintenance_runner=None):
+    def set_runners(self, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None, bird_species_runner=None, indexing_runner=None, metadata_runner=None, maintenance_runner=None, localization_runner=None):
         self.scoring_runner = scoring_runner
         self.tagging_runner = tagging_runner
         self.clustering_runner = clustering_runner
@@ -53,6 +55,7 @@ class JobDispatcher:
         self.indexing_runner = indexing_runner
         self.metadata_runner = metadata_runner
         self.maintenance_runner = maintenance_runner
+        self.localization_runner = localization_runner
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -485,6 +488,7 @@ class JobDispatcher:
         runner_map = {
             "indexing": ("indexing_runner", self.indexing_runner),
             "metadata": ("metadata_runner", self.metadata_runner),
+            "localization": ("localization_runner", self.localization_runner),
             "score": ("scoring_runner", self.scoring_runner),
             "scoring": ("scoring_runner", self.scoring_runner),
             "tag": ("tagging_runner", self.tagging_runner),
@@ -498,6 +502,16 @@ class JobDispatcher:
             "bird-species": ("bird_species_runner", self.bird_species_runner),
             "maintenance": ("maintenance_runner", self.maintenance_runner),
         }
+
+        # AC-4 (#387): a config-gated phase that is switched off is rejected here too, not
+        # only at submit time -- a queued or continuing multi-phase job can reach it after
+        # the flag was turned off.
+        from modules.phases import disabled_phase_submission_error
+
+        disabled = disabled_phase_submission_error([phase])
+        if disabled:
+            logger.warning("Dispatcher: rejecting job %s: %s", job_id, disabled)
+            return False, disabled
 
         entry = runner_map.get(phase)
         if entry is None:
@@ -626,6 +640,21 @@ class JobDispatcher:
                 payload.get("input_path", input_path),
                 job_id=job_id,
                 skip_existing=bool(mode_flags["skip_existing"]),
+                resolved_image_ids=scoped_resolved,
+                report_collector=report_collector,
+            )
+
+        if phase_key == "localization":
+            report_collector = self._make_collector(job_id, "localization", payload)
+            if report_collector is not None:
+                try:
+                    in_scope, targeted = self._compute_phase_scope(payload, scoped_resolved)
+                    report_collector.set_scope_counts(in_scope=in_scope, targeted=targeted)
+                except Exception:
+                    logger.debug("Failed to seed job_phases scope for localization job %s", job_id, exc_info=True)
+            return runner.start_batch(
+                payload.get("input_path", input_path),
+                job_id=job_id,
                 resolved_image_ids=scoped_resolved,
                 report_collector=report_collector,
             )
@@ -779,6 +808,7 @@ class JobDispatcher:
         return any([
             self._runner_busy(self.indexing_runner),
             self._runner_busy(self.metadata_runner),
+            self._runner_busy(self.localization_runner),
             self._runner_busy(self.scoring_runner),
             self._runner_busy(self.tagging_runner),
             self._runner_busy(self.clustering_runner),
@@ -792,6 +822,8 @@ class JobDispatcher:
             return "indexing"
         if self._runner_busy(self.metadata_runner):
             return "metadata"
+        if self._runner_busy(self.localization_runner):
+            return "localization"
         if self._runner_busy(self.scoring_runner):
             return "scoring"
         if self._runner_busy(self.tagging_runner):

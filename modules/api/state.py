@@ -18,6 +18,7 @@ _bird_species_runner = None
 _indexing_runner = None
 _metadata_runner = None
 _maintenance_runner = None
+_localization_runner = None
 _orchestrator = None
 _job_dispatcher = JobDispatcher()
 
@@ -45,12 +46,15 @@ def _stop_runner_for_phase(phase: str) -> bool:
     if phase_norm in ("bird_species", "bird-species") and _bird_species_runner is not None:
         _bird_species_runner.stop()
         return True
+    if phase_norm == "localization" and _localization_runner is not None:
+        _localization_runner.stop()
+        return True
     return False
 
 
-def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None, bird_species_runner=None, indexing_runner=None, metadata_runner=None, maintenance_runner=None):
+def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selection_runner=None, orchestrator=None, bird_species_runner=None, indexing_runner=None, metadata_runner=None, maintenance_runner=None, localization_runner=None):
     """Set the runner instances for API access."""
-    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _job_dispatcher, _bird_species_runner, _indexing_runner, _metadata_runner, _maintenance_runner
+    global _scoring_runner, _tagging_runner, _clustering_runner, _selection_runner, _orchestrator, _job_dispatcher, _bird_species_runner, _indexing_runner, _metadata_runner, _maintenance_runner, _localization_runner
     _scoring_runner = scoring_runner
     _tagging_runner = tagging_runner
     _clustering_runner = clustering_runner
@@ -60,6 +64,7 @@ def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selectio
     _indexing_runner = indexing_runner
     _metadata_runner = metadata_runner
     _maintenance_runner = maintenance_runner
+    _localization_runner = localization_runner
     _job_dispatcher.set_runners(
         scoring_runner, 
         tagging_runner, 
@@ -69,6 +74,7 @@ def set_runners(scoring_runner, tagging_runner, clustering_runner=None, selectio
         indexing_runner=indexing_runner,
         metadata_runner=metadata_runner,
         maintenance_runner=maintenance_runner,
+        localization_runner=localization_runner,
     )
     _job_dispatcher.start()
 
@@ -111,6 +117,7 @@ def _stop_runner_for_job_row(job: dict[str, Any]) -> bool:
     for ph in (
         "indexing",
         "metadata",
+        "localization",
         "scoring",
         "keywords",
         "tagging",
@@ -129,6 +136,7 @@ def _join_runner_threads(per_thread_timeout: float = 2.0) -> None:
     runners = [
         _indexing_runner,
         _metadata_runner,
+        _localization_runner,
         _scoring_runner,
         _tagging_runner,
         _clustering_runner,
@@ -212,6 +220,7 @@ def graceful_shutdown_processing(reason: str = "server_shutdown") -> None:
     for phase in (
         "indexing",
         "metadata",
+        "localization",
         "scoring",
         "keywords",
         "clustering",

@@ -214,7 +214,7 @@ def test_narrowing_to_nothing_routable_returns_nothing_to_queue(
     monkeypatch.setattr("modules.db.enqueue_job_with_phases", lambda *a, **k: (42, 0))
     monkeypatch.setattr(
         "modules.runs_autodrive.phases_with_work_from_repair_plan",
-        lambda *_a, **_k: ["localization"],
+        lambda *_a, **_k: ["not_a_phase"],
     )
     _stub_compute_scope_phases.update({"indexing", "metadata", "scoring"})
 
