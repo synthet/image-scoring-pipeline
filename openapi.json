@@ -5770,6 +5770,382 @@
         }
       }
     },
+    "/api/analytics/scores/matrix": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Image \u00d7 score-dimension matrix",
+        "description": "Every image with every score dimension (composites + all models incl. shadow), column-oriented, `COALESCE(normalized, raw_score)` rounded to 3 decimals. Cached in-process; supports `If-None-Match` \u2192 304. PostgreSQL only.",
+        "operationId": "get_score_matrix_api_analytics_scores_matrix_get",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library.",
+              "title": "Keyword"
+            },
+            "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreMatrixResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "304": {
+            "description": "Not modified (ETag match)"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/scores/stats": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Score-dimension descriptives and correlations",
+        "description": "Per-dimension descriptives (mean, median, mode, IQR, std, skewness, kurtosis, boxplot whiskers, 50-bin histogram) and pairwise-complete Pearson / Spearman matrices with p-values and n. PostgreSQL only.",
+        "operationId": "get_score_stats_api_analytics_scores_stats_get",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library.",
+              "title": "Keyword"
+            },
+            "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreStatsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/scores/regression": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "OLS regression of a target score on predictor scores",
+        "description": "Multiple linear regression on complete rows: coefficients (\u03b2, standardized \u03b2, SE, t, p, 95% CI, VIF), R\u00b2, adjusted R\u00b2, 5-fold CV R\u00b2, RMSE, MAE, F-test, sampled residuals and rule-based recommendations. `predictors` defaults to all non-shadow models. PostgreSQL only.",
+        "operationId": "get_score_regression_api_analytics_scores_regression_get",
+        "parameters": [
+          {
+            "name": "target",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Dimension to predict (e.g. general)",
+              "default": "general",
+              "title": "Target"
+            },
+            "description": "Dimension to predict (e.g. general)"
+          },
+          {
+            "name": "predictors",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated predictor dimensions",
+              "title": "Predictors"
+            },
+            "description": "Comma-separated predictor dimensions"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library.",
+              "title": "Keyword"
+            },
+            "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreRegressionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/scores/stacks": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Within-stack culling signal per score dimension",
+        "description": "For stacks with at least `min_size` scored images: within-stack spread, within-stack variance share, tie rate, top-gap, pick/reject pairwise AUC (images.pick_status), top-1 pick rate, stacks.best_image_id match rate, and mean within-stack Spearman agreement between dimensions. PostgreSQL only.",
+        "operationId": "get_score_stacks_api_analytics_scores_stacks_get",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library.",
+              "title": "Keyword"
+            },
+            "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library."
+          },
+          {
+            "name": "min_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 2,
+              "description": "Minimum scored images per stack",
+              "default": 2,
+              "title": "Min Size"
+            },
+            "description": "Minimum scored images per stack"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreStacksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/scores/keywords": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Per-keyword score profiles",
+        "description": "For the most frequent keywords: per-dimension descriptives of the keyword layer and its shift vs the rest of the library (mean delta, Cohen's d, percentile-rank shift). PostgreSQL only.",
+        "operationId": "get_score_keyword_profiles_api_analytics_scores_keywords_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Number of keywords (by image count)",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "Number of keywords (by image count)"
+          },
+          {
+            "name": "min_images",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Skip keywords with fewer images",
+              "default": 30,
+              "title": "Min Images"
+            },
+            "description": "Skip keywords with fewer images"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreKeywordProfilesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/culling/agent-review/groups": {
       "get": {
         "tags": [
@@ -12322,6 +12698,523 @@
         ],
         "title": "ScopePreviewRequest"
       },
+      "ScoreKeywordProfilesResponse": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "image_count": {
+            "type": "integer",
+            "title": "Image Count"
+          },
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keys"
+          },
+          "keywords": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Keywords"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "image_count",
+          "keys",
+          "keywords"
+        ],
+        "title": "ScoreKeywordProfilesResponse",
+        "description": "Per-keyword score profile vs the rest of the library for the most frequent keywords."
+      },
+      "ScoreMatrixResponse": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "generated_at": {
+            "type": "string",
+            "title": "Generated At"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scope",
+            "description": "{\"kind\": \"library\"} or {\"kind\": \"keyword\", \"keyword\": ...}"
+          },
+          "image_count": {
+            "type": "integer",
+            "title": "Image Count"
+          },
+          "image_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Image Ids"
+          },
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keys"
+          },
+          "meta": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScoreSeriesMeta"
+            },
+            "type": "object",
+            "title": "Meta"
+          },
+          "series": {
+            "additionalProperties": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Series"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "generated_at",
+          "scope",
+          "image_count",
+          "image_ids",
+          "keys",
+          "meta",
+          "series"
+        ],
+        "title": "ScoreMatrixResponse",
+        "description": "Column-oriented image \u00d7 score-dimension matrix (values rounded to 3 decimals, null = missing)."
+      },
+      "ScoreRegressionResponse": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scope"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "predictors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Predictors"
+          },
+          "complete_rows": {
+            "type": "integer",
+            "title": "Complete Rows"
+          },
+          "image_count": {
+            "type": "integer",
+            "title": "Image Count"
+          },
+          "configured_weights": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured Weights"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "k": {
+            "type": "integer",
+            "title": "K"
+          },
+          "dof": {
+            "type": "integer",
+            "title": "Dof"
+          },
+          "rank_deficient": {
+            "type": "boolean",
+            "title": "Rank Deficient"
+          },
+          "intercept": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Intercept"
+          },
+          "coefficients": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Coefficients"
+          },
+          "r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R2"
+          },
+          "adj_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adj R2"
+          },
+          "cv_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cv R2"
+          },
+          "rmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rmse"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae"
+          },
+          "f_stat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F Stat"
+          },
+          "f_p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F P"
+          },
+          "residuals": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Residuals"
+          },
+          "recommendations": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Recommendations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "scope",
+          "target",
+          "predictors",
+          "complete_rows",
+          "image_count",
+          "n",
+          "k",
+          "dof",
+          "rank_deficient",
+          "intercept",
+          "coefficients",
+          "residuals",
+          "recommendations"
+        ],
+        "title": "ScoreRegressionResponse",
+        "description": "OLS of a target score on predictor scores, with VIF, fit metrics and recommendations."
+      },
+      "ScoreSeriesMeta": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "composite | model | shadow"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Images with a value for this dimension"
+          },
+          "coverage_pct": {
+            "type": "number",
+            "title": "Coverage Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "count",
+          "coverage_pct"
+        ],
+        "title": "ScoreSeriesMeta",
+        "description": "One score dimension in the score-analytics matrix."
+      },
+      "ScoreStacksResponse": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scope"
+          },
+          "image_count": {
+            "type": "integer",
+            "title": "Image Count"
+          },
+          "meta": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScoreSeriesMeta"
+            },
+            "type": "object",
+            "title": "Meta"
+          },
+          "min_size": {
+            "type": "integer",
+            "title": "Min Size"
+          },
+          "tie_eps": {
+            "type": "number",
+            "title": "Tie Eps"
+          },
+          "stacks_considered": {
+            "type": "integer",
+            "title": "Stacks Considered"
+          },
+          "images_in_stacks": {
+            "type": "integer",
+            "title": "Images In Stacks"
+          },
+          "stacks_with_picks": {
+            "type": "integer",
+            "title": "Stacks With Picks"
+          },
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keys"
+          },
+          "models": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "ranking": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ranking",
+            "description": "Dimensions ordered by pick AUC, then within-stack variance share"
+          },
+          "agreement": {
+            "additionalProperties": {
+              "items": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Agreement"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "scope",
+          "image_count",
+          "meta",
+          "min_size",
+          "tie_eps",
+          "stacks_considered",
+          "images_in_stacks",
+          "stacks_with_picks",
+          "keys",
+          "models",
+          "ranking",
+          "agreement"
+        ],
+        "title": "ScoreStacksResponse",
+        "description": "Within-stack culling-signal metrics per score dimension (spread, pick/reject AUC, agreement)."
+      },
+      "ScoreStatsResponse": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "generated_at": {
+            "type": "string",
+            "title": "Generated At"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scope"
+          },
+          "image_count": {
+            "type": "integer",
+            "title": "Image Count"
+          },
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keys"
+          },
+          "meta": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScoreSeriesMeta"
+            },
+            "type": "object",
+            "title": "Meta"
+          },
+          "descriptives": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Descriptives"
+          },
+          "correlation": {
+            "additionalProperties": {
+              "items": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Correlation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "generated_at",
+          "scope",
+          "image_count",
+          "keys",
+          "meta",
+          "descriptives",
+          "correlation"
+        ],
+        "title": "ScoreStatsResponse",
+        "description": "Per-dimension descriptives and pairwise Pearson/Spearman correlation matrices."
+      },
       "ScoringStartRequest": {
         "properties": {
           "image_ids": {
@@ -12881,6 +13774,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
