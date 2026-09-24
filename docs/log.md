@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-09-23] edit | Localization rollout absorbs region-score storage and backfill findings
+
+[`localization-rollout.md`](architecture/pipeline/localization-rollout.md) now carries the findings of [`localization-region-scores-and-backfill.md`](planning/localization-region-scores-and-backfill.md): Stage 6 states the `image_model_scores` storage prerequisite (no region/input-mode key, so region IQA stays in research artifacts until a migration); Stage 7 cites the 76,086-outcome live survey instead of only the older 66,485 snapshot, clarifies it backfills boxes rather than scores, and decides the fate of `scripts/backfill_bird_bbox.py`; Stage 8 adds a no-legacy-only-writer precondition.
+
 ## [2026-09-23] add | Region scores and backfill storage synthesis
 
 Added [`docs/planning/localization-region-scores-and-backfill.md`](planning/localization-region-scores-and-backfill.md) — bbox vs region-IQA backfill plans and full-frame vs crop score storage (today vs localization rollout Stages 5–7). Indexed under [`docs/planning/INDEX.md`](planning/INDEX.md).
