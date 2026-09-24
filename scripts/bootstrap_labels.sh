@@ -24,6 +24,13 @@ LABELS=(
   "type:epic|7c3aed|Parent issue; tracks linked sub-issues"
   "status:obsolete|656d76|Superseded or deferred; kept for history (stay open)"
   "cross-repo|0e8a9c|Coordinated change across both repos"
+  "stage:backlog|bfd4f2|Project board Stage (synced): backlog"
+  "stage:ready|bfd4f2|Project board Stage (synced): ready"
+  "stage:claimed|bfd4f2|Project board Stage (synced): claimed"
+  "stage:in-progress|bfd4f2|Project board Stage (synced): in progress"
+  "stage:blocked|bfd4f2|Project board Stage (synced): blocked"
+  "stage:review|bfd4f2|Project board Stage (synced): review"
+  "stage:done|bfd4f2|Project board Stage (synced): done"
 )
 
 for repo in "${REPOS[@]}"; do

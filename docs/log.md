@@ -598,3 +598,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-23] created | Detector benchmark evaluated with human presence labels
 
 - 2026-09-23: created — [detector benchmark report](reports/detector-benchmark-2026-09.md) for #377, with a path-free pinned cohort, 280 human labels, 59 prior-audit eagle positives, all three arms' results, GPU allocation data, and CSV hashes. The baseline reproduces stored detection presence on all 339 frames. At 1280, eagle detections rise from 20/59 to 53/59, but 35/54 bird-free frames in the no-keyword miss stratum become false detections; tile-on-miss produces 30/54. Confidence intervals, biased sampling, presence-only labels, and missing model-weight provenance are explicit. Keep production defaults unchanged. The stage 3 evaluation deliverable is complete pending review; downstream promotion remains gated. Corrected the preliminary claim of three lost large birds: the lost frames are two labelled non-birds and one unsure across medium/large strata.
+
+## [2026-09-24] edit | Board Stage mirrored to stage:* labels for cloud sessions
+
+- 2026-09-24: updated — [backlog workflow](project/00-backlog-workflow.md) §6 documents the `stage:*` label mirror (`board-stage-sync.yml` + `scripts/ci/sync_stage_labels.py`) that lets cloud sessions pick and transition work without board API access (#390).

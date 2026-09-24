@@ -33,6 +33,8 @@ It spans both repos. The `TODO.md` files are pointers only.
 
 **Project ID quick-reference** (for scripts): project node `PVT_kwHOAFXgIs4BWC3c`, Stage field `PVTSSF_lAHOAFXgIs4BWC3czhRaNZ0`. Full Stage option IDs and command examples in [`docs/project/00-backlog-workflow.md`](docs/project/00-backlog-workflow.md) §5.
 
+**Cloud sessions** (claude.ai/code and other sandboxes where the board API is blocked): use the synced `stage:*` issue labels instead of the board: filter `label:stage:ready`, and swap labels to transition. See [`docs/project/00-backlog-workflow.md`](docs/project/00-backlog-workflow.md) §6.
+
 **Do not** add tasks to `TODO.md`, do not work without an issue, and do not skip the Stage transitions — agents that don't update Stage make the queue lie about what's actually being worked on.
 
 ## Architecture
