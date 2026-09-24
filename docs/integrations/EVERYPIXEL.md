@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Everypixel Labs photo quality connector
+description: Configuration, pricing, and usage of modules.everypixel for stock and UGC quality API calls.
+resource: docs/integrations/EVERYPIXEL.md
+tags: [integrations, everypixel, scoring, api]
+timestamp: 2026-09-24T00:00:00Z
+okf_version: 0.1
+---
+
 # Everypixel Labs photo quality connector
 
 The backend includes `modules.everypixel.EverypixelClient` for calling

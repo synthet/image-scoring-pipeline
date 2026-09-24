@@ -2,10 +2,12 @@
 type: Planning Spec
 title: Everypixel UGC correlation study
 description: Phase 1 read-only harness to compare Everypixel UGC quality with local IQA composites and registry models.
+resource: docs/planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md
 tags:
   - everypixel
   - scoring
   - research
+timestamp: 2026-09-24T00:00:00Z
 okf_version: 0.1
 ---
 
