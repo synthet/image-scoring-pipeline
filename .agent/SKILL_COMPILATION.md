@@ -54,6 +54,7 @@ python scripts/agent_skills/profile_skill_usage.py
 | PR-ready hygiene | `/pr-ready` | `scripts/agent_skills/pr_ready_checks.py` | Summary / Motivation prose |
 | Verification before completion | `verification-before-completion` | `scripts/agent_skills/verification_before_completion.py` | Claim naming; interpreting incomplete output |
 | Commit and push | `commit-and-push` | `scripts/agent_skills/commit_and_push.py` | Conventional Commit wording; human must request ship |
+| Deliver branch | `deliver-branch` | `scripts/agent_skills/deliver_branch.py` | PR prose; fixing red CI checks; judging whether a failure is pre-existing |
 
 ## How to run (agent bootloader pattern)
 
