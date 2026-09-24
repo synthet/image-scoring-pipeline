@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-09-08T00:00:00Z
+timestamp: 2026-09-23T00:00:00Z
 okf_version: 0.1
 status: proposed
 ---
@@ -569,6 +569,14 @@ Every experimental output records one of:
 The input artifact hash, region ID, crop-policy version, model version, and fusion version are part
 of provenance.
 
+**Storage prerequisite.** `image_model_scores` is keyed `(image_id, model_name)` and has no region
+or input-mode dimension, so a full-frame and a region score from the same model cannot both be
+stored as rows today; `is_shadow` only separates experimental models. Until a migration adds that
+dimension, region IQA results stay in research artifacts (JSONL/reports), never in
+`image_model_scores`. Whatever key extension is chosen, scoring completeness and fusion must keep
+counting only non-shadow full-frame rows. Details:
+[region scores and backfill](../../planning/localization-region-scores-and-backfill.md).
+
 ### Text-evidence and Jev decision boundary
 
 Jev is a text/structured-state decision model, not a vision model. It cannot receive image bytes,
@@ -725,8 +733,17 @@ cost multiplier = N(all eligible images) / N(birds-keyword candidates)
 ```
 
 The crop-study snapshot contains 37,417 real boxes and 29,068 no-detection sentinels with no NULL
-remaining (`docs/reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md:62-70`). Those 66,485 outcomes should be
-imported, not recomputed blindly.
+remaining (`docs/reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md:62-70`). The stage 2 live survey
+(2026-09-22) has since grown to 76,086 outcomes: 41,001 boxes, 35,085 sentinels, 3 decode errors
+and 320 NULLs (see the stage 2 status above). Those outcomes should be imported, not recomputed
+blindly.
+
+`scripts/backfill_bird_bbox.py`, the detector-only backfill in use today, writes `images.bird_bbox`
+alone. Once normalized regions become the authority it would bypass them, so this stage either
+retires it or reroutes it through the localization phase and its claims.
+
+This stage backfills **boxes**, not scores. There is no plan to backfill region IQA into production
+tables; that remains Stage 6 shadow work behind its own gates.
 
 ### Exit gate
 
@@ -755,6 +772,8 @@ localization artifacts.
 
 - Backend and gallery contracts read normalized regions.
 - No supported consumer performs authoritative reads directly from `images.bird_bbox`.
+- No supported writer, including `scripts/backfill_bird_bbox.py`, writes `images.bird_bbox` without
+  a normalized run.
 - BioCLIP no longer owns detector loading or bbox-only repair.
 - Normalized artifacts, repair, restart/recovery, and auto-drive have completed a compatibility
   period of at least one complete release with no unresolved convergence regressions.
@@ -832,6 +851,7 @@ legacy rescan, three consumer crops at most, full-frame culling, and full-frame 
 ## Related pages
 
 - [localization-rollout-supplement-2026-09-08.md](localization-rollout-supplement-2026-09-08.md) — review evidence, current implementation snapshot, and resolved design details
+- [../../planning/localization-region-scores-and-backfill.md](../../planning/localization-region-scores-and-backfill.md) — box vs region-score backfill, and full-frame vs crop score storage today vs Stages 5–7
 - [phase-graph.md](phase-graph.md) — current phase order and prerequisites
 - [phase-preconditions.md](phase-preconditions.md) — completeness and work-claim gates
 - [phase-status-machines.md](phase-status-machines.md) — IPS, run-stage, and folder states
