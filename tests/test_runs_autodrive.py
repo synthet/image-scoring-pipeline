@@ -2206,3 +2206,100 @@ def test_maybe_schedule_post_audit_followup_skips_plan_key_in_flight(monkeypatch
         },
     )
     assert follow_id is None
+
+
+def _no_progress_case(monkeypatch, *, executed, enqueued_by_stage, stage_queues):
+    """Run the follow-up scheduler with a recorded enqueue and job-log call list."""
+    captured = []
+    log_lines = []
+
+    def _enqueue(bucket, **kwargs):
+        captured.append((bucket, kwargs))
+        return 55, 1, None
+
+    monkeypatch.setattr(runs_autodrive, "_enqueue_auto_bucket", _enqueue)
+    monkeypatch.setattr(
+        "modules.db_legacy._append_job_log_line", lambda job_id, msg: log_lines.append((job_id, msg))
+    )
+    payload = {
+        "tool_id": "runs_auto_drive",
+        "scope_paths": ["/mnt/d/foo"],
+        "target_phases": ["indexing", "metadata", "scoring", "culling"],
+    }
+    if enqueued_by_stage is not None:
+        payload["resolved_image_ids_by_stage"] = enqueued_by_stage
+    audit = {"pipeline_status": "issues_remaining", "stage_queues": stage_queues}
+    if executed is not None:
+        audit["executed_phases"] = executed
+    follow_id = runs_autodrive.maybe_schedule_post_audit_followup(6268, payload, audit)
+    return follow_id, captured, log_lines
+
+
+def test_post_audit_followup_skips_when_executed_phase_made_no_progress(monkeypatch):
+    """#303: a phase that fails every image must not chain identical follow-ups."""
+    follow_id, captured, log_lines = _no_progress_case(
+        monkeypatch,
+        executed=["indexing"],
+        enqueued_by_stage={"indexing": list(range(326))},
+        stage_queues={"indexing": {"total": 326}},
+    )
+    assert follow_id is None
+    assert captured == []
+    assert len(log_lines) == 1
+    assert log_lines[0][0] == 6268
+    assert "no progress" in log_lines[0][1]
+    assert "326" in log_lines[0][1]
+
+
+def test_post_audit_followup_skips_when_remaining_grew(monkeypatch):
+    follow_id, captured, _ = _no_progress_case(
+        monkeypatch,
+        executed=["indexing"],
+        enqueued_by_stage={"indexing": list(range(91))},
+        stage_queues={"indexing": {"total": 95}},
+    )
+    assert follow_id is None
+    assert captured == []
+
+
+def test_post_audit_followup_queues_when_executed_phase_made_progress(monkeypatch):
+    follow_id, captured, log_lines = _no_progress_case(
+        monkeypatch,
+        executed=["indexing"],
+        enqueued_by_stage={"indexing": list(range(326))},
+        stage_queues={"indexing": {"total": 100}},
+    )
+    assert follow_id == 55
+    assert captured[0][0]["bucket"] == "awaiting_indexing"
+    assert log_lines == []
+
+
+def test_post_audit_followup_queues_downstream_phase_work(monkeypatch):
+    """Executed phase is clean; residual work downstream is normal chaining."""
+    follow_id, captured, _ = _no_progress_case(
+        monkeypatch,
+        executed=["scoring"],
+        enqueued_by_stage={"scoring": list(range(44)), "culling": list(range(44))},
+        stage_queues={"scoring": {"total": 0}, "culling": {"total": 44}},
+    )
+    assert follow_id == 55
+    assert captured[0][0]["bucket"] == "awaiting_culling"
+
+
+@pytest.mark.parametrize(
+    ("executed", "enqueued_by_stage"),
+    [
+        ([], {"indexing": list(range(326))}),  # multi-phase / unknown job_type
+        (["indexing"], None),  # payload predates the enqueue-time baseline
+        (["indexing"], {"indexing": []}),  # empty baseline
+    ],
+)
+def test_post_audit_followup_queues_without_baseline(monkeypatch, executed, enqueued_by_stage):
+    follow_id, captured, _ = _no_progress_case(
+        monkeypatch,
+        executed=executed,
+        enqueued_by_stage=enqueued_by_stage,
+        stage_queues={"indexing": {"total": 326}},
+    )
+    assert follow_id == 55
+    assert len(captured) == 1

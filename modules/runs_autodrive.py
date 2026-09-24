@@ -349,6 +349,29 @@ def _first_post_audit_stage_with_work(
     return None
 
 
+def _post_audit_enqueued_count_if_no_progress(
+    first_phase: str,
+    remaining: int,
+    payload: dict[str, Any],
+    post_run_audit: dict[str, Any],
+) -> int | None:
+    """Return the enqueue-time count when the executed phase fixed nothing, else None.
+
+    Only judges the phase this job actually ran: residual work in a downstream phase is
+    normal chaining. Without an enqueue-time baseline (multi-phase job, older payload)
+    there is nothing to compare against, so the follow-up proceeds as before.
+    """
+    if first_phase not in (post_run_audit.get("executed_phases") or []):
+        return None
+    by_stage = payload.get("resolved_image_ids_by_stage")
+    if not isinstance(by_stage, dict):
+        return None
+    enqueued = len(by_stage.get(first_phase) or [])
+    if enqueued <= 0 or remaining < enqueued:
+        return None
+    return enqueued
+
+
 def maybe_schedule_post_audit_followup(
     job_id: int,
     payload: dict[str, Any],
@@ -380,6 +403,30 @@ def maybe_schedule_post_audit_followup(
         return None
     resolved = str(scope_paths[0]).strip()
     if not resolved:
+        return None
+    # A follow-up for a phase that just fixed nothing would re-run the same images and
+    # chain identical jobs until max_repeats trips (#303). Stop now and say so.
+    enqueued = _post_audit_enqueued_count_if_no_progress(first_phase, remaining, payload, post_run_audit)
+    if enqueued is not None:
+        message = (
+            f"Auto-drive follow-up not queued: {first_phase} made no progress "
+            f"({remaining} still remaining of {enqueued} enqueued)."
+        )
+        logger.warning(
+            "runs_autodrive: post_audit follow-up skipped job_id=%s scope=%s "
+            "reason=no_progress phase=%s remaining=%d enqueued=%d",
+            job_id,
+            resolved,
+            first_phase,
+            remaining,
+            enqueued,
+        )
+        try:
+            from modules.db_legacy import _append_job_log_line
+
+            _append_job_log_line(job_id, message)
+        except Exception:
+            logger.debug("runs_autodrive: job log append failed job_id=%s", job_id, exc_info=True)
         return None
     target = sort_phase_value_strings(
         [str(p) for p in (payload.get("target_phases") or payload.get("phases") or list(DEFAULT_TARGET_PHASES))]
