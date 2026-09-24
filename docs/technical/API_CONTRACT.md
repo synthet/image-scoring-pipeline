@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: API Contract Summary
+description: "REST contract for the Vexlum Scoring FastAPI backend: endpoints, request/response models and error codes."
+resource: docs/technical/API_CONTRACT.md
+tags: [api, rest, contract]
+timestamp: 2026-09-24T00:00:00Z
+okf_version: 0.1
+---
+
 # API Contract Summary
 
 REST API for the Vexlum Scoring Scoring WebUI. Base path: `/api`.
@@ -355,6 +365,19 @@ Session-scoped flags from `culling_picks` plus `session_counters` from `get_sess
 ### GET /api/analytics/stacks/{stack_id}
 
 Per-stack drill-down: scores, exposure, labels, GPS, keywords, embeddings, `composite`, `warnings`.
+
+### Score analytics endpoints
+
+PostgreSQL only (501 otherwise; 422 for invalid parameters). Every endpoint except `keywords` accepts an optional `keyword` (exact `keywords_dim.keyword_norm`, case-insensitive) to restrict to that layer. Results are cached per DB fingerprint. Feature page: [11-score-analytics-and-model-suitability.md](../features/implemented/11-score-analytics-and-model-suitability.md).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/analytics/scores/matrix` | Column-oriented image × dimension matrix (`image_ids`, `keys`, `meta`, `series`; `COALESCE(normalized, raw_score)` rounded to 3 dp). Gzip + `ETag`; `If-None-Match` → 304. |
+| GET | `/api/analytics/scores/stats` | Per-dimension descriptives + 50-bin histogram; pairwise Pearson / Spearman with p and n. |
+| GET | `/api/analytics/scores/regression` | OLS of `target` (default `general`) on comma-separated `predictors` (default: non-shadow models) with VIF, CV R², residuals, recommendations. |
+| GET | `/api/analytics/scores/stacks` | Within-stack culling signals per dimension (`min_size`, default 2) and within-stack Spearman agreement. |
+| GET | `/api/analytics/scores/keywords` | Top `limit` keywords (≥ `min_images`) with per-dimension shift vs the rest of the library (Cohen's d, rank shift). |
+| GET | `/api/analytics/scores/suitability` | Global (Nₐ) vs intra-cluster (Nᵦ) suitability report with manifest, data dictionary and label provenance. Query: `culling_labels` (`auto`\|`manual`\|`unverified`\|`all`), `trust_xmp_ratings`, `min_size`, `bootstrap`. |
 
 ---
 

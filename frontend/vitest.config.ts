@@ -6,6 +6,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    // Same as vite.config.ts: resolve React for the linked design package from this app.
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime'],
   },
   test: {
     environment: 'node',

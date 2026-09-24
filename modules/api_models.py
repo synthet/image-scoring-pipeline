@@ -898,6 +898,121 @@ class CullingAnalyticsResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class ScoreSeriesMeta(BaseModel):
+    """One score dimension in the score-analytics matrix."""
+
+    kind: str = Field(..., description="composite | model | shadow")
+    count: int = Field(..., description="Images with a value for this dimension")
+    coverage_pct: float
+
+
+class ScoreMatrixResponse(BaseModel):
+    """Column-oriented image × score-dimension matrix (values rounded to 3 decimals, null = missing)."""
+
+    fingerprint: str
+    generated_at: str
+    scope: dict[str, Any] = Field(..., description='{"kind": "library"} or {"kind": "keyword", "keyword": ...}')
+    image_count: int
+    image_ids: list[int]
+    keys: list[str]
+    meta: dict[str, ScoreSeriesMeta]
+    series: dict[str, list[float | None]]
+
+
+class ScoreStatsResponse(BaseModel):
+    """Per-dimension descriptives and pairwise Pearson/Spearman correlation matrices."""
+
+    fingerprint: str
+    generated_at: str
+    scope: dict[str, Any]
+    image_count: int
+    keys: list[str]
+    meta: dict[str, ScoreSeriesMeta]
+    descriptives: dict[str, dict[str, Any]]
+    correlation: dict[str, list[list[float | int | None]]]
+
+
+class ScoreRegressionResponse(BaseModel):
+    """OLS of a target score on predictor scores, with VIF, fit metrics and recommendations."""
+
+    fingerprint: str
+    scope: dict[str, Any]
+    target: str
+    predictors: list[str]
+    complete_rows: int
+    image_count: int
+    configured_weights: dict[str, float] | None = None
+    n: int
+    k: int
+    dof: int
+    rank_deficient: bool
+    intercept: dict[str, float | None]
+    coefficients: list[dict[str, Any]]
+    r2: float | None = None
+    adj_r2: float | None = None
+    cv_r2: float | None = None
+    rmse: float | None = None
+    mae: float | None = None
+    f_stat: float | None = None
+    f_p: float | None = None
+    residuals: dict[str, Any]
+    recommendations: list[dict[str, str]]
+
+
+class ScoreStacksResponse(BaseModel):
+    """Within-stack culling-signal metrics per score dimension (spread, pick/reject AUC, agreement)."""
+
+    fingerprint: str
+    scope: dict[str, Any]
+    image_count: int
+    meta: dict[str, ScoreSeriesMeta]
+    min_size: int
+    tie_eps: float
+    stacks_considered: int
+    images_in_stacks: int
+    stacks_with_picks: int
+    keys: list[str]
+    models: list[dict[str, Any]]
+    ranking: list[str] = Field(..., description="Dimensions ordered by pick AUC, then within-stack variance share")
+    agreement: dict[str, list[list[float | int | None]]]
+
+
+class ScoreSuitabilityResponse(BaseModel):
+    """Global (Nₐ) vs intra-cluster (Nᵦ) model suitability report with provenance manifest."""
+
+    manifest: dict[str, Any]
+    data_dictionary: list[dict[str, Any]]
+    scope: dict[str, Any]
+    images: int
+    dimensions: list[str]
+    kinds: dict[str, str]
+    clusters: dict[str, Any]
+    split: dict[str, Any]
+    labels: dict[str, Any] = Field(..., description="Label provenance audit and leakage notes")
+    profiles: dict[str, Any]
+    co_missingness: dict[str, Any]
+    variance: dict[str, Any]
+    correlation: dict[str, Any]
+    pca: dict[str, Any]
+    culling: dict[str, Any]
+    pairwise_model: dict[str, Any]
+    global_: dict[str, Any] = Field(..., alias="global")
+    suitability: dict[str, Any]
+    subgroups: list[dict[str, Any]]
+    findings: list[str]
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ScoreKeywordProfilesResponse(BaseModel):
+    """Per-keyword score profile vs the rest of the library for the most frequent keywords."""
+
+    fingerprint: str
+    image_count: int
+    keys: list[str]
+    keywords: list[dict[str, Any]]
+
+
 class ImageUpdateRequest(BaseModel):
     """Request body for PATCH /api/images/{image_id}."""
 

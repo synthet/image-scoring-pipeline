@@ -226,6 +226,7 @@ from modules.api.routers.ipc_bridge import create_ipc_bridge_router
 from modules.api.routers.maintenance import create_maintenance_router
 from modules.api.routers.pipeline_submit import create_pipeline_submit_router
 from modules.api.routers.public import create_public_api_router
+from modules.api.routers.score_analytics import create_score_analytics_router  # noqa: E402
 from modules.api.routers.scoring import create_scoring_router
 from modules.api.routers.shutdown_schema import create_shutdown_schema_router
 from modules.api.routers.similar import create_similar_router
@@ -260,6 +261,7 @@ def create_api_router() -> APIRouter:
     router.include_router(create_embedding_router())
     router.include_router(create_clustering_router())
     router.include_router(create_data_query_router())
+    router.include_router(create_score_analytics_router())
     router.include_router(create_agent_cull_router())
     router.include_router(create_import_register_router())
     router.include_router(create_pipeline_submit_router())

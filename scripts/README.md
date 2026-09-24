@@ -53,6 +53,8 @@ python scripts/path/to/script.py
 | `python/gallery_generator.py` | Generate MUSIQ gallery HTML |
 | `python/keyword_extractor.py` | AI keyword extraction |
 | `analysis/score_analysis.py` | Score statistics and normalization verification |
+| `analysis/export_score_analytics.py` | Export per-layer (library / keyword) score statistics, correlations, regression and within-stack culling signals to CSV/JSON |
+| `analysis/model_suitability_report.py` | Global vs intra-cluster (Nₐ / Nᵦ) model suitability report with label-provenance audit, manifest and `REPORT.md` (read-only) |
 | `research_models.py` | Research NEF→model input parameters |
 | `batch/resume_recluster.bat` | Resume library-wide CLIP re-cluster from checkpoint (WSL) |
 | `research/clip_culling/resume_recluster.sh` | Same as above (bash; `DETACH=1` for setsid) |
