@@ -10,7 +10,7 @@ research canvas:
   distance correlation, Benjamini–Hochberg adjusted p-values, PCA
 * within-cluster pairwise culling metrics against graded labels
   (pick=2 > neutral=1 > reject=0): pairwise accuracy, top-1, NDCG@k, τ-b,
-  all with cluster-bootstrap CIs
+  all with (Poisson) cluster-bootstrap CIs
 * intercept-free, cluster-weighted pairwise logistic model
   P(a ≻ b) = σ(Σ βⱼ Δⱼ) with grouped CV by cluster, ablation and ECE
 * global agreement Gⱼ with an independent label (burst-downweighted Spearman)
@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 from scipy import stats as sps
 
+from modules.score_analytics.stacks import group_average_ranks
 from modules.score_analytics.stats import finite_or_none
 
 PERCENTILES = (1, 5, 10, 25, 50, 75, 90, 95, 99, 99.5, 99.9)
@@ -38,7 +39,7 @@ DEFAULT_BOOTSTRAP = 200
 TIE_EPS = 1e-9
 PAIR_CAP_PER_CLUSTER = 2000
 KENDALL_SAMPLE = 20_000
-DCOR_SAMPLE = 2_000
+DCOR_SAMPLE = 1_000
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +99,12 @@ def _weighted_pearson(x: np.ndarray, y: np.ndarray, w: np.ndarray) -> np.ndarray
         return cov / np.sqrt(vx * vy)
 
 
+def _boot_mean(W: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Weighted means per bootstrap draw; empty draws (all-zero Poisson weights) → NaN, dropped by ``_ci``."""
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return (W @ v) / W.sum(axis=1)
+
+
 def _ci(samples: np.ndarray, level: float = 0.95) -> tuple[float | None, float | None]:
     s = samples[np.isfinite(samples)]
     if s.size < 10:
@@ -107,9 +114,9 @@ def _ci(samples: np.ndarray, level: float = 0.95) -> tuple[float | None, float |
 
 
 def cluster_bootstrap_weights(codes: np.ndarray, n_groups: int, b: int, seed: int) -> np.ndarray:
-    """B × G multinomial resampling counts of whole clusters."""
+    """B × G Poisson(1) cluster-bootstrap weights (whole clusters resampled; ~multinomial for large G)."""
     rng = np.random.default_rng(seed)
-    return rng.multinomial(n_groups, np.full(n_groups, 1.0 / n_groups), size=b).astype(np.float64)
+    return rng.poisson(1.0, size=(b, n_groups)).astype(np.float64)
 
 
 # ---------------------------------------------------------------------------
@@ -305,17 +312,12 @@ def within_rank_center(values: np.ndarray, clusters: np.ndarray) -> np.ndarray:
     ok = np.isfinite(values) & (clusters > 0)
     if not ok.any():
         return out
-    idx = np.flatnonzero(ok)
-    g = clusters[idx]
-    order = np.lexsort((values[idx], g))
-    idx, g = idx[order], g[order]
-    starts = np.flatnonzero(np.r_[True, g[1:] != g[:-1]])
-    ends = np.r_[starts[1:], g.size]
-    for s, e in zip(starts, ends):
-        if e - s < 2:
-            continue
-        r = sps.rankdata(values[idx[s:e]], method="average")
-        out[idx[s:e]] = (r - r.mean()) / (e - s)
+    codes, sizes = group_index(clusters[ok])
+    r = group_average_ranks(values[ok], codes)
+    size = sizes[codes].astype(np.float64)
+    centered = (r - (size - 1) / 2) / size
+    centered[size < 2] = np.nan
+    out[ok] = centered
     return out
 
 
@@ -539,7 +541,7 @@ def culling_metrics(
         out["pairwise_accuracy_macro"] = _f(macro.mean())
         out["pairwise_accuracy_micro"] = _f(win_per.sum() / dec_per.sum())
         W = cluster_bootstrap_weights(np.arange(has.sum()), int(has.sum()), b, seed)
-        boot = (W @ macro) / W.sum(axis=1)
+        boot = _boot_mean(W, macro)
         out["pairwise_accuracy_macro_ci"] = _ci(boot)
 
     # τ-b per cluster from pair signs (includes label ties).
@@ -554,7 +556,7 @@ def culling_metrics(
         out["kendall_tau_b_mean"] = _f(tau.mean())
         out["kendall_tau_b_clusters"] = int(valid.sum())
         W = cluster_bootstrap_weights(np.arange(valid.sum()), int(valid.sum()), b, seed + 1)
-        out["kendall_tau_b_ci"] = _ci((W @ tau) / W.sum(axis=1))
+        out["kendall_tau_b_ci"] = _ci(_boot_mean(W, tau))
 
     out.update(_topk(score, clusters, grades, b=b, seed=seed + 2))
     return out
@@ -590,7 +592,7 @@ def _topk(score: np.ndarray, clusters: np.ndarray, grades: np.ndarray, *, b: int
         v = np.array(vals)
         out[name] = _f(np.nanmean(v))
         W = cluster_bootstrap_weights(np.arange(v.size), v.size, b, seed)
-        out[f"{name}_ci"] = _ci((W @ np.nan_to_num(v)) / W.sum(axis=1))
+        out[f"{name}_ci"] = _ci(_boot_mean(W, np.nan_to_num(v)))
     return out
 
 

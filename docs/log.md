@@ -602,3 +602,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-24] edit | Board Stage mirrored to stage:* labels for cloud sessions
 
 - 2026-09-24: updated — [backlog workflow](project/00-backlog-workflow.md) §6 documents the `stage:*` label mirror (`board-stage-sync.yml` + `scripts/ci/sync_stage_labels.py`) that lets cloud sessions pick and transition work without board API access (#390).
+
+## [2026-09-24] created | Score analytics dashboard and model suitability toolkit
+
+- 2026-09-24: created — [score analytics and model suitability](features/implemented/11-score-analytics-and-model-suitability.md) for #393; updated [API_CONTRACT.md](technical/API_CONTRACT.md) (score analytics endpoints), [features/implemented/INDEX.md](features/implemented/INDEX.md), [FRONTEND_VISUAL_SPEC.md](design/FRONTEND_VISUAL_SPEC.md) (chart palette exception) and [scripts/README.md](../scripts/README.md).

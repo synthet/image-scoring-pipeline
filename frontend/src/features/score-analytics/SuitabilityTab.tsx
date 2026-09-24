@@ -262,7 +262,7 @@ export function SuitabilityTab({ keyword }: { keyword: string | null }) {
                   <Th>Picks</Th>
                   <Th>Rejects</Th>
                   <Th>Decisive clusters</Th>
-                  <Th className="text-left">Description</Th>
+                  <Th align="left">Description</Th>
                 </tr>
               </thead>
               <tbody>
@@ -274,7 +274,7 @@ export function SuitabilityTab({ keyword }: { keyword: string | null }) {
                     <Td>{fmtInt(src.picks)}</Td>
                     <Td>{fmtInt(src.rejects)}</Td>
                     <Td>{fmtInt(src.decisive_clusters)}</Td>
-                    <Td className="text-left whitespace-normal text-[var(--color-text-secondary)]">
+                    <Td align="left" className="text-[var(--color-text-secondary)]">
                       {src.description}
                       {src.equals_score_rating_pct != null && ` · ${src.equals_score_rating_pct}% equal the score-derived rating`}
                     </Td>

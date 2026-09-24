@@ -186,11 +186,12 @@ export function ErrorState({ error }: { error: unknown }) {
   )
 }
 
-export function Th({ children, className }: { children?: ReactNode; className?: string }) {
+export function Th({ children, className, align }: { children?: ReactNode; className?: string; align?: 'left' }) {
   return (
     <th
       className={clsx(
-        'px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] text-right first:text-left whitespace-nowrap',
+        'px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] whitespace-nowrap',
+        align === 'left' ? 'text-left' : 'text-right first:text-left',
         className,
       )}
     >
@@ -199,9 +200,26 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
   )
 }
 
-export function Td({ children, className, title }: { children?: ReactNode; className?: string; title?: string }) {
+export function Td({
+  children,
+  className,
+  title,
+  align,
+}: {
+  children?: ReactNode
+  className?: string
+  title?: string
+  align?: 'left'
+}) {
   return (
-    <td title={title} className={clsx('px-2 py-1 text-right first:text-left tabular-nums whitespace-nowrap', className)}>
+    <td
+      title={title}
+      className={clsx(
+        'px-2 py-1 tabular-nums',
+        align === 'left' ? 'text-left whitespace-normal' : 'text-right first:text-left whitespace-nowrap',
+        className,
+      )}
+    >
       {children}
     </td>
   )

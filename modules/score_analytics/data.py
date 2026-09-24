@@ -123,20 +123,21 @@ def _select(sql: str, params: tuple | None = None) -> list[tuple]:
 def _query_fingerprint() -> str:
     # Composite recomputes and cull decisions do not always bump
     # images.updated_at, so score sums and id-weighted pick/stack sums are part
-    # of the fingerprint.
+    # of the fingerprint. Float sums are cast to numeric: parallel aggregation
+    # makes double-precision sums differ in the last digits between runs.
     rows = _select(
         """
         SELECT
           (SELECT COUNT(*) FROM images),
           (SELECT MAX(updated_at) FROM images),
-          (SELECT SUM(COALESCE(score_general, 0) + COALESCE(score_technical, 0)
-                      + COALESCE(score_aesthetic, 0)) FROM images),
+          (SELECT SUM((COALESCE(score_general, 0) + COALESCE(score_technical, 0)
+                      + COALESCE(score_aesthetic, 0))::numeric) FROM images),
           (SELECT SUM(id::bigint * (pick_status + 2)) FROM images),
           (SELECT SUM(id::bigint * COALESCE(stack_id, 0)) FROM images),
           (SELECT SUM(id::bigint * COALESCE(best_image_id, 0)) FROM stacks),
           (SELECT COUNT(*) FROM image_model_scores),
           (SELECT MAX(scored_at) FROM image_model_scores),
-          (SELECT SUM(COALESCE(normalized, raw_score, 0)) FROM image_model_scores
+          (SELECT SUM(COALESCE(normalized, raw_score, 0)::numeric) FROM image_model_scores
             WHERE status = 'success'),
           (SELECT COUNT(*) FROM image_keywords),
           (SELECT SUM(image_id::bigint * keyword_id) FROM image_keywords)

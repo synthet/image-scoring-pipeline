@@ -1,3 +1,13 @@
+---
+type: Documentation Index
+title: Features Implemented
+description: "Catalog of shipped backend behavior by area, routing to focused feature pages and canonical contracts."
+resource: docs/features/implemented/INDEX.md
+tags: [features, index]
+timestamp: 2026-09-24T00:00:00Z
+okf_version: 0.1
+---
+
 # Features Implemented
 
 Catalog of shipped behavior by area. This page routes to focused pages and canonical contracts; it does not replace API, schema, or phase authority.
@@ -14,6 +24,7 @@ Catalog of shipped behavior by area. This page routes to focused pages and canon
 | Web UI | Gradio operator UI plus React/Vite `/ui/` surfaces for runs/status workflows. | [07-webui-and-operator-surfaces.md](07-webui-and-operator-surfaces.md), [reports/GRADIO_SERVING_DECISION.md](../../reports/GRADIO_SERVING_DECISION.md) | [webui.py](../../../webui.py), `modules/ui/`, `frontend/` |
 | MCP / diagnostics | FastMCP stdio/SSE tools for database, jobs, logs, model status, config, paths, similarity, and safe diagnostics. | [08-mcp-and-agents.md](08-mcp-and-agents.md), [DIAGNOSTICS.md](../../DIAGNOSTICS.md), [technical/MCP_DEBUGGING_TOOLS.md](../../technical/MCP_DEBUGGING_TOOLS.md), [AGENTS.md](../../../AGENTS.md) | `modules/mcp_server.py`, `scripts/doctor.py`, `scripts/export_debug_bundle.py` |
 | Config | Runtime config loading, config validation, doctor checks, redacted debug output, and API-visible config helpers. | [09-configuration-and-limits.md](09-configuration-and-limits.md), [DIAGNOSTICS.md](../../DIAGNOSTICS.md) | `modules/config.py`, `config.example.json`, `environment.example.json` |
+| Score analytics | `/ui/scores` dashboard (rank curves with uPlot/ECharts A/B, distributions, correlations, OLS, stack culling signals, keyword layers) and the read-only Nₐ / Nᵦ model-suitability toolkit with export scripts. | [11-score-analytics-and-model-suitability.md](11-score-analytics-and-model-suitability.md), [technical/API_CONTRACT.md](../../technical/API_CONTRACT.md#score-analytics-endpoints) | `modules/score_analytics/`, `frontend/src/features/score-analytics/` |
 | Phase status telemetry | Per-image phase status and folder rollup separation from UI telemetry/action labels. | [10-phase-status-decoupling.md](10-phase-status-decoupling.md), [technical/PIPELINE_TERMINOLOGY.md](../../technical/PIPELINE_TERMINOLOGY.md) | phase/status DB helpers and UI payloads |
 
 ## Sibling Gallery

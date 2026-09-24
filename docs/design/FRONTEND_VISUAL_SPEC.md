@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Frontend UX/UI Visual Specification
+description: "Visual specification for the React SPA at /ui/: typography, density, component styling and documented color exceptions."
+resource: docs/design/FRONTEND_VISUAL_SPEC.md
+tags: [design, frontend, ui]
+timestamp: 2026-09-24T00:00:00Z
+okf_version: 0.1
+---
+
 # Frontend UX/UI Visual Specification
 
 > **Mandatory rules:** [UX_UI_CONSTITUTION.md](UX_UI_CONSTITUTION.md) and [image-scoring-ui UX_UI_CONSTITUTION.md](https://github.com/synthet/image-scoring-ui/blob/main/docs/UX_UI_CONSTITUTION.md). This document covers **backend-specific** typography, layout patterns, and map overrides — not the shared palette (see [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md)).
@@ -36,6 +46,11 @@ The typography is optimized for data density and readability in a professional t
   - Track: Transparent
   - Thumb: `#424242` with `2px` border radius.
   - Thumb Hover: `#555`
+
+### Charts (score analytics)
+- **Libraries:** uPlot and ECharts (canvas), loaded only on `/ui/scores`.
+- **Documented hex exception:** canvas series colors live in one file, [`frontend/src/features/score-analytics/palette.ts`](../../frontend/src/features/score-analytics/palette.ts): the dataviz reference categorical palette (dark steps), validated on `--color-bg-secondary` (lightness band, chroma floor, adjacent CVD ΔE ≥ 8.4, contrast ≥ 3:1). Colors follow the entity (model), never its rank; composites use neutral ink steps; unknown / deprecated models fold into a single "other" gray.
+- **Chrome:** axis, grid, text and tooltip colors are read from `--color-*` tokens at runtime.
 
 ### Map & Geo UI (Leaflet Overrides)
 - **Container:** Deep dark theme override (`#141414`).
