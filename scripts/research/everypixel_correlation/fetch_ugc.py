@@ -159,7 +159,7 @@ def main() -> int:
         "--usage-state",
         type=Path,
         default=None,
-        help="Persist API usage counters (default: reports/everypixel-correlation/everypixel_usage.json)",
+        help="Persist API usage counters (default: <artifact-dir>/everypixel_usage.json)",
     )
     args = parser.parse_args()
 

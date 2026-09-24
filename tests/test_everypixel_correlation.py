@@ -93,3 +93,10 @@ def test_build_joined_rows_merges_manifest_and_models():
     assert len(joined) == 1
     assert joined[0]["ugc_class"] == 3
     assert joined[0]["liqe"] == 0.42
+
+
+def test_resolve_reports_dir_env_override(monkeypatch, tmp_path):
+    from scripts.research.everypixel_correlation import common
+
+    monkeypatch.setenv("EVERYPIXEL_CORRELATION_DIR", str(tmp_path / "custom"))
+    assert common.resolve_reports_dir() == (tmp_path / "custom").resolve()

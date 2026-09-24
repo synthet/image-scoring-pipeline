@@ -79,11 +79,8 @@ logs/
 
 # Generated score quality reports (local analysis output)
 reports/model-score-quality/
-# Everypixel UGC correlation study — regenerate via scripts/research/everypixel_correlation/
-reports/everypixel-correlation/everypixel_ugc.jsonl
-reports/everypixel-correlation/manifest.json
-reports/everypixel-correlation/joined_scores.csv
-reports/everypixel-correlation/everypixel_usage.json
+# Everypixel UGC correlation study — canonical artifacts in private image-scoring-skills repo
+reports/everypixel-correlation/
 reports/clip-culling/rollout_recluster.checkpoint.json
 
 # Bird-crop labelling contact sheets: regenerable from label_set_provenance.json

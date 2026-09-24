@@ -19,19 +19,24 @@ okf_version: 0.1
 
 Measure alignment between **Everypixel UGC** outputs (**`quality.class` 1–5** primary, **`quality.score` 0–1** secondary) and existing Vexlum signals (`score_general`, `score_technical`, `score_aesthetic`, plus `image_model_scores` for LIQE, SPAQ, AVA, TOPIQ, ARNIQA).
 
-No production writes in phase 1 — artifacts live under `reports/everypixel-correlation/`.
+No production writes in phase 1 — **artifacts** live in the private sibling repo
+[`image-scoring-skills`](https://github.com/synthet/image-scoring-skills) under
+[`research/everypixel-correlation/`](https://github.com/synthet/image-scoring-skills/tree/main/research/everypixel-correlation)
+(JSONL/manifest may contain library paths). Harness scripts default to that path when
+`../image-scoring-skills` is present; override with `EVERYPIXEL_CORRELATION_DIR` or
+`IMAGE_SCORING_SKILLS_REPO`.
 
 ## Phase 1 harness (implemented)
 
 | Step | Script | Output |
 |------|--------|--------|
-| 1. Cohort | `scripts/research/everypixel_correlation/export_cohort.py` | `reports/everypixel-correlation/manifest.json` |
-| 2. UGC API | `scripts/research/everypixel_correlation/fetch_ugc.py` | `everypixel_ugc.jsonl` |
-| 3. Analysis | `scripts/research/everypixel_correlation/join_and_analyze.py` | `correlation_matrix.csv`, `correlation_summary.md` |
+| 1. Cohort | `scripts/research/everypixel_correlation/export_cohort.py` | `research/everypixel-correlation/manifest.json` (skills repo) |
+| 2. UGC API | `scripts/research/everypixel_correlation/fetch_ugc.py` | `everypixel_ugc.jsonl` (same folder) |
+| 3. Analysis | `scripts/research/everypixel_correlation/join_and_analyze.py` | `correlation_matrix.csv`, `correlation_summary.md`, modeling CSV/MD/JSON |
 
 ### Acceptance criteria (#392)
 
-- [x] `export_cohort.py` → reproducible manifest under `reports/everypixel-correlation/`
+- [x] `export_cohort.py` → reproducible manifest under skills repo `research/everypixel-correlation/`
 - [x] `fetch_ugc.py` → `/v1/quality_ugc` with spend guard (400 calls, `estimated_cost_usd` 0 under trial assumptions)
 - [x] `join_and_analyze.py` → `correlation_matrix.csv` + `correlation_summary.md`
 - [x] This planning note
@@ -94,7 +99,7 @@ Spearman ρ (primary **`ugc_class`**, n=400):
 - **SPAQ** is largely **orthogonal** to Everypixel UGC here — fusion would not duplicate SPAQ signal.
 - Rendition confound: local scores used full pipeline history; Everypixel saw **embedded JPEG previews** (~same as smoke test `raw_preview`).
 
-Artifacts (local, under `reports/everypixel-correlation/`): `manifest.json`, `everypixel_ugc.jsonl`, `everypixel_usage.json`, `correlation_matrix.csv`, `correlation_summary.md`.
+Artifacts: [`image-scoring-skills/research/everypixel-correlation/`](https://github.com/synthet/image-scoring-skills/tree/main/research/everypixel-correlation) — `manifest.json`, `everypixel_ugc.jsonl`, `everypixel_usage.json`, correlation and modeling summaries. Backend `reports/everypixel-correlation/` is gitignored fallback when the skills repo is absent.
 
 **Recommendation:** Do **not** promote to fusion yet. Next (outside #392): quintile-stratified ρ, user-label subset, disagreement mining, optional **shadow** registry row `everypixel_ugc`.
 

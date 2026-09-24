@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-09-24] move | Everypixel study artifacts → image-scoring-skills
+
+Phase 1 outputs moved to private [`image-scoring-skills/research/everypixel-correlation/`](https://github.com/synthet/image-scoring-skills/tree/main/research/everypixel-correlation). Backend harness defaults to sibling path; `reports/everypixel-correlation/` gitignored fallback. See [`EVERYPIXEL_CORRELATION_STUDY.md`](planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md).
+
 ## [2026-09-24] edit | Everypixel UGC correlation phase 1 results (#392)
 
 Completed 400-image stratified study; documented Spearman outcomes in [`EVERYPIXEL_CORRELATION_STUDY.md`](planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md). Harness under `scripts/research/everypixel_correlation/`.

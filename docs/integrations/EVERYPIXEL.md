@@ -77,7 +77,7 @@ successful API calls.
 ## Correlation study (research)
 
 Read-only harness comparing **UGC `quality.class`** / **`quality.score`** to local
-composites and `image_model_scores`: [Everypixel UGC correlation study](../planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md) (GitHub [#392](https://github.com/synthet/image-scoring-backend/issues/392)).
+composites and `image_model_scores`: [Everypixel UGC correlation study](../planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md) (GitHub [#392](https://github.com/synthet/image-scoring-backend/issues/392)). Phase 1 CSV/JSONL/manifest live in private [`image-scoring-skills/research/everypixel-correlation/`](https://github.com/synthet/image-scoring-skills/tree/main/research/everypixel-correlation).
 
 References: [Everypixel Labs API docs](https://labs.everypixel.com/docs),
 [Everypixel pricing](https://labs.everypixel.com/pricing),
