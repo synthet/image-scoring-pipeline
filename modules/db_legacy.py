@@ -7010,6 +7010,7 @@ def _maybe_fail_job_on_post_audit_issues(job_id: int, post_run_audit: dict) -> N
 _AUDIT_JOB_TYPE_PHASE_ALIASES = {
     "indexing": "indexing",
     "metadata": "metadata",
+    "localization": "localization",
     "scoring": "scoring",
     "score": "scoring",
     "culling": "culling",
@@ -13745,7 +13746,7 @@ def seed_pipeline_phases():
     Insert default pipeline phases into PIPELINE_PHASES table.
     Idempotent — skips existing codes.
     """
-    from modules.phases import SEED_PHASES
+    from modules.phases import PHASE_ENABLED_CONFIG_KEYS, SEED_PHASES, is_phase_enabled
 
     try:
         def _tx(tx):
@@ -13754,17 +13755,24 @@ def seed_pipeline_phases():
 
             for phase in SEED_PHASES:
                 code = phase["code"].value if hasattr(phase["code"], "value") else str(phase["code"])
+                enabled = 1 if is_phase_enabled(code) else 0
                 existing = tx.query_one("SELECT id FROM pipeline_phases WHERE code = ?", (code,))
                 if existing is None:
                     tx.execute(
                         "INSERT INTO pipeline_phases (code, name, description, sort_order, enabled, optional, default_skip) "
-                        "VALUES (?, ?, ?, ?, 1, ?, ?)",
-                        (code, phase["name"], phase.get("description", ""), phase["sort_order"],
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (code, phase["name"], phase.get("description", ""), phase["sort_order"], enabled,
                          1 if phase.get("optional") else 0, 1 if phase.get("default_skip") else 0))
                 else:
                     tx.execute(
                         "UPDATE pipeline_phases SET optional = ?, default_skip = ? WHERE code = ?",
                         (1 if phase.get("optional") else 0, 1 if phase.get("default_skip") else 0, code))
+                    # Only config-gated phases are re-synced; an ungated row keeps whatever
+                    # ``enabled`` an operator gave it.
+                    if code in PHASE_ENABLED_CONFIG_KEYS:
+                        tx.execute(
+                            "UPDATE pipeline_phases SET enabled = ? WHERE code = ?",
+                            (enabled, code))
 
         get_connector().run_transaction(_tx)
         logger.info("Pipeline phases seeded successfully.")

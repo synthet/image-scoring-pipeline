@@ -20,6 +20,7 @@ Source of truth in this repo: **`frontend/src/types/api.ts`** — `STAGE_DISPLAY
 |----------------------------------|-----------------------------------------------|------------------|--------|
 | `indexing` | `indexing` | **Discovery** | Scan and register files |
 | `metadata` | `metadata` | **Inspection** | EXIF/XMP, thumbnails |
+| `localization` | `localization` | *(not user-facing yet)* | Shadow-only subject regions; **hidden and rejected while `localization.enabled` is false** (see below) |
 | `scoring` | `score` | **Quality Analysis** | ML quality scores |
 | `culling` | `cluster` | **Similarity Clustering** | Stacks / similarity grouping |
 | `keywords` | `tag` | **Tagging** | Keywords and captions |
@@ -30,6 +31,15 @@ Pydantic `validation_alias` for older clients (`modules/api_models.py:604`,
 `AliasChoices("stage_codes", "operations")`) — prefer `stage_codes` in new code. Accepted tokens are
 validated at `modules/api/routers/pipeline_submit.py:98`; single-file submissions support only `score`
 and `tag`, and `cluster` requires a folder path.
+
+**Config-gated phases.** `localization` (#387, rollout stage 4) is registered in the backend
+(`PhaseCode`, `PHASE_PREREQUISITES`, executor, `pipeline_phases` row) but gated by
+`localization.enabled` (default `false`, `PHASE_ENABLED_CONFIG_KEYS` in `modules/phases.py`).
+While off it is omitted from public phase lists (scope preview, folder phase summary via
+`pipeline_phases.enabled`, the valid-token list in submit errors) and from the OpenAPI
+descriptions; `/api/runs/submit`, `/api/pipeline/submit` and the job dispatcher reject it with an
+error naming the key; auto-drive never targets it. The gallery and SPA stage lists are updated in
+the slice that enables it.
 
 **Phase dependencies are a DAG, not the linear order above.** `culling` and `keywords` are siblings
 that both depend only on `scoring`. See

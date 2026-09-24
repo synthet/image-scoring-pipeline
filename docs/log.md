@@ -602,3 +602,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-24] edit | Board Stage mirrored to stage:* labels for cloud sessions
 
 - 2026-09-24: updated — [backlog workflow](project/00-backlog-workflow.md) §6 documents the `stage:*` label mirror (`board-stage-sync.yml` + `scripts/ci/sync_stage_labels.py`) that lets cloud sessions pick and transition work without board API access (#390).
+
+## [2026-09-23] edit | Localization phase in shadow mode, slice 1 (#387)
+
+- 2026-09-23: updated — [pipeline terminology](technical/PIPELINE_TERMINOLOGY.md) adds `localization` as a registered, config-gated phase (hidden from public phase lists and rejected on submit while `localization.enabled` is false); [DB schema](technical/DB_SCHEMA.md) records `image_localization_runs.decode_route` (migration 0035). Stage 4 slice 1 of the [early-localization rollout](architecture/pipeline/localization-rollout.md): `modules/localization.py` + `modules/localization_runner.py` write provenance-stamped runs and up to 10 ranked regions per image, decoding NEFs from the full-size `JpgFromRaw` (or `rawpy` when no embedded JPEG reaches 2048 px). Shadow-only: no `bird_bbox`, score, tag, species, embedding or consumer phase-status writes.

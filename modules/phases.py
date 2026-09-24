@@ -35,6 +35,7 @@ class PhaseCode(str, Enum):
     """
     INDEXING  = "indexing"
     METADATA  = "metadata"
+    LOCALIZATION = "localization"
     SCORING   = "scoring"
     CULLING   = "culling"
     KEYWORDS  = "keywords"
@@ -45,6 +46,7 @@ class PhaseCode(str, Enum):
 PIPELINE_PHASE_ORDER: tuple[PhaseCode, ...] = (
     PhaseCode.INDEXING,
     PhaseCode.METADATA,
+    PhaseCode.LOCALIZATION,
     PhaseCode.SCORING,
     PhaseCode.CULLING,
     PhaseCode.KEYWORDS,
@@ -57,6 +59,7 @@ _PHASE_ORDER_INDEX = {p: i for i, p in enumerate(PIPELINE_PHASE_ORDER)}
 PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
     PhaseCode.INDEXING.value: (),
     PhaseCode.METADATA.value: (PhaseCode.INDEXING.value,),
+    PhaseCode.LOCALIZATION.value: (PhaseCode.METADATA.value,),
     PhaseCode.SCORING.value: (PhaseCode.METADATA.value,),
     PhaseCode.CULLING.value: (PhaseCode.SCORING.value,),
     PhaseCode.KEYWORDS.value: (PhaseCode.SCORING.value,),
@@ -72,9 +75,53 @@ PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
 # those two decide whether work is *blocked*, and a soft edge never blocks.  Keeping the
 # two tables separate is what lets a phase be scheduled early without becoming a gate.
 #
-# Empty today.  ``localization`` populates it with (scoring, keywords, bird_species) when
-# the phase lands — see docs/architecture/pipeline/localization-rollout.md stage 4.
-PHASE_PREFERRED_BEFORE: dict[str, tuple[str, ...]] = {}
+# See docs/architecture/pipeline/localization-rollout.md stage 4.
+PHASE_PREFERRED_BEFORE: dict[str, tuple[str, ...]] = {
+    PhaseCode.LOCALIZATION.value: (
+        PhaseCode.SCORING.value,
+        PhaseCode.KEYWORDS.value,
+        PhaseCode.BIRD_SPECIES.value,
+    ),
+}
+
+# Phases that are registered but gated by a config flag.  While the flag is false the
+# phase is omitted from public phase lists and any submission naming it is rejected
+# (#387 decision 1).  Registering it anyway keeps the vocabulary, executor and schema in
+# place so enabling is a config change, not a deploy.
+PHASE_ENABLED_CONFIG_KEYS: dict[str, str] = {
+    PhaseCode.LOCALIZATION.value: "localization.enabled",
+}
+
+
+def is_phase_enabled(phase: "PhaseCode | str") -> bool:
+    """False only for a config-gated phase whose flag is off.  Ungated phases are enabled."""
+    code = phase.value if isinstance(phase, PhaseCode) else str(phase or "").strip().lower()
+    key = PHASE_ENABLED_CONFIG_KEYS.get(code)
+    if key is None:
+        return True
+    from modules import config
+
+    return bool(config.get_config_value(key, default=False))
+
+
+def public_phase_codes() -> list[str]:
+    """Phase codes in canonical order, minus config-gated phases that are switched off."""
+    return [p.value for p in PIPELINE_PHASE_ORDER if is_phase_enabled(p)]
+
+
+def disabled_phase_submission_error(phases: Iterable["PhaseCode | str"]) -> str | None:
+    """Rejection message for a submission that names a switched-off phase, else ``None``.
+
+    The message names the config key, so the operator knows what gates the phase.
+    """
+    for phase in phases or []:
+        code = phase.value if isinstance(phase, PhaseCode) else str(phase or "").strip().lower()
+        if not is_phase_enabled(code):
+            return (
+                f"Phase '{code}' is disabled: set {PHASE_ENABLED_CONFIG_KEYS[code]}=true "
+                f"to submit it."
+            )
+    return None
 
 # Entry runner for a phase: the ``jobs.job_type`` used when a phase is the first
 # (or only) stage of a submitted plan.  Single source for a map that was previously
@@ -82,6 +129,7 @@ PHASE_PREFERRED_BEFORE: dict[str, tuple[str, ...]] = {}
 PHASE_TO_JOB_TYPE: dict[str, str] = {
     PhaseCode.INDEXING.value: "indexing",
     PhaseCode.METADATA.value: "metadata",
+    PhaseCode.LOCALIZATION.value: "localization",
     PhaseCode.SCORING.value: "scoring",
     PhaseCode.CULLING.value: "selection",
     PhaseCode.KEYWORDS.value: "tagging",
@@ -543,6 +591,17 @@ SEED_PHASES = [
         "sort_order": 2,
         "enabled": 1,
         "optional": 0,
+        "default_skip": False,
+    },
+    {
+        # ``pipeline_phases.enabled`` follows ``localization.enabled`` (see
+        # ``PHASE_ENABLED_CONFIG_KEYS``), re-synced at every seed, so the folder
+        # summary hides the phase while it is switched off.
+        "code": PhaseCode.LOCALIZATION,
+        "name": "Localization",
+        "description": "Detect subject regions (bird YOLO) and store them with provenance. Shadow-only.",
+        "sort_order": 25,
+        "optional": True,
         "default_skip": False,
     },
     {

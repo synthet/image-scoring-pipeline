@@ -28,6 +28,7 @@ def test_phase_prerequisites_match_registered_executors():
         clustering_runner=_StubRunner(),
         selection_runner=_StubRunner(),
         bird_species_runner=_StubRunner(),
+        localization_runner=_StubRunner(),
     )
 
     for code_str, expected_tuple in PHASE_PREREQUISITES.items():
@@ -64,10 +65,10 @@ def test_registry_lookup_accepts_string_and_enum():
 
 
 def test_registry_lookup_of_unknown_and_blank_codes_is_none():
-    assert PhaseRegistry.get("localization") is None
+    assert PhaseRegistry.get("not_a_phase") is None
     assert PhaseRegistry.get("") is None
     assert PhaseRegistry.get(None) is None
-    assert not PhaseRegistry.is_registered("localization")
+    assert not PhaseRegistry.is_registered("not_a_phase")
 
 
 def test_every_pipeline_phase_has_a_prerequisite_entry():
@@ -96,6 +97,7 @@ def test_preferred_before_matches_registered_executors():
         clustering_runner=_StubRunner(),
         selection_runner=_StubRunner(),
         bird_species_runner=_StubRunner(),
+        localization_runner=_StubRunner(),
     )
 
     for code in PhaseCode:

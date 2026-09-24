@@ -27,12 +27,32 @@ TestClient = pytest.importorskip("fastapi.testclient").TestClient
 
 from modules.phases import (  # noqa: E402
     PHASE_CODE_ALIASES,
+    PHASE_ENABLED_CONFIG_KEYS,
     PHASE_TO_JOB_TYPE,
     PhaseCode,
 )
 
 # phase_code -> why that surface legitimately does not accept it.
 UNSUPPORTED_BY_DESIGN: dict[str, dict[str, str]] = {}
+
+# Config-gated phases (``localization``, #387 decision 1) are the other documented
+# divergence: while their flag is off every surface rejects them. The every-phase tests
+# below switch the flag on, so parity is still enforced for the day the phase is enabled;
+# ``test_disabled_phase_is_rejected_*`` pin the rejection itself.
+GATED_PHASES = sorted(PHASE_ENABLED_CONFIG_KEYS)
+
+
+@pytest.fixture
+def gated_phases_enabled(monkeypatch):
+    monkeypatch.setattr("modules.phases.is_phase_enabled", lambda _phase: True)
+
+
+@pytest.fixture
+def gated_phases_disabled(monkeypatch):
+    monkeypatch.setattr(
+        "modules.phases.is_phase_enabled",
+        lambda phase: getattr(phase, "value", phase) not in PHASE_ENABLED_CONFIG_KEYS,
+    )
 
 
 @pytest.fixture
@@ -126,7 +146,7 @@ def assert_vocabulary_accepted(response, surface: str, token: str):
 
 
 @pytest.mark.parametrize("phase", [p.value for p in PhaseCode])
-def test_runs_submit_accepts_every_phase_code(api_client, scope, stub_enqueue, phase):
+def test_runs_submit_accepts_every_phase_code(api_client, scope, stub_enqueue, gated_phases_enabled, phase):
     """/api/runs/submit must route every canonical phase code."""
     if phase in UNSUPPORTED_BY_DESIGN.get("runs_submit", {}):
         pytest.skip(UNSUPPORTED_BY_DESIGN["runs_submit"][phase])
@@ -147,7 +167,9 @@ def test_runs_submit_accepts_every_phase_code(api_client, scope, stub_enqueue, p
 
 
 @pytest.mark.parametrize("phase", [p.value for p in PhaseCode])
-def test_pipeline_submit_accepts_every_phase_code(api_client, scope, stub_enqueue, monkeypatch, phase):
+def test_pipeline_submit_accepts_every_phase_code(
+    api_client, scope, stub_enqueue, gated_phases_enabled, monkeypatch, phase,
+):
     """/api/pipeline/submit must accept the same vocabulary /api/runs/submit does."""
     if phase in UNSUPPORTED_BY_DESIGN.get("pipeline_submit", {}):
         pytest.skip(UNSUPPORTED_BY_DESIGN["pipeline_submit"][phase])
@@ -161,6 +183,36 @@ def test_pipeline_submit_accepts_every_phase_code(api_client, scope, stub_enqueu
         json={"workspace_target": scope, "stage_codes": [phase]},
     )
     assert_vocabulary_accepted(r, "/api/pipeline/submit", phase)
+
+
+@pytest.mark.parametrize("phase", GATED_PHASES)
+def test_disabled_phase_is_rejected_by_runs_submit(api_client, scope, stub_enqueue, gated_phases_disabled, phase):
+    r = api_client.post(
+        "/api/runs/submit",
+        json={"scope_type": "folder_recursive", "scope_paths": [scope], "stages": ["metadata", phase]},
+    )
+    assert r.status_code == 400, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "phase_disabled"
+    assert PHASE_ENABLED_CONFIG_KEYS[phase] in detail["message"]
+    assert stub_enqueue == []
+
+
+@pytest.mark.parametrize("phase", GATED_PHASES)
+def test_disabled_phase_is_rejected_by_pipeline_submit(
+    api_client, scope, stub_enqueue, gated_phases_disabled, monkeypatch, phase,
+):
+    import modules.api as api_mod
+
+    monkeypatch.setattr(api_mod, "validate_and_preview", lambda _req: {"preview_count": 3})
+    r = api_client.post(
+        "/api/pipeline/submit",
+        json={"workspace_target": scope, "stage_codes": [phase]},
+    )
+    body = r.json()
+    assert body["success"] is False
+    assert PHASE_ENABLED_CONFIG_KEYS[phase] in body["message"]
+    assert stub_enqueue == []
 
 
 @pytest.mark.parametrize("alias", sorted(PHASE_CODE_ALIASES))

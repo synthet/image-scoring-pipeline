@@ -232,6 +232,7 @@ def test_fully_reversed_plan_reports_every_non_root_phase():
         "keywords": ["scoring"],
         "culling": ["scoring"],
         "scoring": ["metadata"],
+        "localization": ["metadata"],
         "metadata": ["indexing"],
     }
 
@@ -242,8 +243,8 @@ def test_duplicate_tokens_keep_their_first_position():
 
 
 def test_unknown_phase_is_not_gated():
-    """An unregistered code (e.g. a future ``localization``) has no prereq entry."""
-    assert phases.missing_prerequisites(["localization"], set()) == {}
+    """An unregistered code has no prereq entry."""
+    assert phases.missing_prerequisites(["not_a_phase"], set()) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +322,7 @@ def test_normalize_sorts_canonically_and_dedupes():
 
 
 def test_normalize_drops_unknown_tokens():
-    assert phases.normalize_phase_codes(["localization", "", None, "scoring"]) == [
+    assert phases.normalize_phase_codes(["not_a_phase", "", None, "scoring"]) == [
         phases.PhaseCode.SCORING,
     ]
 
@@ -336,8 +337,8 @@ def test_every_phase_has_an_entry_job_type():
 
 def test_job_type_for_phase_falls_back_for_unknown_input():
     assert phases.job_type_for_phase(None) == "scoring"
-    assert phases.job_type_for_phase("localization") == "scoring"
-    assert phases.job_type_for_phase("localization", default="localization") == "localization"
+    assert phases.job_type_for_phase("not_a_phase") == "scoring"
+    assert phases.job_type_for_phase("not_a_phase", default="not_a_phase") == "not_a_phase"
 
 
 def test_culling_and_keywords_route_to_their_own_runners():

@@ -27,8 +27,10 @@ from modules.phases import (
     PIPELINE_PHASE_ORDER,
     PhaseCode,
     assert_prereqs_for_scope,
+    disabled_phase_submission_error,
     job_type_for_phase,
     normalize_phase_codes,
+    public_phase_codes,
 )
 from modules.phases_policy import explain_phase_run_decision
 from modules.pipeline_selector_composer import (
@@ -132,8 +134,11 @@ def create_pipeline_submit_router() -> APIRouter:
             elif resolved_phase[0].value not in phase_plan_codes:
                 phase_plan_codes.append(resolved_phase[0].value)
         if invalid_ops:
-            valid_ops = sorted({p.value for p in PhaseCode} | {"score", "tag", "cluster"})
+            valid_ops = sorted(set(public_phase_codes()) | {"score", "tag", "cluster"})
             return ApiResponse(success=False, message=f"Invalid submission parameters: Invalid stage_codes: {invalid_ops}. Valid: {valid_ops}")
+        disabled = disabled_phase_submission_error(phase_plan_codes)
+        if disabled:
+            return ApiResponse(success=False, message=f"Invalid submission parameters: {disabled}")
 
         first_op = request.stage_codes[0]
         first_phase = phase_plan_codes[0]
@@ -373,6 +378,23 @@ def create_pipeline_submit_router() -> APIRouter:
                 description=wf_desc,
             )
 
+        elif first_phase == PhaseCode.LOCALIZATION.value:
+            if _api_module()._localization_runner is None:
+                return ApiResponse(success=False, message="Orchestrator unavailable: Localization runner not available")
+            job_id, queue_position = db.enqueue_job(
+                queue_input_path,
+                phase_code=PhaseCode.LOCALIZATION.value,
+                job_type=job_type_for_phase(PhaseCode.LOCALIZATION),
+                queue_payload=_pipeline_queue_payload(
+                    {
+                        "input_path": wt or None,
+                        "workspace_target": wt or None,
+                        "workflow_template": request.workflow_template,
+                        "stage_codes": request.stage_codes,
+                    },
+                ),
+                description=wf_desc,
+            )
         elif first_phase == PhaseCode.BIRD_SPECIES.value:
             if _api_module()._bird_species_runner is None:
                 return ApiResponse(success=False, message="Orchestrator unavailable: Bird species runner not available")

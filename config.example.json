@@ -253,6 +253,15 @@
     "device": "auto",
     "fail_open": true
   },
+  "localization": {
+    "enabled": false,
+    "max_regions_per_class": 10,
+    "detectors": {
+      "bird": {
+        "enabled": true
+      }
+    }
+  },
   "embeddings": {
     "persist_clip_image": true,
     "persist_blip_image": true,

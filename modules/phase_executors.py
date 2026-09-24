@@ -49,6 +49,7 @@ def register_all(
     bird_species_runner=None,
     indexing_runner=None,
     metadata_runner=None,
+    localization_runner=None,
 ):
     """
     Register all known phase executors.
@@ -91,6 +92,18 @@ def register_all(
             run_folder=None,
             depends_on=_prereqs(PhaseCode.METADATA),
             preferred_before=_preferred(PhaseCode.METADATA),
+        ))
+
+    # Localization (shadow, #387) — runs after metadata, preferred before consumers.
+    if localization_runner:
+        from modules.localization import LOCALIZATION_RUNNER_VERSION
+
+        PhaseRegistry.register(PhaseExecutor(
+            code=PhaseCode.LOCALIZATION,
+            executor_version=LOCALIZATION_RUNNER_VERSION,
+            run_folder=localization_runner.start_batch,
+            depends_on=_prereqs(PhaseCode.LOCALIZATION),
+            preferred_before=_preferred(PhaseCode.LOCALIZATION),
         ))
 
     # Phase C — Scoring

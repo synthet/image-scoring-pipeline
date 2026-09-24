@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from modules.phases import PHASE_PREREQUISITES
+from modules.phases import PHASE_ENABLED_CONFIG_KEYS, PHASE_PREREQUISITES
 
 PIPELINE_TS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "constants" / "pipeline.ts"
 
@@ -54,8 +54,13 @@ def frontend_prereqs() -> dict[str, tuple[str, ...]]:
     return _parse_frontend_prerequisites()
 
 
+# Config-gated phases stay out of the SPA until the slice that enables them (#387
+# decision 1): the New Run dialog must not offer a stage every submit surface rejects.
+_GATED = set(PHASE_ENABLED_CONFIG_KEYS)
+
+
 def test_every_backend_phase_appears_in_the_frontend_table(frontend_prereqs):
-    missing = sorted(set(PHASE_PREREQUISITES) - set(frontend_prereqs))
+    missing = sorted(set(PHASE_PREREQUISITES) - set(frontend_prereqs) - _GATED)
     assert not missing, (
         f"phases missing from {PIPELINE_TS.name}: {missing}. "
         "Add them to STAGE_PREREQUISITES or the New Run dialog will not gate them."
@@ -66,7 +71,7 @@ def test_prerequisites_agree_for_every_backend_phase(frontend_prereqs):
     mismatches = {
         code: {"backend": expected, "frontend": frontend_prereqs[code]}
         for code, expected in PHASE_PREREQUISITES.items()
-        if frontend_prereqs.get(code) != expected
+        if code not in _GATED and frontend_prereqs.get(code) != expected
     }
     assert not mismatches, f"backend/frontend prerequisite drift: {mismatches}"
 
