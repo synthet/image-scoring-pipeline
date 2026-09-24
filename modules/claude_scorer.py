@@ -237,7 +237,10 @@ class ClaudeScorer:
 
         thread = threading.Thread(target=runner, daemon=True)
         thread.start()
-        thread.join(self.timeout_seconds + 30)
+        join_timeout = self.timeout_seconds + 30
+        thread.join(join_timeout)
+        if thread.is_alive():
+            raise TimeoutError(f"Claude SDK thread did not finish within {join_timeout}s")
         if "error" in box:
             raise box["error"]
         return box.get("value")
