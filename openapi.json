@@ -6146,6 +6146,122 @@
         }
       }
     },
+    "/api/analytics/scores/suitability": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Global vs intra-cluster model suitability (N\u2090 / N\u1d66)",
+        "description": "Read-only research report: extended per-dimension profiles, variance decomposition, pooled vs within-cluster correlations, within-cluster pairwise / top-k / NDCG culling metrics and a pairwise logistic model against graded culling labels, global agreement with independent labels, and the U\u2c7c = (G\u2c7c, C\u2c7c) suitability map with cluster-bootstrap CIs. Label provenance is audited; score-derived labels are never treated as independent. PostgreSQL only.",
+        "operationId": "get_score_suitability_api_analytics_scores_suitability_get",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library.",
+              "title": "Keyword"
+            },
+            "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library."
+          },
+          {
+            "name": "culling_labels",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "auto (manual culling decisions, else unverified pick flags) | manual | unverified | all",
+              "default": "auto",
+              "title": "Culling Labels"
+            },
+            "description": "auto (manual culling decisions, else unverified pick flags) | manual | unverified | all"
+          },
+          {
+            "name": "trust_xmp_ratings",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Treat image_xmp.rating as independent global labels",
+              "default": false,
+              "title": "Trust Xmp Ratings"
+            },
+            "description": "Treat image_xmp.rating as independent global labels"
+          },
+          {
+            "name": "min_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 2,
+              "description": "Minimum images per cluster (stack)",
+              "default": 2,
+              "title": "Min Size"
+            },
+            "description": "Minimum images per cluster (stack)"
+          },
+          {
+            "name": "bootstrap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 20,
+              "description": "Cluster-bootstrap resamples",
+              "default": 200,
+              "title": "Bootstrap"
+            },
+            "description": "Cluster-bootstrap resamples"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreSuitabilityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/culling/agent-review/groups": {
       "get": {
         "tags": [
@@ -13214,6 +13330,147 @@
         ],
         "title": "ScoreStatsResponse",
         "description": "Per-dimension descriptives and pairwise Pearson/Spearman correlation matrices."
+      },
+      "ScoreSuitabilityResponse": {
+        "properties": {
+          "manifest": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Manifest"
+          },
+          "data_dictionary": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Data Dictionary"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scope"
+          },
+          "images": {
+            "type": "integer",
+            "title": "Images"
+          },
+          "dimensions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dimensions"
+          },
+          "kinds": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Kinds"
+          },
+          "clusters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Clusters"
+          },
+          "split": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Split"
+          },
+          "labels": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Labels",
+            "description": "Label provenance audit and leakage notes"
+          },
+          "profiles": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Profiles"
+          },
+          "co_missingness": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Co Missingness"
+          },
+          "variance": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Variance"
+          },
+          "correlation": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Correlation"
+          },
+          "pca": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Pca"
+          },
+          "culling": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Culling"
+          },
+          "pairwise_model": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Pairwise Model"
+          },
+          "global": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Global"
+          },
+          "suitability": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Suitability"
+          },
+          "subgroups": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Subgroups"
+          },
+          "findings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Findings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "manifest",
+          "data_dictionary",
+          "scope",
+          "images",
+          "dimensions",
+          "kinds",
+          "clusters",
+          "split",
+          "labels",
+          "profiles",
+          "co_missingness",
+          "variance",
+          "correlation",
+          "pca",
+          "culling",
+          "pairwise_model",
+          "global",
+          "suitability",
+          "subgroups",
+          "findings"
+        ],
+        "title": "ScoreSuitabilityResponse",
+        "description": "Global (N\u2090) vs intra-cluster (N\u1d66) model suitability report with provenance manifest."
       },
       "ScoringStartRequest": {
         "properties": {

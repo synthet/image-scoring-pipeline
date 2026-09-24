@@ -977,6 +977,33 @@ class ScoreStacksResponse(BaseModel):
     agreement: dict[str, list[list[float | int | None]]]
 
 
+class ScoreSuitabilityResponse(BaseModel):
+    """Global (Nₐ) vs intra-cluster (Nᵦ) model suitability report with provenance manifest."""
+
+    manifest: dict[str, Any]
+    data_dictionary: list[dict[str, Any]]
+    scope: dict[str, Any]
+    images: int
+    dimensions: list[str]
+    kinds: dict[str, str]
+    clusters: dict[str, Any]
+    split: dict[str, Any]
+    labels: dict[str, Any] = Field(..., description="Label provenance audit and leakage notes")
+    profiles: dict[str, Any]
+    co_missingness: dict[str, Any]
+    variance: dict[str, Any]
+    correlation: dict[str, Any]
+    pca: dict[str, Any]
+    culling: dict[str, Any]
+    pairwise_model: dict[str, Any]
+    global_: dict[str, Any] = Field(..., alias="global")
+    suitability: dict[str, Any]
+    subgroups: list[dict[str, Any]]
+    findings: list[str]
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class ScoreKeywordProfilesResponse(BaseModel):
     """Per-keyword score profile vs the rest of the library for the most frequent keywords."""
 

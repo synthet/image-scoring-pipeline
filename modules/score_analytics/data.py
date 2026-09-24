@@ -95,9 +95,13 @@ _lock = threading.RLock()
 _state = _CacheState()
 
 
+class ScoreAnalyticsUnavailable(ValueError):
+    """Raised when the configured database engine cannot serve score analytics."""
+
+
 def require_postgres() -> None:
     if config.get_database_engine() != "postgres":
-        raise ValueError("Score analytics requires PostgreSQL (database.engine=postgres).")
+        raise ScoreAnalyticsUnavailable("Score analytics requires PostgreSQL (database.engine=postgres).")
 
 
 def normalize_keyword(keyword: str | None) -> str | None:

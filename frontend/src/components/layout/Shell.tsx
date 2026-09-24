@@ -10,6 +10,7 @@ import {
   ScrollText,
   MapPin,
   ChartScatter,
+  ChartLine,
   Image,
   Table2,
   Bird,
@@ -86,6 +87,7 @@ export function Shell() {
         <nav className="flex items-center gap-1">
           <NavItem to="/runs" icon={<Workflow size={14} />} label="Runs" />
           <NavItem to="/dashboard" icon={<LayoutDashboard size={14} />} label="Dashboard" />
+          <NavItem to="/scores" icon={<ChartLine size={14} />} label="Scores" />
           <NavItem to="/images" icon={<Image size={14} />} label="Images" />
           <NavItem to="/birds" icon={<Bird size={14} />} label="Birds" />
           <NavItem to="/keywords" icon={<Tags size={14} />} label="Keywords" />

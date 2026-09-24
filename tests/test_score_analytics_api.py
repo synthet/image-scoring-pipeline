@@ -62,6 +62,7 @@ def test_routes_registered():
         "/api/analytics/scores/regression",
         "/api/analytics/scores/stacks",
         "/api/analytics/scores/keywords",
+        "/api/analytics/scores/suitability",
     } <= paths
 
 
@@ -158,6 +159,23 @@ def test_keyword_profiles_endpoint(client, patched):
     dims = {d["dimension"]: d for d in body["keywords"][0]["dimensions"]}
     assert dims["liqe"]["count"] == 100
     assert "cohens_d" in dims["liqe"]
+
+
+def test_suitability_endpoint(client, patched, monkeypatch):
+    from modules.score_analytics import labels
+
+    ids = list(range(1, 201))
+    manual = [(i, "pick" if i % 5 == 1 else "keep", "2026-01-01") for i in ids]
+    monkeypatch.setattr(labels, "label_fingerprint", lambda: "lfp")
+    monkeypatch.setattr(labels, "load_label_rows", lambda: {"culling_manual": manual, "xmp": []})
+    monkeypatch.setattr(labels, "load_data_dictionary", lambda: [{"dimension": "liqe"}])
+    r = client.get("/api/analytics/scores/suitability", params={"bootstrap": 20})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["labels"]["culling_source"] == "culling_manual"
+    assert body["manifest"]["read_only"] is True
+    assert "global" in body and {row["dimension"] for row in body["suitability"]["map"]} == set(body["dimensions"])
+    assert client.get("/api/analytics/scores/suitability", params={"culling_labels": "bogus"}).status_code == 422
 
 
 @pytest.mark.parametrize(

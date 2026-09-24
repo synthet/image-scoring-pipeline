@@ -178,3 +178,38 @@ def _configured_weights(target: str) -> dict[str, float] | None:
     if not isinstance(weights, dict):
         return None
     return {str(k): float(v) for k, v in weights.items()}
+
+
+def get_suitability(
+    keyword: str | None = None,
+    *,
+    culling_labels: str = "auto",
+    trust_xmp_ratings: bool = False,
+    min_size: int = 2,
+    bootstrap: int = 200,
+) -> dict[str, Any]:
+    """Global (Nₐ) vs intra-cluster (Nᵦ) suitability report for a layer (cached)."""
+    from modules.score_analytics import labels, suitability_report
+
+    if culling_labels not in labels.CULLING_POLICIES:
+        raise ScoreAnalyticsInputError(f"culling_labels must be one of {', '.join(labels.CULLING_POLICIES)}")
+    if min_size < 2:
+        raise ScoreAnalyticsInputError("min_size must be at least 2")
+    kw = data.normalize_keyword(keyword)
+    key = ("suitability", kw, culling_labels, trust_xmp_ratings, min_size, bootstrap, labels.label_fingerprint())
+
+    def compute(_m: data.ScoreMatrix) -> dict[str, Any]:
+        m = data.get_scoped(kw)
+        bundle = labels.assemble(
+            m, labels.load_label_rows(), culling_policy=culling_labels, trust_xmp_ratings=trust_xmp_ratings
+        )
+        keyword_ids = {k: data.keyword_image_ids(k) for k, _ in data.top_keywords(5, 30)} if kw is None else {}
+        opts = {"min_size": min_size, "bootstrap": bootstrap}
+        report = suitability_report.build_report(m, bundle, keyword_ids=keyword_ids, **opts)
+        return {
+            "manifest": suitability_report.manifest(m, {**opts, "culling_labels": culling_labels, "trust_xmp_ratings": trust_xmp_ratings}),
+            "data_dictionary": labels.load_data_dictionary(),
+            **report,
+        }
+
+    return data.cached(key, compute)

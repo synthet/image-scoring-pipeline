@@ -54,6 +54,12 @@ const EmbeddingAtlasPage = lazy(() =>
 
 )
 
+const ScoreAnalyticsPage = lazy(() =>
+
+  import('@/features/score-analytics/ScoreAnalyticsPage').then((m) => ({ default: m.ScoreAnalyticsPage })),
+
+)
+
 const DbPage = lazy(() =>
 
   import('@/pages/DbPage').then((m) => ({ default: m.DbPage })),
@@ -165,6 +171,22 @@ export default function App() {
             <Route path="/runs/:runId" element={<RunDetailPage />} />
 
             <Route path="/dashboard" element={<DashboardPage />} />
+
+            <Route
+
+              path="/scores"
+
+              element={(
+
+                <Suspense fallback={<RouteFallback />}>
+
+                  <ScoreAnalyticsPage />
+
+                </Suspense>
+
+              )}
+
+            />
 
             <Route path="/images" element={<ImagesPage />} />
 

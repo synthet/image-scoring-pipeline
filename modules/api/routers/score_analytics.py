@@ -13,6 +13,7 @@ from modules.api_models import (
     ScoreRegressionResponse,
     ScoreStacksResponse,
     ScoreStatsResponse,
+    ScoreSuitabilityResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,11 +25,12 @@ _KEYWORD_DESC = "Restrict to images tagged with this keyword (exact, case-insens
 
 
 def _raise_for(exc: Exception, op: str) -> None:
+    from modules.score_analytics.data import ScoreAnalyticsUnavailable
     from modules.score_analytics.service import ScoreAnalyticsInputError
 
     if isinstance(exc, ScoreAnalyticsInputError):
         raise HTTPException(status_code=422, detail=str(exc))
-    if isinstance(exc, ValueError):
+    if isinstance(exc, ScoreAnalyticsUnavailable):
         raise HTTPException(status_code=501, detail=str(exc))
     logger.exception("%s failed", op)
     raise HTTPException(status_code=500, detail=str(exc))
@@ -147,5 +149,41 @@ def create_score_analytics_router() -> APIRouter:
             return service.get_keyword_profiles(limit, min_images)
         except Exception as e:
             _raise_for(e, "get_score_keyword_profiles")
+
+    @router.get(
+        "/analytics/scores/suitability",
+        response_model=ScoreSuitabilityResponse,
+        response_model_by_alias=True,
+        summary="Global vs intra-cluster model suitability (Nₐ / Nᵦ)",
+        description=(
+            "Read-only research report: extended per-dimension profiles, variance decomposition, pooled vs "
+            "within-cluster correlations, within-cluster pairwise / top-k / NDCG culling metrics and a "
+            "pairwise logistic model against graded culling labels, global agreement with independent "
+            "labels, and the Uⱼ = (Gⱼ, Cⱼ) suitability map with cluster-bootstrap CIs. Label provenance is "
+            "audited; score-derived labels are never treated as independent. PostgreSQL only."
+        ),
+    )
+    def get_score_suitability(
+        keyword: str | None = Query(None, description=_KEYWORD_DESC),
+        culling_labels: str = Query(
+            "auto",
+            description="auto (manual culling decisions, else unverified pick flags) | manual | unverified | all",
+        ),
+        trust_xmp_ratings: bool = Query(False, description="Treat image_xmp.rating as independent global labels"),
+        min_size: int = Query(2, ge=2, le=1000, description="Minimum images per cluster (stack)"),
+        bootstrap: int = Query(200, ge=20, le=2000, description="Cluster-bootstrap resamples"),
+    ):
+        from modules.score_analytics import service
+
+        try:
+            return service.get_suitability(
+                keyword,
+                culling_labels=culling_labels,
+                trust_xmp_ratings=trust_xmp_ratings,
+                min_size=min_size,
+                bootstrap=bootstrap,
+            )
+        except Exception as e:
+            _raise_for(e, "get_score_suitability")
 
     return router
