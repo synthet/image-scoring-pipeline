@@ -102,6 +102,33 @@ def test_scorer_predict_unparseable(sample_image):
     assert scorer.predict(sample_image)["status"] == "failed"
 
 
+def test_run_in_thread_raises_when_thread_outlives_join(monkeypatch):
+    """A worker still alive after join() must surface as a timeout, not a None result (#215)."""
+    from modules import claude_scorer
+
+    joined = {}
+
+    class _HungThread:
+        def __init__(self, target, daemon):
+            self.daemon = daemon
+
+        def start(self):
+            pass
+
+        def join(self, timeout=None):
+            joined["timeout"] = timeout
+
+        def is_alive(self):
+            return True
+
+    monkeypatch.setattr(claude_scorer, "threading", types.SimpleNamespace(Thread=_HungThread))
+    scorer = ClaudeScorer(api_key="x", timeout_seconds=5)
+
+    with pytest.raises(TimeoutError, match="did not finish within 35s"):
+        scorer._run_in_thread("aGk=")
+    assert joined["timeout"] == 35
+
+
 # --- ClaudeModelWrapper ---------------------------------------------------
 
 class _FakeScorer:
