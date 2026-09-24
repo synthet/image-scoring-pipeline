@@ -37,11 +37,12 @@ IS_WINDOWS = platform.system() == "Windows"
 
 # Module-level reference to BirdSpeciesRunner so setup_server_endpoints can access it
 _bird_species_runner = None
+_localization_runner = None
 
 
 def _init_webui_engines(clustering_runner=None):
     """Initialize DB, config, runners, and orchestrator. Returns (app_config, runner, tagging_runner, selection_runner, orchestrator)."""
-    global _bird_species_runner
+    global _bird_species_runner, _localization_runner
     db.init_db()
     app_config = config.load_config()
 
@@ -54,6 +55,11 @@ def _init_webui_engines(clustering_runner=None):
 
     from modules.bird_species import BirdSpeciesRunner
     _bird_species_runner = BirdSpeciesRunner()
+
+    # Shadow localization (#387). Always constructed so the phase has an executor; it
+    # refuses to start while ``localization.enabled`` is false.
+    from modules.localization_runner import LocalizationRunner
+    _localization_runner = LocalizationRunner()
 
     orchestrator = pipeline_orchestrator.PipelineOrchestrator(
         scoring_runner=runner,
@@ -74,6 +80,7 @@ def _init_webui_engines(clustering_runner=None):
         bird_species_runner=_bird_species_runner,
         indexing_runner=indexing_runner,
         metadata_runner=metadata_runner,
+        localization_runner=_localization_runner,
     )
 
     return app_config, runner, tagging_runner, selection_runner, orchestrator, indexing_runner, metadata_runner, maintenance_runner
@@ -132,6 +139,7 @@ def setup_server_endpoints(fastapi_app, scoring_runner=None, tagging_runner=None
         orchestrator, bird_species_runner=_bird_species_runner,
         indexing_runner=indexing_runner, metadata_runner=metadata_runner,
         maintenance_runner=maintenance_runner,
+        localization_runner=_localization_runner,
     )
     api_router = api.create_api_router()
     fastapi_app.include_router(api_router)

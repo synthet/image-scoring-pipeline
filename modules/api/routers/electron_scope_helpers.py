@@ -107,7 +107,7 @@ def compute_scope_preview_for_resolved_paths(
 ) -> dict[str, Any]:
     """Aggregate scope preview for paths already resolved via ``scope_resolve_path``."""
     from modules import db
-    from modules.phases import PhaseCode
+    from modules.phases import public_phase_codes
 
     total_images = 0
     folder_count = 0
@@ -115,7 +115,7 @@ def compute_scope_preview_for_resolved_paths(
     stage_failed: dict[str, int] = {}
     stage_skipped: dict[str, int] = {}
     stage_total: dict[str, int] = {}
-    phase_codes = [p.value for p in PhaseCode]
+    phase_codes = public_phase_codes()
 
     stage_running: dict[str, int] = {}
     stage_queued: dict[str, int] = {}

@@ -6,6 +6,18 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-09-24] move | Everypixel study artifacts → image-scoring-skills
+
+Phase 1 outputs moved to private [`image-scoring-skills/research/everypixel-correlation/`](https://github.com/synthet/image-scoring-skills/tree/main/research/everypixel-correlation). Backend harness defaults to sibling path; `reports/everypixel-correlation/` gitignored fallback. See [`EVERYPIXEL_CORRELATION_STUDY.md`](planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md).
+
+## [2026-09-24] edit | Everypixel UGC correlation phase 1 results (#392)
+
+Completed 400-image stratified study; documented Spearman outcomes in [`EVERYPIXEL_CORRELATION_STUDY.md`](planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md). Harness under `scripts/research/everypixel_correlation/`.
+
+## [2026-09-24] add | Everypixel UGC correlation study (phase 1)
+
+Added [`docs/planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md`](planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md) and `scripts/research/everypixel_correlation/` (cohort export, UGC JSONL fetch, Spearman join). Linked from [`docs/integrations/EVERYPIXEL.md`](integrations/EVERYPIXEL.md). Tracks [#392](https://github.com/synthet/image-scoring-backend/issues/392).
+
 ## [2026-09-23] edit | Localization rollout absorbs region-score storage and backfill findings
 
 [`localization-rollout.md`](architecture/pipeline/localization-rollout.md) now carries the findings of [`localization-region-scores-and-backfill.md`](planning/localization-region-scores-and-backfill.md): Stage 6 states the `image_model_scores` storage prerequisite (no region/input-mode key, so region IQA stays in research artifacts until a migration); Stage 7 cites the 76,086-outcome live survey instead of only the older 66,485 snapshot, clarifies it backfills boxes rather than scores, and decides the fate of `scripts/backfill_bird_bbox.py`; Stage 8 adds a no-legacy-only-writer precondition.
@@ -602,6 +614,14 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-24] edit | Board Stage mirrored to stage:* labels for cloud sessions
 
 - 2026-09-24: updated — [backlog workflow](project/00-backlog-workflow.md) §6 documents the `stage:*` label mirror (`board-stage-sync.yml` + `scripts/ci/sync_stage_labels.py`) that lets cloud sessions pick and transition work without board API access (#390).
+
+## [2026-09-23] edit | Localization phase in shadow mode, slice 1 (#387)
+
+- 2026-09-23: updated — [pipeline terminology](technical/PIPELINE_TERMINOLOGY.md) adds `localization` as a registered, config-gated phase (hidden from public phase lists and rejected on submit while `localization.enabled` is false); [DB schema](technical/DB_SCHEMA.md) records `image_localization_runs.decode_route` (migration 0035). Stage 4 slice 1 of the [early-localization rollout](architecture/pipeline/localization-rollout.md): `modules/localization.py` + `modules/localization_runner.py` write provenance-stamped runs and up to 10 ranked regions per image, decoding NEFs from the full-size `JpgFromRaw` (or `rawpy` when no embedded JPEG reaches 2048 px). Shadow-only: no `bird_bbox`, score, tag, species, embedding or consumer phase-status writes.
+
+## [2026-09-23] created | Localization stage 4 slice 1 status report (#387)
+
+- 2026-09-23: created — [status report](planning/localization-stage4-slice1-status.md) for the paused #387 slice: code complete on `feat/387-localization-shadow`; nine implementation decisions to confirm, five open questions, full-suite Postgres attribution and the `truncate_app_tables` rollback bug as blockers.
 
 ## [2026-09-24] created | Score analytics dashboard and model suitability toolkit
 

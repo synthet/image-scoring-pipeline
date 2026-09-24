@@ -1387,6 +1387,10 @@ def _init_db_transaction():
                 "CREATE INDEX IF NOT EXISTS ix_ilr_status_detector "
                 "ON image_localization_runs (status, detector_key, detector_version);"
             )
+            # Mirrors migrations/versions/0035_localization_decode_route.py (#387 AC-20).
+            cur.execute(
+                "ALTER TABLE image_localization_runs ADD COLUMN IF NOT EXISTS decode_route TEXT;"
+            )
             cur.execute("""
             CREATE TABLE IF NOT EXISTS image_regions (
                 id                  BIGSERIAL PRIMARY KEY,

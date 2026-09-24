@@ -138,13 +138,13 @@ def test_canonical_phase_codes_are_accepted(api_client, tmp_path, satisfied, enq
 
 
 def test_unknown_stage_token_is_rejected_with_the_widened_valid_list(api_client, tmp_path, satisfied):
-    r = _submit(api_client, _folder(tmp_path), ["localization"])
+    r = _submit(api_client, _folder(tmp_path), ["not_a_phase"])
     assert r.status_code == 200
     body = r.json()
     assert body["success"] is False
     message = body["message"]
     assert "Invalid stage_codes" in message
-    assert "localization" in message
+    assert "not_a_phase" in message
     # The advertised vocabulary now covers canonical codes and the legacy aliases.
     for token in ("bird_species", "keywords", "culling", "score", "tag", "cluster"):
         assert token in message

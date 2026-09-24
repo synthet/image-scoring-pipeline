@@ -55,6 +55,7 @@ Central list of **first-party** `SKILL.md` files in this repository for governan
 | verification-before-completion | `.cursor/skills/verification-before-completion/SKILL.md` | Fresh command evidence before "done" claims; harness `scripts/agent_skills/verification_before_completion.py` | L1 | Yes | 2026-07-21 |
 | skill-authoring | `.cursor/skills/skill-authoring/SKILL.md` | Create/improve Cursor-canonical skills + sync | L1 | Yes | 2026-07-21 |
 | commit-and-push | `.cursor/skills/commit-and-push/SKILL.md` | Dry-run-first commit/push harness `scripts/agent_skills/commit_and_push.py` | L2 | Yes | 2026-07-21 |
+| deliver-branch | `.cursor/skills/deliver-branch/SKILL.md` | Current branch -> PR -> green CI -> merge -> ff local master; harness `scripts/agent_skills/deliver_branch.py` | L2 | Yes | 2026-09-23 |
 | lesson-to-skill | `.cursor/skills/lesson-to-skill/SKILL.md` | Turn session corrections, mistakes, and repetitions into enriched or new assets | L1 | Yes | 2026-07-25 |
 | autonomous-run-contract | `.cursor/skills/autonomous-run-contract/SKILL.md` | Metric, budget, revert rule, and stop conditions before an unattended or fanned-out run | L1 | Yes | 2026-07-25 |
 

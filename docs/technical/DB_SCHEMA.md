@@ -37,7 +37,7 @@ The current PostgreSQL initializer creates or maintains these application tables
 | Culling and stacks | `stacks`, `sub_stacks`, `stack_cache`, `cluster_progress`, `culling_sessions`, `culling_picks`, `agent_cull_review_groups`, `agent_cull_recommendations` |
 | Keywords | `keywords_dim`, `image_keywords`, legacy keyword text fields where retained for compatibility |
 | Embeddings | `embedding_spaces`, `image_embeddings`, `image_embeddings_512`, `image_embeddings_768` (legacy `images.image_embedding` dropped in migration 0024) |
-| Localization | `image_localization_runs`, `image_regions` (migration 0034; legacy `images.bird_bbox` remains the authority until `localization.read_normalized_first` is enabled) |
+| Localization | `image_localization_runs`, `image_regions` (migration 0034; `image_localization_runs.decode_route` added in 0035 — which decode produced the detector's pixels, e.g. `raw_jpgfromraw` / `raw_preview` / `raw_rawpy` / `direct`). Written by the shadow `localization` phase (#387); legacy `images.bird_bbox` remains the authority until `localization.read_normalized_first` is enabled |
 
 ## PostgreSQL / pgvector Notes
 

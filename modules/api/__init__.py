@@ -280,6 +280,7 @@ _RUNNER_ATTRS = frozenset({
     "_indexing_runner",
     "_metadata_runner",
     "_maintenance_runner",
+    "_localization_runner",
     "_orchestrator",
     "_job_dispatcher",
 })
@@ -303,6 +304,7 @@ def set_runners(
     indexing_runner=None,
     metadata_runner=None,
     maintenance_runner=None,
+    localization_runner=None,
 ):
     """Set runner instances for API access (delegates to state, syncs module attrs)."""
     _state.set_runners(
@@ -315,6 +317,7 @@ def set_runners(
         indexing_runner=indexing_runner,
         metadata_runner=metadata_runner,
         maintenance_runner=maintenance_runner,
+        localization_runner=localization_runner,
     )
     import sys
 

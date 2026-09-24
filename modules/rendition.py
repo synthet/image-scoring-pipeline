@@ -61,6 +61,7 @@ class DecodeRoute(str, Enum):
 
     DIRECT = "direct"                    # PIL.Image.open on a raster file
     RAW_EMBEDDED_PREVIEW = "raw_preview"  # exiftool JpgFromRaw / PreviewImage, or dcraw -e
+    RAW_JPG_FROM_RAW = "raw_jpgfromraw"  # exiftool JpgFromRaw only (localization decode)
     RAW_RAWPY = "raw_rawpy"              # rawpy.imread().postprocess()
     RAW_IMAGEMAGICK = "raw_magick"       # magick ... -resize 2048x2048>
     UNKNOWN = "unknown"                  # pixels from a caller that did not say
