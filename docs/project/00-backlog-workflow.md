@@ -4,7 +4,7 @@ title: Backlog workflow
 description: Operating contract for picking, claiming, and transitioning backlog issues on the synthet Project board, including the stage:* label mirror for cloud sessions.
 resource: project/00-backlog-workflow.md
 tags: [backlog, project-board, workflow, agents]
-timestamp: 2026-09-24T00:00:00Z
+timestamp: 2026-09-24T06:00:00Z
 okf_version: 0.1
 ---
 
@@ -208,9 +208,10 @@ The contract in §2 is unchanged; a cloud agent follows it through labels:
 Keep **one** `stage:*` label per issue. If labels and board disagree, the newer change
 wins: the Stage value's `updatedAt` against the latest `stage:*` `labeled` event. So a
 maintainer moving the card on the board overrides an older label, and a label swap
-overrides an older board value. Only open issues that are on the board are synced;
-closed issues and draft items are skipped. Expect up to 15 minutes of lag for gallery
-issues.
+overrides an older board value. Closed board issues always end at Done: the sync sets
+their Stage to Done, and any `stage:*` labels they carry collapse to `stage:done`. Closed
+issues with no stage label keep their labels. Only issues on the board are synced; PRs
+and draft items are skipped. Expect up to 15 minutes of lag for gallery issues.
 
 **Setup (maintainer, once):**
 1. Create a classic PAT with `repo` and `project` scopes.

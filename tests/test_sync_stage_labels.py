@@ -82,7 +82,27 @@ def test_duplicate_matching_label_extra_removed(sync):
     assert d == sync.Decision(remove=("claimed",))
 
 
-def test_plan_skips_closed_issues_and_non_issues(sync):
+def test_decide_closed_already_done_is_noop(sync):
+    assert sync.decide_closed("done", {"done"}).is_noop
+    assert sync.decide_closed("done", set()).is_noop
+
+
+def test_decide_closed_moves_board_and_swaps_label(sync):
+    d = sync.decide_closed("in_progress", {"in_progress"})
+    assert d == sync.Decision(set_board="done", add=("done",), remove=("in_progress",))
+
+
+def test_decide_closed_without_stage_label_only_moves_board(sync):
+    assert sync.decide_closed("ready", set()) == sync.Decision(set_board="done")
+    assert sync.decide_closed(None, set()) == sync.Decision(set_board="done")
+
+
+def test_decide_closed_drops_extra_label(sync):
+    d = sync.decide_closed("done", {"review", "done"})
+    assert d == sync.Decision(remove=("review",))
+
+
+def test_plan_closed_issue_moves_to_done_and_skips_non_issues(sync):
     items = [
         {"id": "a", "stage": {"optionId": "ddaf7773", "updatedAt": BOARD_AT},
          "content": {"__typename": "Issue", "number": 1, "state": "CLOSED",
@@ -95,9 +115,18 @@ def test_plan_skips_closed_issues_and_non_issues(sync):
          "content": {"__typename": "Issue", "number": 3, "state": "OPEN",
                      "repository": {"nameWithOwner": "synthet/image-scoring-backend"},
                      "labels": {"nodes": [{"name": "type:bug"}]}}},
+        {"id": "e", "stage": {"optionId": "73062c96", "updatedAt": BOARD_AT},
+         "content": {"__typename": "Issue", "number": 4, "state": "CLOSED",
+                     "repository": {"nameWithOwner": "synthet/image-scoring-backend"},
+                     "labels": {"nodes": []}}},
     ]
-    planned = list(sync.plan(items, label_events=lambda _repo, _n: {}))
+
+    def no_events(_repo, _n):
+        raise AssertionError("closed issues must not fetch label events")
+
+    planned = list(sync.plan(items, label_events=lambda r, n: {} if n == 3 else no_events(r, n)))
     assert [(p.repo, p.number, p.decision) for p in planned] == [
+        ("synthet/image-scoring-backend", 1, sync.Decision(set_board="done")),
         ("synthet/image-scoring-backend", 3, sync.Decision(add=("ready",))),
     ]
 
