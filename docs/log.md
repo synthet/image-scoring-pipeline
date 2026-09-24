@@ -6,6 +6,14 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-09-24] edit | Everypixel UGC correlation phase 1 results (#392)
+
+Completed 400-image stratified study; documented Spearman outcomes in [`EVERYPIXEL_CORRELATION_STUDY.md`](planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md). Harness under `scripts/research/everypixel_correlation/`.
+
+## [2026-09-24] add | Everypixel UGC correlation study (phase 1)
+
+Added [`docs/planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md`](planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md) and `scripts/research/everypixel_correlation/` (cohort export, UGC JSONL fetch, Spearman join). Linked from [`docs/integrations/EVERYPIXEL.md`](integrations/EVERYPIXEL.md). Tracks [#392](https://github.com/synthet/image-scoring-backend/issues/392).
+
 ## [2026-09-23] edit | Localization rollout absorbs region-score storage and backfill findings
 
 [`localization-rollout.md`](architecture/pipeline/localization-rollout.md) now carries the findings of [`localization-region-scores-and-backfill.md`](planning/localization-region-scores-and-backfill.md): Stage 6 states the `image_model_scores` storage prerequisite (no region/input-mode key, so region IQA stays in research artifacts until a migration); Stage 7 cites the 76,086-outcome live survey instead of only the older 66,485 snapshot, clarifies it backfills boxes rather than scores, and decides the fate of `scripts/backfill_bird_bbox.py`; Stage 8 adds a no-legacy-only-writer precondition.

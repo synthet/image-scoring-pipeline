@@ -66,6 +66,12 @@ Aligned with root [`TODO.md`](../../TODO.md) **Highest-Impact Next Steps**. Tier
 | [SUGGESTED_SCORING_ADJUSTMENTS.md](models/SUGGESTED_SCORING_ADJUSTMENTS.md) | Proposed scoring weight changes |
 | [localization-region-scores-and-backfill.md](localization-region-scores-and-backfill.md) | Bbox vs region-IQA backfill; parallel full-frame vs crop score storage (synthesis) |
 
+## Integrations (research)
+
+| Document | Description |
+|----------|-------------|
+| [EVERYPIXEL_CORRELATION_STUDY.md](integrations/EVERYPIXEL_CORRELATION_STUDY.md) | Phase 1 harness: UGC vs local IQA Spearman study ([#392](https://github.com/synthet/image-scoring-backend/issues/392)); scripts under `scripts/research/everypixel_correlation/` |
+
 Related research (reports): [CLIP_MODELS_CULLING_SCORING_2026-05-23.md](../reports/CLIP_MODELS_CULLING_SCORING_2026-05-23.md), [AUTO_CULLING_ALGORITHMS_RESEARCH_2026-05-23.md](../reports/AUTO_CULLING_ALGORITHMS_RESEARCH_2026-05-23.md).
 
 ## Setup (platform)
