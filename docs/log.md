@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-09-23] add | Region scores and backfill storage synthesis
+
+Added [`docs/planning/localization-region-scores-and-backfill.md`](planning/localization-region-scores-and-backfill.md) — bbox vs region-IQA backfill plans and full-frame vs crop score storage (today vs localization rollout Stages 5–7). Indexed under [`docs/planning/INDEX.md`](planning/INDEX.md).
+
 ## [2026-09-12] edit | folder_ids submissions are gated on the phase DAG
 
 Stage 1 follow-up for the [early-localization rollout](architecture/pipeline/localization-rollout.md) (epic #345, issue #363), closing the exit-gate clause "resolve the submitted selector before checking prerequisites so paths, folder IDs, image IDs, exclusions, and mixed selectors use the same scope." `POST /api/pipeline/submit` built its gate scope from `workspace_target` and `folder_paths` only, so submitting the same folder by **id** skipped the prerequisite check outright — including the execution-order rule from the [entry below](#2026-09-12-edit--prerequisite-gate-compares-plan-position-not-set-membership). The router already counted `folder_ids` as a folder selector for its own "clustering requires a folder selector" check, so the two disagreed about what a folder scope is. `folder_ids` are now resolved through `db.get_folder_by_id` and added to the gate paths.
