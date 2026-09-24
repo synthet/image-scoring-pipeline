@@ -1,3 +1,13 @@
+---
+type: Runbook
+title: Backlog workflow
+description: Operating contract for picking, claiming, and transitioning backlog issues on the synthet Project board, including the stage:* label mirror for cloud sessions.
+resource: project/00-backlog-workflow.md
+tags: [backlog, project-board, workflow, agents]
+timestamp: 2026-09-24T00:00:00Z
+okf_version: 0.1
+---
+
 # Backlog workflow — claiming work, tracking status, keeping the queue truthful
 
 The canonical task queue is the **GitHub Project board**:
@@ -167,3 +177,47 @@ For automation/scripts:
 Bootstrap scripts:
 - [`scripts/bootstrap_labels.sh`](../../scripts/bootstrap_labels.sh) — re-create the label taxonomy in both repos.
 - [`scripts/bootstrap_issues.py`](../../scripts/bootstrap_issues.py) — original migration from legacy `TODO.md`; idempotent (skips by title).
+
+---
+
+## 6. Cloud sessions: `stage:*` labels
+
+Cloud agent sessions (claude.ai/code and similar sandboxes) **cannot reach the Project
+board**. Their egress proxy blocks GitHub GraphQL and the `users/*/projectsV2` REST
+endpoints, so `gh project …` and `/task-claim` fail there. Instead, the workflow
+[`board-stage-sync.yml`](../../.github/workflows/board-stage-sync.yml) mirrors `Stage` onto
+issue labels in both repos. It runs every 15 minutes, and immediately on a `stage:*` label
+change in this repo.
+
+| Stage | Label |
+|-------|-------|
+| Backlog | `stage:backlog` |
+| Ready | `stage:ready` |
+| Claimed | `stage:claimed` |
+| In Progress | `stage:in-progress` |
+| Blocked | `stage:blocked` |
+| Review | `stage:review` |
+| Done | `stage:done` |
+
+The contract in §2 is unchanged; a cloud agent follows it through labels:
+
+1. **Pick:** open issues labelled `stage:ready`, sorted by `priority:p0..p3`.
+2. **Claim:** assign yourself, then remove `stage:ready` and add `stage:claimed`.
+3. **Transition:** swap to `stage:in-progress`, `stage:blocked` (plus the comment from Step 4), or `stage:review`.
+
+Keep **one** `stage:*` label per issue. If labels and board disagree, the newer change
+wins: the Stage value's `updatedAt` against the latest `stage:*` `labeled` event. So a
+maintainer moving the card on the board overrides an older label, and a label swap
+overrides an older board value. Only open issues that are on the board are synced;
+closed issues and draft items are skipped. Expect up to 15 minutes of lag for gallery
+issues.
+
+**Setup (maintainer, once):**
+1. Create a classic PAT with `repo` and `project` scopes.
+2. Add it to this repo as the Actions secret `BOARD_SYNC_TOKEN`. Without it the workflow skips.
+3. Run the workflow manually with `dry_run: true` and review the planned changes. The first run backfills labels on every open board issue.
+4. Run it again with `dry_run: false`.
+
+Script: [`scripts/ci/sync_stage_labels.py`](../../scripts/ci/sync_stage_labels.py)
+(`--dry-run` to preview). It reuses the IDs and `gh` helpers in
+[`scripts/agent_skills/backlog_stage.py`](../../scripts/agent_skills/backlog_stage.py).

@@ -1,0 +1,50 @@
+name: Board stage sync
+
+# Mirrors the Project board Stage field <-> stage:* issue labels in both repos so cloud
+# agent sessions (which cannot reach the board API) can pick and transition work.
+# Needs repo secret BOARD_SYNC_TOKEN: classic PAT with `repo` + `project` scopes.
+# See docs/project/00-backlog-workflow.md §6.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print planned changes only'
+        type: boolean
+        default: true
+  issues:
+    types: [labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: board-stage-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event_name != 'issues' || startsWith(github.event.label.name, 'stage:')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Sync Stage <-> stage:* labels
+        env:
+          GH_TOKEN: ${{ secrets.BOARD_SYNC_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::notice::BOARD_SYNC_TOKEN is not set; skipping board stage sync."
+            exit 0
+          fi
+          args=()
+          if [ "${DRY_RUN}" = "true" ]; then args+=(--dry-run); fi
+          python scripts/ci/sync_stage_labels.py "${args[@]}"
