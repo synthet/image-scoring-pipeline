@@ -20,6 +20,7 @@ Central list of **first-party** `SKILL.md` files in this repository for governan
 | agent-memory | `.cursor/skills/agent-memory/SKILL.md` | Log/dream/promote + transcript import v2 | L2 | Yes | 2026-06-17 |
 | backlog-queue | `.cursor/skills/backlog-queue/SKILL.md` | Cross-repo GitHub Project board contract (claim, transition, file) | L1 | Yes | 2026-04-28 |
 | backlog-housekeeping | `.cursor/skills/backlog-housekeeping/SKILL.md` | GitHub Project board hygiene | L2 | Yes | 2026-06-16 |
+| backlog-triage | `.cursor/skills/backlog-triage/SKILL.md` | Priority triage of open issues: snapshot + findings, rubric, apply plan; harness `scripts/agent_skills/backlog_triage.py` | L2 | Yes | 2026-09-23 |
 | image-scoring-mcp | `.cursor/skills/image-scoring-mcp/SKILL.md` | Compact MCP search/dispatch | L2 | — (Cursor only) | 2026-05-31 |
 | backup-db | `.cursor/skills/backup-db/SKILL.md` | Postgres backup workflow | L2 | — (Cursor only) | 2026-04-25 |
 | commit-conventions | `.cursor/skills/commit-conventions/SKILL.md` | Conventional Commits / PR titles | L1 | Yes | 2026-04-25 |

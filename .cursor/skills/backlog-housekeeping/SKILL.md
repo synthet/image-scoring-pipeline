@@ -116,6 +116,7 @@ After `--apply`, summarize:
 ## Related
 
 - [backlog-queue](../backlog-queue/SKILL.md) — claim, Stage transitions, filing issues.
+- [backlog-triage](../backlog-triage/SKILL.md) — *priority* triage (what should be p0/p1/Ready); this skill only reconciles drift.
 - [docs/project/00-backlog-workflow.md](../../../docs/project/00-backlog-workflow.md)
 - [docs/project/backlog-inventory-2026-05.md](../../../docs/project/backlog-inventory-2026-05.md)
 - `scripts/audit_backlog_issues.py`, `scripts/apply_backlog_inventory.py`
