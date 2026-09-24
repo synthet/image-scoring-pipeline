@@ -863,3 +863,5 @@ legacy rescan, three consumer crops at most, full-frame culling, and full-frame 
 - [phases/bird-species.md](phases/bird-species.md) — current embedded detector and BioCLIP path
 - [../../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md](../../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md) — current crop evidence and limits
 - [../../reports/bird-detection-recall-2026-09-07.md](../../reports/bird-detection-recall-2026-09-07.md) — small-subject recall finding and detector benchmark rationale
+- [../../reports/subject-detector-comparison-2026-09-24.md](../../reports/subject-detector-comparison-2026-09-24.md) — extra #377 arm: an open COCO detector (RTMDet-tiny) at 640 reaches YOLO-1280 recall on 640-misses (82%) at 4% vs 63% FP; candidate second provider for Stages 3–4
+- [../../planning/subject-aware-culling-evidence.md](../../planning/subject-aware-culling-evidence.md) — proposed Stage 6 evidence extractor (six subject-conditioned criteria, pairwise stack evidence, Arm B ranker) and its stage-by-stage mapping: keypoint/mask artifacts (2, 4), rendition fit/resampler identity and targeted second pass (3), burst propagation (5)

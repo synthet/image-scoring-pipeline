@@ -66,6 +66,8 @@ Aligned with root [`TODO.md`](../../TODO.md) **Highest-Impact Next Steps**. Tier
 | [SUGGESTED_SCORING_ADJUSTMENTS.md](models/SUGGESTED_SCORING_ADJUSTMENTS.md) | Proposed scoring weight changes |
 | [localization-region-scores-and-backfill.md](localization-region-scores-and-backfill.md) | Bbox vs region-IQA backfill; parallel full-frame vs crop score storage (synthesis) |
 | [localization-stage4-slice1-status.md](localization-stage4-slice1-status.md) | Status of #387 shadow localization slice: decisions, open questions, blockers, action items |
+| [subject-aware-culling-evidence.md](subject-aware-culling-evidence.md) | **Proposal** — region/keypoint/mask-conditioned evidence, code-owned burst ranker, 0.5 s burst split; mapped onto localization Stages 2–7 (clean-room) |
+| [subject-evidence-model-roles.md](models/subject-evidence-model-roles.md) | Functional requirements for detector, bird/mammal keypoints, subject mask and embedding roles |
 
 ## Integrations (research)
 
