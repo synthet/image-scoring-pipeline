@@ -646,3 +646,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-24] created | Bird bounding boxes judged by an LLM-agent panel
 
 - 2026-09-24: created — [bird bounding boxes judged by an LLM-agent panel](reports/bbox-llm-judge-panel-2026-09-24.md): box-quality grades for yolo640 / yolo1280 / open COCO detector on the #377 cohort, judge validation vs owner labels, Jev rubric-alignment lesson; row in [reports/INDEX.md](reports/INDEX.md).
+
+## [2026-09-25] created | Pipeline streamlining with subject-aware scoring
+
+- 2026-09-25: created — [pipeline streamlining](planning/pipeline-streamlining.md) (#410): target order with subject-aware scoring after localization, rollout review, and implementation issues #406–#409; linked from [planning/INDEX.md](planning/INDEX.md).
