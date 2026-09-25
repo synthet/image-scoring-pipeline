@@ -17,7 +17,7 @@ status: proposed
 ## Summary
 
 `bird_species` runs BioCLIP 2 (`hf-hub:imageomics/bioclip-2`) zero-shot. It prompts "a photo of
-{name}, a bird species" over the 382 North American common names in
+{name}, a bird species" over the 360 North American common names in
 `data/bird_species_list.txt`, but only for images tagged `birds`. The model itself covers the tree
 of life; the bird-only scope comes from the list and the keyword gate.
 
@@ -103,6 +103,13 @@ confidence and provenance stored.
 3. Insects and herps have no detector yet (spec 03 non-goal). Is full-frame classification good
    enough, or does this wait for an open-vocabulary detector?
 4. Should `taxon:*` keywords be added, or should the taxon live only in prediction rows?
+5. How should the bird path abstain? A blind multi-agent vision panel on 193 species disagreements
+   found 12 of the 32 "both wrong" frames were species **missing from the current list** (for
+   example Bewick's Wren, Lesser Goldfinch, Mississippi Kite), which `threshold=0.1, top_k=1`
+   turns into confident wrong answers
+   ([keywords-captions-species comparison §3b](../../reports/keywords-captions-species-comparison-2026-09-24.md)).
+   Every per-taxon list here needs the same abstention rule (similarity floor + top-1/top-2
+   margin). The bird-list fix is tracked separately in #422.
 
 ## Implementation plan
 

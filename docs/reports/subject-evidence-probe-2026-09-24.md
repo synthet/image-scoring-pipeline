@@ -120,7 +120,7 @@ The probe found no subject on 9/236 frames, which fell back to the no-subject ca
 - **Promote roadmap item 2** (evidence extractor v0 on imported regions) and the best-vs-reject
   metric to the primary Stage 6 measure. Keep composite, focus, eye and composition, and drop
   exposure and context from *within-burst* ranking weights. They stay as display criteria.
-- **Add step 0: a human label set.** About 300 bursts of pick/reject labels from you, collected
+- **Add step 0: a human label set (#415).** About 300 bursts of pick/reject labels from you, collected
   with the gallery's compare view or a minimal labelling page, stratified by subject-size tercile.
   Until that exists, no Stage 6 promotion gate can be passed honestly.
 - A cheap human-signal source to explore: frames deleted in a folder but still in the DB (for

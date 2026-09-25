@@ -263,10 +263,10 @@ Median GPU ms per image, RTX 4060 Laptop:
 
 ## Recommendations
 
-1. **Captions:** trial **Florence-2-base** as the caption model, in shadow. It is the same cost as
+1. **Captions (#421):** trial **Florence-2-base** as the caption model, in shadow. It is the same cost as
    BLIP-base, with better bird presence and far more specific descriptions. Keep BLIP behind config
    until a human spot-check of Florence-2 type names is done.
-2. **Keywords:**
+2. **Keywords (#420):**
    - Before any tower swap, replace the softmax-over-26 selection with **per-tag thresholds on a
      set-independent score**. `relevance_weight` already exists. Calibrate each threshold on labelled
      data; the #377 labels give `birds` for free.
@@ -276,7 +276,7 @@ Median GPU ms per image, RTX 4060 Laptop:
 3. **Presence fusion:** "bird present" = caption mentions bird **or** calibrated `birds` tag **or**
    open-detector animal box ([detector report](subject-detector-comparison-2026-09-24.md)). This
    feeds the Stage 5 candidate scope, which is currently the `birds` keyword ∪ regions.
-4. **Species (BioCLIP stays):** the panel gives about 74% vs 25%.
+4. **Species (BioCLIP stays; #422, and #413 for other taxa):** the panel gives about 74% vs 25%.
    - **Expand the vocabulary first.** Add the species the panel found missing: Bewick's Wren,
      Lesser Goldfinch, Black-bellied Whistling-Duck, Black-crested Titmouse, Zone-tailed Hawk,
      Mississippi Kite, Great-tailed Grackle, Egyptian Goose, domestic goose. Better still, adopt a
@@ -289,7 +289,7 @@ Median GPU ms per image, RTX 4060 Laptop:
    "neither" and low-consensus cases. Jev on blind descriptions is a cheap, auditable text
    cross-check, but only at confidence ≥ 0.7 (92% agreement with the panel). It never overrides
    pixels, as the localization rollout's Stage 6 boundary says.
-6. **Labels:** panel verdicts are agent-derived. Owner species labels on about 200 frames, focused on
+6. **Labels (#415):** panel verdicts are agent-derived. Owner species labels on about 200 frames, focused on
    the 32 "neither" and 8 split cases, would make the ranking decisive.
 
 ## Reproduce

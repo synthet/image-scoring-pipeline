@@ -27,7 +27,7 @@ persisted with every output.
 | Output | Unpadded boxes in normalized display space (epic, Stage 2). |
 | Consumer policy | Primary subject = highest `confidence × f(area)`, restricted to animal classes. The policy is versioned and separate from the detector. |
 | Failure behaviour | `no_detection` is an observation. Suspicious near-full-frame boxes are recorded, not rejected. |
-| Ours | Existing bird YOLO (`modules/bird_detection.py`, `detect_boxes`). |
+| Ours | Existing bird YOLO (`modules/bird_detection.py`, `detect_boxes`). Cascade with the open detector: #408, [spec 03](../../specs/pipeline-streamlining/03-detector-cascade.md). |
 | Open candidates | RTMDet-tiny (COCO, Apache-2.0). On the #377 cohort's YOLO-640 misses it reaches 82% recall at 4% FP (animal classes, ≥ 0.4), against YOLO-1280's 82% / 63%. It labels some raptors `bear`, so **class is a hint, not a gate**. See the [detector comparison](../../reports/subject-detector-comparison-2026-09-24.md). |
 
 ## Bird head/eye keypoints

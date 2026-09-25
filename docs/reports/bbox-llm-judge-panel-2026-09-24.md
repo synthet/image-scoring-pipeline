@@ -169,7 +169,7 @@ the vision rubric. Otherwise it measures a different question, and does so confi
 1. **Box-level labels can be bootstrapped with the panel.** It is 95% correct on the verifiable
    subset. Route only the 65 split boxes plus a random 10% audit to the owner, instead of hand-drawing
    576 boxes. Add the 2 "different bird" pair categories to the review queue.
-2. **For Stage 4 shadow localization, evaluate the cascade:**
+2. **For Stage 4 shadow localization, evaluate the cascade (#408, spec 03):**
    - yolo640, then the open detector as fallback
    - YOLO refine on small fallback boxes
    - measure with this panel (TIGHT rate on bird frames) and the #377 presence labels
