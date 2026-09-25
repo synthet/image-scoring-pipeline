@@ -70,8 +70,8 @@ flowchart LR
 **Parallel track: labelled bursts.** About 300 bursts of human pick/reject labels, stratified by
 subject-size tercile. This is step 0 of
 [subject-aware-culling-evidence.md](../../planning/subject-aware-culling-evidence.md), and it is
-the only way to pass M4's gate honestly. Tracked in #415. Count the existing independent human
-labels first ([07 §4.4](07-blockers-and-decisions.md#44-labelled-bursts-count-before-collecting)).
+the only way to pass M4's gate honestly. Tracked in #415. No usable human labels exist today
+([07 §4.4](07-blockers-and-decisions.md#44-labelled-bursts-existing-labels-then-collection)), so all of it is new collection.
 
 ## Shared conventions
 

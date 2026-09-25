@@ -41,7 +41,7 @@ stated assumptions, not a measurement.
 | **B2** | Believing a green Postgres run | Wrong port, or no alembic, leads to skips rather than failures. | Make the suite fail loudly when the DB is unreachable under `-m postgres`, and add alembic to the gpu-shell image. | agent | #379 |
 | **B3** | Stage 5, and spec 04's crop backfill (needs current boxes) | The ~76k legacy outcomes were never imported. The import script exists (`scripts/import_legacy_localization.py`). | Dry run against production, compare with the 2026-09-22 survey, then run it live. | **you** (production DB) | #414 |
 | **B4** | Stage 4's exit gate | Five open questions (§3.1). | Decide them; recommendations are below. | **you** | #414 |
-| **B5** | Spec 04 promotion (AC-22) and within-burst ranking | 54 bursts gave CIs of ±0.05–0.09 ([probe](../../reports/subject-evidence-probe-2026-09-24.md)). About 300 are needed. | Count the existing independent human labels first (§4.4), then top up. | agent counts; **you** label | #415 |
+| **B5** | Spec 04 promotion (AC-22) and within-burst ranking | 54 bursts gave CIs of ±0.05–0.09 ([probe](../../reports/subject-evidence-probe-2026-09-24.md)). About 300 are needed. **No usable human labels exist today** (§4.4): all 3,374 human-session rows are undecided. | Collect ~300 bursts; this is step 3 of #415. | **you** label | #415 |
 | **B6** | Spec 03 adoption | The research ONNX weights came from a third-party product. | Export RTMDet-tiny from the upstream OpenMMLab checkpoint. That needs a one-off `mmdet`/`mmdeploy` toolchain outside the app environment. Record a manifest and re-run the comparison. | agent | #408 |
 | **B7** | Spec 01 thumbnail switch; spec 04 migration | The gallery reads `image_model_scores` in `electron/db.ts`, `sortColumns.ts` and `sortSql.ts`. | The gallery adds `input_mode` filtering before the #409 migration ships. Thumbnail display is likely fine, because Chromium applies EXIF orientation by default. | gallery | gallery #176 |
 | **B8** | Cost model, #409 backfill estimate, GPU sequencing | The only measured costs are #377's decode and YOLO timings. | Timing baseline on the 8 GB card. | agent (gpu-shell) | #416 |
@@ -184,10 +184,10 @@ The only hard migration is spec 04's primary-key change. An **alternative worth 
 of one extra join in fusion v2. **Recommendation: take the sibling table**, unless a single table
 is needed for a reason not yet found.
 
-### 4.4 Labelled bursts: count before collecting
+### 4.4 Labelled bursts: existing labels, then collection
 
 The existing independent human signal (`modules/score_analytics/labels.py`) is `culling_picks`
-with `auto_suggested = 0`. Auto-cull `pick_status` (`cull_policy_version` set) is leakage. XMP
+with `auto_suggested = 0` **and a non-NULL `decision`**. Auto-cull `pick_status` (`cull_policy_version` set) is leakage. XMP
 picks and ratings are unverified, because the app writes them too. A read-only count of usable
 bursts:
 
@@ -197,7 +197,9 @@ SELECT COUNT(*) AS usable_bursts
 FROM (
   SELECT cp.session_id, cp.group_id
   FROM culling_picks cp
-  WHERE cp.auto_suggested = 0 AND cp.group_id IS NOT NULL
+  WHERE COALESCE(cp.auto_suggested, 0) = 0
+    AND cp.decision IS NOT NULL
+    AND cp.group_id IS NOT NULL
   GROUP BY cp.session_id, cp.group_id
   HAVING SUM(CASE WHEN cp.decision = 'pick' THEN 1 ELSE 0 END) > 0
      AND SUM(CASE WHEN cp.decision = 'reject' THEN 1 ELSE 0 END) > 0
@@ -208,8 +210,16 @@ Session groups are what the human actually reviewed. They may not match today's 
 re-clustering changes stack membership. Group by `images.stack_id` instead only when the
 evaluation must use current stacks, and report both counts.
 
-**Human effort — estimate:** at 30–60 s per burst, 300 bursts is **2.5–5 hours**, less whatever
-the count above already covers. Stratify by subject-size tercile, and split by folder so tuning
+The filter mirrors `labels.py`. The `HAVING` clause already requires a `pick` and a `reject`, so
+undecided rows add nothing either way; the explicit filter makes that intent visible.
+
+**Result today — 0.** On the live DB (read-only, 2026-09-25, owner check on #419), `culling_picks`
+holds 3,374 rows with `auto_suggested = 0`, **all with `decision IS NULL`** (undecided session
+rows), plus 51 auto-suggested picks. There are no usable human labels. Collection (step 3 of #415)
+is the only source, and the query is kept for re-counting as labels arrive.
+
+**Human effort — estimate:** at 30–60 s per burst, 300 bursts is **2.5–5 hours**, all of it new
+labelling. Stratify by subject-size tercile, and split by folder so tuning
 (O-1) and evaluation never share a folder.
 
 ## 5. Risk register
@@ -220,7 +230,7 @@ the count above already covers. Stratify by subject-size tercile, and split by f
 | **False boxes contaminate subject scores** | high with YOLO-1280; medium with the cascade | high | Spec 03 AC-18 false-positive gate before any consumer; agreement arm (C-3) |
 | **Star-rating churn** in XMP and Lightroom | certain once v2 is promoted | high: user-visible | Operator-triggered rewrite with dry-run counts (spec 04 AC-18, AC-19); keep user-set ratings (O-5); verify with #109/#110 |
 | **Scene false skips** (small bird in a landscape) | medium | medium | Skip only at high confidence (spec 05 AC-4, ≤ 2% wildlife skipped) |
-| **Label leakage** from pipeline-written XMP or auto-cull | high if not guarded | high: inflated gains | Use only `auto_suggested = 0` picks plus new labels (§4.4); folder-grouped splits |
+| **Label leakage** from pipeline-written XMP or auto-cull | high if not guarded | high: inflated gains | Count only `culling_picks` rows with `auto_suggested = 0` **and** a non-NULL `decision` (none exist today, §4.4), plus newly collected labels. Never XMP values the app may have written, or auto-cull `pick_status`. Use folder-grouped splits. |
 | **Mixed embeddings** after fixing orientation (#418) | certain if fixed in place | medium | Version the embedding spaces or re-embed; never mix |
 | **Cache disk growth** | medium | low | Bounded, regenerable cache (spec 01 AC-5, AC-6) |
 | **Cross-repo breakage** (`image_model_scores` readers) | medium | high | Sibling table (§4.3), or ship reader filters first (gallery #176) |
@@ -232,7 +242,7 @@ the count above already covers. Stratify by subject-size tercile, and split by f
    depends on it.
 2. **Run the legacy import dry run (#414).** It needs no code and unblocks stage 5 and the crop
    backfill.
-3. **Run the §4.4 count before building any labelling UI.** The count may already cover part of #415.
+3. **Start labelling collection (#415) early.** The §4.4 count is 0 today, so nothing can be reused, and the M4 gate depends entirely on new labels. Re-run the count as labels arrive.
 4. **Ship spec 02's keywords edge as its own tiny PR.** Tags stop waiting for scoring immediately.
 5. **Fix #418 together with spec 01**, not separately. Both change thumbnail pixels, so one
    embedding-version bump covers them.
@@ -251,7 +261,7 @@ the count above already covers. Stratify by subject-size tercile, and split by f
 
 - [ ] #399: fix the truncation bug (agent).
 - [ ] #414: decide S4-1 to S4-5 (you); run the dry-run legacy import (you).
-- [ ] #415: run the §4.4 count (agent), then label the remainder (you).
+- [ ] #415: collect ~300 labelled bursts (you); the §4.4 count is 0 today, so re-run it as labels arrive (agent).
 - [ ] #416: timing baseline in gpu-shell (agent).
 - [ ] #418: measure the portrait-RAW share and its impact (agent).
 - [ ] B10: add `BOARD_SYNC_TOKEN` and dry-run the label sync (you).
