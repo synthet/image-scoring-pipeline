@@ -124,6 +124,8 @@ Each step's result is stored, so the cascade's choices can be audited and re-eva
 
 ## Open questions
 
+Recommendations and deadlines: [07 — decision register](07-blockers-and-decisions.md#3-decision-register) (C-1 to C-4).
+
 1. The refine IoU threshold (0.3) and padding (1.0) are proposals. Sweep them on the cohort.
 2. When both YOLO and RTMDet detect, should the cascade keep the RTMDet boxes as extra ranked
    regions (multi-subject), or YOLO only? The proposal is YOLO only for continuity with `bird_bbox`.

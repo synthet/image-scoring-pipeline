@@ -105,6 +105,8 @@ one edge the target pipeline needs:
 
 ## Open questions
 
+Recommendations and deadlines: [07 — decision register](07-blockers-and-decisions.md#3-decision-register) (G-1 and G-2).
+
 1. **Split culling into two phase codes, or keep one?** The options:
    - Two codes: `culling` groups bursts, and a new `selection` assigns picks. This gives cleaner
      completeness predicates, but a new `phase_code` is a cross-repo contract change.

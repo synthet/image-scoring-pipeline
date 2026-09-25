@@ -166,6 +166,8 @@ shadow backfill and stored with the fusion version, just as `percentile_anchors`
 
 ## Open questions
 
+Recommendations and deadlines: [07 — decision register](07-blockers-and-decisions.md#3-decision-register) (O-1 to O-5, and the sibling-table alternative in §4.3).
+
 1. What values of α, γ and `pad_frac` to use? These are proposals, tuned on the labelled bursts
    and never on the evaluation split.
 2. Should `region_small` get a reduced α instead of zero? The probe found crop focus below chance
