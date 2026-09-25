@@ -64,6 +64,7 @@ Aligned with root [`TODO.md`](../../TODO.md) **Highest-Impact Next Steps**. Tier
 | [QPT_V2_VALIDATION_GATES.md](models/QPT_V2_VALIDATION_GATES.md) | **QPT V2 shadow validation plan** — Gates 1–3, 5; upstream status; promotion criteria (#185) |
 | [CALIBRATION_LAYER_185_STATUS.md](models/CALIBRATION_LAYER_185_STATUS.md) | #185 blockers: anchors, z-score, QPT inference fidelity |
 | [SUGGESTED_SCORING_ADJUSTMENTS.md](models/SUGGESTED_SCORING_ADJUSTMENTS.md) | Proposed scoring weight changes |
+| [ONNX_CONVERSION_FEASIBILITY.md](models/ONNX_CONVERSION_FEASIBILITY.md) | ONNX export feasibility per model, pros/cons, phased plan (MUSIQ is the hard one) |
 | [localization-region-scores-and-backfill.md](localization-region-scores-and-backfill.md) | Bbox vs region-IQA backfill; parallel full-frame vs crop score storage (synthesis) |
 | [localization-stage4-slice1-status.md](localization-stage4-slice1-status.md) | Status of #387 shadow localization slice: decisions, open questions, blockers, action items |
 | [subject-aware-culling-evidence.md](subject-aware-culling-evidence.md) | **Proposal** — region/keypoint/mask-conditioned evidence, code-owned burst ranker, 0.5 s burst split; mapped onto localization Stages 2–7 (clean-room) |

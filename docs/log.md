@@ -638,3 +638,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-24] edit | Board stage sync marks closed issues Done
 
 - 2026-09-24: updated — [backlog workflow](project/00-backlog-workflow.md) §6: closed board issues now move to Stage = Done and any `stage:*` labels collapse to `stage:done` (#402).
+
+## [2026-09-24] created | ONNX conversion feasibility
+
+- 2026-09-24: created — [ONNX conversion feasibility](planning/models/ONNX_CONVERSION_FEASIBILITY.md) (per-model feasibility, pros/cons, phased plan; #404); linked from [planning/INDEX.md](planning/INDEX.md).
