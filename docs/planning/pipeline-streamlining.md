@@ -200,6 +200,8 @@ the scoring backfill is crop-only and runs after the cascade is benchmarked.
 
 ## Not yet measured
 
+Blockers, decisions, cost estimates and risks: [07 — blockers and decisions](../specs/pipeline-streamlining/07-blockers-and-decisions.md) (#417). Timings are measured in #416, labelled bursts are collected in #415, and #418 covers unrotated thumbnail inputs.
+
 - Scene-route prompt accuracy.
 - BioCLIP accuracy outside birds.
 - Any open-vocabulary detector.

@@ -107,6 +107,8 @@ consumer that reads the same rendition.
 
 ## Open questions
 
+Recommendations and deadlines: [07 — decision register](07-blockers-and-decisions.md#3-decision-register) (R-1 to R-3).
+
 1. Should legacy unbaked thumbnails be regenerated in bulk? The proposal is lazily only, on the
    next `metadata` run.
 2. What is the rendition JPEG quality: 90, or lossless PNG for inference fidelity? The proposal is

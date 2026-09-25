@@ -96,6 +96,8 @@ confidence and provenance stored.
 
 ## Open questions
 
+Recommendations and deadlines: [07 — decision register](07-blockers-and-decisions.md#3-decision-register) (SP-1 to SP-4).
+
 1. Where do the lists come from? The current bird list's source isn't documented. The mammal,
    insect and herp lists need a documented, licence-compatible source.
 2. Should the phase stay `bird_species` with a taxon dimension, or become `species`? The latter is

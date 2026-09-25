@@ -117,6 +117,8 @@ change for keywords is #420.
 
 ## Open questions
 
+Recommendations and deadlines: [07 — decision register](07-blockers-and-decisions.md#3-decision-register) (SR-1 to SR-4).
+
 1. Single-label, or multi-label for mixed scenes such as people with architecture? The proposal is
    to store all probabilities and route on the top label.
 2. Is ViT-B/32 accurate enough, or is the stored OpenCLIP ViT-L/14 image space (used by two-level
