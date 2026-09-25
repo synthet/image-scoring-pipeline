@@ -16,7 +16,9 @@ This plan gives a shorter path from import to pick/reject than the current pipel
 **scoring consume the localized subject** instead of running beside localization.
 
 **Status:** proposal, docs only. Tracked in #410. Implementation issues: #406 (rendition), #407
-(phase graph), #408 (detector cascade) and #409 (subject-aware scoring).
+(phase graph), #408 (detector cascade), #409 (subject-aware scoring), #412 (scene route) and #413
+(species beyond birds). Detailed specs, roadmap and acceptance criteria:
+[spec hub](../specs/pipeline-streamlining/INDEX.md).
 
 ## Target order
 
@@ -98,7 +100,8 @@ rendition step also fixes the thumbnail orientation gap noted in rollout stage 3
 against the persisted `clip_vit_b32_image` vector without re-reading the image. A scene route is a
 small prompt set on the same path, so it costs almost nothing. It lets the pipeline skip wildlife
 detection on landscapes and choose a person detector for people.
-**Unverified:** the prompt set and its accuracy need a small labelled sample first.
+**Unverified:** the prompt set and its accuracy need a small labelled sample first (#412,
+[spec 05](../specs/pipeline-streamlining/05-scene-route.md)).
 
 ### 4. Species beyond birds
 
@@ -107,7 +110,8 @@ the species list and the `birds` keyword gate, not from the model. A two-level z
 would first choose the class (Aves, Mammalia, Insecta, Reptilia, Amphibia), then the species
 within it. It needs a regional species list per class.
 **Unverified:** the crop study's species results are not human accuracy evidence, so any class
-beyond birds needs its own labelled check.
+beyond birds needs its own labelled check (#413,
+[spec 06](../specs/pipeline-streamlining/06-multi-taxon-species.md)).
 
 ### 5. Detector cascade (#408)
 

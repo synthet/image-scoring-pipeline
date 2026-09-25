@@ -650,3 +650,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-25] created | Pipeline streamlining with subject-aware scoring
 
 - 2026-09-25: created — [pipeline streamlining](planning/pipeline-streamlining.md) (#410): target order with subject-aware scoring after localization, rollout review, and implementation issues #406–#409; linked from [planning/INDEX.md](planning/INDEX.md).
+
+## [2026-09-25] created | Pipeline streamlining spec hub
+
+- 2026-09-25: created — [pipeline streamlining spec hub](specs/pipeline-streamlining/INDEX.md): roadmap M0–M4 and six specs with EARS acceptance criteria — [rendition](specs/pipeline-streamlining/01-rendition.md) (#406), [phase graph](specs/pipeline-streamlining/02-phase-graph.md) (#407), [detector cascade](specs/pipeline-streamlining/03-detector-cascade.md) (#408), [subject-aware scoring](specs/pipeline-streamlining/04-subject-aware-scoring.md) (#409), [scene route](specs/pipeline-streamlining/05-scene-route.md) (#412), [species beyond birds](specs/pipeline-streamlining/06-multi-taxon-species.md) (#413); linked from [planning/pipeline-streamlining.md](planning/pipeline-streamlining.md) and [INDEX.md](INDEX.md).
