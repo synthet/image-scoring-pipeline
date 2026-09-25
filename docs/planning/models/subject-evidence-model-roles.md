@@ -48,7 +48,7 @@ persisted with every output.
 |---|---|
 | Must do | Locate eyes, nose and ears (a 17-point animal skeleton is enough) for mammals in the primary region. Give per-point confidence. |
 | Output | Same contract as bird keypoints. The eye points feed the eye criterion; the other points give head orientation (facing/look-room). |
-| Open candidates | RTMPose/ViTPose trained on AP-10K (Apache-2.0). |
+| Open candidates | RTMPose/ViTPose trained on AP-10K (Apache-2.0). Verified source: OpenMMLab `rtmpose-m_simcc-ap10k` 256×256 ([identity report](../../reports/upstream-weights-identity-2026-09-25.md)). |
 | Fallback | Heuristic head estimate from box geometry and the mask (top-of-mask extremum along the body axis), flagged `keypoints_heuristic`. |
 
 ## Subject mask
@@ -58,7 +58,7 @@ persisted with every output.
 | Must do | Produce a soft foreground mask of the salient subject. It is intersected with the primary box, so it only needs to be good *inside* the box. |
 | Output | 8-bit mask artifact (content-addressed, cached like crops) plus coverage stats: area fraction, edge-touch flags, mask confidence (mean foreground probability inside the box). |
 | Use | Restricts focus, exposure and noise measurements to subject vs background. Edge-touch detects cut-off subjects. |
-| Open candidates | U²-Net / U²-Net-p (Apache-2.0); a lightweight SAM variant prompted by the box, if the licence fits. |
+| Open candidates | U²-Net / U²-Net-p (Apache-2.0); a lightweight SAM variant prompted by the box, if the licence fits. Verified source: official `u2netp.pth` ([identity report](../../reports/upstream-weights-identity-2026-09-25.md)). |
 | Failure behaviour | A low-confidence mask falls back to the box, flagged `mask_low_confidence`. |
 
 ## Semantic embedding
