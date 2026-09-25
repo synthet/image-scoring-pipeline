@@ -30,6 +30,7 @@ numbered `AC-n`, which the `validate-implementation` skill verifies later.
 | 04 | [Subject-aware scoring](04-subject-aware-scoring.md) | #409 | feature | 01, 02, 03, labelled bursts |
 | 05 | [Scene route](05-scene-route.md) | #412 | research → feature | 01 (soft) |
 | 06 | [Species beyond birds](06-multi-taxon-species.md) | #413 | research → feature | 03, 05 |
+| 07 | [Blockers, decisions and suggestions](07-blockers-and-decisions.md) | #417 | register | — |
 
 ## Dependencies
 
@@ -60,7 +61,7 @@ flowchart LR
 
 | Milestone | Contents | Exit |
 |---|---|---|
-| **M0 — unblock** | Finish rollout stage 4 (#387 follow-ups): answer its open questions, fix the test-DB truncation rollback, get a clean `-m postgres` run, and run the stage 2 legacy import. | The stage 4 exit gate is met. The normalized tables hold the ~76k imported outcomes. |
+| **M0 — unblock** | Finish rollout stage 4 (#414): answer its open questions, fix the test-DB truncation rollback (#399), get a clean `-m postgres` run, and run the stage 2 legacy import. | The stage 4 exit gate is met. The normalized tables hold the ~76k imported outcomes. |
 | **M1 — foundations** | 01 rendition, 02 phase graph. | Every AC in both specs passes. Existing runs select the same work, except that keywords no longer waits for scoring. |
 | **M2 — detection** | 03 cascade in shadow; the 05 scene-route benchmark. | The cascade beats YOLO-640 on the #377 cohort under the spec's gates. The scene benchmark is reported. |
 | **M3 — consumers** | Rollout stage 5 (BioCLIP on regions) merged with stage 7 (backfill); the 06 species benchmark. | BioCLIP reads cascade regions. The species benchmark is reported. |
@@ -69,7 +70,8 @@ flowchart LR
 **Parallel track: labelled bursts.** About 300 bursts of human pick/reject labels, stratified by
 subject-size tercile. This is step 0 of
 [subject-aware-culling-evidence.md](../../planning/subject-aware-culling-evidence.md), and it is
-the only way to pass M4's gate honestly. No issue exists for it yet.
+the only way to pass M4's gate honestly. Tracked in #415. Count the existing independent human
+labels first ([07 §4.4](07-blockers-and-decisions.md#44-labelled-bursts-count-before-collecting)).
 
 ## Shared conventions
 

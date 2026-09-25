@@ -654,3 +654,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-25] created | Pipeline streamlining spec hub
 
 - 2026-09-25: created — [pipeline streamlining spec hub](specs/pipeline-streamlining/INDEX.md): roadmap M0–M4 and six specs with EARS acceptance criteria — [rendition](specs/pipeline-streamlining/01-rendition.md) (#406), [phase graph](specs/pipeline-streamlining/02-phase-graph.md) (#407), [detector cascade](specs/pipeline-streamlining/03-detector-cascade.md) (#408), [subject-aware scoring](specs/pipeline-streamlining/04-subject-aware-scoring.md) (#409), [scene route](specs/pipeline-streamlining/05-scene-route.md) (#412), [species beyond birds](specs/pipeline-streamlining/06-multi-taxon-species.md) (#413); linked from [planning/pipeline-streamlining.md](planning/pipeline-streamlining.md) and [INDEX.md](INDEX.md).
+
+## [2026-09-25] created | Pipeline streamlining blockers and decision register
+
+- 2026-09-25: created — [blockers, decisions and suggestions](specs/pipeline-streamlining/07-blockers-and-decisions.md) (#417): status snapshot, blockers B1–B10, decision register for every open question in specs 01–06 and rollout stage 4, cost model, 8 GB GPU sequencing, migration and risk registers, prioritised suggestions; new issues #414–#416, #418 and gallery #176; open-question pointers added to specs 01–06.
