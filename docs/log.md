@@ -642,3 +642,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-24] created | ONNX conversion feasibility
 
 - 2026-09-24: created — [ONNX conversion feasibility](planning/models/ONNX_CONVERSION_FEASIBILITY.md) (per-model feasibility, pros/cons, phased plan; #404); linked from [planning/INDEX.md](planning/INDEX.md).
+
+## [2026-09-24] created | Bird bounding boxes judged by an LLM-agent panel
+
+- 2026-09-24: created — [bird bounding boxes judged by an LLM-agent panel](reports/bbox-llm-judge-panel-2026-09-24.md): box-quality grades for yolo640 / yolo1280 / open COCO detector on the #377 cohort, judge validation vs owner labels, Jev rubric-alignment lesson; row in [reports/INDEX.md](reports/INDEX.md).
