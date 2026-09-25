@@ -163,6 +163,10 @@ This matches the epic invariant that `no_detection` is a versioned observation.
 
 ## Stage-by-stage mapping
 
+> **Superseded as a status view.** The current stage status, owners and changes are in the
+> [consolidated table of the localization rollout](../architecture/pipeline/localization-rollout.md#consolidated-status-and-changes-2026-09-25).
+> The table below keeps the original rationale for each idea.
+
 | Epic stage | Idea | What it adds | Guardrail from the epic |
 |---|---|---|---|
 | **2** persistence | Region-linked **derived artifacts**: keypoints and masks | `image_region_keypoints` (region id, provider key/version/config hash, point name, normalized display-space x/y, confidence, visibility) plus a mask artifact referenced by content hash (coverage stats in the DB, pixels in the cache). Zero keypoints is recorded as an outcome row, not as absence. | One run row per attempt; absence never means "not attempted". |

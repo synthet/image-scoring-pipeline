@@ -53,6 +53,41 @@ No ONNX tooling is in the repo today: `onnxruntime`, `tf2onnx` and `optimum` are
 - **Licensing and redistribution.** Check each weight license before shipping `.onnx` files. For example, ARNIQA is Apache-2.0 and MUSIQ is Apache-2.0; the others are unconfirmed.
 - **DirectML numerics** can differ slightly from CUDA, so parity must be checked per execution provider.
 
+## Parity lessons from an exact-reimplementation experiment
+
+A separate research exercise rebuilt a complete ONNX-based scoring pipeline, and drove it from about
+50% to 100% bit-exact agreement with a reference run on 436 frames. Every step below moved scores by
+several points until it was fixed. The same lessons apply to spec 03 (RTMDet on ONNX) and to any
+IQA export here.
+
+1. **Resize fit is part of the model input.**
+   - "Fit inside", "cover" and "letterbox" use **one scale for both axes**; only an explicit "fill"
+     stretches the axes independently.
+   - Mixing them up misaligns every box and keypoint.
+   - Record the fit and the target size in the rendition or crop policy.
+2. **The resampler library is part of identity.** PIL, libvips and OpenCV produce different pixels
+   for the same nominal Lanczos resize, which is enough to change sharpness measures. Record the
+   library and its version.
+3. **Normalize inputs in float64, then cast to float32.** This gave bit-identical embeddings across
+   runs; float32 normalization did not.
+4. **Pin the onnxruntime version.**
+   - Runtime versions moved results.
+   - In that exercise, CPU vs DirectML made no measurable difference. Still check parity per
+     execution provider, as above.
+5. **Allow a per-model execution-provider opt-out.** Large CLIP graphs were unreliable on DirectML.
+6. **Serialize every DirectML session in a process through one global lock.** Concurrent
+   DirectML sessions crashed.
+7. **Version-stamp derived caches.**
+   - Bump an extractor or embedding version whenever preprocessing changes.
+   - Drop dependent caches on the bump. A stale embedding cache once produced false regressions.
+8. **Keep a trace switch.**
+   - An environment flag should dump every intermediate per frame as JSON, for diffing against a
+     reference.
+   - A one-frame diagnostics bundle (overlays + JSON) makes bug reports reproducible.
+
+These lessons turn "parity gates are mandatory" (above) into a concrete checklist for
+`scripts/onnx/parity_check.py`.
+
 ## Implementation plan (phased, each phase gated by parity)
 
 **Phase 0: tooling and harness**

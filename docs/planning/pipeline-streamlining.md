@@ -222,6 +222,7 @@ specs, but several feed their gates:
 | #422 | Bird species: list gaps, abstention, burst/folder suggestions | step 5, spec 06 |
 | #423 | Subject evidence extractor v0 (named per-criterion bands) | spec 04 (features), gallery explainability |
 | #424 | Sub-second continuous-burst segmentation inside stacks | step 8, #407 |
+| #426 | Subject keypoint and mask providers (rollout stage 2/4 addendum) | #423, later #409 features |
 
 ## Related pages
 
