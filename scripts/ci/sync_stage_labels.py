@@ -9,7 +9,8 @@ docs/project/00-backlog-workflow.md §6.
 
 Rule per open board issue: labels matching the board are a no-op; otherwise the newer
 side wins, comparing the Stage value's ``updatedAt`` with the latest ``labeled`` event
-of the issue's current ``stage:*`` labels.
+of the issue's current ``stage:*`` labels. Closed board issues move to Stage = Done, and
+any ``stage:*`` labels they carry collapse to ``stage:done``.
 
 Usage:
   python scripts/ci/sync_stage_labels.py --dry-run
@@ -127,6 +128,15 @@ def decide(
     )
 
 
+def decide_closed(board_stage: str | None, present: set[str]) -> Decision:
+    """Closed issues are Done: move the board there; collapse existing stage labels."""
+    return Decision(
+        set_board=None if board_stage == "done" else "done",
+        add=("done",) if present and "done" not in present else (),
+        remove=tuple(sorted(present - {"done"})),
+    )
+
+
 @dataclass(frozen=True)
 class Planned:
     repo: str
@@ -140,11 +150,11 @@ def plan(
     *,
     label_events: Callable[[str, int], dict[str, str]],
 ) -> Iterator[Planned]:
-    """Yield the non-noop decisions for open board issues in REPOS."""
+    """Yield the non-noop decisions for board issues in REPOS."""
     repos = set(REPOS.values())
     for item in items:
         content = item.get("content") or {}
-        if content.get("__typename") != "Issue" or content.get("state") != "OPEN":
+        if content.get("__typename") != "Issue":
             continue
         repo = (content.get("repository") or {}).get("nameWithOwner")
         if repo not in repos:
@@ -156,6 +166,11 @@ def plan(
             for node in (content.get("labels") or {}).get("nodes") or []
             if (key := stage_for_label(node.get("name") or ""))
         }
+        if content.get("state") == "CLOSED":
+            decision = decide_closed(board_stage, present)
+            if not decision.is_noop:
+                yield Planned(repo, content["number"], str(item["id"]), decision)
+            continue
         if board_stage and present == {board_stage}:
             continue
         if not present and not board_stage:

@@ -634,3 +634,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 - 2026-09-24: created — [subject detector comparison](reports/subject-detector-comparison-2026-09-24.md): open COCO detector arm on the #377 cohort (82% recall / 4% FP vs YOLO-1280 82% / 63% on 640-misses); linked from the [localization rollout](architecture/pipeline/localization-rollout.md) Related pages, [model roles](planning/models/subject-evidence-model-roles.md) detector row, roadmap item 0a in [subject-aware culling evidence](planning/subject-aware-culling-evidence.md), and [reports/INDEX.md](reports/INDEX.md).
 - 2026-09-24: created — [keywords/captions/species comparison](reports/keywords-captions-species-comparison-2026-09-24.md): production CLIP B/32 + BLIP + BioCLIP 2 vs reference-design OpenCLIP B/32 approach and roadmap SigLIP2 / L/14 / Florence-2 on the #377 cohort; row in [reports/INDEX.md](reports/INDEX.md).
 - 2026-09-24: updated — [keywords/captions/species comparison](reports/keywords-captions-species-comparison-2026-09-24.md) §3b: blind 4-agent CLI vision panel + Jev on species-blind descriptions over all 193 species disagreements (replaces the 30-crop single-assistant check); recommendations updated.
+
+## [2026-09-24] edit | Board stage sync marks closed issues Done
+
+- 2026-09-24: updated — [backlog workflow](project/00-backlog-workflow.md) §6: closed board issues now move to Stage = Done and any `stage:*` labels collapse to `stage:done` (#402).
