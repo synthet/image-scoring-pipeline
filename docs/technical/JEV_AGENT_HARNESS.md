@@ -155,10 +155,12 @@ candidates and move the pick to the front. The response carries a `rerank` field
 
 ## Gallery
 
-The gallery's hooks call this backend copy with `--repo`:
-`python "$CLAUDE_PROJECT_DIR/../image-scoring-backend/scripts/agent_harness/hook.py" <event> --repo "$CLAUDE_PROJECT_DIR"`.
-If the sibling checkout is missing, the hook command fails. Claude Code treats that as a
-non-blocking error and continues. The gallery has its own `.agent/jev_harness.json` and packs.
+The gallery's hooks call this backend copy with `--repo`, guarded so a missing sibling checkout
+is skipped:
+`test -f "$F" && python "$F" <event> --repo "$CLAUDE_PROJECT_DIR" || true`, where `$F` is
+`$CLAUDE_PROJECT_DIR/../image-scoring-backend/scripts/agent_harness/hook.py`. The guard matters
+because `python` on a missing file exits 2, and Claude Code treats exit 2 as **block**. The gallery
+has its own `.agent/jev_harness.json` and packs.
 
 ## Files
 
