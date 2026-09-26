@@ -20,7 +20,7 @@ echo.
 echo   Optional environment variables:
 echo     SKIP_FRONTEND_BUILD=1   skip npm (Python/static unchanged)
 echo     DOCKER_BUILD_NO_CACHE=1   full rebuild layers (avoid unless needed)
-echo     FRONTEND_CI=1             run npm ci before npm run build
+echo     FRONTEND_CI=1             run npm ci before npm run build ^(also default if node_modules missing^)
 echo     WEBUI_READY_TIMEOUT_SEC=N  max seconds to wait for http://localhost:7860 (default 360)
 echo     DOCKER_READY_TIMEOUT_SEC=N max seconds to wait for Docker daemon (default 180)
 echo     SKIP_DOCKER_START=1        fail if Docker is down; do not auto-start Desktop
@@ -61,9 +61,18 @@ if /I "!SKIP_FRONTEND_BUILD!"=="1" (
     pushd frontend
     if /I "!FRONTEND_CI!"=="1" (
         echo [INFO] FRONTEND_CI=1: running npm ci...
-        call npm ci
+        call npm ci --legacy-peer-deps
         if errorlevel 1 (
             echo [ERROR] npm ci failed.
+            popd
+            pause
+            exit /b 1
+        )
+    ) else if not exist "node_modules\.bin\tsc.cmd" (
+        echo [INFO] frontend node_modules missing or incomplete — running npm ci...
+        call npm ci --legacy-peer-deps
+        if errorlevel 1 (
+            echo [ERROR] npm ci failed. Install Node.js, ensure sibling image-scoring-ui exists, or set SKIP_FRONTEND_BUILD=1.
             popd
             pause
             exit /b 1
