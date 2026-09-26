@@ -128,8 +128,12 @@ class TypeSafeClient:
         rubric_keys: list[str],
         *,
         check_evidence: bool = True,
+        criteria: dict[str, Any] | None = None,
     ) -> dict[str, Judgment]:
         """Ask ``rubric_keys`` about ``state``; return judgments by rubric key.
+
+        ``criteria`` maps a rubric key to call-time criteria for rubrics whose
+        options are only known per call (e.g. ``harness.tool.pick``).
 
         When ``check_evidence`` is set, the ``evidence.sufficiency`` rubric is
         asked in the same call and its value is attached to every other judgment
@@ -155,7 +159,11 @@ class TypeSafeClient:
             return {}
 
         try:
-            questions = {r.key: rubrics_mod.build_question(r) for r in selected}
+            overrides = criteria or {}
+            questions = {
+                r.key: rubrics_mod.build_question(r, criteria=overrides.get(r.key))
+                for r in selected
+            }
         except Exception:
             logger.exception("Failed to build TypeSafe questions")
             return {}
