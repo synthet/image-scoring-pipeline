@@ -4,7 +4,7 @@ title: MCP search + dispatch contract
 description: Compact search and dispatch workflow for is-be-mcp and is-ui-mcp, including sse_status and optional SSE proxy keys.
 resource: docs/technical/MCP_SEARCH_DISPATCH.md
 tags: [mcp, agents, api]
-timestamp: 2026-06-20T00:00:00Z
+timestamp: 2026-09-26T00:00:00Z
 okf_version: 0.1
 ---
 
@@ -68,6 +68,7 @@ search(
 - Searches **action registry** only; never executes side effects.
 - Returns `results[]` with `action_id`, `confidence`, `dispatch_hint`, `required_args`, `optional_args`.
 - Sets `low_confidence: true` when top match is weak.
+- Optional **Jev rerank**: when `low_confidence` is true and `config.json` has both `typesafe.enabled` and `typesafe.mcp_search_rerank` set (defaults `false`), the top 8 candidates are put to Jev (`harness.tool.pick`); its pick moves to the front and the response gains `rerank: {by, action_id, confidence}`. Fail-safe: any Jev problem leaves BM25 order. See [JEV_AGENT_HARNESS.md](JEV_AGENT_HARNESS.md).
 
 ## `dispatch`
 
