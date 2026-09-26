@@ -282,3 +282,31 @@ def test_enqueue_job_round_trips_description():
     )
     row = db.get_job(jid)
     assert row.get("description") == "Integration test: jobs.description round-trip."
+
+
+def test_truncate_app_tables_empties_tables_and_reseeds_phases():
+    """#399: the pipeline_phases reseed must not roll back the TRUNCATE."""
+    from modules import db_postgres
+    from modules.phases import SEED_PHASES
+
+    for i in range(3):
+        db_postgres.execute_write("INSERT INTO folders (path) VALUES (%s)", (f"/tmp/truncate_{i}",))
+    assert db_postgres.execute_select_one("SELECT count(*) AS n FROM folders")["n"] == 3
+
+    db_postgres.truncate_app_tables()
+
+    for table in db_postgres.POSTGRES_APP_TABLES:
+        if table in ("pipeline_phases", "embedding_spaces"):
+            continue
+        n = db_postgres.execute_select_one(f"SELECT count(*) AS n FROM {table}")["n"]
+        assert n == 0, f"{table} still has {n} rows after truncate_app_tables()"
+
+    phases = db_postgres.execute_select("SELECT code, enabled FROM pipeline_phases")
+    assert len(phases) == len(SEED_PHASES)
+    assert all(row["enabled"] == 1 for row in phases)
+
+    # RESTART IDENTITY took effect: the next folder id starts at 1 again.
+    row = db_postgres.execute_write_returning(
+        "INSERT INTO folders (path) VALUES (%s) RETURNING id", ("/tmp/truncate_after",)
+    )
+    assert row["id"] == 1
