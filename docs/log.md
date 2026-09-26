@@ -674,3 +674,8 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-25] created | Evidence-driven scoring and culling improvement candidates
 
 - 2026-09-25: created — [evidence-driven scoring and culling improvement candidates](planning/reference-workflow-improvement-candidates.md): clean-room behavior proposal covering versioned evidence, deterministic reranking, uncertainty, editable sequence boundaries, close-call review, project-owned calibration, caches, diagnostics, and additive cross-project contracts; indexed in [planning/INDEX.md](planning/INDEX.md) and [INDEX.md](INDEX.md).
+
+## [2026-09-25] created | Reference culling shadow scores and human culling label set
+
+- 2026-09-25: created — [reference culling shadow scores](reports/reference-culling-shadow-scores-2026-09-25.md): a local research instrument scored all 76,822 on-disk images; 7 headline scores stored as `refcull_*` shadow models (dashboard), 93 scalar dims + structured records + 0.5 s bursts + CLIP embeddings in schema `refcull` (not read by the backend); linear normalisation to the production pooled mean/SD; agreement analysis (composite vs general ρ 0.30, eye evidence 0.41, best-frame match 37%, no-subject frames diverge). DB backup taken before import.
+- 2026-09-25: created — [human culling label set](planning/human-culling-labels.md) (#415): 302-group stratified, weighted sample of stacks and bursts; blind pick/keep/reject + best-frame protocol; `human_labels` schema; evaluation plan and gates; 20 groups labelled. Linked from [subject-aware culling evidence](planning/subject-aware-culling-evidence.md) roadmap item 0, [planning/INDEX.md](planning/INDEX.md), [reports/INDEX.md](reports/INDEX.md) and [INDEX.md](INDEX.md).

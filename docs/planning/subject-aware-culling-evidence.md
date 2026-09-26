@@ -327,7 +327,7 @@ covered 236 agent-labelled frames in 54 bursts.
 | # | Item | Stage | Size | Depends on |
 |---|---|---|---|---|
 | 0a | **Open COCO detector as a second localization provider** (#408) (shadow; upstream weights). It beat YOLO-1280 on the #377 cohort ([comparison](../reports/subject-detector-comparison-2026-09-24.md)) | 3–4 | S–M | upstream checkpoint re-run |
-| 0 | **Human label set** (#415): about 300 bursts of pick/reject, stratified by subject-size tercile (no human labels exist today) | — | M (your time) | — |
+| 0 | **Human label set** (#415): about 300 bursts of pick/reject, stratified by subject-size tercile (no human labels exist today). **In progress:** [protocol and status](human-culling-labels.md), 20 of 302 groups done | — | M (your time) | — |
 | 1 | Descriptor addendum: resampler, fit, working/fine sizes (folded into #406) | 3 | S | — |
 | 2 | Evidence extractor v0 (#423) using the **imported `bird_bbox` regions** only: focus, exposure, noise, composition from box, no mask yet → research JSONL | 6 | M | Stage 2 import |
 | 3 | Burst sub-segmentation (0.5 s) as stack scope (#424) | orth. | S | — |

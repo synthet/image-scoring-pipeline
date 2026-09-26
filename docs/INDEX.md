@@ -100,6 +100,8 @@ Full categorized index for **image-scoring-backend**. Prefer small linked pages 
 | [reference/models/MODEL_WEIGHTS.md](reference/models/MODEL_WEIGHTS.md) | Current model weights and scoring logic. |
 | [MODEL_RECOMMENDATIONS_PIPELINES.md](MODEL_RECOMMENDATIONS_PIPELINES.md) | Canonical pipeline model roadmap (ARNIQA, DINOv2, SigLIP2, RAM++; CLIP/OpenCLIP alternate) for scoring, culling, keywords. |
 | [planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md](planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md) | Planned model stack changes. |
+| [planning/human-culling-labels.md](planning/human-culling-labels.md) | Human culling label set (#415): sampling design, label semantics, `human_labels` storage, evaluation plan and status. |
+| [reports/reference-culling-shadow-scores-2026-09-25.md](reports/reference-culling-shadow-scores-2026-09-25.md) | Reference culling scores as shadow models across the library: storage by type, normalisation, agreement analysis. |
 | [planning/reference-workflow-improvement-candidates.md](planning/reference-workflow-improvement-candidates.md) | Clean-room candidates for versioned evidence, deterministic reranking, uncertainty, sequence review, calibration, caches, and diagnostics. |
 | [research/STUDENT_SCORER_STUDY.md](research/STUDENT_SCORER_STUDY.md) | Ensemble → single multi-head student research program. |
 | [research/STUDENT_SCORER_PROTOCOL.md](research/STUDENT_SCORER_PROTOCOL.md) | Locked protocol / gates / commands for the student scorer. |

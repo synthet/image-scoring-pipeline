@@ -4,7 +4,7 @@ title: Reports index
 description: Index of historical reports, research, reviews, and debugging sessions under docs/reports/.
 resource: docs/reports/INDEX.md
 tags: [docs, reports, index]
-timestamp: 2026-07-01T00:00:00Z
+timestamp: 2026-09-25T00:00:00Z
 okf_version: 0.1
 ---
 
@@ -37,6 +37,7 @@ Historical reports, research, reviews, and debugging sessions.
 | [keywords-captions-species-comparison-2026-09-24](keywords-captions-species-comparison-2026-09-24.md) | #377 cohort: towers tie (AUC 0.94–0.97) but softmax-over-26 misses ~1/3 of birds; Florence-2 captions 99% / 7%; BioCLIP beats general CLIP on species (4-agent blind panel on 193 disagreements: 134 vs 16; ≈74% vs 25% accuracy; Jev ≥0.7 agrees 92%); 12 misses are species missing from the list |
 | [subject-detector-comparison-2026-09-24](subject-detector-comparison-2026-09-24.md) | #377 cohort + open COCO detector (RTMDet-tiny): 82% recall at 4% FP on 640-misses vs YOLO-1280 82% / 63%; rejects 21/28 YOLO false boxes; median IoU 0.82 with YOLO boxes |
 | [subject-evidence-probe-2026-09-24](subject-evidence-probe-2026-09-24.md) | Arm A vs subject-evidence probe on 236 agent-labelled frames / 54 bursts — B ≈ A overall (0.574 vs 0.574), B leads best-vs-reject (0.669 vs ≤0.563); small subjects at chance; needs ~300 human-labelled bursts |
+| [reference-culling-shadow-scores-2026-09-25](reference-culling-shadow-scores-2026-09-25.md) | Reference culling design on all 76,822 images: 7 headline scores as shadow models, 93 dims + records + bursts + embeddings in schema `refcull`; composite vs general ρ 0.30 (models inter-correlate at 0.40), eye evidence strongest (0.41), best-frame match 37%, no-subject frames diverge; agreement only (no human labels) |
 | [localization-stage2-normalized-persistence-2026-09-22](localization-stage2-normalized-persistence-2026-09-22.md) | Localization rollout stage 2 — `image_localization_runs` + `image_regions`; survey of all 76,089 legacy `bird_bbox` rows; landed dormant |
 | [BIRD_CROP_FOCUS_MEASURES_2026-08-03.md](BIRD_CROP_FOCUS_MEASURES_2026-08-03.md) | Classical focus measures + camera AF metadata for bird-crop focus decisions — measures at chance; AF geometry available on 91.5% and informative |
 | [RESEARCH_SESSIONS_2026-08-05.md](RESEARCH_SESSIONS_2026-08-05.md) | **Hub** — concurrent bird-crop (#317) and student-scorer E2 (#323) research sessions paused 2026-08-05; start here |
