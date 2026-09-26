@@ -34,6 +34,8 @@ every number in those reports holds for the upstream Apache-2.0 weights we are a
   conv bias), and allowed transposed 2-D matrices.
 - Matched each ONNX tensor to the closest same-shape upstream candidate by relative max difference.
 
+Reusable write-up of this method: [model weight provenance method](../research/model-weight-provenance-method.md).
+
 ## Results
 
 | Model | Upstream checkpoint (SHA-256 prefix) | ONNX weight tensors matched | Worst relative difference |
@@ -55,7 +57,7 @@ every number in those reports holds for the upstream Apache-2.0 weights we are a
 
 - **B6 is now a packaging task only.** The detector-comparison and box-panel numbers apply unchanged
   to the upstream RTMDet-tiny weights. Spec 03 still needs our own export (AC-1) and a weights
-  manifest (AC-2). Running the checkpoint directly in PyTorch also works, but needs `mmdet`.
+  manifest (AC-2). Running the checkpoint directly in PyTorch no longer needs `mmdet`: image-scoring-model has a plain-PyTorch reimplementation that loads it `strict=True` and matches 2,638/2,638 detections, and now uses it as a pseudo-labelling teacher for its bird detector ([teacher report](https://github.com/synthet/image-scoring-model/blob/main/docs/reports/teacher-pseudo-labels-v0-2026-09-25.md)).
 - **#426 has verified sources:**
   - mammal pose: the RTMPose-m AP-10K checkpoint above
   - subject mask: `u2netp.pth` above
