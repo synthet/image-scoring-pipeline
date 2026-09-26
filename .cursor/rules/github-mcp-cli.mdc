@@ -1,6 +1,6 @@
 ---
 description: Use GitHub MCP tools and gh CLI for issues, PRs, branches, and repo operations
-alwaysApply: true
+alwaysApply: false
 ---
 
 # GitHub MCP and CLI

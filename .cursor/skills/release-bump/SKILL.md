@@ -4,6 +4,7 @@ description: >-
   Bump semver + promote CHANGELOG Unreleased via compiled harness. Use for /release,
   version bumps, or tagging. Runs scripts/agent_skills/release_bump.py; LLM only
   when Unreleased is ambiguous. Never commit/push unless the user asks.
+disable-model-invocation: true
 ---
 
 # Release bump (compiled)

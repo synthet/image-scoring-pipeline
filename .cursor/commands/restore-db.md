@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+---
+
 # /restore-db — PostgreSQL restore (safe)
 
 Use when the operator wants to **restore** a custom-format `pg_dump` into the

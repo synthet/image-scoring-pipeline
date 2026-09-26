@@ -99,6 +99,104 @@ _RUBRICS: tuple[Rubric, ...] = (
             "supplied text; do not guess at visual detail that is absent."
         ),
     ),
+    # -- Agent harness decision points (scripts/agent_harness) ------------
+    # Per-turn questions a coding-agent harness asks Jev; see
+    # docs/technical/JEV_AGENT_HARNESS.md. State is text built from the
+    # prompt, command or file metadata — never restricted file contents.
+    Rubric(
+        key="harness.context.visibility",
+        version="v1",
+        question_type=CHOICE,
+        instructions=(
+            "Decide how much of the instruction pack under review the coding "
+            "agent should see while handling the supplied request. Judge only "
+            "from the request text, recently touched paths, and the pack "
+            "summary."
+        ),
+        criteria={
+            "hide": "The pack is irrelevant to this request.",
+            "short": "Only the one-line summary is useful as a reminder.",
+            "full": "The request directly needs the pack's detailed rules.",
+        },
+    ),
+    Rubric(
+        key="harness.bundle.visibility",
+        version="v1",
+        question_type=CHOICE,
+        instructions=(
+            "Decide how much of the changed file under review a read-only "
+            "reviewer needs to answer the supplied review question. Judge from "
+            "the file path and its change summary."
+        ),
+        criteria={
+            "hide": "Irrelevant to the question; list the path only.",
+            "short": "The change summary and hunk headers are enough.",
+            "full": "The reviewer needs the full diff of this file.",
+        },
+    ),
+    Rubric(
+        key="harness.tool.pick",
+        version="v1",
+        question_type=CHOICE,
+        instructions=(
+            "Choose the action that best fulfils the agent's stated intent. "
+            "Options are candidate actions from a lexical search; prefer "
+            "read-only actions when the intent does not ask for a change."
+        ),
+        # Criteria are the candidate actions, supplied per call.
+        criteria=None,
+    ),
+    Rubric(
+        key="harness.permission.exec",
+        version="v1",
+        question_type=CHOICE,
+        instructions=(
+            "Decide whether the coding agent should run the supplied command "
+            "under the supplied policy. Consider the flagged script excerpt, "
+            "whether it touches secrets, sends data off the machine, or "
+            "destroys data, and whether the stated task scope justifies it."
+        ),
+        criteria={
+            "allow": "Safe to run without asking the user.",
+            "ask": "Plausible for the task but the user should confirm.",
+            "deny": "Violates the policy and should not run.",
+        },
+    ),
+    Rubric(
+        key="harness.review.sensitivity",
+        version="v1",
+        # A Choice rather than a Score so the answer is a stable label.
+        question_type=CHOICE,
+        instructions=(
+            "Judge how sensitive the file under review is to send to an "
+            "external code-review vendor, from its path and metadata only."
+        ),
+        criteria={
+            "public": "Public documentation or an open-source dependency.",
+            "standard": "Ordinary application code.",
+            "restricted": "Secrets, credentials, environment or infrastructure config.",
+        },
+    ),
+    Rubric(
+        key="harness.route.leave_frontier",
+        version="v1",
+        question_type=NOUL,
+        instructions=(
+            "Can this subtask be completed correctly by a smaller model given "
+            "only the listed purpose-built context, without the rest of the "
+            "session?"
+        ),
+    ),
+    Rubric(
+        key="harness.subgoal.duplicate",
+        version="v1",
+        question_type=NOUL,
+        instructions=(
+            "Is the new subgoal already covered by the prior subgoal under "
+            "review, so launching it would repeat work that is done or in "
+            "flight?"
+        ),
+    ),
     Rubric(
         key="evidence.sufficiency",
         version="v1",
@@ -139,11 +237,16 @@ def get_rubric(key: str) -> Rubric:
     return REGISTRY[key]
 
 
-def build_question(rubric: Rubric, *, subject: str | None = None) -> Any:
+def build_question(
+    rubric: Rubric, *, subject: str | None = None, criteria: Any = None
+) -> Any:
     """Build the SDK question object for ``rubric``.
 
     Imports ``typesafe_sdk`` lazily so the package stays importable (and the
     flag stays inspectable) without the optional dependency installed.
+
+    ``criteria`` overrides the rubric's criteria for rubrics whose options
+    are only known at call time (e.g. ``harness.tool.pick``).
 
     ``subject`` is included in model-visible instructions. Question mapping
     keys are response correlation IDs and TypeSafe does not send them to the
@@ -158,10 +261,11 @@ def build_question(rubric: Rubric, *, subject: str | None = None) -> Any:
             "subject_under_review": subject,
         }
 
+    chosen = rubric.criteria if criteria is None else criteria
     if rubric.question_type == NOUL:
         return Noul(instructions=instructions)
     if rubric.question_type == SCORE:
-        return Score(instructions=instructions, criteria=rubric.criteria)
+        return Score(instructions=instructions, criteria=chosen)
     if rubric.question_type == CHOICE:
-        return Choice(instructions=instructions, criteria=rubric.criteria)
+        return Choice(instructions=instructions, criteria=chosen)
     raise ValueError(f"Unsupported question type: {rubric.question_type!r}")

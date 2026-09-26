@@ -1,6 +1,6 @@
 ---
 description: Use subagent-orchestrator MCP for external CLI reviews; review-only, no secrets, no raw codex/gemini shell by default.
-alwaysApply: true
+alwaysApply: false
 ---
 
 # External CLI sub-agents

@@ -52,6 +52,8 @@ Use this agent when the user asks for an external CLI review, a subagent review,
 2. Call `detect_subagents`.
 3. Choose the target agent or agents based on the user request and availability.
 4. Extract workspace-relative files from the user request or `@` mentions.
+   For change reviews, first run `python scripts/agent_harness/cli.py bundle` and give **every** selected
+   agent the same bundle file, so retrieval is done once for the whole panel.
 5. Call `run_subagent` for each selected agent.
 6. Read every returned `.agent-runs/.../stdout.md` output.
 7. Summarize results without applying changes.

@@ -1,6 +1,5 @@
 ---
 description: Behavioral guardrails against common LLM coding failure modes — assumptions, overcomplication, collateral edits.
-alwaysApply: true
 ---
 
 # Karpathy coding guardrails (always on)

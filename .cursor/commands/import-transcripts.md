@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+---
+
 > **Cursor:** Mirror: `.claude/commands/import-transcripts.md`.
 
 # /import-transcripts — Mine Cursor chat history

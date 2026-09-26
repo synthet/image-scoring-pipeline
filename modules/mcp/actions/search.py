@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from modules.mcp.actions.registry import load_action_registry, registry_actions
@@ -24,6 +25,17 @@ _MUTATING_QUERY_HINTS = frozenset(
         "submit",
     }
 )
+
+# Jev (TypeSafe) rerank of low-confidence BM25 results — the "harness as tool
+# router" decision point. Needs both ``typesafe.enabled`` (the master switch)
+# and ``typesafe.mcp_search_rerank``; a paid, network-bound call, so it only
+# runs when BM25 is unsure and never raises.
+_RERANK_TOP_K = 8
+_RERANK_MIN_CONFIDENCE = 0.5
+_RERANK_TIMEOUT_SECONDS = 5.0
+_rerank_cache: dict[tuple[str, tuple[str, ...]], tuple[str, float]] = {}
+
+logger = logging.getLogger(__name__)
 
 _index: Bm25Index | None = None
 
@@ -98,6 +110,53 @@ def _normalize_score(raw: float, max_raw: float) -> float:
     if max_raw <= 0:
         return 0.0
     return min(1.0, max(0.0, raw / max_raw))
+
+
+def _rerank_enabled() -> bool:
+    try:
+        from modules import config
+
+        section = config.get_config_section("typesafe") or {}
+    except Exception:  # noqa: BLE001 - config trouble must not break search
+        return False
+    return bool(section.get("enabled", False)) and bool(section.get("mcp_search_rerank", False))
+
+
+def _jev_pick(query: str, rows: list[dict[str, Any]]) -> tuple[str, float] | None:
+    """Ask Jev which candidate fits ``query``; ``(action_id, confidence)`` or None."""
+    ids = tuple(r["action_id"] for r in rows)
+    cached = _rerank_cache.get((query, ids))
+    if cached is not None:
+        return cached
+    try:
+        from modules.typesafe.client import TypeSafeClient
+
+        client = TypeSafeClient(timeout_seconds=_RERANK_TIMEOUT_SECONDS)
+        if not client.available:
+            return None
+        criteria = {
+            r["action_id"]: f"{r.get('title') or ''}: {r.get('description') or ''}"[:300]
+            for r in rows
+        }
+        state = {"intent": query, "candidates": criteria}
+        out = client.judge(
+            state,
+            ["harness.tool.pick"],
+            check_evidence=False,
+            criteria={"harness.tool.pick": criteria},
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Jev rerank failed")
+        return None
+    judgment = out.get("harness.tool.pick")
+    if judgment is None or judgment.value not in criteria:
+        return None
+    conf = judgment.confidence
+    if conf is None and judgment.probabilities:
+        conf = judgment.probabilities.get(judgment.value)
+    pick = (str(judgment.value), float(conf or 0.0))
+    _rerank_cache[(query, ids)] = pick
+    return pick
 
 
 def search_actions(
@@ -175,9 +234,17 @@ def search_actions(
         if _mutating_query_low_confidence(q, top_action):
             low = True
 
-    return {
+    out: dict[str, Any] = {
         "query": q,
         "count": len(results),
         "results": results[:limit],
         "low_confidence": low,
     }
+    if low and len(results) >= 2 and _rerank_enabled():
+        pick = _jev_pick(q, results[:_RERANK_TOP_K])
+        if pick is not None and pick[1] >= _RERANK_MIN_CONFIDENCE:
+            chosen = next(r for r in results if r["action_id"] == pick[0])
+            reordered = [chosen] + [r for r in results if r is not chosen]
+            out["results"] = reordered[:limit]
+            out["rerank"] = {"by": "jev", "action_id": pick[0], "confidence": round(pick[1], 4)}
+    return out

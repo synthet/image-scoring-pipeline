@@ -1,6 +1,5 @@
 ---
 description: Always-on safety and secret-handling rules.
-alwaysApply: true
 ---
 
 # Safety & secrets (always on)

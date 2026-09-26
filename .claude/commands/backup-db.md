@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+---
+
 # /backup-db — PostgreSQL backup
 
 Use when the operator wants a **local dump** of the `image_scoring` PostgreSQL database (custom-format `pg_dump`).

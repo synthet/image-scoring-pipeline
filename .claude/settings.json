@@ -4,55 +4,89 @@
       "mcp__is-be-mcp__search",
       "mcp__is-be-mcp__dispatch",
       "mcp__is-be-mcp__sse_status",
-      "Read(//d/Projects/image-scoring-backend/modules/*.py)",
-      "Read(<ELECTRON_IMAGE_SCORING_PATH>/**)",
-      "Read(<ELECTRON_IMAGE_SCORING_PATH>/mcp-server/**)",
-      "Read(//d/Projects/**)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(rg:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(ruff check:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python scripts/doctor.py:*)",
+      "Bash(python scripts/sync_assistant_trees.py --check)",
+      "Bash(python scripts/ci/check_agent_frontmatter.py)",
+      "Bash(python scripts/ci/check_secrets.py)",
+      "Bash(python scripts/agent_harness/cli.py:*)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:www.anthropic.com)",
-      "Bash(npm view @anthropic-ai/electron-mcp)",
-      "Bash(npm search electron-mcp)",
-      "Bash(npm view electron-mcp-server)",
-      "Bash(openssl rand -hex 32)",
-      "Bash(npm view electron-mcp-server dependencies)",
-      "Bash(npm view electron-mcp-server version)",
-      "Bash(npm view @modelcontextprotocol/sdk versions --json)",
-      "Bash(node --version)",
-      "Bash(pip show mcp)",
-      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; help\\(FastMCP\\)\")",
-      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; m = FastMCP\\(''test''\\); print\\(type\\(m._mcp_server\\)\\); print\\(dir\\(m\\)\\)\")",
-      "Bash(npm run build)",
-      "Bash(timeout 5 node dist/index.js)",
-      "Bash(printf '{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"id\"\":1,\"\"method\"\":\"\"initialize\"\",\"\"params\"\":{\"\"protocolVersion\"\":\"\"2024-11-05\"\",\"\"capabilities\"\":{},\"\"clientInfo\"\":{\"\"name\"\":\"\"test\"\",\"\"version\"\":\"\"1.0\"\"}}}\\\\n{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"id\"\":2,\"\"method\"\":\"\"tools/list\"\"}\\\\n{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"id\"\":3,\"\"method\"\":\"\"tools/call\"\",\"\"params\"\":{\"\"name\"\":\"\"get_system_stats\"\",\"\"arguments\"\":{}}}\\\\n{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"id\"\":4,\"\"method\"\":\"\"tools/call\"\",\"\"params\"\":{\"\"name\"\":\"\"api_health\"\",\"\"arguments\"\":{}}}\\\\n')",
-      "Bash(timeout 10 node dist/index.js)",
-      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; m = FastMCP\\(''test''\\); print\\([x for x in dir\\(m\\) if ''sse'' in x.lower\\(\\) or ''app'' in x.lower\\(\\)]\\)\")",
-      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; help\\(FastMCP.tool\\)\")",
-      "Bash(python -c \":*)",
-      "Bash(python -c \"from mcp.types import ToolAnnotations; print\\(ToolAnnotations.__doc__\\); print\\(ToolAnnotations.model_fields.keys\\(\\)\\)\")",
-      "WebFetch(domain:127.0.0.1)",
       "WebFetch(domain:localhost)",
-      "Bash(python -m pytest)",
-      "Bash(python -c \"import py_compile; py_compile.compile\\(''modules/db.py'', doraise=True\\); py_compile.compile\\(''modules/mcp_server.py'', doraise=True\\); print\\(''Both files compile OK''\\)\")",
-      "Bash(python -c \"from modules.db import _add_keyword_filter; print\\(''_add_keyword_filter imported successfully''\\)\")",
-      "Bash(python -c \"import py_compile; py_compile.compile\\(''modules/ui/tabs/pipeline.py'', doraise=True\\); py_compile.compile\\(''modules/ui/tabs/gallery.py'', doraise=True\\); py_compile.compile\\(''modules/ui/app.py'', doraise=True\\); py_compile.compile\\(''modules/ui/assets.py'', doraise=True\\); print\\(''All files compile OK''\\)\")",
-      "Bash(wsl bash -lc ~/.venvs/tf/bin/pip list)",
-      "Bash(wsl bash -lc ~/.venvs/tf/bin/pip install torch torchvision)",
-      "Bash(wsl bash -c '~/.venvs/tf/bin/pip install torch torchvision')",
-      "Bash(wsl bash -c '~/.venvs/tf/bin/pip install transformers')",
-      "Bash(wsl bash -c '~/.venvs/tf/bin/python -c \"\"from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration\"\"')",
-      "Bash(wsl bash -c 'source ~/.venvs/tf/bin/activate && python -c \"\"from transformers import CLIPProcessor, CLIPModel, BlipProcessor, BlipForConditionalGeneration; print\\(\\\\\"\"OK\\\\\"\"\\)\"\"')",
-      "Bash(wsl bash -c '~/.venvs/tf/bin/pip freeze')",
-      "mcp__filesystem__list_allowed_directories",
-      "Bash(grep -l \"setup_server_endpoints\" modules/*.py)",
-      "mcp__is-be-jobs__get_runner_status",
-      "mcp__is-be-diag__search_logs",
-      "mcp__is-be-jobs__get_drive_diagnostics",
-      "mcp__is-be-jobs__get_job_phases",
-      "mcp__is-be-jobs__get_job_details",
-      "mcp__is-be-data__get_stacks_summary"
+      "WebFetch(domain:127.0.0.1)"
+    ],
+    "ask": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(alembic downgrade:*)",
+      "Bash(docker compose down -v:*)",
+      "Bash(rm -rf:*)"
+    ],
+    "deny": [
+      "Read(./secrets.json)",
+      "Read(**/secrets.json)",
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(~/.ssh/**)",
+      "Edit(./.git/config)",
+      "Bash(git config extensions.worktreeConfig:*)"
     ],
     "additionalDirectories": [
-      "<ELECTRON_IMAGE_SCORING_PATH>"
+      "../image-scoring-gallery"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" user-prompt",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" session-compact",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" pre-bash",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__run_subagent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" pre-review",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   },
   "enabledMcpjsonServers": [

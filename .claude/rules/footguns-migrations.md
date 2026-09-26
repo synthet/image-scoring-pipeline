@@ -1,0 +1,15 @@
+---
+description: Migration footguns — this repo is the schema authority; contract docs first, gallery second
+paths:
+  - "migrations/**"
+  - "alembic.ini"
+---
+
+# Footguns: Alembic migrations
+
+This repo is the **schema authority** ([CLAUDE.md](../../CLAUDE.md)); DDL lives in `modules/db_postgres.py` and `migrations/versions/`. Procedure: [.agent/workflows/cross_repo_contract_change.md](../../.agent/workflows/cross_repo_contract_change.md).
+
+- **Contract before code:** update [docs/technical/DB_SCHEMA.md](../../docs/technical/DB_SCHEMA.md) (and `API_CONTRACT.md` / `openapi.yaml` when the API exposes the column) with or before the migration.
+- **Gallery reads these tables** (PostgreSQL or backend HTTP SQL). A column rename or drop is a cross-repo change — backend first, then image-scoring-gallery.
+- **Never invent columns or `phase_code` values** — cite [docs/CANONICAL_SOURCES.md](../../docs/CANONICAL_SOURCES.md).
+- **Tests use `image_scoring_test` only** (see `tests-use-test-db-only` rule); `alembic downgrade` against a real DB needs explicit user approval.

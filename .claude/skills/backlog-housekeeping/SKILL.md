@@ -5,6 +5,7 @@ description: >-
   sync Project board Stage, label hygiene, tier-1 closes. Use when the user runs
   /backlog-housekeeping, asks to close stale or obsolete issues, fix board drift,
   or clean up issue labels on the synthet Project #1 queue.
+disable-model-invocation: true
 ---
 
 # backlog-housekeeping

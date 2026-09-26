@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+---
+
 # /release-notes — User-facing changelog slice
 
 Use before tagging a release or publishing notes.

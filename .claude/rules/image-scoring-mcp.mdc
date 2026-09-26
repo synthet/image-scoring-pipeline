@@ -1,8 +1,0 @@
----
-description: Use image-scoring MCP tools for app-level diagnostics, job monitoring, and Gradio debugging
-alwaysApply: true
----
-
-# Vexlum Scoring MCP
-
-Mirror of [`.cursor/rules/image-scoring-mcp.mdc`](../../.cursor/rules/image-scoring-mcp.mdc). **Preferred:** **`is-be-mcp`** → **`search`** / **`dispatch`**. Gallery: **`is-ui-*`**. See backend **`AGENTS.md`** and [MCP_SEARCH_DISPATCH.md](../../docs/technical/MCP_SEARCH_DISPATCH.md).

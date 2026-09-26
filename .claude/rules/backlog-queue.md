@@ -1,6 +1,5 @@
 ---
 description: Canonical task queue is the cross-repo GitHub Project board, not TODO.md. Forces every agent through claim → start → review → done transitions on Stage.
-alwaysApply: true
 ---
 
 # Backlog queue (rule)

@@ -1,0 +1,14 @@
+---
+description: Test-triage footguns — host path artifacts, shared global state, harmless 5433 refusals
+globs: "tests/**,pytest.ini"
+alwaysApply: false
+---
+
+# Footguns: test triage
+
+Distilled from [docs/LESSONS_LEARNED.md § Test triage](../../docs/LESSONS_LEARNED.md#test-triage).
+
+- **`D:/Photos` vs `/mnt/d/Photos` path-test failures on the Windows host are not your bug** — confirm with `git stash` or run in gpu-shell before "fixing".
+- **Pass alone, fail in the full suite = shared global state** (config cache, singletons) first. `_isolate_config_cache` in `tests/conftest.py` is the global fix; do not add per-file cache fixtures.
+- **Connection refused on 5433** during a plain unit run is the E2E test DB being down — noise, not a failure.
+- Fast subset needs `--ignore=tests/test_probe.py` (import-time DB calls).

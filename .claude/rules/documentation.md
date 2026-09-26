@@ -1,7 +1,7 @@
 ---
 description: Conventions for maintaining docs/ as an OKF-aligned wiki — metadata, categories, indexes, log, cross-references
-globs: "docs/**"
-alwaysApply: false
+paths:
+  - "docs/**"
 ---
 
 # Documentation wiki (image-scoring-backend)

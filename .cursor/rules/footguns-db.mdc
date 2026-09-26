@@ -1,0 +1,15 @@
+---
+description: DB/SQL footguns — real column names, Postgres alias/regex limits, pooled read-only connections, phantom scores
+globs: "modules/db*.py,modules/db/**,modules/db_postgres.py,sql/**,scripts/maintenance/**"
+alwaysApply: false
+---
+
+# Footguns: database and SQL
+
+Distilled from [docs/LESSONS_LEARNED.md § Database / SQL gotchas](../../docs/LESSONS_LEARNED.md#database--sql-gotchas); that page is the narrative, this is the checklist. Schema reference: [docs/technical/DB_SCHEMA.md](../../docs/technical/DB_SCHEMA.md).
+
+- **Check `information_schema` before assuming a column.** `image_model_scores.normalized` (not `normalized_score`); `image_phase_status.last_error` / `attempt_count` exist; `file_size`, `error_message`, `ml_phase`, `cull_failed` did **not** exist where assumed.
+- **Postgres cannot reference a SELECT alias in `ORDER BY`/`HAVING`** — repeat the expression. POSIX regex has no `\d`; use `[0-9]`.
+- **Pooled connections:** `PGConnectionManager.__exit__` must roll back on any non-commit path; for read-only work `set_session(readonly=True)` and restore it in `finally` before release.
+- **Phantom scores:** per-model `image_model_scores` rows can exist without `score_general` / `SCORING=DONE` after an interruption; use `modules/phantom_score_finalize.py`, not the phase-only reconcile.
+- **Large ruff counts in `db_legacy.py` / `db_postgres.py` are pre-existing debt** — lint your new lines, leave the rest (minimal diff).

@@ -8,9 +8,17 @@ Mappings (cursor-to-claude):
   .cursor/commands/*.md        -> .claude/commands/*.md       (verbatim)
   .cursor/skills/<n>/**        -> .claude/skills/<n>/**       (verbatim, whole dir)
   .cursor/agents/*.md          -> .claude/agents/*.md         (verbatim)
-  .cursor/rules/<n>.mdc        -> .claude/rules/<n>.md          (extension change; content kept)
+  .cursor/rules/<n>.mdc        -> .claude/rules/<n>.md          (frontmatter translated)
 
-Only rules in MIRROR_RULES are synced cursor-to-claude (partial mirror policy).
+Rule frontmatter is translated, because Claude Code ignores Cursor's keys and
+would load every mirrored rule on every turn:
+  alwaysApply: true            -> always-on (no ``paths``)
+  globs: "a,b"                 -> ``paths:`` list (loaded when matching files are read)
+  alwaysApply: false, no globs -> not mirrored; intent-only rules are served per
+                                  request by the Jev harness UserPromptSubmit hook
+                                  (scripts/agent_harness), not loaded every turn.
+Rules in CURSOR_ONLY_RULES are never mirrored. Anything else in .claude/rules
+(including stale ``*.mdc`` copies) is removed on sync and reported by --check.
 
 Hand-authored files (mcp.example.json, Cursor-only skills) are left untouched.
 """
@@ -24,21 +32,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Rules mirrored to Claude per .agent/AGENT_INFRA_INVENTORY.md
-MIRROR_RULES = {
-    "agent-canonical-sources",
-    "agent-memory",
-    "backlog-queue",
-    "documentation",
-    "external-cli-subagents",
-    "graphify",
-    "image-scoring-mcp",
-    "karpathy-coding",
-    "pytest-e2e-vocabulary",
-    "python-wsl-webapp-env",
-    "safety-and-secrets",
-    "sdlc-core",
-}
+# Cursor-specific rules (they describe Cursor's own tool calling).
+CURSOR_ONLY_RULES = {"mcp-schema-check"}
 
 SUBDIRS = [
     ("commands", "commands", "files"),
@@ -46,6 +41,65 @@ SUBDIRS = [
     ("agents", "agents", "files"),
     ("rules", "rules", "rules"),
 ]
+
+
+def _split_globs(value: str) -> list[str]:
+    """Split a Cursor ``globs`` value on commas that are not inside ``{...}``."""
+    out: list[str] = []
+    depth = 0
+    current = ""
+    for ch in value:
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth = max(0, depth - 1)
+        if ch == "," and depth == 0:
+            out.append(current)
+            current = ""
+        else:
+            current += ch
+    out.append(current)
+    return [g.strip().strip("\"'") for g in out if g.strip().strip("\"'")]
+
+
+def claude_rule_text(mdc_text: str) -> str | None:
+    """Translate a Cursor rule into a Claude Code rule; ``None`` = do not mirror."""
+    if not mdc_text.startswith("---"):
+        return mdc_text
+    end = mdc_text.find("\n---", 3)
+    if end == -1:
+        return mdc_text
+    meta: dict[str, str] = {}
+    for line in mdc_text[3:end].splitlines():
+        if ":" in line and not line.startswith((" ", "-")):
+            key, _, val = line.partition(":")
+            meta[key.strip()] = val.strip()
+    body = mdc_text[end + 4 :]
+    always = meta.get("alwaysApply", "").lower() == "true"
+    globs = _split_globs(meta.get("globs", "").strip().strip("\"'"))
+    header = ["---"]
+    if meta.get("description"):
+        header.append(f"description: {meta['description']}")
+    if always:
+        pass
+    elif globs:
+        header.append("paths:")
+        header.extend(f'  - "{g}"' for g in globs)
+    else:
+        return None
+    header.append("---")
+    return "\n".join(header) + body
+
+
+def _expected_claude_rules(src: Path) -> dict[str, str]:
+    expected: dict[str, str] = {}
+    for mdc in sorted(src.glob("*.mdc")):
+        if mdc.stem in CURSOR_ONLY_RULES:
+            continue
+        text = claude_rule_text(mdc.read_text(encoding="utf-8"))
+        if text is not None:
+            expected[f"{mdc.stem}.md"] = text
+    return expected
 
 
 def _reset_dir(path: Path) -> None:
@@ -74,24 +128,24 @@ def sync_cursor_to_claude(check: bool = False) -> int:
             continue
 
         if mode == "rules":
+            expected = _expected_claude_rules(src)
+            existing = {p.name for p in dst.iterdir() if p.is_file()} if dst.is_dir() else set()
             if check:
-                for mdc in sorted(src.glob("*.mdc")):
-                    if mdc.stem not in MIRROR_RULES:
-                        continue
-                    target = dst / f"{mdc.stem}.md"
+                for name, text in expected.items():
+                    target = dst / name
                     if not target.exists():
-                        changes.append(f"missing in .claude: rules/{target.name}")
-                    elif target.read_text(encoding="utf-8") != mdc.read_text(encoding="utf-8"):
-                        changes.append(f"differs: rules/{target.name}")
+                        changes.append(f"missing in .claude: rules/{name}")
+                    elif target.read_text(encoding="utf-8") != text:
+                        changes.append(f"differs: rules/{name}")
+                for name in sorted(existing - set(expected)):
+                    changes.append(f"stale in .claude: rules/{name}")
                 continue
             dst.mkdir(parents=True, exist_ok=True)
-            for mdc in sorted(src.glob("*.mdc")):
-                if mdc.stem not in MIRROR_RULES:
-                    continue
-                (dst / f"{mdc.stem}.md").write_text(
-                    mdc.read_text(encoding="utf-8"), encoding="utf-8"
-                )
-            print(f"synced rules ({len(MIRROR_RULES)} mirrored) -> .claude/rules")
+            for name in sorted(existing - set(expected)):
+                (dst / name).unlink()
+            for name, text in expected.items():
+                (dst / name).write_text(text, encoding="utf-8")
+            print(f"synced rules ({len(expected)} mirrored) -> .claude/rules")
             continue
 
         if check:

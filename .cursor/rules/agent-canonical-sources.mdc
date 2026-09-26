@@ -21,15 +21,6 @@ Before changing **APIs**, **database fields**, **phase names**, **`phase_code` v
 - **PostgreSQL + pgvector** is the primary database engine. **Firebird** is **legacy**—do not describe it as current default (see [docs/DATABASE.md](../../docs/DATABASE.md), [docs/planning/database/FIREBIRD_POSTGRES_MIGRATION.md](../../docs/planning/database/FIREBIRD_POSTGRES_MIGRATION.md)).
 - **Embeddings:** default space dimensions and model family are documented in [docs/EMBEDDINGS.md](../../docs/EMBEDDINGS.md) and [docs/technical/EMBEDDINGS.md](../../docs/technical/EMBEDDINGS.md) (e.g. MobileNetV2-style **1280**-dim where stated there).
 
-## Diagnostics (prefer before ad-hoc debugging)
+## Commands and infra
 
-- WSL + `source ~/.venvs/tf/bin/activate` then: `python scripts/doctor.py`, `python scripts/doctor.py --no-gpu`, `python scripts/doctor.py --json`
-- Redacted bundle only via: `python scripts/export_debug_bundle.py` — review before sharing; see [.agent/SAFETY.md](../../.agent/SAFETY.md)
-
-## Fast automated check
-
-- `python -m pytest -m "not gpu and not db and not ml and not firebird" --ignore=tests/test_probe.py` (see [AGENTS.md](../../AGENTS.md))
-
-## Agent infra index
-
-- [.agent/AGENT_INFRA_INVENTORY.md](../../.agent/AGENT_INFRA_INVENTORY.md), [.agent/COMMANDS.md](../../.agent/COMMANDS.md), [.agent/SAFETY.md](../../.agent/SAFETY.md), [.agent/workflows/](../../.agent/workflows/)
+Diagnostics (`scripts/doctor.py`), the fast pytest subset, and the agent infra index live in [CLAUDE.md](../../CLAUDE.md) and [AGENTS.md](../../AGENTS.md).

@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+---
+
 > **Cursor:** Same intent as Claude `/promote-memory`. Mirror: `.claude/commands/promote-memory.md`.
 
 # /promote-memory — Approve dream into active memory

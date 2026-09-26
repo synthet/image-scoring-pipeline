@@ -1,0 +1,51 @@
+{
+  "_comment": "Jev agent harness config (no secrets). Modes per decision: off | shadow (ask Jev, log only) | on (act). JEV_HARNESS_MODE env overrides all. Key: TYPESAFE_API_KEY / JEV_TOKEN env or secrets.json typesafe.api_key. Docs: docs/technical/JEV_AGENT_HARNESS.md",
+  "model": "jev-1.13.0",
+  "timeout_seconds": 4,
+  "max_calls_per_session": 150,
+  "min_confidence": 0.5,
+  "permission_deny_threshold": 0.8,
+  "permission_ask_threshold": 0.6,
+  "sensitivity_threshold": 0.6,
+  "decisions": {
+    "context": "on",
+    "permission": "shadow",
+    "review_sensitivity": "on",
+    "route": "on",
+    "subgoal_dedup": "on",
+    "tool_rerank": "on"
+  },
+  "restricted_globs": [],
+  "inspect_skip": [
+    "scripts/agent_harness/**",
+    "scripts/doctor.py",
+    "scripts/sync_assistant_trees.py",
+    "scripts/agent-memory/**",
+    "scripts/okf_lint.py"
+  ],
+  "packs": {
+    "image-scoring-mcp": {"triggers": ["\\bmcp\\b", "debug", "why did", "fail(ed|ure|ing)?\\b", "stuck", "job", "\\brun\\b", "database health", "gradio", "missing scores?", "dispatch"]},
+    "external-cli-subagents": {"triggers": ["codex", "gemini", "external review", "subagent", "second opinion", "tie-?breaker"]},
+    "graphify": {"triggers": ["graphify", "architecture", "how does .* connect", "god node", "dependency graph", "subsystem map"]},
+    "github-mcp-cli": {"triggers": ["\\bpr\\b", "pull request", "\\bissue", "github", "\\bgh\\b", "branch", "\\blabel"]},
+    "documentation": {"triggers": ["\\bdocs?\\b", "wiki", "okf", "documentation", "readme", "changelog"]},
+    "python-wsl-webapp-env": {"triggers": ["\\bpython\\b", "gpu-shell", "\\bwsl\\b", "venv", "backfill", "run (the )?script", "docker"]},
+    "pytest-e2e-vocabulary": {"triggers": ["e2e", "end.to.end", "pytest", "\\btests?\\b", "integration test"]},
+    "implementation": {"triggers": ["implement", "refactor", "\\bfix\\b", "add (a|an|the) "]},
+    "tests-use-test-db-only": {"triggers": ["pytest", "test database", "fixture", "conftest"]},
+    "frontend-ui": {"triggers": ["frontend", "\\bspa\\b", "\\/ui\\/", "react", "tailwind", "design token", "\\bcss\\b"]},
+    "spec-and-planning": {"triggers": ["\\bspec\\b", "\\bplan\\b", "acceptance criteria", "design note", "roadmap"]},
+    "review-and-ci": {"triggers": ["\\bci\\b", "workflow", "merge", "pr-ready", "github actions", "failing check"]},
+    "footguns-db": {"triggers": ["\\bsql\\b", "postgres", "\\bcolumn", "\\bquery\\b", "phantom", "connection pool", "db_postgres"]},
+    "footguns-migrations": {"triggers": ["migration", "alembic", "schema change", "\\bddl\\b", "new column", "drop column"]},
+    "footguns-api": {"triggers": ["\\bapi\\b", "endpoint", "openapi", "fastapi", "rest\\b", "router"]},
+    "footguns-tests": {"triggers": ["flaky", "fails in the full suite", "pass(es)? in isolation", "test failure", "path test", "5433"]}
+  },
+  "route": {
+    "_comment": "Illustrative list prices (USD per 1M tokens) from the Jev design note; update to current pricing before relying on absolute numbers.",
+    "frontier": {"input": 5, "output": 25},
+    "delegate": {"input": 3, "output": 15},
+    "chars_per_token": 4,
+    "leave_frontier_threshold": 0.7
+  }
+}

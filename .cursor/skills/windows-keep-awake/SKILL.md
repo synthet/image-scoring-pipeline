@@ -1,6 +1,7 @@
 ---
 name: windows-keep-awake
 description: Prevent Windows sleep and display timeout via SetThreadExecutionState. Use when the user asks to keep Windows awake, pause sleep, prevent screen off, or stop sleep during long jobs. Starts a detached hidden PowerShell worker (not a Cursor background terminal).
+disable-model-invocation: true
 ---
 
 # windows-keep-awake

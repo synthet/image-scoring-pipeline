@@ -1,6 +1,6 @@
 ---
 description: Use image-scoring MCP tools for app-level diagnostics, job monitoring, and Gradio debugging
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Vexlum Scoring MCP
