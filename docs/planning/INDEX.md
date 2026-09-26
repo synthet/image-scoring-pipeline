@@ -4,7 +4,7 @@ title: Planning and migrations index
 description: Index of database migrations, schema phases, refactors, and model roadmaps under docs/planning/.
 resource: docs/planning/INDEX.md
 tags: [docs, planning, index]
-timestamp: 2026-07-01T00:00:00Z
+timestamp: 2026-09-25T18:00:00Z
 okf_version: 0.1
 ---
 
@@ -70,6 +70,8 @@ Aligned with root [`TODO.md`](../../TODO.md) **Highest-Impact Next Steps**. Tier
 | [subject-aware-culling-evidence.md](subject-aware-culling-evidence.md) | **Proposal** (evidence, ranker, explainability; idea→issue map vs pipeline streamlining) — region/keypoint/mask-conditioned evidence, code-owned burst ranker, 0.5 s burst split; mapped onto localization Stages 2–7 (clean-room) |
 | [pipeline-streamlining.md](pipeline-streamlining.md) | **Proposal** — streamlined order (decode once, scene route, localize, species on crop, subject-aware scoring, bursts, picks); tracks #406–#409, #412, #413; related tracks #415, #416, #420–#424 |
 | [subject-evidence-model-roles.md](models/subject-evidence-model-roles.md) | Functional requirements for detector, bird/mammal keypoints, subject mask and embedding roles |
+| [human-culling-labels.md](human-culling-labels.md) | **In progress** (#415) — stratified, weighted ~300-group human culling label set: blind pick/keep/reject + best frame, `human_labels` schema, evaluation plan; 20/302 done |
+| [reference-workflow-improvement-candidates.md](reference-workflow-improvement-candidates.md) | **Proposal** — versioned evidence, uncertainty-aware ranking, editable sequence boundaries, close-call review, calibration, caches, and diagnostics |
 
 ## Integrations (research)
 

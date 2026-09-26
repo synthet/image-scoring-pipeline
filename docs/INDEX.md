@@ -4,7 +4,7 @@ title: Documentation Index
 description: Categorized map of the image-scoring-backend documentation bundle.
 resource: INDEX.md
 tags: [docs, index, navigation, okf]
-timestamp: 2026-06-21T00:00:00Z
+timestamp: 2026-09-25T18:00:00Z
 okf_version: 0.1
 ---
 
@@ -100,6 +100,7 @@ Full categorized index for **image-scoring-backend**. Prefer small linked pages 
 | [reference/models/MODEL_WEIGHTS.md](reference/models/MODEL_WEIGHTS.md) | Current model weights and scoring logic. |
 | [MODEL_RECOMMENDATIONS_PIPELINES.md](MODEL_RECOMMENDATIONS_PIPELINES.md) | Canonical pipeline model roadmap (ARNIQA, DINOv2, SigLIP2, RAM++; CLIP/OpenCLIP alternate) for scoring, culling, keywords. |
 | [planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md](planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md) | Planned model stack changes. |
+| [planning/reference-workflow-improvement-candidates.md](planning/reference-workflow-improvement-candidates.md) | Clean-room candidates for versioned evidence, deterministic reranking, uncertainty, sequence review, calibration, caches, and diagnostics. |
 | [research/STUDENT_SCORER_STUDY.md](research/STUDENT_SCORER_STUDY.md) | Ensemble → single multi-head student research program. |
 | [research/STUDENT_SCORER_PROTOCOL.md](research/STUDENT_SCORER_PROTOCOL.md) | Locked protocol / gates / commands for the student scorer. |
 | [research/STUDENT_SCORER_RESULTS.md](research/STUDENT_SCORER_RESULTS.md) | Append-only experiment results. |

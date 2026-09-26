@@ -670,3 +670,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-25] created | Model weight provenance method
 
 - 2026-09-25: created — [model weight provenance method](research/model-weight-provenance-method.md): BN-folding weight identity check, fine-tune base detection by per-layer correlation, strict-loading reimplementation without the framework, and a usage matrix (measure / ship / label); indexed in [research/INDEX.md](research/INDEX.md); [upstream weight identity report](reports/upstream-weights-identity-2026-09-25.md) now links it and the image-scoring-model teacher.
+
+## [2026-09-25] created | Evidence-driven scoring and culling improvement candidates
+
+- 2026-09-25: created — [evidence-driven scoring and culling improvement candidates](planning/reference-workflow-improvement-candidates.md): clean-room behavior proposal covering versioned evidence, deterministic reranking, uncertainty, editable sequence boundaries, close-call review, project-owned calibration, caches, diagnostics, and additive cross-project contracts; indexed in [planning/INDEX.md](planning/INDEX.md) and [INDEX.md](INDEX.md).
