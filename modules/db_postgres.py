@@ -272,37 +272,36 @@ def truncate_app_tables() -> None:
             f"unless both {POSTGRES_PRODUCTION_IN_PYTEST_ENV} and "
             f"{POSTGRES_PRODUCTION_PYTEST_RISK_ACCEPTED_ENV} are set."
         )
+    from modules.phases import SEED_PHASES
+
     table_list = ", ".join(POSTGRES_APP_TABLES)
+    # A reseed failure must raise, not be swallowed: an aborted transaction is rolled back
+    # on exit, which silently undoes the TRUNCATE too (#399).
     with PGConnectionManager(commit=True) as conn:
         with conn.cursor() as cur:
             cur.execute(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE")
             cur.execute(_SEED_DEFAULT_EMBEDDING_SPACE_SQL)
             for extra_sql in _SEED_EXTRA_EMBEDDING_SPACES_SQL:
                 cur.execute(extra_sql)
-            try:
-                from modules.phases import SEED_PHASES
-
-                for phase in SEED_PHASES:
-                    code = phase["code"].value if hasattr(phase["code"], "value") else str(phase["code"])
-                    cur.execute(
-                        """
-                        INSERT INTO pipeline_phases (code, name, description, sort_order, enabled, optional, default_skip)
-                        VALUES (%s, %s, %s, %s, TRUE, %s, %s)
-                        ON CONFLICT (code) DO UPDATE
-                        SET optional = EXCLUDED.optional, default_skip = EXCLUDED.default_skip
-                        """,
-                        (
-                            code,
-                            phase["name"],
-                            phase.get("description", ""),
-                            int(phase["sort_order"]),
-                            True if phase.get("optional") else False,
-                            True if phase.get("default_skip") else False,
-                        ),
-                    )
-            except Exception:
-                # Best-effort: tests that do not depend on pipeline_phases should still run.
-                pass
+            for phase in SEED_PHASES:
+                code = phase["code"].value if hasattr(phase["code"], "value") else str(phase["code"])
+                # enabled/optional/default_skip are SMALLINT — bind ints, not bools.
+                cur.execute(
+                    """
+                    INSERT INTO pipeline_phases (code, name, description, sort_order, enabled, optional, default_skip)
+                    VALUES (%s, %s, %s, %s, 1, %s, %s)
+                    ON CONFLICT (code) DO UPDATE
+                    SET optional = EXCLUDED.optional, default_skip = EXCLUDED.default_skip
+                    """,
+                    (
+                        code,
+                        phase["name"],
+                        phase.get("description", ""),
+                        int(phase["sort_order"]),
+                        1 if phase.get("optional") else 0,
+                        1 if phase.get("default_skip") else 0,
+                    ),
+                )
 
 
 class PGConnectionManager:
