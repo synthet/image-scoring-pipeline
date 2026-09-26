@@ -149,7 +149,7 @@ comes from the **model and its training data, not input resolution**.
 
 ## Recommendations
 
-1. **Add the open detector as a Stage 3 benchmark arm and a Stage 4 candidate provider.** This is
+1. **Add the open detector as a Stage 3 benchmark arm and a Stage 4 candidate provider (#408).** This is
    additive: a new `detector_key`, versioned like the YOLO. Shadow only, and no production default
    changes until the epic's gates pass. The epic already allows multiple providers.
 2. **Provider policy:**

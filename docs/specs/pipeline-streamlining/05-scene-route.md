@@ -69,6 +69,15 @@ Each label is scored with an ensemble of 3–5 prompts, such as "a photo of a bi
 wildlife photograph of a bird". Probabilities come from a softmax over the label set at the CLIP
 logit scale, the same way keyword confidences are computed today.
 
+**Caution from the keyword benchmark.** On the #377 cohort, softmax selection over the 26 keyword
+tags kept the `birds` tag on only 72% of labelled birds, although every CLIP tower separated bird
+frames at AUC 0.94–0.97 threshold-free: sibling labels (`wildlife`, `nature`) absorb the mass
+([keywords-captions-species comparison §1](../../reports/keywords-captions-species-comparison-2026-09-24.md)).
+The scene labels here overlap in the same way (`wildlife_bird` vs `other`). The benchmark (AC-3)
+should therefore also report a **per-label calibrated threshold on the cosine** (or on
+`relevance_weight`), and the route should use whichever wins at the AC-4 skip-rate bound. The same
+change for keywords is #420.
+
 ## Acceptance criteria
 
 - **AC-1** — The benchmark script shall score a labelled sample of ≥ 50 images per scene label from

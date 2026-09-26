@@ -73,6 +73,19 @@ subject-size tercile. This is step 0 of
 the only way to pass M4's gate honestly. Tracked in #415. No usable human labels exist today
 ([07 §4.4](07-blockers-and-decisions.md#44-labelled-bursts-existing-labels-then-collection)), so all of it is new collection.
 
+**Parallel track: evidence and explainability.** These tracks sit beside M0–M4. They reuse the same
+regions, rendition and labels, but none of them changes production scores.
+
+| Milestone | Contents | Needs | Exit |
+|---|---|---|---|
+| **E1: bursts** | Sub-second continuous-burst segmentation inside stacks (#424) | M1 (spec 02 split) | The threshold is chosen from data, and the sub-burst id is exposed to the gallery. |
+| **E2: evidence v0** | Named per-criterion bands from the primary region, in research JSONL (#423) | M0 (legacy import), E1 | A per-criterion within-burst AUC table, and a keep/drop decision per criterion. |
+| **E3: subject artifacts** | Keypoint and mask providers (#426); primary-region policy (proposal on #408) | M2 | Visibility calibration and mask-vs-box-grade benchmark. |
+| **E4: explainability** | Sub-scores, bands and reasons through the API (spec 04 O-4); gallery breakdown, nearly-tied badge and overlays | E2, #415 | The display gate passes per criterion (CI above chance on labelled bursts). |
+
+The consolidated stage-by-stage status, including these tracks, is at the top of the
+[localization rollout](../../architecture/pipeline/localization-rollout.md#consolidated-status-and-changes-2026-09-25).
+
 ## Shared conventions
 
 Every spec follows these rules. They carry over from the

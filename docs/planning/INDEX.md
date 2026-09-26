@@ -67,8 +67,8 @@ Aligned with root [`TODO.md`](../../TODO.md) **Highest-Impact Next Steps**. Tier
 | [ONNX_CONVERSION_FEASIBILITY.md](models/ONNX_CONVERSION_FEASIBILITY.md) | ONNX export feasibility per model, pros/cons, phased plan (MUSIQ is the hard one) |
 | [localization-region-scores-and-backfill.md](localization-region-scores-and-backfill.md) | Bbox vs region-IQA backfill; parallel full-frame vs crop score storage (synthesis) |
 | [localization-stage4-slice1-status.md](localization-stage4-slice1-status.md) | Status of #387 shadow localization slice: decisions, open questions, blockers, action items |
-| [subject-aware-culling-evidence.md](subject-aware-culling-evidence.md) | **Proposal** — region/keypoint/mask-conditioned evidence, code-owned burst ranker, 0.5 s burst split; mapped onto localization Stages 2–7 (clean-room) |
-| [pipeline-streamlining.md](pipeline-streamlining.md) | **Proposal** — streamlined order (decode once, scene route, localize, species on crop, subject-aware scoring, bursts, picks); tracks #406–#409 |
+| [subject-aware-culling-evidence.md](subject-aware-culling-evidence.md) | **Proposal** (evidence, ranker, explainability; idea→issue map vs pipeline streamlining) — region/keypoint/mask-conditioned evidence, code-owned burst ranker, 0.5 s burst split; mapped onto localization Stages 2–7 (clean-room) |
+| [pipeline-streamlining.md](pipeline-streamlining.md) | **Proposal** — streamlined order (decode once, scene route, localize, species on crop, subject-aware scoring, bursts, picks); tracks #406–#409, #412, #413; related tracks #415, #416, #420–#424 |
 | [subject-evidence-model-roles.md](models/subject-evidence-model-roles.md) | Functional requirements for detector, bird/mammal keypoints, subject mask and embedding roles |
 
 ## Integrations (research)

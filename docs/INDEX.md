@@ -104,6 +104,7 @@ Full categorized index for **image-scoring-backend**. Prefer small linked pages 
 | [research/STUDENT_SCORER_PROTOCOL.md](research/STUDENT_SCORER_PROTOCOL.md) | Locked protocol / gates / commands for the student scorer. |
 | [research/STUDENT_SCORER_RESULTS.md](research/STUDENT_SCORER_RESULTS.md) | Append-only experiment results. |
 | [research/STUDENT_SCORER_MODEL_CARD.md](research/STUDENT_SCORER_MODEL_CARD.md) | Model card template for a shadow-ready checkpoint. |
+| [research/model-weight-provenance-method.md](research/model-weight-provenance-method.md) | Method: verify ONNX weights against public checkpoints, find a fine-tune's base, strict-loading reimplementation. |
 | [research/INDEX.md](research/INDEX.md) | Research index — active programs, protocols, results, session records. |
 | [research/SESSION_STUDENT_SCORER_E2_2026-08-05.md](research/SESSION_STUDENT_SCORER_E2_2026-08-05.md) | Session record — E2 P0 render and ConvNeXt train (2026-08-05 pause). |
 | [reports/RESEARCH_SESSIONS_2026-08-05.md](reports/RESEARCH_SESSIONS_2026-08-05.md) | Hub — bird-crop (#317) + student-scorer E2 (#323) sessions. |

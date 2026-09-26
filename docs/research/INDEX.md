@@ -14,6 +14,12 @@ Active research programs: study design, locked protocol, append-only results, an
 that explain how a result was reached. Point-in-time audits and finished investigations live in
 [`../reports/`](../reports/INDEX.md) instead.
 
+## Methods
+
+| Document | Description |
+|----------|-------------|
+| [model-weight-provenance-method.md](model-weight-provenance-method.md) | Prove an ONNX file is (or isn't) a stock checkpoint, find a fine-tune's base, reimplement an architecture to load upstream weights strict |
+
 ## Student scorer
 
 Replacing the teacher ensemble (MUSIQ, LIQE, TOPIQ, Q-Align) with one multi-head student model.

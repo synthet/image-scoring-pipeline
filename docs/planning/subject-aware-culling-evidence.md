@@ -11,10 +11,14 @@ status: proposed
 
 # Subject-aware culling evidence
 
-> **Status:** proposal. No code written, no issue filed. Every item below lands **inside a stage of
-> the [early localization rollout](../architecture/pipeline/localization-rollout.md)** and obeys its
+> **Status:** proposal, no code written. Every item below lands **inside a stage of the
+> [early localization rollout](../architecture/pipeline/localization-rollout.md)** and obeys its
 > rollout invariants. Nothing here changes production scores, culling or keywords before the
-> relevant stage gate.
+> relevant stage gate. Since 2026-09-25 the pipeline-level design lives in
+> [pipeline-streamlining.md](pipeline-streamlining.md) (#410) and its
+> [spec hub](../specs/pipeline-streamlining/INDEX.md); this page keeps the evidence, ranker and
+> explainability parts. Where each idea is tracked is in
+> [Consolidation with pipeline streamlining](#consolidation-with-pipeline-streamlining-2026-09-25).
 
 Companion pages:
 
@@ -29,6 +33,59 @@ Cross-repo counterparts:
 - image-scoring-gallery: `docs/features/planned/burst-culling-explainability.md`
 - image-scoring-skills: `docs/burst-judge-quality-evidence.md`
 - image-scoring-ui: `docs/scoring-evidence-tokens.md`
+
+## Consolidation with pipeline streamlining (2026-09-25)
+
+The [pipeline-streamlining plan](pipeline-streamlining.md) adopted several ideas from this page and
+the 2026-09-24 reports, and turned them into specs and issues. This table is the single map of
+where each idea now lives, so the two documents don't drift.
+
+| Idea (this page) | Now owned by | Notes |
+|---|---|---|
+| Working + fine renditions, resampler identity | Spec 01, #406 | One ~2048 px inference rendition replaces the separate ~800 px working and ~1600 px fine renditions. Evidence code derives its working size from that rendition by a recorded, uniform-scale resize, so the "resize fit is part of identity" lesson still applies. |
+| Open COCO detector as second provider, targeted small-box pass | Spec 03, #408 | Cascade YOLO-640 → COCO animal → small-box YOLO refine; upstream OpenMMLab weights only. |
+| Region IQA in scoring | Spec 04, #409 | Crop IQA fused into `score_technical` (fusion v2). |
+| Subject-conditioned **named evidence** and bands | #423 | Complements #409: per-criterion, explainable, feeds the ranker and gallery reasons. |
+| Continuous-burst sub-segmentation (~0.5 s) | #424 | Finer unit inside stacks; pairs with #407's split of grouping from picks. |
+| Labelled bursts (roadmap step 0) | #415 | Note: `culling_picks` holds **no** usable human decisions today (all 3,374 non-auto rows have `decision IS NULL`). |
+| Species: list gaps, abstention, burst/folder suggestions | #422 | Birds now; #413 extends to other taxa and should reuse the abstention rule. |
+| Keyword selection by calibrated per-tag thresholds | #420 | Also the recommended rule for the scene route (#412). |
+| Florence-2 captions (shadow) | #421 | Plugs into the caption backend factory (#152). |
+| Timing for every stage | #416 | Replaces the CPU timings quoted in the reports. |
+
+## Ideas elaborated
+
+**1. Evidence as features, then a learned within-burst ranker.** Fusion v2 (#409) blends crop IQA
+with fixed weights. Once #423 shows which criteria carry within-burst signal, the useful ones can
+enter a *learned* pairwise ranker: a logistic model on within-burst differences
+(`Δfocus`, `Δeye`, `Δcrop_technical`, …), trained on a folder-grouped split of the #415 bursts and
+evaluated on a held-out split. This beats hand weights only if it wins the same best-vs-reject
+paired bootstrap that gates fusion v2 (spec 04 AC-21/22). Keep fixed weights as the fallback.
+
+**2. Agent panels as a labelling multiplier.** The blind multi-agent panels were 95% correct on the
+verifiable subset for boxes and self-consistent at 83–92% for species
+([bbox panel](../reports/bbox-llm-judge-panel-2026-09-24.md),
+[species panel](../reports/keywords-captions-species-comparison-2026-09-24.md)). For #415 and for
+box-level labels, let a panel pre-label, and send the owner only the split verdicts plus a random
+~10% audit. Two rules carry over:
+- blind the candidates (random A/B, no manifest in the judges' folder);
+- any text judge (Jev) uses a rubric that matches the vision rubric word for word. A mismatched
+  rubric cut agreement from 82% to 66%.
+
+Agent verdicts stay labelled as agent-derived and never replace owner labels in a promotion gate.
+
+**3. One small-subject policy everywhere.** Three results point the same way:
+- crop focus fell below chance on the smallest subject tercile (evidence probe);
+- the open detector clips small birds (28/48 TIGHT);
+- spec 04 already sets `region_small` below 2% of the frame or 224 px.
+
+Use one threshold for all three consumers (evidence limitation `small_subject`, fusion α = 0,
+cascade refine trigger), defined once in config and recorded in each artifact's provenance.
+
+**4. Evidence invalidation follows rendition identity.** Evidence rows key on region id, rendition
+hash and extractor version, like crop scores in spec 04 (AC-14). A new rendition route (#406) or
+detector version (#408) therefore invalidates evidence without a library rescan, and the recompute
+is crop-local.
 
 ## Provenance (clean-room)
 
@@ -105,6 +162,10 @@ Negative observations are data, not failures:
 This matches the epic invariant that `no_detection` is a versioned observation.
 
 ## Stage-by-stage mapping
+
+> **Superseded as a status view.** The current stage status, owners and changes are in the
+> [consolidated table of the localization rollout](../architecture/pipeline/localization-rollout.md#consolidated-status-and-changes-2026-09-25).
+> The table below keeps the original rationale for each idea.
 
 | Epic stage | Idea | What it adds | Guardrail from the epic |
 |---|---|---|---|
@@ -265,16 +326,16 @@ covered 236 agent-labelled frames in 54 bursts.
 
 | # | Item | Stage | Size | Depends on |
 |---|---|---|---|---|
-| 0a | **Open COCO detector as a second localization provider** (shadow; upstream weights). It beat YOLO-1280 on the #377 cohort ([comparison](../reports/subject-detector-comparison-2026-09-24.md)) | 3–4 | S–M | upstream checkpoint re-run |
-| 0 | **Human label set**: about 300 bursts of pick/reject, stratified by subject-size tercile (no human labels exist today) | — | M (your time) | — |
-| 1 | Descriptor addendum: resampler, fit, working/fine sizes | 3 | S | — |
-| 2 | Evidence extractor v0 using the **imported `bird_bbox` regions** only: focus, exposure, noise, composition from box, no mask yet → research JSONL | 6 | M | Stage 2 import |
-| 3 | Burst sub-segmentation (0.5 s) as stack scope | orth. | S | — |
+| 0a | **Open COCO detector as a second localization provider** (#408) (shadow; upstream weights). It beat YOLO-1280 on the #377 cohort ([comparison](../reports/subject-detector-comparison-2026-09-24.md)) | 3–4 | S–M | upstream checkpoint re-run |
+| 0 | **Human label set** (#415): about 300 bursts of pick/reject, stratified by subject-size tercile (no human labels exist today) | — | M (your time) | — |
+| 1 | Descriptor addendum: resampler, fit, working/fine sizes (folded into #406) | 3 | S | — |
+| 2 | Evidence extractor v0 (#423) using the **imported `bird_bbox` regions** only: focus, exposure, noise, composition from box, no mask yet → research JSONL | 6 | M | Stage 2 import |
+| 3 | Burst sub-segmentation (0.5 s) as stack scope (#424) | orth. | S | — |
 | 4 | Arm A vs B evaluation + per-criterion ablation | 6 | M | 2, 3 |
 | 5 | Mask provider (salient-object model) in shadow; switch focus/exposure to mask ∩ box | 4 → 6 | M | 4 shows signal |
 | 6 | Keypoint provider: our eye-pose model for birds, open animal-pose for mammals, targeted second pass | 4 → 6 | L | model repo eye spec |
 | 7 | Sub-score + reasons API (`/api/images/{id}/evidence`), weights-version, recomputable composite | 6 | M | 4 gate |
-| 8 | Species on BioCLIP: expanded vocabulary, abstention (similarity floor + margin), burst propagation, folder shortlist (suggestions only). General CLIP is **not** a species model ([comparison](../reports/keywords-captions-species-comparison-2026-09-24.md)) | 5 | S–M | Stage 5 |
+| 8 | Species on BioCLIP (#422): expanded vocabulary, abstention (similarity floor + margin), burst propagation, folder shortlist (suggestions only). General CLIP is **not** a species model ([comparison](../reports/keywords-captions-species-comparison-2026-09-24.md)) | 5 | S–M | Stage 5 |
 | 9 | Feed evidence bands into agent judges (Arm C / skills) | 6 | S | 4 gate |
 
 ## Out of scope

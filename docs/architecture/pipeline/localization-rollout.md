@@ -20,6 +20,52 @@ This is a **target design**, not a description of behavior already present in pr
 current graph and its implementation are documented in [phase-graph.md](phase-graph.md) and
 [phases/bird-species.md](phases/bird-species.md).
 
+## Consolidated status and changes (2026-09-25)
+
+This page remains the design of record for the eight stages. Since 2026-09-25 two documents build
+on it:
+- the [pipeline-streamlining plan](../../planning/pipeline-streamlining.md) (#410), with its
+  [spec hub](../../specs/pipeline-streamlining/INDEX.md) and
+  [blockers and decision register](../../specs/pipeline-streamlining/07-blockers-and-decisions.md)
+- the [subject-aware culling evidence plan](../../planning/subject-aware-culling-evidence.md),
+  which covers evidence, ranking and explainability
+
+The table below is the single place that says where each stage stands and what changed. The stage
+sections further down are unchanged, so read them together with this table.
+
+| Stage | Status | Owned by | Change since the original design |
+|---|---|---|---|
+| 1. Control plane | Done (#346 and follow-ups) | #368 (delegated parent/child, deferred) | Spec 02 adds a third edge kind, **attempt-before**, for `localization` → `scoring` (#407). |
+| 2. Normalized persistence | Schema, import and reader landed; **legacy import not run** (B3) | #414 | Addendum: region-linked **keypoints** and **mask** artifacts (#426). |
+| 3. Rendition and crop service | Code complete; detector benchmark done (#377) | #406 | Generalized: one orientation-baked ~2048 px **inference rendition** for *every* phase, not only localization (spec 01). Fixes the thumbnail orientation gap noted in this stage (#418). |
+| 4. Shadow `localization` | Slice 1 merged (#395); five open questions, M0 | #414, #399, #379 | Adds the **YOLO → COCO-animal → small-box refine** cascade as a provider (#408, spec 03) and, later, the keypoint and mask providers (#426). **Primary-region choice** among several boxes becomes a versioned consumer policy (proposal on #408). |
+| 5. BioCLIP on regions | Not started | spec 06, #413, #422 | **Merged with stage 7:** legacy outcomes are imported, not recomputed. Species gains list gaps, abstention and burst/folder suggestions (#422); taxa beyond birds follow after a benchmark (#413). |
+| 6. Crop/fusion experiments | Not started | #409, #423 | **Region IQA leaves the shadow-only experiment** and becomes scoring design: fusion v2 with `subject_mode`, gated on ≥ 300 labelled bursts (#415, spec 04 AC-22). Named per-criterion evidence stays research JSONL (#423). Captions, accessibility and Jev stay shadow, as designed here. |
+| 7. Repair and backfill | Not started | merged into 5; spec 04 crop-only backfill | The only new backfill is **crop scores** for images with a current box (about 41k), after the cascade is benchmarked. The "no unbenchmarked full-library rescan" invariant holds. |
+| 8. Retire compatibility | Not started | — | Unchanged. |
+
+**Tracks that sit beside the stages:**
+
+| Track | Issues |
+|---|---|
+| Scene route before localization | #412, with calibrated per-label thresholds (#420) |
+| Keywords and captions | #420, #421 |
+| Continuous-burst segmentation and picks | #424, #407 |
+| Timing | #416 |
+
+**Design ideas from the reference-design analysis, and where they are tracked:**
+
+| Idea | Where |
+|---|---|
+| decode once from the embedded preview | spec 01 |
+| multi-class detector with a class-agnostic "animal present" rule | spec 03 |
+| targeted second pass for small subjects | spec 03 refine, #426 |
+| keypoints and mask | #426 |
+| subject-conditioned evidence and named bands | #423 |
+| code-owned burst ranking with ties surfaced | #424, gallery |
+| abstaining species suggestions with burst propagation | #422 |
+| determinism lessons | [ONNX feasibility](../../planning/models/ONNX_CONVERSION_FEASIBILITY.md) |
+
 ## Decision summary
 
 Add an optional first-class `localization` phase after `metadata`, backed by a shared rendition and
@@ -864,4 +910,5 @@ legacy rescan, three consumer crops at most, full-frame culling, and full-frame 
 - [../../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md](../../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md) — current crop evidence and limits
 - [../../reports/bird-detection-recall-2026-09-07.md](../../reports/bird-detection-recall-2026-09-07.md) — small-subject recall finding and detector benchmark rationale
 - [../../reports/subject-detector-comparison-2026-09-24.md](../../reports/subject-detector-comparison-2026-09-24.md) — extra #377 arm: an open COCO detector (RTMDet-tiny) at 640 reaches YOLO-1280 recall on 640-misses (82%) at 4% vs 63% FP; candidate second provider for Stages 3–4
+- [../../planning/pipeline-streamlining.md](../../planning/pipeline-streamlining.md) — reviewed target pipeline built on this rollout (#410), with its [spec hub](../../specs/pipeline-streamlining/INDEX.md): rendition #406, phase graph #407, cascade #408, subject-aware scoring #409, scene route #412, species #413
 - [../../planning/subject-aware-culling-evidence.md](../../planning/subject-aware-culling-evidence.md) — proposed Stage 6 evidence extractor (six subject-conditioned criteria, pairwise stack evidence, Arm B ranker) and its stage-by-stage mapping: keypoint/mask artifacts (2, 4), rendition fit/resampler identity and targeted second pass (3), burst propagation (5)

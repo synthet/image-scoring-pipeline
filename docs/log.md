@@ -658,3 +658,15 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-25] created | Pipeline streamlining blockers and decision register
 
 - 2026-09-25: created — [blockers, decisions and suggestions](specs/pipeline-streamlining/07-blockers-and-decisions.md) (#417): status snapshot, blockers B1–B10, decision register for every open question in specs 01–06 and rollout stage 4, cost model, 8 GB GPU sequencing, migration and risk registers, prioritised suggestions; new issues #414–#416, #418 and gallery #176; open-question pointers added to specs 01–06.
+
+## [2026-09-25] consolidated | Subject evidence ideas vs pipeline streamlining
+
+- 2026-09-25: updated — [subject-aware culling evidence](planning/subject-aware-culling-evidence.md) (idea→issue map, ideas elaborated), [pipeline streamlining](planning/pipeline-streamlining.md) (related tracks #415/#416/#420–#424; species list is 360 names, not 382), [spec 05](specs/pipeline-streamlining/05-scene-route.md) (softmax-selection caution → calibrated thresholds, #420), [spec 06](specs/pipeline-streamlining/06-multi-taxon-species.md) (360 names; abstention question, #422), [localization rollout](architecture/pipeline/localization-rollout.md) related link, report recommendations linked to #408/#415/#420–#422, [planning/INDEX.md](planning/INDEX.md).
+
+- 2026-09-25: consolidated — [localization rollout](architecture/pipeline/localization-rollout.md) gains a consolidated status table (stages 1–8 × owner issues × changes from pipeline streamlining and the evidence plan); [spec hub](specs/pipeline-streamlining/INDEX.md) adds the evidence/explainability track E1–E4; [ONNX feasibility](planning/models/ONNX_CONVERSION_FEASIBILITY.md) adds parity lessons; #426 (keypoint/mask providers) linked from the [plan](planning/pipeline-streamlining.md).
+
+- 2026-09-25: created — [upstream weight identity](reports/upstream-weights-identity-2026-09-25.md): research ONNX weights verified identical to upstream checkpoints; B6 in the [decision register](specs/pipeline-streamlining/07-blockers-and-decisions.md) and the [model roles](planning/models/subject-evidence-model-roles.md) updated; row in [reports/INDEX.md](reports/INDEX.md).
+
+## [2026-09-25] created | Model weight provenance method
+
+- 2026-09-25: created — [model weight provenance method](research/model-weight-provenance-method.md): BN-folding weight identity check, fine-tune base detection by per-layer correlation, strict-loading reimplementation without the framework, and a usage matrix (measure / ship / label); indexed in [research/INDEX.md](research/INDEX.md); [upstream weight identity report](reports/upstream-weights-identity-2026-09-25.md) now links it and the image-scoring-model teacher.

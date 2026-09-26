@@ -70,7 +70,7 @@ flowchart LR
 | Rendition | Thumbnails are made in `metadata` and aren't orientation-baked for RAW files. `localization` has its own decoder, and every other phase decodes again. |
 | Scene route | None. CLIP keywords such as `birds`, `insect`, `landscape` and `people` exist only as tags, after scoring. |
 | Localize | Shadow phase with the bird YOLO only. |
-| Species | `bird_species` (BioCLIP 2) over the 382 names in `data/bird_species_list.txt`, only for images tagged `birds`. |
+| Species | `bird_species` (BioCLIP 2) over the 360 names in `data/bird_species_list.txt`, only for images tagged `birds`. |
 | Scoring | Full frame only. `image_model_scores` is keyed `(image_id, model_name)`, so a crop score can't be stored. |
 | Captions and keywords | Hard prerequisite on `scoring` with no data dependency: they read the thumbnail and the stored CLIP vector ([keywords.md](../architecture/pipeline/phases/keywords.md)). |
 | Bursts and picks | One `culling` phase. It requires scores even though grouping doesn't use them. Picks come from fixed top/bottom 33% bands per stack (`modules/selection_policy.py`). |
@@ -207,6 +207,22 @@ Blockers, decisions, cost estimates and risks: [07 — blockers and decisions](.
 - Any open-vocabulary detector.
 - Per-step GPU timings on the production hardware.
 - The labelled-burst set that every promotion gate depends on.
+
+## Related tracks outside the six specs
+
+The 2026-09-24 research reports produced five further tracks. They are not prerequisites of the
+specs, but several feed their gates:
+
+| Issue | Track | Feeds |
+|---|---|---|
+| #415 | Labelled bursts (~300, human); no usable human labels exist in `culling_picks` today | spec 04 AC-22, #423 |
+| #416 | Per-phase and per-model timing on the 8 GB card | cost model in every spec |
+| #420 | Keywords by calibrated per-tag thresholds instead of softmax-over-26 | spec 05 (same rule for scene labels) |
+| #421 | Florence-2 captions in shadow | step 7 (captions) |
+| #422 | Bird species: list gaps, abstention, burst/folder suggestions | step 5, spec 06 |
+| #423 | Subject evidence extractor v0 (named per-criterion bands) | spec 04 (features), gallery explainability |
+| #424 | Sub-second continuous-burst segmentation inside stacks | step 8, #407 |
+| #426 | Subject keypoint and mask providers (rollout stage 2/4 addendum) | #423, later #409 features |
 
 ## Related pages
 
