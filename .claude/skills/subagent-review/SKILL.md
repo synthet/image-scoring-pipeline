@@ -29,6 +29,11 @@ Note: **Claude** is detection-only in v0.1 — do not rely on it for live `run_s
 
 - **task** — clear review goal (from user or slash command text)
 - **files** — workspace-relative paths from `@` mentions (max 20; no `.env`, keys, binaries)
+- **shared context** — for change reviews, build the retrieval once and give every reviewer the same file:
+  `python scripts/agent_harness/cli.py bundle` → `.agent-runs/bundle-<sha>.md` (reused while HEAD and the
+  diff are unchanged; restricted files are excluded). Pass that path in `files` instead of re-searching.
+- The Jev harness `PreToolUse` hook denies `run_subagent` calls that include restricted files or
+  secret-looking text in `task`/`extraContext`.
 - **mode** — `review` (default) or `tie-breaker` when comparing opinions
 - **allowWrites** — always `false`
 - **dryRun** — `true` when user says “dry run” or you are validating setup

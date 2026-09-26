@@ -1,0 +1,26 @@
+---
+description: Spec-first planning, acceptance criteria, and design notes
+paths:
+  - "**/specs/**"
+  - "docs/planning/**"
+  - "docs/features/planned/**"
+  - "docs/CANONICAL_SOURCES.md"
+  - "docs/technical/**/*SPEC*.md"
+  - "docs/technical/**/*_SPEC*.md"
+---
+
+# Spec and planning
+
+## Spec-first
+
+- Capture **problem**, **users / consumers**, **non-goals**, and **acceptance criteria** before large implementation.
+- Prefer checkable criteria ("when X, then Y") over vague goals ("make it better").
+
+## Plans
+
+- Plans should name **files or areas** to touch, **risks**, and **test plan** (what to run or add).
+- If the user is in plan-only mode, **do not** edit files or run mutating tools until they approve.
+
+## Traceability
+
+- Link specs to issues or tickets when the project uses them.

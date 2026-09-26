@@ -2,6 +2,7 @@
 name: backup-db
 description: >-
   PostgreSQL custom-format backup for image-scoring-backend via Backup-Postgres.ps1. Use when the user runs /backup-db, asks for a local pg_dump, database backup, or Postgres dump. Default workflow keeps at most 3 dumps in backups/postgres and mirrors the latest copy to D:\Dropbox\Photos\Scoring (also capped at 3 files).
+disable-model-invocation: true
 ---
 
 # backup-db

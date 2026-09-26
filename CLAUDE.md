@@ -17,25 +17,11 @@ This project is the **schema authority** — DDL via `modules/db_postgres.py` an
 
 ## Backlog & queue (read this before picking work)
 
-The canonical queue is the **GitHub Project board**, not `TODO.md`:
-
-**→ https://github.com/users/synthet/projects/1**
-
-It spans both repos. The `TODO.md` files are pointers only.
-
-**Mandatory contract for every agent (human or AI). Do all five steps:**
-
-1. **Pick from `Stage = Ready`** on the board, sorted by `priority:p0..p3`. If `Ready` is empty, ask the maintainer — do not invent work.
-2. **Claim** the issue: `/task-claim <N>` (preferred) or the manual `gh` flow in [`docs/project/00-backlog-workflow.md`](docs/project/00-backlog-workflow.md). Claiming assigns you and moves the card to `Stage = Claimed`.
-3. **Flip to `Stage = In Progress`** on your first commit.
-4. **If blocked**, move the card to `Stage = Blocked` *and* comment on the issue with the blocker + what would unblock it. Do not silently abandon a claimed card.
-5. **Reference the issue in the PR** with `Closes #<N>` (the PR template requires it). Move the card to `Stage = Review` while the PR is open; merging closes the issue and flips `Status = Done`.
+The canonical queue is the **GitHub Project board** — **https://github.com/users/synthet/projects/1** — spanning both repos; `TODO.md` files are pointers only. The five-step contract (pick from `Stage = Ready` → claim → `In Progress` on first commit → `Blocked` with a comment → `Closes #<N>` + `Review`) is the always-on **`backlog-queue`** rule; follow it for every task.
 
 **Project ID quick-reference** (for scripts): project node `PVT_kwHOAFXgIs4BWC3c`, Stage field `PVTSSF_lAHOAFXgIs4BWC3czhRaNZ0`. Full Stage option IDs and command examples in [`docs/project/00-backlog-workflow.md`](docs/project/00-backlog-workflow.md) §5.
 
 **Cloud sessions** (claude.ai/code and other sandboxes where the board API is blocked): use the synced `stage:*` issue labels instead of the board: filter `label:stage:ready`, and swap labels to transition. See [`docs/project/00-backlog-workflow.md`](docs/project/00-backlog-workflow.md) §6.
-
-**Do not** add tasks to `TODO.md`, do not work without an issue, and do not skip the Stage transitions — agents that don't update Stage make the queue lie about what's actually being worked on.
 
 ## Architecture
 
@@ -92,6 +78,16 @@ Disambiguate **Postgres API E2E** (`tests/integration/*_e2e.py`, `pytest -m post
 ## MCP
 
 Compact **search + dispatch** on Cursor keys **`is-be-mcp`** (stdio) and optional **`is-be-live`** (SSE when WebUI is running). Contract: [`docs/technical/MCP_SEARCH_DISPATCH.md`](docs/technical/MCP_SEARCH_DISPATCH.md). Tool catalog: [`AGENTS.md`](AGENTS.md).
+
+## Agent harness (Jev)
+
+Jev (TypeSafe) makes the per-turn decisions; deterministic policy runs first and Jev only tightens it. Hooks in `.claude/settings.json` call `scripts/agent_harness/hook.py`:
+
+- **`UserPromptSubmit`** — picks intent-scoped rule packs from `.cursor/rules/` (hide / short / full) and injects only new ones; **`SessionStart(compact)`** re-pins them after compaction.
+- **`PreToolUse(Bash)`** — denies secret reads, `.git/config` writes, force-push to master; asks on destructive DB/file ops; reads scripts before they run.
+- **`PreToolUse(run_subagent)`** — blocks restricted files or secret-looking text going to external reviewers.
+
+CLI: `python scripts/agent_harness/cli.py budget | check | packs | route | subgoal | bundle`. Modes per decision in `.agent/jev_harness.json`; `JEV_HARNESS_MODE=off` disables Jev calls. Doc: [`docs/technical/JEV_AGENT_HARNESS.md`](docs/technical/JEV_AGENT_HARNESS.md).
 
 ## Cross-repo (gallery)
 

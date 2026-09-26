@@ -1,6 +1,7 @@
 ---
 description: Which Python environment to use for app, scripts, and tests; run dependency-using scripts in image-scoring-gpu-shell
-alwaysApply: true
+globs: "scripts/**,modules/**,tests/**,**/*.py,docker-compose*.yml"
+alwaysApply: false
 ---
 
 # Python Environments — When to Use What

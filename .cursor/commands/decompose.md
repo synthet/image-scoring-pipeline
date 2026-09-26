@@ -27,6 +27,14 @@ or run in parallel branches by separate agents.
 4. **Test boundaries** — For each subtask, the minimal test or assertion that confirms
    it is done without depending on other subtasks being complete.
 
+5. **Route each subtask (Jev harness)** — price it per context rebuild, not per token:
+   `python scripts/agent_harness/cli.py route --task "<title + done means>" --files <brief files>`.
+   `stay` keeps it on the main model; `delegate` means hand a sub-agent **only** that brief and ask for a
+   compact result. Restricted files (secrets/env) always stay first-party.
+
+6. **Deduplicate** — register each subtask before launching it:
+   `python scripts/agent_harness/cli.py subgoal add "<title>"`; skip anything reported as `duplicate_of`.
+
 ## Done when
 
 - Each subtask can be passed to `/plan` without the planner needing to know about any other subtask.

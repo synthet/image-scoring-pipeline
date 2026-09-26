@@ -17,6 +17,8 @@ This document describes the AI agents and MCP (Model Context Protocol) server in
 
 For **doctor CLI**, redacted debug bundles, safe commands, and pitfalls (without duplicating the MCP catalog below), see **[.agent/INFRA_QUICKSTART.md](.agent/INFRA_QUICKSTART.md)** and **[docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md)**.
 
+**Jev agent harness:** Claude Code hooks (`.claude/settings.json` → `scripts/agent_harness/hook.py`) ask Jev the per-turn questions — which intent-scoped rule packs to show (hide / short / full), whether a script may run, whether files may go to an external reviewer — on top of a deterministic policy that Jev can only tighten. Always-on rules stay small; path-scoped rules load via `paths:`; intent-only rules are injected per request. CLI: `python scripts/agent_harness/cli.py budget | check | packs | route | subgoal | bundle`. See [docs/technical/JEV_AGENT_HARNESS.md](docs/technical/JEV_AGENT_HARNESS.md).
+
 **Agent infra:** [.agent/AGENT_INFRA_INVENTORY.md](.agent/AGENT_INFRA_INVENTORY.md) — catalog of rules, skills, workflows; [.agent/COMMANDS.md](.agent/COMMANDS.md); [.agent/SAFETY.md](.agent/SAFETY.md); [.agent/subagents/README.md](.agent/subagents/README.md); [.agent/workflows/](.agent/workflows/).
 
 ## SDLC / agent-sdlc
@@ -125,7 +127,7 @@ multi_grep({ patterns: ["exif_transpose", "image-orientation"], constraints: "*.
 **Agent prompt (recommended):** For file search or grep in the current git-indexed directory, prefer **fff** MCP tools over built-in grep roundtrips. CLI guidance: [`.cursor/skills/agent-search/SKILL.md`](.cursor/skills/agent-search/SKILL.md) (tool selection + fff when connected).
 ### Graphify (optional, architecture graph)
 
-**[Graphify](https://github.com/Graphify-Labs/graphify)** turns the repo into a local AST knowledge graph (no vector store). Soft integration only — [`.cursor/rules/graphify.mdc`](.cursor/rules/graphify.mdc) has **`alwaysApply: false`**. Agent skill: [`.cursor/skills/graphify/SKILL.md`](.cursor/skills/graphify/SKILL.md). Do **not** run stock `graphify cursor install` / `graphify claude install` (those enable always-on nudges/hooks).
+**[Graphify](https://github.com/Graphify-Labs/graphify)** turns the repo into a local AST knowledge graph (no vector store). Soft integration only — [`.cursor/rules/graphify.mdc`](.cursor/rules/graphify.mdc) has **`alwaysApply: false`** (served per request by the Jev harness hook, not loaded every turn). Agent skill: [`.cursor/skills/graphify/SKILL.md`](.cursor/skills/graphify/SKILL.md). Do **not** run stock `graphify cursor install` / `graphify claude install` (those enable always-on nudges/hooks).
 
 | Step | Command |
 |------|---------|

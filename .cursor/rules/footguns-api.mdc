@@ -1,0 +1,13 @@
+---
+description: API footguns — REST contract is canonical, gallery consumes generated types
+globs: "modules/api/**,docs/reference/api/**"
+alwaysApply: false
+---
+
+# Footguns: REST API
+
+Procedure: [.agent/workflows/cross_repo_contract_change.md](../../.agent/workflows/cross_repo_contract_change.md).
+
+- **Written contract first:** [docs/technical/API_CONTRACT.md](../../docs/technical/API_CONTRACT.md) and [docs/reference/api/openapi.yaml](../../docs/reference/api/openapi.yaml) must match the code you ship.
+- **Gallery generates types from `openapi.yaml`** (`npm run generate:api-types` in image-scoring-gallery) — a field change is a cross-repo change.
+- **Do not invent endpoints, fields, or job types**; pipeline labels vs `phase_code` vs job type: [docs/technical/PIPELINE_TERMINOLOGY.md](../../docs/technical/PIPELINE_TERMINOLOGY.md).

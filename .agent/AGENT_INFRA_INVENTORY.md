@@ -26,10 +26,12 @@
 | [.cursor/mcp.json](../.cursor/mcp.json) | Workspace MCP (`scoring`, `webui`, `gallery`, optional `cli-review`) | MCP | active | AGENTS.md | Reload Cursor after key renames |
 | [.cursor/skills/*/SKILL.md](../.cursor/skills/) | Canonical skills (AST10) | coding, MCP | active | SKILL_INVENTORY | Mirror to `.claude/skills/` |
 | [.cursor/agents/*.md](../.cursor/agents/) | Subagent role YAML | coding | active | AGENTS.md | Keep synced to `.claude/agents/` |
-| [.cursor/rules/external-cli-subagents.mdc](../.cursor/rules/external-cli-subagents.mdc) | External Codex/Gemini review safety | governance | active | subagent-orchestrator | Mirror `.claude/rules/` |
-| [.cursor/rules/graphify.mdc](../.cursor/rules/graphify.mdc) | Soft Graphify architecture-graph guidance (`alwaysApply: false`) | coding | active | Graphify-Labs/graphify | Mirror `.claude/rules/`; optional third-party CLI |
+| [.cursor/rules/external-cli-subagents.mdc](../.cursor/rules/external-cli-subagents.mdc) | External Codex/Gemini review safety | governance | active | subagent-orchestrator | Intent-only pack; enforcement in the harness `PreToolUse(run_subagent)` hook |
+| [.cursor/rules/graphify.mdc](../.cursor/rules/graphify.mdc) | Soft Graphify architecture-graph guidance (`alwaysApply: false`) | coding | active | Graphify-Labs/graphify | Intent-only: served by the Jev harness hook, not mirrored; optional third-party CLI |
 | [.cursor/skills/subagent-review/](../.cursor/skills/subagent-review/) | MCP external review workflow | workflow | active | `../subagent-orchestrator` | Mirror `.claude/skills/` |
 | [sync_assistant_trees.py](../scripts/sync_assistant_trees.py) | Cursor→Claude mirror + `--check` CI gate | workflow | active | synthet-code-framework | Run after `.cursor/` edits |
+| [scripts/agent_harness/](../scripts/agent_harness/) | Jev agent harness: hooks (context packs, permissions, review sensitivity) + CLI (`budget`, `route`, `subgoal`, `bundle`) | governance, workflow | active | [docs/technical/JEV_AGENT_HARNESS.md](../docs/technical/JEV_AGENT_HARNESS.md) | Config `.agent/jev_harness.json`; gallery hooks call this copy |
+| [.cursor/rules/footguns-*.mdc](../.cursor/rules/) | Per-area footguns (db, migrations, api, tests), path-scoped | backend, testing | active | docs/LESSONS_LEARNED.md | Update when a lesson graduates |
 | [docs/ai-workflow/README.md](../docs/ai-workflow/README.md) | SDLC loop + phase gates + asset map | workflow | active | synthet-code-framework | Cursor-first variant |
 | [docs/raw/framework-adoption-port-manifest.md](../docs/raw/framework-adoption-port-manifest.md) | Cherry-pick manifest from framework audit | governance | active | synthet-code-framework | Update when porting more assets |
 | [.github/workflows/agent-infra.yml](../.github/workflows/agent-infra.yml) | Assistant tree drift + frontmatter + secrets CI | governance | active | synthet-code-framework | None |
@@ -37,7 +39,7 @@
 | [.claude/skills/*/SKILL.md](../.claude/skills/) | Claude mirror of skills | coding | duplicate-of | `.cursor/skills/` | Same-PR sync |
 | [.claude/commands/*.md](../.claude/commands/) | Claude slash commands | workflow | partial-mirror | `.cursor/commands/` | Same paired commands; backend-only `/release`, `/backup-db` |
 | [.claude/agents/*.md](../.claude/agents/) | Claude mirror of agents | coding | duplicate-of | `.cursor/agents/` | Same-PR sync |
-| [.claude/rules/*.mdc](../.claude/rules/) | Claude rules (always-on + governance mirrors) | governance | active | .cursor/rules | Same-PR sync: agent-canonical-sources, documentation, graphify, image-scoring-mcp, external-cli-subagents, python-wsl-webapp-env, backlog-queue, pytest-e2e-vocabulary, sdlc-core, safety-and-secrets, karpathy-coding |
+| [.claude/rules/*.md](../.claude/rules/) | Claude rules generated from `.cursor/rules` | governance | active | .cursor/rules | `sync_assistant_trees.py` translates frontmatter: `alwaysApply: true` → always-on, `globs` → `paths:` (on demand); intent-only rules are **not** mirrored — the Jev harness hook serves them per request. `mcp-schema-check` is Cursor-only |
 | [.agent/skills/*/SKILL.md](skills/) | Agent-loader-only skills | MCP, docs | active | .cursor/skills for overlap | Mark deprecated skills in-table |
 | [.agent/workflows/*.md](workflows/) | Reusable workflows | workflow | mixed | INFRA_QUICKSTART | Fix stale `verify_system.md`, add debug/*.md |
 | [docs/CANONICAL_SOURCES.md](../docs/CANONICAL_SOURCES.md) | Authority map | cross-repo | active | code | None |

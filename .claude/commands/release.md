@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+---
+
 # /release — Semver release (Python backend)
 
 Run a **semver release** for **this repo** (`image-scoring`) via the **compiled harness**.

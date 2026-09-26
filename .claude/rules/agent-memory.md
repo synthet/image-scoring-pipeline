@@ -1,6 +1,5 @@
 ---
 description: Project memory — read approved memory at session start; log sessions instead of editing memory.md
-alwaysApply: true
 ---
 
 # Agent memory

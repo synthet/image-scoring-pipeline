@@ -39,6 +39,25 @@ and deterministic rules in normal code; give Jev narrow semantic judgments only.
 5. Return the selected answer fields (`choice` / `score` / `noul`), `confidence` / `probabilities`
    when present, and the `model` used. Do not dump secrets or raw SDK internals.
 
+## Harness decision points (automatic)
+
+The agent harness in `scripts/agent_harness/` asks Jev per-turn questions directly through
+`modules/typesafe` (no MCP round trip). Rubrics are `harness.*` in `modules/typesafe/rubrics.py`;
+modes (`off`/`shadow`/`on`) live in `.agent/jev_harness.json`. See
+[docs/technical/JEV_AGENT_HARNESS.md](../../../docs/technical/JEV_AGENT_HARNESS.md).
+
+| Decision | Rubric | Where |
+|----------|--------|-------|
+| Which rule packs this request sees | `harness.context.visibility` | `UserPromptSubmit` hook |
+| May this script run | `harness.permission.exec` | `PreToolUse(Bash)` hook |
+| May these files go to an external reviewer | `harness.review.sensitivity` | `PreToolUse(run_subagent)` hook |
+| Can this subtask leave the main model | `harness.route.leave_frontier` | `cli.py route` |
+| Is this subgoal a duplicate | `harness.subgoal.duplicate` | `cli.py subgoal add` |
+| Which diff chunks a reviewer needs | `harness.bundle.visibility` | `cli.py bundle` |
+| Which MCP action fits | `harness.tool.pick` | `is-be-mcp` search rerank |
+
+Use the `jev-rw-systemone` MCP tools for ad-hoc judgments; leave these decision points to the harness.
+
 ## Boundaries
 
 - Do not treat Jev as a chat model, coder, or image judge.

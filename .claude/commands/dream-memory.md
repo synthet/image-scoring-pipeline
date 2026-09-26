@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+---
+
 > **Cursor:** Same intent as Claude `/dream-memory`. Mirror: `.claude/commands/dream-memory.md`.
 
 # /dream-memory — Propose consolidated project memory
