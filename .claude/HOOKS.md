@@ -1,15 +1,30 @@
-# Claude Code hooks
+# Claude Code hooks — Jev agent harness
 
-Copy `settings.json.example` to `settings.json` in this folder (or merge into your user `~/.claude/settings.json`). Valid JSON only — no comments inside the file.
+`.claude/settings.json` (tracked) wires four hooks to one entrypoint,
+[`scripts/agent_harness/hook.py`](../scripts/agent_harness/hook.py). Full design:
+[docs/technical/JEV_AGENT_HARNESS.md](../docs/technical/JEV_AGENT_HARNESS.md).
 
-Official reference: https://code.claude.com/docs/en/hooks-guide
+| Event | Matcher | Argument | Effect |
+|-------|---------|----------|--------|
+| `UserPromptSubmit` | — | `user-prompt` | Injects intent-scoped rule packs from `.cursor/rules/` at the rung Jev picks (hide / short / full); only packs that are new or upgraded this session. |
+| `SessionStart` | `compact` | `session-compact` | Re-pins the packs that were active before compaction. |
+| `PreToolUse` | `Bash` | `pre-bash` | Deterministic deny/ask policy + script inspection; Jev may only escalate (`permission` mode). |
+| `PreToolUse` | `mcp__.*__run_subagent` | `pre-review` | Blocks restricted files / secret-looking text going to external Codex/Gemini reviewers. |
 
-## Suggested events (names may vary by CLI version)
+## Behaviour guarantees
 
-Configure matchers and commands per your install. Typical use cases:
+- **Fail-open to Claude Code's normal flow.** Any hook error exits 0 with no output; the usual
+  permission prompts still apply. The hooks never emit `allow` — granting stays with the
+  `permissions.allow` list.
+- **No secrets leave the machine.** State sent to Jev is redacted; restricted files are sent by path
+  and metadata only, never contents.
+- **Everything is logged** to `.agent/scratch/jev-harness/decisions.jsonl` (gitignored).
 
-- **PreToolUse** — block or log sensitive tool calls.
-- **PostToolUse** — telemetry or notifications.
-- **Notification** — desktop or webhook alerts on completion.
+## Turning things off
 
-Start with an empty `"hooks": {}` and add one hook at a time; verify on a throwaway repo first.
+- All Jev calls: `JEV_HARNESS_MODE=off` (deterministic policy still runs).
+- One decision: set its mode to `off` in [`.agent/jev_harness.json`](../.agent/jev_harness.json).
+- Everything: remove the `hooks` block from your `settings.local.json` override, or run
+  Claude Code with `--settings` pointing at a file without hooks.
+
+Personal allowlists belong in `.claude/settings.local.json` (gitignored), not in the tracked file.

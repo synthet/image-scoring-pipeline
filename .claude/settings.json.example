@@ -1,13 +1,98 @@
 {
-  "_comment": "Claude Code MCP: copy .mcp.json.example → .mcp.json. Enable compact tools only (search/dispatch/sse_status). Browser automation uses browser.* dispatch on is-be-mcp — no separate playwright server.",
+  "_comment": "Copy to settings.json (tracked default). Claude Code MCP: copy .mcp.json.example \u2192 .mcp.json and enable compact tools only (search/dispatch/sse_status). Hooks run the Jev agent harness \u2014 see .claude/HOOKS.md.",
   "permissions": {
     "allow": [
       "mcp__is-be-mcp__search",
       "mcp__is-be-mcp__dispatch",
-      "mcp__is-be-mcp__sse_status"
+      "mcp__is-be-mcp__sse_status",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(rg:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(ruff check:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python scripts/doctor.py:*)",
+      "Bash(python scripts/sync_assistant_trees.py --check)",
+      "Bash(python scripts/ci/check_agent_frontmatter.py)",
+      "Bash(python scripts/ci/check_secrets.py)",
+      "Bash(python scripts/agent_harness/cli.py:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:localhost)",
+      "WebFetch(domain:127.0.0.1)"
+    ],
+    "ask": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(alembic downgrade:*)",
+      "Bash(docker compose down -v:*)",
+      "Bash(rm -rf:*)"
+    ],
+    "deny": [
+      "Read(./secrets.json)",
+      "Read(**/secrets.json)",
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(~/.ssh/**)",
+      "Edit(./.git/config)",
+      "Bash(git config extensions.worktreeConfig:*)"
+    ],
+    "additionalDirectories": [
+      "../image-scoring-gallery"
     ]
   },
-  "enabledMcpjsonServers": ["is-be-mcp"],
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" user-prompt",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" session-compact",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" pre-bash",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__run_subagent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" pre-review",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "is-be-mcp"
+  ],
   "disabledMcpjsonServers": [
     "playwright",
     "is-be-webui",
@@ -15,6 +100,5 @@
     "is-be-maint",
     "is-be-full",
     "is-be-pg"
-  ],
-  "hooks": {}
+  ]
 }
