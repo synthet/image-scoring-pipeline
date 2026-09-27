@@ -137,6 +137,18 @@ Recommendations and deadlines: [07 — decision register](07-blockers-and-decisi
    the matched-recall threshold (4%) passes. The threshold in AC-5 may need to rise, or the
    agreement arm from question 3 may be required. The sweep decides which.
 
+## Slice 1 status (2026-09-27)
+
+- `modules/detectors/rtmdet.py`: onnxruntime provider on the image-scoring-model export of the upstream checkpoint,
+  manifest SHA-256 check (AC-1 to AC-4); AC-5's retry is **off by default** per C-4.
+- `modules/localization_cascade.py`: the combination as a pure function over child outcomes, with the refine pass
+  supplied by the caller (AC-7 to AC-14 logic; step recorded in `provider_class_id`: `yolo:bird`, `coco:<class>`,
+  `coco+refine:<class>`).
+- `scripts/research/detector_benchmark/cascade_benchmark.py`: AC-16, results in
+  [cascade-benchmark-2026-09-27](../../reports/cascade-benchmark-2026-09-27.md). The cascade at 0.40 passes AC-18
+  on the independent strata.
+- Not yet: persisting `coco` / `subject_cascade` runs from the runner (AC-6, AC-7 writes, AC-15) and AC-17.
+
 ## Implementation plan
 
 **Goal:** AC-1 to AC-17 pass in shadow. AC-18 gates any consumer.
