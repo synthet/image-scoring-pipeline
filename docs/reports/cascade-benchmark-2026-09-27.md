@@ -52,6 +52,24 @@ by 1.0 of the box size; 282 (78%) gave a YOLO box with IoU >= 0.3, i.e. would be
   flag.
 - These numbers are starting points on 339 frames; re-fit with the labelled-burst set (#415).
 
+## Addendum: with `bird_detect_v1` as the first stage
+
+The production detector moved to `bird_detect_v1` (#462). Re-run on the same frames
+([tables](cascade-benchmark-2026-09-27/cascade_metrics_v1.md)):
+
+| Independent strata (78 bird, 71 no_bird) | recall | false positives |
+|---|---|---|
+| v1 alone | 81% (71-88%) | 7% (3-15%) |
+| v1 + COCO fallback at 0.40 | 91% (83-96%) | 10% (5-19%): at AC-18's limit |
+| v1 + COCO fallback at 0.60 | 83% (74-90%) | 7% (3-15%) |
+
+On `det_*` the fallback adds false positives (16/28 at 0.40 vs v1's 14/28) for +2 birds.
+
+**Reading:** v1 captures most of what the COCO fallback added over v0. The fallback is now a modest recall
+boost (+8 of 78 birds) at a false-positive cost that puts it on the gate, so cascade slice 2 drops in
+priority; if built, it needs its threshold re-fit against v1 (0.50-0.60) and the agreement filter measured
+against v1's remaining false positives.
+
 ## Next
 
 1. Slice 2: persist `coco` and `subject_cascade` runs from the localization runner behind
