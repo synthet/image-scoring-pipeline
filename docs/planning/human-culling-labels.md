@@ -20,7 +20,8 @@ status: in-progress
 Related: roadmap item 0 of [subject-aware culling evidence](subject-aware-culling-evidence.md) ·
 [within-burst evidence plan](within-burst-evidence-plan.md) ·
 [reference culling shadow scores](../reports/reference-culling-shadow-scores-2026-09-25.md) ·
-[model suitability labels](../features/implemented/11-score-analytics-and-model-suitability.md)
+[model suitability labels](../features/implemented/11-score-analytics-and-model-suitability.md) ·
+[human labeling sync (mobile channel, #453)](../specs/human-labeling-sync/INDEX.md)
 
 ## Why
 
