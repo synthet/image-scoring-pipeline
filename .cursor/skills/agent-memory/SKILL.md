@@ -5,7 +5,7 @@ description: Log agent sessions, consolidate project memory (dream), promote rev
 
 # Agent memory
 
-Local consolidation for **image-scoring-backend** — external artifacts only (no model training).
+Local consolidation for **image-scoring-pipeline** — external artifacts only (no model training).
 
 ## When to use
 

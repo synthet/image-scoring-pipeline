@@ -196,9 +196,9 @@ def _resolve_thumbnail_filesystem_path(
     for c in candidates:
         rel = c.replace("\\", "/").strip("/")
         for pref in (
-            "../image-scoring-backend/thumbnails/",
-            "../../image-scoring-backend/thumbnails/",
-            "image-scoring-backend/thumbnails/",
+            "../image-scoring-pipeline/thumbnails/",
+            "../../image-scoring-pipeline/thumbnails/",
+            "image-scoring-pipeline/thumbnails/",
             "static/app/thumbnails/",
             "app/thumbnails/",
             "thumbnails/",
@@ -348,9 +348,9 @@ def thumbnail_pair_needs_repair(
         return True
     tp_n = tp.replace("\\", "/").lower()
     tw_n = tw.replace("\\", "/").lower()
-    if "../image-scoring-backend/thumbnails" in tp_n or "../image-scoring/thumbnails" in tp_n:
+    if "../image-scoring-pipeline/thumbnails" in tp_n or "../image-scoring/thumbnails" in tp_n:
         return True
-    if "../image-scoring-backend/thumbnails" in tw_n or "../image-scoring/thumbnails" in tw_n:
+    if "../image-scoring-pipeline/thumbnails" in tw_n or "../image-scoring/thumbnails" in tw_n:
         return True
 
     for p in (tp, tw):

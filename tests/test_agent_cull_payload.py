@@ -145,7 +145,7 @@ def test_build_review_packet_resolves_host_db_thumbnail_path(tmp_path, monkeypat
     _write_image(str(thumb_file), (400, 300))
     monkeypatch.setattr(thumbnails, "THUMB_DIR", str(tmp_path / "thumbnails"))
 
-    host_path = f"/mnt/d/Projects/image-scoring-backend/thumbnails/ab/{thumb_name}"
+    host_path = f"/mnt/d/Projects/image-scoring-pipeline/thumbnails/ab/{thumb_name}"
     rows = {
         10: {"id": 10, "pick_status": 1, "thumbnail_path": host_path, "score_general": 0.8},
         11: {"id": 11, "pick_status": -1, "thumbnail_path": host_path, "score_general": 0.4},

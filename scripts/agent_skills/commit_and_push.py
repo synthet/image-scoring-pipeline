@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compiled harness for commit-and-push (image-scoring-backend).
+"""Compiled harness for commit-and-push (image-scoring-pipeline).
 
 Inspect status/diff, flag secret paths, optionally run agent-infra verify.
 Defaults to dry-run. Commit/push only with --execute plus explicit flags,

@@ -2,11 +2,11 @@
 
 Date: 2026-03-08 (updated 2026-04-01)  
 Status: **Decommissioning Complete** — Firebird infrastructure removed; system fully PostgreSQL-native.  
-Scope: **image-scoring-backend** + **image-scoring-gallery** coordinated migration
+Scope: **image-scoring-pipeline** + **image-scoring-gallery** coordinated migration
 
 ## Summary
 
-- Treat this as a **coordinated platform migration** across both repos (**image-scoring-backend** and **image-scoring-gallery**), not a frontend-only or backend-only DB split.
+- Treat this as a **coordinated platform migration** across both repos (**image-scoring-pipeline** and **image-scoring-gallery**), not a frontend-only or backend-only DB split.
 - Keep your selected rollout defaults: **phased dual-write**, **Postgres in local Docker**, **Python app + MCP as day-1 cutover scope**.
 - Add explicit **Electron migration gates** before final Firebird retirement, aligned with Electron docs that currently recommend Firebird until coordinated migration is ready.
 
@@ -40,7 +40,7 @@ Scope: **image-scoring-backend** + **image-scoring-gallery** coordinated migrati
 
 ## Public API / Interface Changes
 
-- **image-scoring-backend** (`config.json`) keys:
+- **image-scoring-pipeline** (`config.json`) keys:
 - `database.engine` (`firebird|postgres`)
 - `database.filename` (used by Firebird mode)
 - optional `database.dual_write` (Firebird primary write + Postgres secondary write)

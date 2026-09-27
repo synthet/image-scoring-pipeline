@@ -1,6 +1,6 @@
 # UX/UI Constitution — Backend binding
 
-Mandatory UX/UI rules for **image-scoring-backend** surfaces. Shared principles and articles are **canonical** in [image-scoring-ui UX_UI_CONSTITUTION.md](https://github.com/synthet/image-scoring-ui/blob/main/docs/UX_UI_CONSTITUTION.md). This document binds those rules to this repo's stacks and file paths.
+Mandatory UX/UI rules for **image-scoring-pipeline** surfaces. Shared principles and articles are **canonical** in [image-scoring-ui UX_UI_CONSTITUTION.md](https://github.com/synthet/image-scoring-ui/blob/main/docs/UX_UI_CONSTITUTION.md). This document binds those rules to this repo's stacks and file paths.
 
 ## Surfaces
 

@@ -26,7 +26,7 @@ STAGE_BACKLOG = "83b7a780"
 STAGE_READY = "ddaf7773"
 STAGE_DONE = "73062c96"
 
-BACKEND = "synthet/image-scoring-backend"
+BACKEND = "synthet/image-scoring-pipeline"
 GALLERY = "synthet/image-scoring-gallery"
 REPOS = (BACKEND, GALLERY)
 

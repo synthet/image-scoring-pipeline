@@ -10,8 +10,8 @@ okf_version: 0.1
 
 # Detector benchmark — September 2026
 
-**Issue:** [#377](https://github.com/synthet/image-scoring-backend/issues/377), part of
-[#345](https://github.com/synthet/image-scoring-backend/issues/345).
+**Issue:** [#377](https://github.com/synthet/image-scoring-pipeline/issues/377), part of
+[#345](https://github.com/synthet/image-scoring-pipeline/issues/345).
 **Status:** evaluation complete, ready for review; production defaults unchanged.
 
 ## Decision

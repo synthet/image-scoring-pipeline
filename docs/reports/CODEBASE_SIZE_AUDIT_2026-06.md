@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Codebase size audit — June 2026
 
-Point-in-time scan of **image-scoring-backend** and sibling **image-scoring-gallery** using `scripts/audit/codebase_size_audit.py`. Thresholds: **files ≥1000 LoC**, **functions/methods ≥150 LoC**.
+Point-in-time scan of **image-scoring-pipeline** and sibling **image-scoring-gallery** using `scripts/audit/codebase_size_audit.py`. Thresholds: **files ≥1000 LoC**, **functions/methods ≥150 LoC**.
 
 **Action plan:** [CODEBASE_SIZE_REFACTOR_PLAN.md](../planning/refactoring/CODEBASE_SIZE_REFACTOR_PLAN.md) (backend Phases 0–10) · [Gallery plan](https://github.com/synthet/image-scoring-gallery/blob/main/docs/planning/CODEBASE_SIZE_REFACTOR_PLAN.md) (Phases 1–8) · Re-run skill [codebase-size-audit](../../../.cursor/skills/codebase-size-audit/SKILL.md)
 

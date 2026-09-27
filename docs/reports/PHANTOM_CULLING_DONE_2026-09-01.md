@@ -12,7 +12,7 @@ okf_version: 0.1
 
 **Reporter:** owner (Claude Opus 5 assist)
 **Trigger:** Gallery showed 883 images from 2026-08-25 as 883 separate tiles with the Stacks toggle on, including obvious ten-frame bursts.
-**Status:** Fixed — [PR #343](https://github.com/synthet/image-scoring-backend/pull/343), closing [#340](https://github.com/synthet/image-scoring-backend/issues/340) and [#341](https://github.com/synthet/image-scoring-backend/issues/341). Backlog re-clustered; [#342](https://github.com/synthet/image-scoring-backend/issues/342) filed and deliberately not started.
+**Status:** Fixed — [PR #343](https://github.com/synthet/image-scoring-pipeline/pull/343), closing [#340](https://github.com/synthet/image-scoring-pipeline/issues/340) and [#341](https://github.com/synthet/image-scoring-pipeline/issues/341). Backlog re-clustered; [#342](https://github.com/synthet/image-scoring-pipeline/issues/342) filed and deliberately not started.
 **See also:** [CULLING_NO_STACKS_INVESTIGATION_2026-03-15.md](CULLING_NO_STACKS_INVESTIGATION_2026-03-15.md) — the *same symptom* from a different cause (SelectionRunner phase-order bug, fixed 2026-03). Check both when "culling done but no stacks" recurs. Also [AUTODRIVE_REPROCESSING_INVESTIGATION_2026-05-26.md](AUTODRIVE_REPROCESSING_INVESTIGATION_2026-05-26.md) — a different auto-drive defect in the same policy layer.
 
 ## TL;DR
@@ -125,6 +125,6 @@ WHERE i.stack_id IS NULL
 
 ## Open items
 
-- **[#342](https://github.com/synthet/image-scoring-backend/issues/342)** — `/ui/runs/6720` reported `145,636 / 534 work items`. Traced to the WebSocket `job_progress` event (`clustering.py:1183-1189` → `adaptBackendMessage.ts:111` → `wsStore` → `StagePanel.tsx:85`), but every `cur` emitted by `_cluster_images_impl` is arithmetically bounded by `len(images_rows)`, so static reading does not explain the number. **Deliberately not fixed** — the next step is capturing the live payload, not guessing. `WorkflowGraph.tsx:56` also divides without clamping, unlike `StagePanel.tsx:87`.
+- **[#342](https://github.com/synthet/image-scoring-pipeline/issues/342)** — `/ui/runs/6720` reported `145,636 / 534 work items`. Traced to the WebSocket `job_progress` event (`clustering.py:1183-1189` → `adaptBackendMessage.ts:111` → `wsStore` → `StagePanel.tsx:85`), but every `cur` emitted by `_cluster_images_impl` is arithmetically bounded by `len(images_rows)`, so static reading does not explain the number. **Deliberately not fixed** — the next step is capturing the live payload, not guessing. `WorkflowGraph.tsx:56` also divides without clamping, unlike `StagePanel.tsx:87`.
 - The `--require-culling-done` audit will not return literal zero: 35 of the remaining folders hold a single image, which can never form a stack yet still matches "folder with no stack assignments". A `HAVING COUNT(*) >= 2` floor would make that check a clean zero-or-alarm signal.
 - `phases.enforce_done_postconditions` remains off. Turning it on would convert any future phantom `done` into a visible `failed` library-wide — broader than this fix, and `config.json` is git-ignored so it would be a local-only change.

@@ -1,7 +1,7 @@
 {
 	"folders": [
 		{
-			"name": "image-scoring-backend",
+			"name": "image-scoring-pipeline",
 			"path": "."
 		},
 		{
@@ -14,7 +14,7 @@
 		}
 	],
 	"settings": {
-		"powershell.cwd": "image-scoring-backend"
+		"powershell.cwd": "image-scoring-pipeline"
 	},
 	"extensions": {
 		"recommendations": [

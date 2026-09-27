@@ -8,7 +8,7 @@ timestamp: 2026-06-16T00:00:00Z
 okf_version: 0.1
 ---
 
-# Wiki schema — image-scoring-backend `docs/`
+# Wiki schema — image-scoring-pipeline `docs/`
 
 This repository keeps `docs/` as an LLM-maintained wiki: small pages, clear hubs, and stable links to canonical contracts.
 

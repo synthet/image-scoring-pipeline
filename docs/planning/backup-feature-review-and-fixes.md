@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-08
 **Author:** review pass (Claude)
-**Scope:** `image-scoring-gallery` (Electron backup pipeline) + `image-scoring-backend` (`/api/backup/plan`, `modules/backup_plan.py`)
+**Scope:** `image-scoring-gallery` (Electron backup pipeline) + `image-scoring-pipeline` (`/api/backup/plan`, `modules/backup_plan.py`)
 **Trigger:** Post-incident review of the "Backup feature optimization" work captured in
 `cursor_backup_feature_optimization.md`, where a backup run to `H:\Photos` deleted ~37,000 files
 (manifest dropped from 40,164 → 2,950 entries).
@@ -191,7 +191,7 @@ Repo: gallery.
 - `src/components/Backup/BackupModal.tsx` — Findings B, E (pre-flight surfacing)
 - tests: `backupSelection.test.ts`, `backupSpace.test.ts`, `backupConfig.test.ts`
 
-**Backend (`image-scoring-backend`):**
+**Backend (`image-scoring-pipeline`):**
 - `modules/backup_plan.py` — Findings A, D, G
 - `modules/api.py` — Finding G (response shape, if changed)
 - `tests/test_backup_plan.py` — extend null-stack + parity coverage

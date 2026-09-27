@@ -1,6 +1,6 @@
 ---
 name: backlog-queue
-description: Cross-repo GitHub Project board is the canonical task queue. Use whenever picking work, claiming an issue, transitioning Stage, or filing/closing a backlog issue across image-scoring-backend or image-scoring-gallery.
+description: Cross-repo GitHub Project board is the canonical task queue. Use whenever picking work, claiming an issue, transitioning Stage, or filing/closing a backlog issue across image-scoring-pipeline or image-scoring-gallery.
 ---
 
 # Backlog queue (compiled claim/stage)
@@ -8,7 +8,7 @@ description: Cross-repo GitHub Project board is the canonical task queue. Use wh
 > The canonical task queue is the GitHub Project board:
 > **https://github.com/users/synthet/projects/1**
 >
-> It spans both repos: `synthet/image-scoring-backend` and `synthet/image-scoring-gallery`.
+> It spans both repos: `synthet/image-scoring-pipeline` and `synthet/image-scoring-gallery`.
 > The repo `TODO.md` files are pointers only — **never** add tasks there.
 
 ## Compiled bootloader (claim / Stage)

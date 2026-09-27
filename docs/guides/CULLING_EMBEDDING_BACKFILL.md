@@ -15,7 +15,7 @@ okf_version: 0.1
 > **Owner:** backend.
 > **Related:** [two-level-culling.md](../features/planned/embeddings/two-level-culling.md) ·
 > [CULLING_MODEL_RECOMMENDATION_2026-05-29.md](../reports/CULLING_MODEL_RECOMMENDATION_2026-05-29.md) ·
-> [EMBEDDINGS.md](../technical/EMBEDDINGS.md) · [#220](https://github.com/synthet/image-scoring-backend/issues/220)
+> [EMBEDDINGS.md](../technical/EMBEDDINGS.md) · [#220](https://github.com/synthet/image-scoring-pipeline/issues/220)
 
 ## Goal
 
@@ -98,7 +98,7 @@ wsl -d Ubuntu bash -lc "source ~/.venvs/tf/bin/activate && python -c 'import tor
 ### Step 1 — Dry-run (no GPU): confirm DB + missing count
 
 ```bash
-wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-backend && source ~/.venvs/tf/bin/activate && \
+wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-pipeline && source ~/.venvs/tf/bin/activate && \
   python scripts/maintenance/backfill_culling_embeddings.py --space openclip_l14_laion2b_image --dry-run"
 ```
 Expect `Images missing openclip_l14_laion2b_image: ~61164`.
@@ -106,7 +106,7 @@ Expect `Images missing openclip_l14_laion2b_image: ~61164`.
 ### Step 2 — Full backfill (background, resumable)
 
 ```bash
-wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-backend && source ~/.venvs/tf/bin/activate && \
+wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-pipeline && source ~/.venvs/tf/bin/activate && \
   python -u scripts/maintenance/backfill_culling_embeddings.py --space openclip_l14_laion2b_image \
   > reports/clip-culling/backfill_openclip_l14.log 2>&1"
 ```
@@ -117,7 +117,7 @@ wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-backend && source ~/.ve
 ### Step 3 — Monitor
 
 ```bash
-wsl -d Ubuntu bash -lc "grep -E 'img/s' /mnt/d/Projects/image-scoring-backend/reports/clip-culling/backfill_openclip_l14.log | tail -3"
+wsl -d Ubuntu bash -lc "grep -E 'img/s' /mnt/d/Projects/image-scoring-pipeline/reports/clip-culling/backfill_openclip_l14.log | tail -3"
 ```
 If WSL dies mid-run: recover (Step 0) and re-launch Step 2 — it resumes from the DB.
 
@@ -140,7 +140,7 @@ WARNING `embed_paths: cannot open …`). Investigate if the gap is large.
 
 `level2.distance_threshold = 0.06` is exp8 *root-grouping*-tuned, not within-stack. Sweep:
 ```bash
-wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-backend && source ~/.venvs/tf/bin/activate && \
+wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-pipeline && source ~/.venvs/tf/bin/activate && \
   python -m scripts.research.clip_culling.two_level_thresholds --space openclip_l14_laion2b_image \
   --thresholds 0.03,0.05,0.06,0.08,0.10,0.12"
 ```
@@ -193,11 +193,11 @@ default.
 
 ```bash
 # Dry-run smoke on first 10 stacks (no writes; reports leaf/pick histogram)
-wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-backend && source ~/.venvs/tf/bin/activate && \
+wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-pipeline && source ~/.venvs/tf/bin/activate && \
   python scripts/maintenance/backfill_sub_stacks.py --dry-run --limit 10"
 
 # Live, whole library, background-friendly + resumable
-wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-backend && source ~/.venvs/tf/bin/activate && \
+wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-pipeline && source ~/.venvs/tf/bin/activate && \
   python -u scripts/maintenance/backfill_sub_stacks.py > reports/clip-culling/backfill_sub_stacks.log 2>&1"
 ```
 

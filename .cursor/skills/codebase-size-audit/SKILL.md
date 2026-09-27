@@ -2,7 +2,7 @@
 name: codebase-size-audit
 description: >-
   Read-only scan for files ≥1000 LoC and functions/methods ≥150 LoC across
-  image-scoring-backend and image-scoring-gallery. Produces a markdown or JSON
+  image-scoring-pipeline and image-scoring-gallery. Produces a markdown or JSON
   report with refactor priority hints. Use when the user asks for a codebase size
   audit, large file scan, god-module review, or refactoring hotspot analysis.
 ---
@@ -22,7 +22,7 @@ Skips: `node_modules`, venvs, `dist*`, `__pycache__`, `FirebirdLinux`, `static` 
 
 ## Run (canonical script)
 
-From **image-scoring-backend** root (Python 3.10+; no venv required):
+From **image-scoring-pipeline** root (Python 3.10+; no venv required):
 
 ```bash
 # Backend only

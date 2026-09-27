@@ -1,10 +1,10 @@
 {
-  "_comment": "Multi-root workspace MCP template. Set folder names in image-scoring-backend.code-workspace to match. Build both mcp-server packages before enabling.",
+  "_comment": "Multi-root workspace MCP template. Set folder names in image-scoring-pipeline.code-workspace to match. Build both mcp-server packages before enabling.",
   "mcpServers": {
     "is-be-mcp": {
       "command": "node",
       "args": ["mcp-server/dist/compactIndex.js"],
-      "cwd": "${workspaceFolder:image-scoring-backend}"
+      "cwd": "${workspaceFolder:image-scoring-pipeline}"
     },
     "is-ui-mcp": {
       "command": "node",
@@ -28,8 +28,8 @@
     "fff-be": {
       "_comment": "Requires git repo cwd — do NOT register at user ~/.cursor/mcp.json. Pass explicit PATH + cwd.",
       "command": "fff-mcp",
-      "args": ["${workspaceFolder:image-scoring-backend}"],
-      "cwd": "${workspaceFolder:image-scoring-backend}"
+      "args": ["${workspaceFolder:image-scoring-pipeline}"],
+      "cwd": "${workspaceFolder:image-scoring-pipeline}"
     },
     "fff-gallery": {
       "_comment": "Gallery repo index — separate from fff-be in multi-root workspaces.",
@@ -41,7 +41,7 @@
       "_comment": "Optional — graphify-mcp on PATH + graphify-out/graph.json (graphify . --code-only). Soft; see AGENTS.md § Graphify.",
       "command": "graphify-mcp",
       "args": ["graphify-out/graph.json"],
-      "cwd": "${workspaceFolder:image-scoring-backend}"
+      "cwd": "${workspaceFolder:image-scoring-pipeline}"
     },
     "graphify-gallery": {
       "_comment": "Optional — same for gallery after graphify . --code-only.",

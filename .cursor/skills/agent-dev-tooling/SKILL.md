@@ -8,7 +8,7 @@ description: >-
 
 # Agent dev tooling
 
-Task runners, lint, and verification for **image-scoring-backend** (Vexlum Scoring).
+Task runners, lint, and verification for **image-scoring-pipeline** (Vexlum Scoring).
 
 ## Purpose
 

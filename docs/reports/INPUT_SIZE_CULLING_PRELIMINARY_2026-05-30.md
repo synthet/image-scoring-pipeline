@@ -101,7 +101,7 @@ Baseline: **`long_edge=512`, `source=thumb`**.
 ### Phase 1 — Culling + base IQA (priority)
 
 ```bash
-cd /mnt/d/Projects/image-scoring-backend
+cd /mnt/d/Projects/image-scoring-pipeline
 source ~/.venvs/tf/bin/activate
 export POSTGRES_DB=image_scoring_test POSTGRES_PORT=5433
 setsid bash scripts/research/clip_culling/run_input_size_study.sh PHASE=1 \

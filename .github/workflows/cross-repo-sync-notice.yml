@@ -48,7 +48,7 @@ jobs:
           - [ ] **image-scoring-gallery** — match `package.json` dependency; refresh `src/styles/tokens.css` from package `dist/`
           - [ ] Smoke `/ui/` (backend) and gallery shell for palette/status regressions
 
-          See [`docs/technical/AGENT_COORDINATION.md`](https://github.com/synthet/image-scoring-backend/blob/main/docs/technical/AGENT_COORDINATION.md) (sections **Cross-repo Sync Automation** and **Design tokens**).
+          See [`docs/technical/AGENT_COORDINATION.md`](https://github.com/synthet/image-scoring-pipeline/blob/main/docs/technical/AGENT_COORDINATION.md) (sections **Cross-repo Sync Automation** and **Design tokens**).
 
           **Discipline tracking:** [image-scoring-gallery#71](https://github.com/synthet/image-scoring-gallery/issues/71)
 

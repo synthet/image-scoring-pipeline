@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Codebase size audit — July 2026
 
-Point-in-time scan of **image-scoring-backend** and sibling **image-scoring-gallery** using `scripts/audit/codebase_size_audit.py`. Thresholds: **files ≥1000 LoC**, **functions/methods ≥150 LoC**.
+Point-in-time scan of **image-scoring-pipeline** and sibling **image-scoring-gallery** using `scripts/audit/codebase_size_audit.py`. Thresholds: **files ≥1000 LoC**, **functions/methods ≥150 LoC**.
 
 **Action plan:** [CODEBASE_SIZE_REFACTOR_PLAN.md](../planning/refactoring/CODEBASE_SIZE_REFACTOR_PLAN.md) (backend Phases 0–10) · [Gallery plan](https://github.com/synthet/image-scoring-gallery/blob/main/docs/planning/CODEBASE_SIZE_REFACTOR_PLAN.md) (Phases 1–8) · Re-run skill [codebase-size-audit](../../../.cursor/skills/codebase-size-audit/SKILL.md)
 
@@ -23,7 +23,7 @@ Point-in-time scan of **image-scoring-backend** and sibling **image-scoring-gall
 ## Key takeaways
 
 1. **Phase 1 API domain-router split is done** — `create_api_router` is **33 LoC**; `modules/api.py` no longer appears on the large-files list.
-2. **New hotspot (pre–Phase 1b):** `modules/api/routers/electron.py` at **1,855 LoC** with `create_electron_router` at **1,588 LoC** — addressed in Phase 1b (issue [#298](https://github.com/synthet/image-scoring-backend/issues/298)).
+2. **New hotspot (pre–Phase 1b):** `modules/api/routers/electron.py` at **1,855 LoC** with `create_electron_router` at **1,588 LoC** — addressed in Phase 1b (issue [#298](https://github.com/synthet/image-scoring-pipeline/issues/298)).
 3. **Gallery `electron/main.ts` dropped off the large-files list** (~382 LoC after IPC register extraction; closes [#151](https://github.com/synthet/image-scoring-gallery/issues/151)).
 4. **`modules/db_legacy.py` (15,457 LoC)** remains the largest file — Phase 2 decomposition unchanged.
 5. **Runner per-image helpers** (Phase 4) reduced loop sizes; mega-helpers like `_process_tagging_image_row` (~563 LoC) remain optional follow-ups.

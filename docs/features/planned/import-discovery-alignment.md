@@ -2,7 +2,7 @@
 
 **Status:** Proposal  
 **Date:** 2026-04-10  
-**Repos:** [image-scoring-backend](https://github.com/synthet/image-scoring-backend) (primary), [image-scoring-gallery](https://github.com/synthet/image-scoring-gallery) (client)
+**Repos:** [image-scoring-pipeline](https://github.com/synthet/image-scoring-pipeline) (primary), [image-scoring-gallery](https://github.com/synthet/image-scoring-gallery) (client)
 
 ---
 

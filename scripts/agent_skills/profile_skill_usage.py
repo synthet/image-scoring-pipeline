@@ -48,7 +48,7 @@ def default_transcripts_dir() -> Path:
         home
         / ".cursor"
         / "projects"
-        / "d-Projects-image-scoring-backend"
+        / "d-Projects-image-scoring-pipeline"
         / "agent-transcripts"
     )
 

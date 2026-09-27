@@ -1,6 +1,6 @@
 # #185 — Calibration layer + percentile anchors: status & blockers
 
-**Issue:** [#185](https://github.com/synthet/image-scoring-backend/issues/185) — *scoring stack: calibration layer + percentile anchors for new models* (sub-task of #180; dep: #184).
+**Issue:** [#185](https://github.com/synthet/image-scoring-pipeline/issues/185) — *scoring stack: calibration layer + percentile anchors for new models* (sub-task of #180; dep: #184).
 **Status:** Partially done; remaining work is **data-blocked**. Captured here so the issue can be moved to `Blocked` with a concrete unblock path.
 **Last assessed:** 2026-05-23.
 

@@ -10,7 +10,7 @@ Batch-import local Cursor agent transcripts into per-repo lesson staging (and op
 
 ## Steps
 
-1. From **image-scoring-backend** repo root (Windows — transcripts live under `%USERPROFILE%\.cursor\projects`):
+1. From **image-scoring-pipeline** repo root (Windows — transcripts live under `%USERPROFILE%\.cursor\projects`):
 
 ```powershell
 python scripts/agent-memory/import_transcripts.py `
@@ -28,7 +28,7 @@ python scripts/agent-memory/import_transcripts.py `
 ```powershell
 python scripts/agent-memory/import_transcripts.py `
   --write-sessions `
-  --repo image-scoring-backend `
+  --repo image-scoring-pipeline `
   --cursor-projects "$env:USERPROFILE\.cursor\projects"
 python scripts/agent-memory/dream.py
 ```

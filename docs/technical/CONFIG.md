@@ -1,6 +1,6 @@
 # Configuration (`config.json`)
 
-Authority for runtime settings in **image-scoring-backend**. Implementation: [`modules/config.py`](../../modules/config.py).
+Authority for runtime settings in **image-scoring-pipeline**. Implementation: [`modules/config.py`](../../modules/config.py).
 
 ## Files
 

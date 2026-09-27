@@ -5,7 +5,7 @@ Use when starting non-trivial work. Produce a **spec** the user can review befor
 ## Inputs
 
 - Problem statement or feature request.
-- Constraints: time, scope, tech stack (see [AGENTS.md](file:///d:/Projects/image-scoring-backend/AGENTS.md)).
+- Constraints: time, scope, tech stack (see [AGENTS.md](file:///d:/Projects/image-scoring-pipeline/AGENTS.md)).
 
 ## Steps
 

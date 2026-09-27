@@ -91,7 +91,7 @@ Registry: [`modules/embedding_spaces.py`](../modules/embedding_spaces.py). Simil
 |-----------|-----------|
 | **Technical failures** (`technical_failures.enabled: false`) | Classical blur/exposure metrics only; `use_clip_iqa` / `use_pyiqa` false in example |
 | **Embedding map** (`embedding_map.enabled: false`) | UMAP or t-SNE on stored vectors (not a vision model) |
-| **Roadmap models** | ARNIQA, DINOv2, SigLIP2, OpenCLIP L/14 — not in production paths yet ([#220](https://github.com/synthet/image-scoring-backend/issues/220)) |
+| **Roadmap models** | ARNIQA, DINOv2, SigLIP2, OpenCLIP L/14 — not in production paths yet ([#220](https://github.com/synthet/image-scoring-pipeline/issues/220)) |
 
 ### Current models mapped to tasks
 
@@ -214,7 +214,7 @@ Models below are **new or newly emphasized** in this roadmap. Existing productio
 
 ## Implementation phases
 
-**Tracking issue:** [image-scoring-backend#220](https://github.com/synthet/image-scoring-backend/issues/220)
+**Tracking issue:** [image-scoring-pipeline#220](https://github.com/synthet/image-scoring-pipeline/issues/220)
 
 | Phase | Scope | Add or replace? | Code? |
 |-------|--------|-----------------|-------|

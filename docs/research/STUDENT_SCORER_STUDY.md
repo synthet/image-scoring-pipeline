@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Vexlum Student Scorer Study
 
-Ingested and adapted for [image-scoring-backend](../../). Source research notes:
+Ingested and adapted for [image-scoring-pipeline](../../). Source research notes:
 local Downloads study + architecture survey (background only).
 
 ## Objective

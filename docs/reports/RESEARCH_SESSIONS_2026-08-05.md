@@ -20,7 +20,7 @@ scorer stays shadow-only and unwired from fusion, and no DDL or migration was ap
 | Field | Value |
 |---|---|
 | **Pause window** | ~2026-08-05T21:46−05:00 |
-| **Repos** | `image-scoring-backend` (work target); `image-scoring-skills` (labelling harness) |
+| **Repos** | `image-scoring-pipeline` (work target); `image-scoring-skills` (labelling harness) |
 | **In flight at pause** | Bird-crop Track A sequential classical measures; student-scorer full E2 seed-42 train |
 
 Later **transcript digests** (no raw exports in git) are indexed at
@@ -30,15 +30,15 @@ Later **transcript digests** (no raw exports in git) are indexed at
 
 | Track | Agent / model | Record | Covers |
 |---|---|---|---|
-| Bird-crop ([#317](https://github.com/synthet/image-scoring-backend/issues/317)) | Claude Code, Opus 5 | [`SESSION_BIRD_CROP_FOCUS_2026-08-05.md`](SESSION_BIRD_CROP_FOCUS_2026-08-05.md) | Pinned Phase 2 re-sweep, Phase 4 classical-focus/AF research, `modules/focus_quality.py`, 15 corrections |
-| Bird-crop ([#317](https://github.com/synthet/image-scoring-backend/issues/317)) | Cursor Agent, Grok 4.5 | [`SESSION_BIRD_CROP_CLOSEOUT_2026-08-05.md`](SESSION_BIRD_CROP_CLOSEOUT_2026-08-05.md) | Multi-agent labelling, sequential Track A recovery, Arm B vs labels, CSV exporter, open todos |
-| Student scorer ([#323](https://github.com/synthet/image-scoring-backend/issues/323)) | Claude Code (Opus 5) **+** Cursor Agent (Grok 4.5) | [`../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md`](../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md) | Render resume fix, 66k P0 cache, train monitoring properties, error table, resume checklist |
+| Bird-crop ([#317](https://github.com/synthet/image-scoring-pipeline/issues/317)) | Claude Code, Opus 5 | [`SESSION_BIRD_CROP_FOCUS_2026-08-05.md`](SESSION_BIRD_CROP_FOCUS_2026-08-05.md) | Pinned Phase 2 re-sweep, Phase 4 classical-focus/AF research, `modules/focus_quality.py`, 15 corrections |
+| Bird-crop ([#317](https://github.com/synthet/image-scoring-pipeline/issues/317)) | Cursor Agent, Grok 4.5 | [`SESSION_BIRD_CROP_CLOSEOUT_2026-08-05.md`](SESSION_BIRD_CROP_CLOSEOUT_2026-08-05.md) | Multi-agent labelling, sequential Track A recovery, Arm B vs labels, CSV exporter, open todos |
+| Student scorer ([#323](https://github.com/synthet/image-scoring-pipeline/issues/323)) | Claude Code (Opus 5) **+** Cursor Agent (Grok 4.5) | [`../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md`](../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md) | Render resume fix, 66k P0 cache, train monitoring properties, error table, resume checklist |
 
 The two student-scorer records describe the same work from two angles and agree on every fact checked
 against each other, so they are consolidated into one page. Raw sources are archived unmodified under
 [`../raw/`](../raw/README.md) — see [Raw sources](#raw-sources-immutable) below.
 
-## Arc A — bird-crop / focus ([#317](https://github.com/synthet/image-scoring-backend/issues/317))
+## Arc A — bird-crop / focus ([#317](https://github.com/synthet/image-scoring-pipeline/issues/317))
 
 **Question:** does cropping to the detected bird bbox help each pipeline phase, and can a zero-inference
 algorithm decide crop focus quality?
@@ -70,7 +70,7 @@ not validated cut-offs. Do not quote the geometry AUC as more precise than "clea
 
 **Artefacts:** `reports/bird-crop/` (`REPORT.md`, `degradation.{json,md}`, `labels/`, `tables/`, `trackA.log`).
 
-## Arc B — student scorer E2 ([#323](https://github.com/synthet/image-scoring-backend/issues/323))
+## Arc B — student scorer E2 ([#323](https://github.com/synthet/image-scoring-pipeline/issues/323))
 
 **Question:** can one multi-head student model replace the teacher ensemble at fidelity?
 Manifest `msm_8ef568a5db3d9f79` · protocol `ssp_429e3332d8ab`.

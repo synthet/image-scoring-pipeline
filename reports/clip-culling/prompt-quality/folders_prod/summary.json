@@ -81,7 +81,7 @@
           "score_mean_rejected": 0.4052
         }
       },
-      "csv": "/mnt/d/Projects/image-scoring-backend/reports/clip-culling/prompt-quality/folders_prod/clip_prompt_quality__clip_vit_b32_image.csv"
+      "csv": "/mnt/d/Projects/image-scoring-pipeline/reports/clip-culling/prompt-quality/folders_prod/clip_prompt_quality__clip_vit_b32_image.csv"
     },
     {
       "space": "openclip_l14_laion2b_image",
@@ -147,7 +147,7 @@
           "score_mean_rejected": 0.3568
         }
       },
-      "csv": "/mnt/d/Projects/image-scoring-backend/reports/clip-culling/prompt-quality/folders_prod/clip_prompt_quality__openclip_l14_laion2b_image.csv"
+      "csv": "/mnt/d/Projects/image-scoring-pipeline/reports/clip-culling/prompt-quality/folders_prod/clip_prompt_quality__openclip_l14_laion2b_image.csv"
     },
     {
       "space": "bioclip_2_image",
@@ -213,7 +213,7 @@
           "score_mean_rejected": 0.0056
         }
       },
-      "csv": "/mnt/d/Projects/image-scoring-backend/reports/clip-culling/prompt-quality/folders_prod/clip_prompt_quality__bioclip_2_image.csv"
+      "csv": "/mnt/d/Projects/image-scoring-pipeline/reports/clip-culling/prompt-quality/folders_prod/clip_prompt_quality__bioclip_2_image.csv"
     }
   ]
 }

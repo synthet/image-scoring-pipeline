@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sync assistant trees between `.cursor/` and `.claude/`.
 
-image-scoring-backend uses **`.cursor/` as canonical** (default direction: cursor-to-claude).
+image-scoring-pipeline uses **`.cursor/` as canonical** (default direction: cursor-to-claude).
 synthet-code-framework uses `.claude/` as canonical (direction: claude-to-cursor).
 
 Mappings (cursor-to-claude):

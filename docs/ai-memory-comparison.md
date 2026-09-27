@@ -4,7 +4,7 @@
 **Source comparison:** [carsteneu/ai-memory-comparison](https://github.com/carsteneu/ai-memory-comparison) (73 systems, 79 features, every ✅ source-backed)
 **Live table:** [carsteneu.github.io/ai-memory-comparison](https://carsteneu.github.io/ai-memory-comparison/)
 
-This document evaluates external agent-memory products against the **current** Vexlum Scoring (`image-scoring-backend`) / Driftara Gallery architecture and picks the most suitable approach for agent-driven development across **Claude Code, Cursor, Codex, and Antigravity**.
+This document evaluates external agent-memory products against the **current** Vexlum Scoring (`image-scoring-pipeline`) / Driftara Gallery architecture and picks the most suitable approach for agent-driven development across **Claude Code, Cursor, Codex, and Antigravity**.
 
 > **Supersedes** four per-agent drafts (`ai-memory-claude.md`, `ai-memory-codex.md`, `ai-memory-cursor.md`, `ai-memory-antigravity.md`), which were never committed. Three of those four reached the same conclusion (keep `.agent-memory`, treat external tools as opt-in sidecars); the fourth (Antigravity → Mem0 embedded in the app DB) is rejected here for the reasons in [§ Rejected approaches](#rejected-approaches).
 

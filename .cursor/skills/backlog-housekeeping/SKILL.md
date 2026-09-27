@@ -1,7 +1,7 @@
 ---
 name: backlog-housekeeping
 description: >-
-  GitHub backlog housekeeping for image-scoring-backend and image-scoring-gallery:
+  GitHub backlog housekeeping for image-scoring-pipeline and image-scoring-gallery:
   sync Project board Stage, label hygiene, tier-1 closes. Use when the user runs
   /backlog-housekeeping, asks to close stale or obsolete issues, fix board drift,
   or clean up issue labels on the synthet Project #1 queue.
@@ -23,14 +23,14 @@ Periodic **queue truthfulness** pass across both repos on [Project board #1](htt
 
 - **`gh` CLI** authenticated (`gh auth status`).
 - Run from **Windows** (or any shell where `gh` is on `PATH`). Do **not** rely on WSL unless `gh` is installed there.
-- Repo root: **image-scoring-backend** (script lives here; touches both repos).
+- Repo root: **image-scoring-pipeline** (script lives here; touches both repos).
 
 ## Canonical workflow
 
 ### 1. Dry-run (always first)
 
 ```powershell
-cd D:\Projects\image-scoring-backend
+cd D:\Projects\image-scoring-pipeline
 python scripts/housekeeping_backlog.py
 ```
 
@@ -68,12 +68,12 @@ Edit **`scripts/backlog_housekeeping_config.json`** (committed, idempotent):
 ```json
 {
   "promote_ready": {
-    "synthet/image-scoring-backend": [253, 254],
+    "synthet/image-scoring-pipeline": [253, 254],
     "synthet/image-scoring-gallery": [134, 135]
   },
   "tier1_closes": [
     {
-      "repo": "synthet/image-scoring-backend",
+      "repo": "synthet/image-scoring-pipeline",
       "number": 114,
       "comment": "Closing as superseded by …"
     }

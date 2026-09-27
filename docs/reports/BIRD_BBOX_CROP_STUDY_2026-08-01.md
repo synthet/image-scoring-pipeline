@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Bird-bbox crop study — pinned re-sweep close-out
 
-> **Status:** point-in-time research memo, not a product spec. Production was read **read-only** throughout; every artifact lands under `reports/`. Tracking issue: [#317](https://github.com/synthet/image-scoring-backend/issues/317).
+> **Status:** point-in-time research memo, not a product spec. Production was read **read-only** throughout; every artifact lands under `reports/`. Tracking issue: [#317](https://github.com/synthet/image-scoring-pipeline/issues/317).
 
 ## Summary
 

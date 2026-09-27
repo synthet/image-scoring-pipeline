@@ -12,7 +12,7 @@ Use after a spec exists (or for small tasks, a verbal agreement). Prefer **plan 
 1. **Goal** — What "done" means.
 2. **Files / areas to touch** — Paths or components.
 3. **Approach** — Steps in order; call out risky changes.
-4. **Tests** — What to run or add (map to [AGENTS.md](file:///d:/Projects/image-scoring-backend/AGENTS.md) commands).
+4. **Tests** — What to run or add (map to [AGENTS.md](file:///d:/Projects/image-scoring-pipeline/AGENTS.md) commands).
 5. **Rollback / flags** — If feature-flagged or migratory.
 
 ## Done when

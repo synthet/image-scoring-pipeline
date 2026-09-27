@@ -1,16 +1,16 @@
 # Agent Coordination: Integration Guide
 
-This document defines the coordination protocols for AI agents working across **[image-scoring-backend](https://github.com/synthet/image-scoring-backend)** (Python backend) and **[image-scoring-gallery](https://github.com/synthet/image-scoring-gallery)** (Electron gallery).
+This document defines the coordination protocols for AI agents working across **[image-scoring-pipeline](https://github.com/synthet/image-scoring-pipeline)** (Python backend) and **[image-scoring-gallery](https://github.com/synthet/image-scoring-gallery)** (Electron gallery).
 
 ## 🏗️ Architectural Overview
 
 The integration relies on two primary shared components:
 
 1. **Shared database: PostgreSQL + pgvector** (primary path; e.g. local Docker).
-   * **Owner**: **image-scoring-backend** defines the schema in `modules/db_postgres.py` and versioned migrations via Alembic.
+   * **Owner**: **image-scoring-pipeline** defines the schema in `modules/db_postgres.py` and versioned migrations via Alembic.
    * **Consumer**: **image-scoring-gallery** queries via `pg` (node-postgres) or `ApiConnector` (HTTP SQL to the backend), depending on configuration.
 2. **Service interface: FastAPI** (default port `7860`).
-   * **Provider**: **image-scoring-backend** exposes endpoints for scoring, tagging, and clustering.
+   * **Provider**: **image-scoring-pipeline** exposes endpoints for scoring, tagging, and clustering.
    * **Consumer**: **image-scoring-gallery** triggers jobs via this API.
 
 **Legacy:** Historical Firebird usage and migration decisions are documented in [FIREBIRD_POSTGRES_MIGRATION.md](../planning/database/FIREBIRD_POSTGRES_MIGRATION.md). Current production paths are PostgreSQL (backend schema + Alembic; gallery `pg` / `api` connectors).
@@ -18,7 +18,7 @@ The integration relies on two primary shared components:
 ## 🤝 Coordination Protocols
 
 ### 1. Schema Changes
-* **Protocol**: Database schema changes MUST be implemented in **image-scoring-backend** first (Alembic migrations).
+* **Protocol**: Database schema changes MUST be implemented in **image-scoring-pipeline** first (Alembic migrations).
 * **Agent Action**: The backend agent should notify the gallery agent (or the user) of any column additions, removals, or type changes.
 * **Sync Point**: The gallery agent must update `electron/db.ts` to reflect the new schema in query logic. Impact notes for the gallery live in [DATABASE_REFACTOR_ANALYSIS.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/technical/DATABASE_REFACTOR_ANALYSIS.md) (**image-scoring-gallery**).
 
@@ -31,7 +31,7 @@ The integration relies on two primary shared components:
 **Culling / stack analytics (2026-05):** Backend exposes `GET /api/analytics/culling`, `GET /api/analytics/culling/sessions/{id}`, `GET /api/analytics/stacks/{id}` (see [CULLING_ANALYTICS.md](CULLING_ANALYTICS.md)). Gallery consumes via IPC `api:get-culling-analytics` and `api:get-stack-analytics`; UI in `src/components/CullingAnalytics/`. No new DB columns — read-only aggregates over existing tables.
 
 ### 3. Shared Resource Configuration
-* **Protocol**: **image-scoring-gallery** `config.json` references API URL, database connection, or paths that pair with **image-scoring-backend** deployment.
+* **Protocol**: **image-scoring-gallery** `config.json` references API URL, database connection, or paths that pair with **image-scoring-pipeline** deployment.
 * **Agent Action**: Moving the database container, changing credentials, or changing API base URL requires updates in both projects as applicable.
 
 ### 4. Keyword Schema Migration (Phase 4)
@@ -87,11 +87,11 @@ The same workflow also runs when `frontend/package.json` changes the `@synthet/i
 | UX/UI principles (constitution) | **image-scoring-ui** | [`docs/UX_UI_CONSTITUTION.md`](https://github.com/synthet/image-scoring-ui/blob/main/docs/UX_UI_CONSTITUTION.md); app bindings: [backend `docs/design/UX_UI_CONSTITUTION.md`](../design/UX_UI_CONSTITUTION.md), [gallery `docs/design/UX_UI_CONSTITUTION.md`](https://github.com/synthet/image-scoring-gallery/blob/main/docs/design/UX_UI_CONSTITUTION.md) |
 | Palette, status colors, Lucide icon contract, npm token package | **image-scoring-ui** | [`docs/DESIGN_SYSTEM.md`](https://github.com/synthet/image-scoring-ui/blob/main/docs/DESIGN_SYSTEM.md), package `@synthet/image-scoring-design` (currently **1.2.x**) |
 | User-facing stage labels (`STAGE_DISPLAY`, Discovery → Tagging) | **image-scoring-ui** + mirrored in consumers | UI package / backend [`frontend/src/types/api.ts`](../../frontend/src/types/api.ts); gallery [`pipelineLabels.ts`](https://github.com/synthet/image-scoring-gallery/blob/main/src/constants/pipelineLabels.ts) |
-| `phase_code`, REST `job_type`, DB phase rows | **image-scoring-backend** | [PIPELINE_TERMINOLOGY.md](PIPELINE_TERMINOLOGY.md), [`modules/phases.py`](../../modules/phases.py) |
+| `phase_code`, REST `job_type`, DB phase rows | **image-scoring-pipeline** | [PIPELINE_TERMINOLOGY.md](PIPELINE_TERMINOLOGY.md), [`modules/phases.py`](../../modules/phases.py) |
 
 **Consumers** (install the design package; do not fork hex tables locally):
 
-- **image-scoring-backend** — React SPA at `/ui/` (Tailwind v4 + `tailwind-theme.css` from the package); minimal Gradio operator UI at `/app` (append `gradio-snippet.css`).
+- **image-scoring-pipeline** — React SPA at `/ui/` (Tailwind v4 + `tailwind-theme.css` from the package); minimal Gradio operator UI at `/app` (append `gradio-snippet.css`).
 - **image-scoring-gallery** — Electron renderer (CSS Modules + `tokens.css` from the package).
 
 **Agent protocol when the design package changes** (version bump, `src/tokens.json`, or breaking renames):
@@ -111,7 +111,7 @@ Agents use the same **`search` → `dispatch`** workflow on both repos (plus **`
 
 | Repo | Default MCP | Optional SSE | Notes |
 |------|-------------|--------------|-------|
-| **image-scoring-backend** | **`is-be-mcp`** (Node stdio) | **`is-be-live`** | Registry: `mcp/action_registry.json`; setup: [guides/setup/mcp-compact-servers.md](../guides/setup/mcp-compact-servers.md) |
+| **image-scoring-pipeline** | **`is-be-mcp`** (Node stdio) | **`is-be-live`** | Registry: `mcp/action_registry.json`; setup: [guides/setup/mcp-compact-servers.md](../guides/setup/mcp-compact-servers.md) |
 | **image-scoring-gallery** | **`is-ui-mcp`** (Node stdio) | **`is-ui-live`** | Registry: `mcp-server/action_registry.json`; [gallery guide](https://github.com/synthet/image-scoring-gallery/blob/main/docs/guides/05-mcp-compact-servers.md) |
 
 For legacy raw tools not yet in the registry, set **`MCP_SSE_PROFILE=full`** on the backend WebUI process. For **`execute_code`**, use full SSE profile with **`ENABLE_MCP_EXECUTE_CODE=1`** on **`is-be-live`**.
@@ -129,4 +129,4 @@ Gallery examples: `search("gallery status")` → `dispatch("local.gallery_status
 
 ## 📚 Maintenance
 
-Keep this document and `AGENTS.md` in both repositories aligned after any major integration refactor. **Canonical copy:** this file in **image-scoring-backend** ([`docs/technical/AGENT_COORDINATION.md` on GitHub](https://github.com/synthet/image-scoring-backend/blob/main/docs/technical/AGENT_COORDINATION.md)).
+Keep this document and `AGENTS.md` in both repositories aligned after any major integration refactor. **Canonical copy:** this file in **image-scoring-pipeline** ([`docs/technical/AGENT_COORDINATION.md` on GitHub](https://github.com/synthet/image-scoring-pipeline/blob/main/docs/technical/AGENT_COORDINATION.md)).

@@ -9,7 +9,7 @@ description: >-
 
 # Agent search
 
-Text and structural search with low memory and bounded output — **image-scoring-backend**.
+Text and structural search with low memory and bounded output — **image-scoring-pipeline**.
 
 ## Purpose
 

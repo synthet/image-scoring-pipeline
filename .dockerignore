@@ -47,7 +47,7 @@ dumps/
 .obsidian/
 .serena/
 .ruff_cache/
-image-scoring-backend.code-workspace
+image-scoring-pipeline.code-workspace
 secrets.json
 webui.lock
 

@@ -1,7 +1,7 @@
 ---
 type: Documentation Hub
 title: Vexlum Scoring Documentation
-description: Root documentation hub and recommended reading path for image-scoring-backend.
+description: Root documentation hub and recommended reading path for image-scoring-pipeline.
 resource: README.md
 tags: [docs, hub, backend, okf]
 timestamp: 2026-06-16T00:00:00Z
@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Vexlum Scoring Documentation
 
-This is the documentation hub for **image-scoring-backend**, the Python scoring engine and FastAPI/Gradio service behind Vexlum Scoring.
+This is the documentation hub for **image-scoring-pipeline**, the Python scoring engine and FastAPI/Gradio service behind Vexlum Scoring.
 
 ## Quick Links
 

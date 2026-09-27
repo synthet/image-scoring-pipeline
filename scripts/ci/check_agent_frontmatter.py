@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate frontmatter contracts for agent assets (stdlib only).
 
-Default canonical tree: `.cursor/` (image-scoring-backend). Use `--canonical claude` for
+Default canonical tree: `.cursor/` (image-scoring-pipeline). Use `--canonical claude` for
 framework-style repos where `.claude/` is canonical.
 
 Contract enforced (see .agent/SKILL_INVENTORY.md):

@@ -1,7 +1,7 @@
 # Two-level culling
 
 > **Status:** Spec + backend implementation (feature flag `culling.two_level.enabled`, default off).
-> **Related:** [Culling model recommendation](../../../reports/CULLING_MODEL_RECOMMENDATION_2026-05-29.md) · [#220 Pipeline model upgrades](https://github.com/synthet/image-scoring-backend/issues/220)
+> **Related:** [Culling model recommendation](../../../reports/CULLING_MODEL_RECOMMENDATION_2026-05-29.md) · [#220 Pipeline model upgrades](https://github.com/synthet/image-scoring-pipeline/issues/220)
 
 ## Problem
 

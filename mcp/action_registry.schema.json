@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/synthet/image-scoring-backend/mcp/action_registry.schema.json",
+  "$id": "https://github.com/synthet/image-scoring-pipeline/mcp/action_registry.schema.json",
   "title": "MCP action registry",
   "type": "object",
   "required": ["version", "repo", "actions"],

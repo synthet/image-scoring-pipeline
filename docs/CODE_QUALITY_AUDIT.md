@@ -24,7 +24,7 @@ The codebase is a mature, feature-rich image-scoring backend that has evolved or
 
 ### C-1. Thread-unsafe `disconnect_sync` in EventManager
 
-**File:** [events.py](file:///d:/Projects/image-scoring-backend/modules/events.py#L47-L51)
+**File:** [events.py](file:///d:/Projects/image-scoring-pipeline/modules/events.py#L47-L51)
 
 The `EventManager` uses an `asyncio.Lock` for `connect()` and `disconnect()`, but `disconnect_sync()` mutates `self.active_connections` (a plain `list`) **without any lock**. If a background thread calls `disconnect_sync` while the async `broadcast()` is iterating over a snapshot, or while `connect()` appends, a `list.remove()` during concurrent modification can cause `ValueError` or silently skip elements.
 
@@ -44,7 +44,7 @@ def disconnect_sync(self, websocket: WebSocket):
 
 ### C-2. `is_running` flag not protected by lock in most Runners
 
-**Files:** [scoring.py](file:///d:/Projects/image-scoring-backend/modules/scoring.py), [tagging.py](file:///d:/Projects/image-scoring-backend/modules/tagging.py), [clustering.py](file:///d:/Projects/image-scoring-backend/modules/clustering.py), [selection_runner.py](file:///d:/Projects/image-scoring-backend/modules/selection_runner.py)
+**Files:** [scoring.py](file:///d:/Projects/image-scoring-pipeline/modules/scoring.py), [tagging.py](file:///d:/Projects/image-scoring-pipeline/modules/tagging.py), [clustering.py](file:///d:/Projects/image-scoring-pipeline/modules/clustering.py), [selection_runner.py](file:///d:/Projects/image-scoring-pipeline/modules/selection_runner.py)
 
 The `is_running` boolean on most runners is read by the `JobDispatcher._any_runner_busy()` method (from the dispatcher thread) and written by the runner's own background thread — without synchronization. `ScoringRunner` properly uses a `_start_lock` for `start_batch`, but all other runners (Tagging, Clustering, Selection, BirdSpecies, Metadata, Indexing) set `self.is_running = True` and `self.is_running = False` without any lock.
 
@@ -66,7 +66,7 @@ While CPython's GIL makes individual attribute reads/writes atomic, the check-th
 
 ### C-3. `db/__init__.py` monkey-patches `sys.modules` with a different module
 
-**File:** [db/\_\_init\_\_.py](file:///d:/Projects/image-scoring-backend/modules/db/__init__.py#L67-L68)
+**File:** [db/\_\_init\_\_.py](file:///d:/Projects/image-scoring-pipeline/modules/db/__init__.py#L67-L68)
 
 ```python
 _sys.modules[__name__] = _db_legacy
@@ -88,7 +88,7 @@ This replaces the `modules.db` package reference in `sys.modules` with `modules.
 
 ### H-1. Duplicate `_thread` assignment in `JobDispatcher.__init__`
 
-**File:** [job_dispatcher.py](file:///d:/Projects/image-scoring-backend/modules/job_dispatcher.py#L39-L40)
+**File:** [job_dispatcher.py](file:///d:/Projects/image-scoring-pipeline/modules/job_dispatcher.py#L39-L40)
 
 ```python
 self._thread: Optional[threading.Thread] = None
@@ -101,7 +101,7 @@ While harmless at runtime, this is a clear copy-paste error and a code smell ind
 
 ### H-2. `engine.py` sends duplicate sentinel to `scoring_queue`
 
-**File:** [engine.py](file:///d:/Projects/image-scoring-backend/modules/engine.py#L246-L257)
+**File:** [engine.py](file:///d:/Projects/image-scoring-pipeline/modules/engine.py#L246-L257)
 
 ```python
 if not self.stop_event.is_set():
@@ -120,7 +120,7 @@ The comment says "Safety incase prep didn't?" — but `PrepWorker` *does* forwar
 
 ### H-3. `process_list` has a blocking spin-wait on `prep_queue.full()`
 
-**File:** [engine.py](file:///d:/Projects/image-scoring-backend/modules/engine.py#L348-L354)
+**File:** [engine.py](file:///d:/Projects/image-scoring-pipeline/modules/engine.py#L348-L354)
 
 ```python
 try:
@@ -139,7 +139,7 @@ After `put(job, timeout=2.0)` succeeds (the job is already enqueued), the code e
 
 ### H-4. `config.py` re-reads JSON from disk on every call
 
-**File:** [config.py](file:///d:/Projects/image-scoring-backend/modules/config.py#L46-L52)
+**File:** [config.py](file:///d:/Projects/image-scoring-pipeline/modules/config.py#L46-L52)
 
 `load_config()` reads and parses both `config.json` and `environment.json` from disk on every invocation. `get_config_section()` and `get_config_value()` call `load_config()`. These are called thousands of times during batch processing (e.g., inside `_cluster_images_impl` which calls `config.get_config_section('clustering')` three times in succession, lines 488-495).
 
@@ -149,7 +149,7 @@ After `put(job, timeout=2.0)` succeeds (the job is already enqueued), the code e
 
 ### H-5. Tagging runner doesn't set `daemon=True` on its thread
 
-**File:** [tagging.py](file:///d:/Projects/image-scoring-backend/modules/tagging.py#L424)
+**File:** [tagging.py](file:///d:/Projects/image-scoring-pipeline/modules/tagging.py#L424)
 
 ```python
 self._thread = threading.Thread(target=target)  # not daemon
@@ -163,7 +163,7 @@ Most other runners (Selection, BirdSpecies, Maintenance) use `daemon=True`. The 
 
 ### H-6. `clustering.py` uses `import datetime` in method scope but also imports at module level
 
-**File:** [clustering.py](file:///d:/Projects/image-scoring-backend/modules/clustering.py#L423-L467)
+**File:** [clustering.py](file:///d:/Projects/image-scoring-pipeline/modules/clustering.py#L423-L467)
 
 Both `cluster_images` and `_cluster_images_impl` have `import datetime` and `import json` at the top of their method bodies, despite `datetime` already being imported at the module level (line 8). This shadowing is confusing and suggests copy-paste code drift.
 
@@ -171,7 +171,7 @@ Both `cluster_images` and `_cluster_images_impl` have `import datetime` and `imp
 
 ### H-7. `_get_image_time` uses `datetime.datetime` but imports only `datetime` (the module)
 
-**File:** [clustering.py](file:///d:/Projects/image-scoring-backend/modules/clustering.py#L373)
+**File:** [clustering.py](file:///d:/Projects/image-scoring-pipeline/modules/clustering.py#L373)
 
 ```python
 return datetime.datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S").timestamp()
@@ -188,7 +188,7 @@ However, line 423 (`import datetime`) in `cluster_images` re-binds `datetime` to
 
 ### H-8. No input validation on `rating` query param splitting
 
-**Files:** [api.py](file:///d:/Projects/image-scoring-backend/modules/api.py#L368), [api.py](file:///d:/Projects/image-scoring-backend/modules/api.py#L423)
+**Files:** [api.py](file:///d:/Projects/image-scoring-pipeline/modules/api.py#L368), [api.py](file:///d:/Projects/image-scoring-pipeline/modules/api.py#L423)
 
 ```python
 rating_filter = [int(r) for r in rating.split(",")] if rating else None
@@ -236,7 +236,7 @@ logger.info("[Clustering] Computing embeddings...")                  # module lo
 
 ### M-5. `np.load(..., allow_pickle=True)` in clustering feature cache
 
-**File:** [clustering.py](file:///d:/Projects/image-scoring-backend/modules/clustering.py#L64)
+**File:** [clustering.py](file:///d:/Projects/image-scoring-pipeline/modules/clustering.py#L64)
 
 `allow_pickle=True` is necessary for the `.item()` call but is a well-known deserialization risk. If the cache file is tampered with, arbitrary code execution is possible.
 
@@ -248,7 +248,7 @@ logger.info("[Clustering] Computing embeddings...")                  # module lo
 
 ### M-7. `KeywordScorer.predict` always returns `top_k` keywords regardless of `threshold`
 
-**File:** [tagging.py](file:///d:/Projects/image-scoring-backend/modules/tagging.py#L286-L293)
+**File:** [tagging.py](file:///d:/Projects/image-scoring-pipeline/modules/tagging.py#L286-L293)
 
 The `threshold` parameter (default 0.2) is accepted but never used in filtering:
 
@@ -276,7 +276,7 @@ This is especially impactful in hot paths like `extract_features` and the scorin
 
 ### M-9. `_select_best_image` can return `None` for non-empty lists
 
-**File:** [clustering.py](file:///d:/Projects/image-scoring-backend/modules/clustering.py#L116-L117)
+**File:** [clustering.py](file:///d:/Projects/image-scoring-pipeline/modules/clustering.py#L116-L117)
 
 ```python
 if not img_ids:
@@ -298,7 +298,7 @@ These should be cleaned up — the signature was eventually updated to accept `j
 
 ### M-11. `config.py` `save_config_value` silently fails on write errors
 
-**File:** [config.py](file:///d:/Projects/image-scoring-backend/modules/config.py#L71-L75)
+**File:** [config.py](file:///d:/Projects/image-scoring-pipeline/modules/config.py#L71-L75)
 
 ```python
 try:
@@ -313,7 +313,7 @@ The function has no return value; callers can't tell if the save succeeded.
 
 ### M-12. `_parse_queue_payload` double-parses JSON strings
 
-**File:** [job_dispatcher.py](file:///d:/Projects/image-scoring-backend/modules/job_dispatcher.py#L143-L146)
+**File:** [job_dispatcher.py](file:///d:/Projects/image-scoring-pipeline/modules/job_dispatcher.py#L143-L146)
 
 ```python
 parsed = json.loads(raw_payload)
@@ -325,7 +325,7 @@ This suggests some callers store double-encoded JSON. The root cause should be f
 
 ### M-13. Multiple config reads in succession without caching
 
-**File:** [clustering.py](file:///d:/Projects/image-scoring-backend/modules/clustering.py#L487-L495)
+**File:** [clustering.py](file:///d:/Projects/image-scoring-pipeline/modules/clustering.py#L487-L495)
 
 ```python
 if distance_threshold is None:
@@ -343,7 +343,7 @@ Three separate reads of the same section, each triggering a full disk read and J
 
 ### M-14. `_images_list_payload` fetches phase statuses without error handling
 
-**File:** [api.py](file:///d:/Projects/image-scoring-backend/modules/api.py#L392)
+**File:** [api.py](file:///d:/Projects/image-scoring-pipeline/modules/api.py#L392)
 
 `db.get_batch_image_phase_statuses(img_ids)` is called inside a try/except that catches `Exception`, but the phase status map is assumed to return a dict. If it returns `None`, `.get()` on line 395 would raise `AttributeError`.
 
@@ -379,7 +379,7 @@ Some runners use `"Error: Already running."`, others use `"Already running"`, ot
 
 ### L-5. `_to_win_path` converts all `/` to `\\` even for non-WSL paths
 
-**File:** [db_legacy.py](file:///d:/Projects/image-scoring-backend/modules/db_legacy.py#L827)
+**File:** [db_legacy.py](file:///d:/Projects/image-scoring-pipeline/modules/db_legacy.py#L827)
 
 The final `return p_str.replace("/", "\\")` converts any path's forward slashes to backslashes, even on Linux. This is only called from WSL-specific code paths, but the function name doesn't convey that.
 
@@ -405,7 +405,7 @@ Config is already imported at the module level in other parts of the same file.
 
 ### L-10. `_any_runner_busy` uses `any()` with a list literal
 
-**File:** [job_dispatcher.py](file:///d:/Projects/image-scoring-backend/modules/job_dispatcher.py#L507)
+**File:** [job_dispatcher.py](file:///d:/Projects/image-scoring-pipeline/modules/job_dispatcher.py#L507)
 
 ```python
 return any([...])  # list is eagerly evaluated

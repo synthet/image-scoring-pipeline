@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 
-BACKEND = "synthet/image-scoring-backend"
+BACKEND = "synthet/image-scoring-pipeline"
 GALLERY = "synthet/image-scoring-gallery"
 
 OBSOLETE_BANNER = """> **Status: obsolete** — {reason} Kept for historical tracking.
@@ -131,7 +131,7 @@ When adding or changing backend REST endpoints, update gallery integration in th
 - `electron/db.ts` if SQL shapes change
 
 ## Canonical references
-- Backend [API_CONTRACT.md](https://github.com/synthet/image-scoring-backend/blob/main/docs/technical/API_CONTRACT.md)
+- Backend [API_CONTRACT.md](https://github.com/synthet/image-scoring-pipeline/blob/main/docs/technical/API_CONTRACT.md)
 - [AGENT_COORDINATION.md](docs/technical/AGENT_COORDINATION.md)
 - `npm run contract:check` in this repo
 
@@ -178,7 +178,7 @@ Epic: #200 RAW preview verification
 - React `/ui/` or operator `/app` as applicable
 
 ## Parent epic
-Tracked under [#200](https://github.com/synthet/image-scoring-backend/issues/200).
+Tracked under [#200](https://github.com/synthet/image-scoring-pipeline/issues/200).
 """,
         )
 

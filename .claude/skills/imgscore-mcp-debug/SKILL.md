@@ -5,7 +5,7 @@ description: Routine read-only debugging for the image-scoring Python backend vi
 
 # imgscore-mcp-debug
 
-Read-only triage for **image-scoring-backend** using MCP. **Do not** mutate DB/config unless the user explicitly asks.
+Read-only triage for **image-scoring-pipeline** using MCP. **Do not** mutate DB/config unless the user explicitly asks.
 
 ## Preferred entry
 

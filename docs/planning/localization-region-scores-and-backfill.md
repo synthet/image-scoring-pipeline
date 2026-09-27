@@ -34,7 +34,7 @@ Stage 4+ shadow localization explicitly must **not** change production scores un
 
 ### Region / crop IQA scores (no production backfill plan yet)
 
-- Bird-crop research ([#317](https://github.com/synthet/image-scoring-backend/issues/317)) ran offline (`scripts/research/bird_crop/`, `reports/bird-crop/`). It did **not** productionize crop IQA; culling showed **no** crop benefit; agent labels are explicitly **not** human ground truth ([research sessions hub](../reports/RESEARCH_SESSIONS_2026-08-05.md)).
+- Bird-crop research ([#317](https://github.com/synthet/image-scoring-pipeline/issues/317)) ran offline (`scripts/research/bird_crop/`, `reports/bird-crop/`). It did **not** productionize crop IQA; culling showed **no** crop benefit; agent labels are explicitly **not** human ground truth ([research sessions hub](../reports/RESEARCH_SESSIONS_2026-08-05.md)).
 - **Stage 6** adds optional experiments behind `scoring.subject_crop_shadow` — **non-authoritative** crop IQA; production composites stay **full-frame**.
 - The [within-burst evidence plan](within-burst-evidence-plan.md) re-scores crops in **research JSONL** and states **`image_model_scores` stays untouched**.
 

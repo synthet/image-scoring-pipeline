@@ -12,7 +12,7 @@ okf_version: 0.1
 
 Read-only tooling to compare every score dimension (composites, production models, shadow models) and decide which models suit **global quality (Nₐ)** versus **intra-cluster culling (Nᵦ)**.
 
-**Code:** [`modules/score_analytics/`](../../../modules/score_analytics/) · router [`modules/api/routers/score_analytics.py`](../../../modules/api/routers/score_analytics.py) · SPA [`frontend/src/features/score-analytics/`](../../../frontend/src/features/score-analytics/) · issue [#393](https://github.com/synthet/image-scoring-backend/issues/393)
+**Code:** [`modules/score_analytics/`](../../../modules/score_analytics/) · router [`modules/api/routers/score_analytics.py`](../../../modules/api/routers/score_analytics.py) · SPA [`frontend/src/features/score-analytics/`](../../../frontend/src/features/score-analytics/) · issue [#393](https://github.com/synthet/image-scoring-pipeline/issues/393)
 
 ## Data
 

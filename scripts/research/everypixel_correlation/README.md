@@ -4,7 +4,7 @@ Read-only research harness — **does not** write `image_model_scores` or change
 
 **Spec:** [`docs/planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md`](../../../docs/planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md)  
 **Artifacts:** [`image-scoring-skills/research/everypixel-correlation/`](https://github.com/synthet/image-scoring-skills/tree/main/research/everypixel-correlation)  
-**Issue:** [#392](https://github.com/synthet/image-scoring-backend/issues/392)
+**Issue:** [#392](https://github.com/synthet/image-scoring-pipeline/issues/392)
 
 | Script | Role |
 |--------|------|

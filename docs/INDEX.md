@@ -1,7 +1,7 @@
 ---
 type: Documentation Index
 title: Documentation Index
-description: Categorized map of the image-scoring-backend documentation bundle.
+description: Categorized map of the image-scoring-pipeline documentation bundle.
 resource: INDEX.md
 tags: [docs, index, navigation, okf]
 timestamp: 2026-09-25T18:00:00Z
@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Documentation Index
 
-Full categorized index for **image-scoring-backend**. Prefer small linked pages over large duplicated dumps; when a topic has a canonical source, link to it rather than restating it.
+Full categorized index for **image-scoring-pipeline**. Prefer small linked pages over large duplicated dumps; when a topic has a canonical source, link to it rather than restating it.
 
 ## Getting Started
 

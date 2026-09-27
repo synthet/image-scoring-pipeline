@@ -13,7 +13,7 @@ Copy into a new chat or rely on the `agent-memory` rule:
 After significant work (or end of day):
 
 ```powershell
-cd d:\Projects\image-scoring-backend
+cd d:\Projects\image-scoring-pipeline
 python scripts/agent-memory/log_session.py --summary "Short task title" --outcome "What shipped"
 ```
 
@@ -84,7 +84,7 @@ Mine local chat history into staging (and optional raw-sessions):
 
 ```powershell
 python scripts/agent-memory/import_transcripts.py --dry-run --cursor-projects "$env:USERPROFILE\.cursor\projects"
-python scripts/agent-memory/import_transcripts.py --write-sessions --repo image-scoring-backend --cursor-projects "$env:USERPROFILE\.cursor\projects"
+python scripts/agent-memory/import_transcripts.py --write-sessions --repo image-scoring-pipeline --cursor-projects "$env:USERPROFILE\.cursor\projects"
 ```
 
 Review `.agent/scratch/transcript-mining/<repo>/REVIEW.md` before promoting. Slash command: `/import-transcripts`.

@@ -90,7 +90,7 @@ def test_build_prompt_unknown_template_raises():
 def test_packet_uses_resolved_thumbnail_path_for_manifest(tmp_path, monkeypatch):
     thumb = tmp_path / "t.jpg"
     thumb.write_bytes(b"\xff\xd8\xff\xd9")
-    wsl_path = "/mnt/d/Projects/image-scoring-backend/thumbnails/x/y.jpg"
+    wsl_path = "/mnt/d/Projects/image-scoring-pipeline/thumbnails/x/y.jpg"
 
     import modules.thumbnails as thumb_mod
 

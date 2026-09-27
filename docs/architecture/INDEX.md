@@ -1,7 +1,7 @@
 ---
 type: Documentation Index
 title: Architecture — Index
-description: System overview, pipeline architecture, repository structure, and database connector design for image-scoring-backend.
+description: System overview, pipeline architecture, repository structure, and database connector design for image-scoring-pipeline.
 resource: architecture/INDEX.md
 tags: [architecture, index, pipeline, okf]
 timestamp: 2026-09-01T00:00:00Z
@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Architecture — index
 
-Structural documentation for **image-scoring-backend**. For contracts and stable reference
+Structural documentation for **image-scoring-pipeline**. For contracts and stable reference
 material see [../technical/INDEX.md](../technical/INDEX.md); for the source-of-truth map see
 [../CANONICAL_SOURCES.md](../CANONICAL_SOURCES.md).
 

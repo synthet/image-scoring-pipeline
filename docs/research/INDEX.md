@@ -36,7 +36,7 @@ Replacing the teacher ensemble (MUSIQ, LIQE, TOPIQ, Q-Align) with one multi-head
 
 **Status as of 2026-08-05:** E0 and E1 failed all three fidelity gates. The P0 render cache is complete
 (66,473 of 66,485 ok). The E2 seed-42 train was still running at last record with no gate outcome.
-Tracking issue [#323](https://github.com/synthet/image-scoring-backend/issues/323).
+Tracking issue [#323](https://github.com/synthet/image-scoring-pipeline/issues/323).
 
 ## Related research elsewhere in the wiki
 

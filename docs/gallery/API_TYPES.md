@@ -4,13 +4,13 @@ This page describes how **image-scoring-gallery** syncs OpenAPI and generates Ty
 
 ## Source of truth
 
-The canonical REST contract is backend-generated [openapi.json](../../openapi.json) at the **image-scoring-backend** repository root. Gallery keeps a synced copy at `api-contract/openapi.json`.
+The canonical REST contract is backend-generated [openapi.json](../../openapi.json) at the **image-scoring-pipeline** repository root. Gallery keeps a synced copy at `api-contract/openapi.json`.
 
 Cross-project overview: [technical/OPENAPI_CROSS_PROJECT.md](../technical/OPENAPI_CROSS_PROJECT.md).
 
 ## Gallery commands
 
-Run from **image-scoring-gallery** (sibling backend at `../image-scoring-backend`):
+Run from **image-scoring-gallery** (sibling backend at `../image-scoring-pipeline`):
 
 ```bash
 npm run contract:diff          # copy sibling openapi.json → api-contract/

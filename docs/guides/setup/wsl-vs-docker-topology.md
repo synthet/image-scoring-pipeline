@@ -107,7 +107,7 @@ Script: [`scripts/powershell/Compact-WslVhdx.ps1`](../../../scripts/powershell/C
 
 ```powershell
 # Elevated PowerShell
-cd D:\Projects\image-scoring-backend\scripts\powershell
+cd D:\Projects\image-scoring-pipeline\scripts\powershell
 .\Compact-WslVhdx.ps1
 # or:
 .\Compact-WslVhdx.ps1 -DistroName Ubuntu -Force
@@ -170,7 +170,7 @@ docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```bash
 # Ubuntu app stack (when not using Docker webui)
 source ~/.venvs/tf/bin/activate
-cd /mnt/d/Projects/image-scoring-backend   # adjust drive/path
+cd /mnt/d/Projects/image-scoring-pipeline   # adjust drive/path
 python launch.py
 ```
 

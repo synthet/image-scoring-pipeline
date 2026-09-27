@@ -12,7 +12,7 @@ okf_version: 0.1
 
 Can the models the backend runs in WSL / Docker `gpu-shell` be converted to ONNX, what would it buy us, and how would we do it safely.
 
-**Status:** Research / proposal — no code changes. Tracked in [#404](https://github.com/synthet/image-scoring-backend/issues/404); each implementation phase gets its own issue.
+**Status:** Research / proposal — no code changes. Tracked in [#404](https://github.com/synthet/image-scoring-pipeline/issues/404); each implementation phase gets its own issue.
 **Related:** [WINDOWS_NATIVE_WEBUI_PLAN.md](../setup/WINDOWS_NATIVE_WEBUI_PLAN.md), [IQA_MODEL_STACK_UPDATE_PROPOSAL.md](IQA_MODEL_STACK_UPDATE_PROPOSAL.md), [MODELS_SUMMARY.md](../../technical/MODELS_SUMMARY.md)
 
 ## TL;DR
@@ -119,4 +119,4 @@ These lessons turn "parity gates are mandatory" (above) into a concrete checklis
 
   Recommendation: evaluate (c) first. It is the cheapest route to WSL-free scoring.
 
-**Process:** file a GitHub issue per phase on `synthet/image-scoring-backend` and add it to the Project board before starting it (no work without an issue).
+**Process:** file a GitHub issue per phase on `synthet/image-scoring-pipeline` and add it to the Project board before starting it (no work without an issue).

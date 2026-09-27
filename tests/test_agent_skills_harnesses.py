@@ -116,7 +116,7 @@ def test_append_log_inserts_after_rule(wiki_scaffold, tmp_path: Path, monkeypatc
 
 
 def test_resolve_repo_aliases(backlog_stage):
-    assert backlog_stage.resolve_repo("backend").endswith("image-scoring-backend")
+    assert backlog_stage.resolve_repo("backend").endswith("image-scoring-pipeline")
     assert backlog_stage.resolve_repo("gallery").endswith("image-scoring-gallery")
     with pytest.raises(SystemExit):
         backlog_stage.resolve_repo("unknown-place")

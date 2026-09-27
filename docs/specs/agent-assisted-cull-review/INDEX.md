@@ -19,7 +19,7 @@ Canonical **implementation spec** for the metadata-only agent cull review MVP.
 
 | Repo | Epic | Children |
 |------|------|----------|
-| image-scoring-backend | [#253](https://github.com/synthet/image-scoring-backend/issues/253) | [#254](https://github.com/synthet/image-scoring-backend/issues/254)–[#258](https://github.com/synthet/image-scoring-backend/issues/258) |
+| image-scoring-pipeline | [#253](https://github.com/synthet/image-scoring-pipeline/issues/253) | [#254](https://github.com/synthet/image-scoring-pipeline/issues/254)–[#258](https://github.com/synthet/image-scoring-pipeline/issues/258) |
 | image-scoring-gallery | [#134](https://github.com/synthet/image-scoring-gallery/issues/134) | [#135](https://github.com/synthet/image-scoring-gallery/issues/135)–[#137](https://github.com/synthet/image-scoring-gallery/issues/137) |
 
 Project board: https://github.com/users/synthet/projects/1 (filter `cross-repo` + title *agent cull*).

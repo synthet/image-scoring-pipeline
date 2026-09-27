@@ -33,7 +33,7 @@ PROJECT_NUMBER = "1"
 OWNER = "synthet"
 
 REPOS = {
-    "backend": "synthet/image-scoring-backend",
+    "backend": "synthet/image-scoring-pipeline",
     "gallery": "synthet/image-scoring-gallery",
 }
 
@@ -82,7 +82,7 @@ def gh_json(*args: str) -> Any:
 
 def resolve_repo(alias: str) -> str:
     key = (alias or "backend").lower().strip()
-    if key in ("backend", "be", "image-scoring-backend"):
+    if key in ("backend", "be", "image-scoring-pipeline"):
         return REPOS["backend"]
     if key in ("gallery", "ui", "image-scoring-gallery"):
         return REPOS["gallery"]

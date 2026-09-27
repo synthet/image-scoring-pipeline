@@ -9,7 +9,7 @@ description: >-
 
 # Agent CLI hub
 
-Router for lightweight CLI tooling skills in **image-scoring-backend** (Vexlum Scoring). Prefer bounded, low-memory commands before broad reads or heavyweight indexers.
+Router for lightweight CLI tooling skills in **image-scoring-pipeline** (Vexlum Scoring). Prefer bounded, low-memory commands before broad reads or heavyweight indexers.
 
 ## Purpose
 

@@ -12,7 +12,7 @@ okf_version: 0.1
 
 **What you are doing:** for each of 54 photo bursts, marking which frame(s) you would keep. It is a side-by-side comparison inside each burst, not absolute scoring.
 
-**Why it matters:** this is the study's *only* non-circular quality ground truth. Everything the database offers — `rating`, `label`, `pick_status`, `cull_decision` — is computed by the scoring pipeline from the very models under test, so measuring a new signal against those columns rewards agreement with the incumbent rather than accuracy. Until this file is filled, the bird-bbox crop study can make **no accuracy claim at all** ([close-out memo](../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md), issue [#317](https://github.com/synthet/image-scoring-backend/issues/317)).
+**Why it matters:** this is the study's *only* non-circular quality ground truth. Everything the database offers — `rating`, `label`, `pick_status`, `cull_decision` — is computed by the scoring pipeline from the very models under test, so measuring a new signal against those columns rewards agreement with the incumbent rather than accuracy. Until this file is filled, the bird-bbox crop study can make **no accuracy claim at all** ([close-out memo](../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md), issue [#317](https://github.com/synthet/image-scoring-pipeline/issues/317)).
 
 **Effort:** 236 frames across 54 bursts. Most bursts are small — 21 have only 3 frames.
 
@@ -124,7 +124,7 @@ python -c "import csv; r=list(csv.DictReader(open('reports/bird-crop/labels/labe
 In WSL with the app venv:
 
 ```bash
-cd /mnt/d/Projects/image-scoring-backend
+cd /mnt/d/Projects/image-scoring-pipeline
 source ~/.venvs/tf/bin/activate
 python -c "
 from scripts.research.bird_crop import labels
@@ -140,7 +140,7 @@ Success prints `OK: 236 rows, 54 bursts with a best frame`. Any failure names th
 `geometry_eval` picks the labels up automatically once they validate ([`labels.py:176`](../../scripts/research/bird_crop/labels.py), `try_load`). Production is on the WSL host gateway, so pass `PROD_HOST`:
 
 ```bash
-cd /mnt/d/Projects/image-scoring-backend
+cd /mnt/d/Projects/image-scoring-pipeline
 PROD_HOST=172.22.144.1 POSTGRES_HOST=172.22.144.1 \
   bash scripts/research/bird_crop/run_bird_crop_study.sh PHASE=1
 ```
@@ -182,4 +182,4 @@ The IQA result (crop is **2.42×–17.51×** more sensitive to subject-only degr
 
 - [Close-out memo](../reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md) — full results for all five phases
 - [`reports/bird-crop/REPORT.md`](../../reports/bird-crop/REPORT.md) — generated consolidated report
-- Issue [#317](https://github.com/synthet/image-scoring-backend/issues/317) — tracking card
+- Issue [#317](https://github.com/synthet/image-scoring-pipeline/issues/317) — tracking card

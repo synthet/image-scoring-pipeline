@@ -107,14 +107,14 @@ This single commit is the main concern of this review. It bundles multiple unrel
 | File | Size | Problem |
 |------|------|---------|
 | `_db_methods.txt` | 32 KB, UTF-16 binary | Dump of db.py method signatures; dev scratch |
-| `analyze_dump.py` | 39 lines | **Contains hardcoded personal path** `c:\Users\owner\.claude\projects\d--Projects-image-scoring-backend\3d8d3903-c0d3-45d9-8a54-73dece21c79c.jsonl` (a Claude Code transcript UUID). Privacy/info-leak. |
+| `analyze_dump.py` | 39 lines | **Contains hardcoded personal path** `c:\Users\owner\.claude\projects\d--Projects-image-scoring-pipeline\3d8d3903-c0d3-45d9-8a54-73dece21c79c.jsonl` (a Claude Code transcript UUID). Privacy/info-leak. |
 | `fix_all_backups_state.json` | 13 lines | Local script state (`H_junk: done`, `H_meta_z6ii: failed`...). Should be runtime state, not tracked. |
 | `docker_refresh_db.bat` | 48 lines | Local dev convenience; may be legitimate but add to `tools/` with a README entry, not repo root. |
-| `image-scoring-backend.sln` | 47 lines | Visual Studio solution file — fine if the team uses VS, but add to repo-root conventions doc or move to `.ide/`. |
+| `image-scoring-pipeline.sln` | 47 lines | Visual Studio solution file — fine if the team uses VS, but add to repo-root conventions doc or move to `.ide/`. |
 | `artifact/scratch/break_image*.py`, `test_neighbors.py`, `verify_policy.py` | ~90 lines | Throwaway scripts. `artifact/` is not an established repo convention. |
 | `scratch/check_folder_state.py`, `test_db_format.py`, `verify_audit.py`, `verify_final_checks.py`, `verify_repair.py` | ~250 lines | All clearly dev scratch. `scratch/` directory had no prior tracked content. |
 
-**Recommendation:** Cherry-pick the `workflow_healing.py` refactor into a dedicated PR with a real commit message. File `git rm` PRs for `_db_methods.txt`, `analyze_dump.py`, `fix_all_backups_state.json`, `scratch/`, `artifact/scratch/`. Either justify `docker_refresh_db.bat` and `image-scoring-backend.sln` with a README note or remove them too.
+**Recommendation:** Cherry-pick the `workflow_healing.py` refactor into a dedicated PR with a real commit message. File `git rm` PRs for `_db_methods.txt`, `analyze_dump.py`, `fix_all_backups_state.json`, `scratch/`, `artifact/scratch/`. Either justify `docker_refresh_db.bat` and `image-scoring-pipeline.sln` with a README note or remove them too.
 
 ### 10. Release commits v7.3.0 / v7.4.0 — `[blocker]`
 

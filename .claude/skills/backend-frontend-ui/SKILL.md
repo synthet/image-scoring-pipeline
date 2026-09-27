@@ -1,7 +1,7 @@
 ---
 name: backend-frontend-ui
 description: >-
-  Implements or styles the image-scoring-backend React SPA at /ui/, Gradio
+  Implements or styles the image-scoring-pipeline React SPA at /ui/, Gradio
   design-token sync, and frontend/ components using @synthet/image-scoring-design.
   Use for frontend/ changes, visual components, Tailwind theming, or design:check
   failures—not Python backend modules unless API contract is in scope.

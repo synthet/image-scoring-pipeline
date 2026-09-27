@@ -1,6 +1,6 @@
 ---
 name: wsl-environment
-description: Set up, run, and maintain the Docker + WSL2 environment image-scoring-backend depends on — gpu-shell for scripts/ML, docker-desktop Postgres/webui, optional Ubuntu ~/.venvs/tf and image-scoring-tests. Use when launching long GPU jobs, recovering from WSL instability, or provisioning Ubuntu. For which environment a single command needs, see wsl-tf-python-runner.
+description: Set up, run, and maintain the Docker + WSL2 environment image-scoring-pipeline depends on — gpu-shell for scripts/ML, docker-desktop Postgres/webui, optional Ubuntu ~/.venvs/tf and image-scoring-tests. Use when launching long GPU jobs, recovering from WSL instability, or provisioning Ubuntu. For which environment a single command needs, see wsl-tf-python-runner.
 ---
 
 # Environment lifecycle — gpu-shell first, Ubuntu optional
@@ -38,7 +38,7 @@ docker exec -it image-scoring-gpu-shell bash /app/scripts/docker_gpu_shell_boots
 **Ubuntu venvs** (only if that distro is registered — optional):
 
 ```bash
-wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-backend && bash ./scripts/wsl/setup_wsl_test_env.sh"
+wsl -d Ubuntu bash -lc "cd /mnt/d/Projects/image-scoring-pipeline && bash ./scripts/wsl/setup_wsl_test_env.sh"
 ```
 
 ## Run — long-running / GPU jobs

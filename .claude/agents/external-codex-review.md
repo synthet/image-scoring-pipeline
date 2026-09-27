@@ -1,6 +1,6 @@
 ---
 name: external-codex-review
-description: Use Codex through the subagent-orchestrator MCP server for review-only external CLI feedback in image-scoring-backend.
+description: Use Codex through the subagent-orchestrator MCP server for review-only external CLI feedback in image-scoring-pipeline.
 ---
 
 # External Codex Review

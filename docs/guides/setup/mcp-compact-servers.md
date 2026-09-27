@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Compact MCP servers (is-be-mcp / is-ui-mcp)
 
-Both **image-scoring-backend** and **image-scoring-gallery** expose the same compact MCP surface to Cursor:
+Both **image-scoring-pipeline** and **image-scoring-gallery** expose the same compact MCP surface to Cursor:
 
 | Tool | Purpose |
 |------|---------|
@@ -30,7 +30,7 @@ Copy [`.cursor/mcp.example.json`](../../../.cursor/mcp.example.json) → `.curso
     "is-be-mcp": {
       "command": "node",
       "args": ["mcp-server/dist/compactIndex.js"],
-      "cwd": "${workspaceFolder:image-scoring-backend}"
+      "cwd": "${workspaceFolder:image-scoring-pipeline}"
     }
   }
 }
@@ -38,7 +38,7 @@ Copy [`.cursor/mcp.example.json`](../../../.cursor/mcp.example.json) → `.curso
 
 Gallery uses the same shape with `is-ui-mcp` and `"cwd": "${workspaceFolder:image-scoring-gallery}"`.
 
-**Multi-root workspace:** name folders in `image-scoring-backend.code-workspace` (`image-scoring-backend`, `image-scoring-gallery`, …) so `${workspaceFolder:…}` resolves correctly. Pair template: [`.cursor/mcp.pair.example.json`](../../../.cursor/mcp.pair.example.json).
+**Multi-root workspace:** name folders in `image-scoring-pipeline.code-workspace` (`image-scoring-pipeline`, `image-scoring-gallery`, …) so `${workspaceFolder:…}` resolves correctly. Pair template: [`.cursor/mcp.pair.example.json`](../../../.cursor/mcp.pair.example.json).
 
 ## Build
 

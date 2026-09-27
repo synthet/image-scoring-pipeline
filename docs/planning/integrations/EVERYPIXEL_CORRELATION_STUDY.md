@@ -13,7 +13,7 @@ okf_version: 0.1
 
 # Everypixel UGC correlation study
 
-**Tracking:** [GitHub #392](https://github.com/synthet/image-scoring-backend/issues/392)
+**Tracking:** [GitHub #392](https://github.com/synthet/image-scoring-pipeline/issues/392)
 
 ## Objective
 

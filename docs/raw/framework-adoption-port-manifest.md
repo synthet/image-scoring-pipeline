@@ -107,7 +107,7 @@ python scripts/ci/check_secrets.py
 
 ## 2026-07-21 onboard (post-0.1.0 framework gaps)
 
-Source: [synthet-code-framework](https://github.com/synthet/synthet-code-framework) HEAD after Spec Kit + disciplined-skills work (~2026-07-19). Issues: backend [#301](https://github.com/synthet/image-scoring-backend/issues/301), gallery [#159](https://github.com/synthet/image-scoring-gallery/issues/159).
+Source: [synthet-code-framework](https://github.com/synthet/synthet-code-framework) HEAD after Spec Kit + disciplined-skills work (~2026-07-19). Issues: backend [#301](https://github.com/synthet/image-scoring-pipeline/issues/301), gallery [#159](https://github.com/synthet/image-scoring-gallery/issues/159).
 
 | Asset | Backend | Gallery | Notes |
 |-------|---------|---------|-------|

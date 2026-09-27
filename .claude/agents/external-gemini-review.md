@@ -1,6 +1,6 @@
 ---
 name: external-gemini-review
-description: Use Gemini CLI through the subagent-orchestrator MCP server for review-only external CLI feedback in image-scoring-backend.
+description: Use Gemini CLI through the subagent-orchestrator MCP server for review-only external CLI feedback in image-scoring-pipeline.
 ---
 
 # External Gemini Review

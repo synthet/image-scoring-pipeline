@@ -6,7 +6,7 @@ description: >-
 
 # Agent platform tooling
 
-Windows host vs Docker gpu-shell vs optional WSL2 Ubuntu for coding agents in **image-scoring-backend** and sibling gallery workspace.
+Windows host vs Docker gpu-shell vs optional WSL2 Ubuntu for coding agents in **image-scoring-pipeline** and sibling gallery workspace.
 
 ## Purpose
 
@@ -82,7 +82,7 @@ See [windows-wsl-split.md](../agent-cli-hub/references/windows-wsl-split.md) for
 
 ## Troubleshooting
 
-- **Slow rg on `/mnt/c`:** clone to `~/src/image-scoring-backend`.
+- **Slow rg on `/mnt/c`:** clone to `~/src/image-scoring-pipeline`.
 - **Permission errors in WSL:** check ownership after Windows edits.
 - **Docker not reachable from WSL:** ensure Docker Desktop WSL integration enabled.
 

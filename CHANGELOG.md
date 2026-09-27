@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **Vexlum Scoring** (`image-scoring-backend`) are documented in this file.
+All notable changes to **Vexlum Scoring** (`image-scoring-pipeline`) are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -1819,7 +1819,7 @@ Phase 4c keyword legacy column soft deprecation (target a future release; see `d
 - **Scripts**: MCP/FastAPI debug probes under `scripts/debug/`; `scripts/maintenance/migrate_thumbnail_paths_project_rename.py`.
 
 ### Changed
-- **Workspace / naming**: `image-scoring-backend.code-workspace`; `docs/technical/INDEX.md`, `mcp_config.json`, and related paths aligned with the backend repo name.
+- **Workspace / naming**: `image-scoring-pipeline.code-workspace`; `docs/technical/INDEX.md`, `mcp_config.json`, and related paths aligned with the backend repo name.
 - **Tooling**: `run_firebird.bat`, `scripts/maintenance/cleanup_test_artifacts.py`, `.dockerignore`; `.gitignore` patterns for debug logs and test output artifacts.
 
 ### Removed

@@ -289,8 +289,8 @@ def remap_docker_project(path: str) -> str | None:
     """Remap a host-side project path to the local (container) project root.
 
     When running inside Docker, paths stored in the database refer to the host
-    filesystem (e.g. ``/mnt/d/Projects/image-scoring-backend/thumbnails/...``
-    or ``D:\\Projects\\image-scoring-backend\\thumbnails\\...``) and do not exist
+    filesystem (e.g. ``/mnt/d/Projects/image-scoring-pipeline/thumbnails/...``
+    or ``D:\\Projects\\image-scoring-pipeline\\thumbnails\\...``) and do not exist
     inside the container.
 
     Returns the remapped path, or ``None`` when no env vars are set or no

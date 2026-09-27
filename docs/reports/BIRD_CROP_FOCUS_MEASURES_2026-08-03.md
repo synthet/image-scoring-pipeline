@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Bird-crop focus decision — classical measures and camera AF intent
 
-> **Status:** point-in-time research memo, not a product spec. Production was read **read-only**; every artifact lands under `reports/`. Phase 4 of the bird-bbox crop study ([close-out memo](BIRD_BBOX_CROP_STUDY_2026-08-01.md), issue [#317](https://github.com/synthet/image-scoring-backend/issues/317)). Nothing here changes production: `technical_failures.enabled` remains `false`, no DDL, no migration.
+> **Status:** point-in-time research memo, not a product spec. Production was read **read-only**; every artifact lands under `reports/`. Phase 4 of the bird-bbox crop study ([close-out memo](BIRD_BBOX_CROP_STUDY_2026-08-01.md), issue [#317](https://github.com/synthet/image-scoring-pipeline/issues/317)). Nothing here changes production: `technical_failures.enabled` remains `false`, no DDL, no migration.
 
 ## The question
 

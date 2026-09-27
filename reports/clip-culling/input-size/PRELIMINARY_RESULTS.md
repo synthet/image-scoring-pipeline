@@ -41,7 +41,7 @@ Skip MobileNet; use `setsid` in WSL:
 ```bash
 source ~/.venvs/tf/bin/activate
 export POSTGRES_DB=image_scoring_test POSTGRES_PORT=5433
-cd /mnt/d/Projects/image-scoring-backend
+cd /mnt/d/Projects/image-scoring-pipeline
 setsid bash scripts/research/clip_culling/run_input_size_study.sh \
   >> reports/clip-culling/input-size/study_nohup.log 2>&1 &
 ```

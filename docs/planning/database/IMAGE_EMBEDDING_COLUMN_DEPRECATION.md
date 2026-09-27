@@ -2,7 +2,7 @@
 name: images.image_embedding column deprecation
 description: Timeline for retiring the legacy pgvector column on images in favor of image_embeddings
 status: active
-issue: https://github.com/synthet/image-scoring-backend/issues/225
+issue: https://github.com/synthet/image-scoring-pipeline/issues/225
 ---
 
 # Deprecate `images.image_embedding` (Postgres)

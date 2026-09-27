@@ -59,7 +59,7 @@ flowchart LR
 | Step | Command |
 |------|---------|
 | Dry-run all repos | `python scripts/agent-memory/import_transcripts.py --dry-run --cursor-projects "%USERPROFILE%\.cursor\projects"` |
-| Backend sessions | `python scripts/agent-memory/import_transcripts.py --write-sessions --repo image-scoring-backend` |
+| Backend sessions | `python scripts/agent-memory/import_transcripts.py --write-sessions --repo image-scoring-pipeline` |
 | Consolidate + dream | `/dream-memory` then review changelog |
 | Promote | `/promote-memory` after human review |
 

@@ -17,8 +17,8 @@ mcps/<server>/tools/<tool>.json
 
 Examples:
 
-- `mcps/project-0-image-scoring-backend-is-be-mcp/tools/search.json`
-- `mcps/project-0-image-scoring-backend-is-be-mcp/tools/dispatch.json`
+- `mcps/project-0-image-scoring-pipeline-is-be-mcp/tools/search.json`
+- `mcps/project-0-image-scoring-pipeline-is-be-mcp/tools/dispatch.json`
 - `mcps/project-1-image-scoring-gallery-is-ui-mcp/tools/search.json`
 
 ## What to Check

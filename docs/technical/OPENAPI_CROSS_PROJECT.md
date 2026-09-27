@@ -1,12 +1,12 @@
 # OpenAPI Contract Across Projects
 
-One REST OpenAPI contract describes the Vexlum Scoring FastAPI server (default port 7860). **image-scoring-backend** owns and generates it; **image-scoring-gallery** keeps a synced snapshot and partial TypeScript codegen. **image-scoring-ui** has no HTTP API contract (design tokens only).
+One REST OpenAPI contract describes the Vexlum Scoring FastAPI server (default port 7860). **image-scoring-pipeline** owns and generates it; **image-scoring-gallery** keeps a synced snapshot and partial TypeScript codegen. **image-scoring-ui** has no HTTP API contract (design tokens only).
 
 ## Ownership
 
 | Project | Own OpenAPI spec? | Role |
 |---------|-------------------|------|
-| **image-scoring-backend** | Yes — canonical | Schema authority; FastAPI generates live spec |
+| **image-scoring-pipeline** | Yes — canonical | Schema authority; FastAPI generates live spec |
 | **image-scoring-gallery** | No — synced copy of backend | Consumer snapshot + generated TS types |
 | **image-scoring-ui** | No | Design system package (`@synthet/image-scoring-design`) only |
 
@@ -44,7 +44,7 @@ Gallery does **not** expose its own REST API with OpenAPI. It calls the backend 
 | Generated types | `electron/api.generated.ts` | From `openapi-typescript` |
 | Hand-written types | `electron/apiTypes.ts` | Legacy/manual types; migrate incrementally to generated |
 
-Sync commands (sibling backend at `../image-scoring-backend`):
+Sync commands (sibling backend at `../image-scoring-pipeline`):
 
 ```bash
 npm run contract:diff          # copy sibling openapi.json (no server)

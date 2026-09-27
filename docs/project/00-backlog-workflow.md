@@ -15,7 +15,7 @@ The canonical task queue is the **GitHub Project board**:
 **→ https://github.com/users/synthet/projects/1**
 
 It surfaces issues from both repos:
-- `synthet/image-scoring-backend` (this repo) — backend, FastAPI, DB schema
+- `synthet/image-scoring-pipeline` (this repo) — backend, FastAPI, DB schema
 - `synthet/image-scoring-gallery` — Electron / React UI
 
 This document is the **operating contract** every agent (human or AI) must follow
@@ -72,7 +72,7 @@ Either run the slash command (Claude Code):
 Or run the equivalent `gh` commands manually:
 
 ```bash
-# Replace <N> with the issue number, <repo> with image-scoring-backend or image-scoring-gallery
+# Replace <N> with the issue number, <repo> with image-scoring-pipeline or image-scoring-gallery
 gh issue edit <N> --repo synthet/<repo> --add-assignee @me
 
 # Move the card to Claimed
@@ -148,7 +148,7 @@ for cross-repo sync protocol details (API contract changes, schema renames, etc.
 | Role | Location |
 |------|----------|
 | **Canonical queue** | [Project board](https://github.com/users/synthet/projects/1) |
-| **Issue trackers** | [backend issues](https://github.com/synthet/image-scoring-backend/issues), [gallery issues](https://github.com/synthet/image-scoring-gallery/issues) |
+| **Issue trackers** | [backend issues](https://github.com/synthet/image-scoring-pipeline/issues), [gallery issues](https://github.com/synthet/image-scoring-gallery/issues) |
 | **Pointer (this repo)** | [`TODO.md`](../../TODO.md) |
 | **Pointer (gallery)** | [gallery `TODO.md`](https://github.com/synthet/image-scoring-gallery/blob/main/TODO.md) |
 | **This contract** | here, plus [gallery sibling](https://github.com/synthet/image-scoring-gallery/blob/main/docs/project/00-backlog-workflow.md) |

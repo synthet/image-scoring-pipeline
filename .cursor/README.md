@@ -1,4 +1,4 @@
-# Cursor agent setup — image-scoring-backend
+# Cursor agent setup — image-scoring-pipeline
 
 Project-local configuration for Cursor IDE agents. **Authority:** [AGENTS.md](../AGENTS.md), [.agent/AGENT_INFRA_INVENTORY.md](../.agent/AGENT_INFRA_INVENTORY.md).
 

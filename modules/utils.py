@@ -132,8 +132,8 @@ def _remap_host_project_path(path: str) -> str | None:
     """Remap a host-side project path to the local project root.
 
     When running inside Docker, paths stored in the database refer to the
-    host filesystem (e.g. `/mnt/d/Projects/image-scoring-backend/thumbnails/...`
-    or `D:\\Projects\\image-scoring-backend\\thumbnails\\...`) and do not exist
+    host filesystem (e.g. `/mnt/d/Projects/image-scoring-pipeline/thumbnails/...`
+    or `D:\\Projects\\image-scoring-pipeline\\thumbnails\\...`) and do not exist
     inside the container. The container project root (e.g. `/app`) is computed
     from `BASE_DIR`, and the host-side equivalents come from environment
     variables `IMAGE_SCORING_HOST_PROJECT_WSL` / `IMAGE_SCORING_HOST_PROJECT_WIN`.

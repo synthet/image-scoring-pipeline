@@ -22,7 +22,7 @@ Append-only session log. Newest entries at top (below this paragraph).
 ## [2026-06-12] backlog + spec hub
 
 - Filed GitHub epics and child issues on Project board #1:
-  - Backend epic [#253](https://github.com/synthet/image-scoring-backend/issues/253) + [#254–#258](https://github.com/synthet/image-scoring-backend/issues/254)
+  - Backend epic [#253](https://github.com/synthet/image-scoring-pipeline/issues/253) + [#254–#258](https://github.com/synthet/image-scoring-pipeline/issues/254)
   - Gallery epic [#134](https://github.com/synthet/image-scoring-gallery/issues/134) + [#135–#137](https://github.com/synthet/image-scoring-gallery/issues/135)
 - Added spec hub: `docs/specs/agent-assisted-cull-review/` (this file, [summary.md](summary.md), [INDEX.md](INDEX.md))
 

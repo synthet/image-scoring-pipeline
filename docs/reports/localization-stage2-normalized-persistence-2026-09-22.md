@@ -9,7 +9,7 @@ okf_version: 0.1
 ---
 # Localization rollout stage 2 — normalized persistence and compatibility reader
 
-**Date:** 2026-09-22 · **Issue:** [#370](https://github.com/synthet/image-scoring-backend/issues/370) · **PR:** [#373](https://github.com/synthet/image-scoring-backend/pull/373) · **Status:** landed and **dormant**; live import not yet run
+**Date:** 2026-09-22 · **Issue:** [#370](https://github.com/synthet/image-scoring-pipeline/issues/370) · **PR:** [#373](https://github.com/synthet/image-scoring-pipeline/pull/373) · **Status:** landed and **dormant**; live import not yet run
 
 Stage 2 of [localization-rollout.md](../architecture/pipeline/localization-rollout.md). Everything
 is additive and inert: nothing writes the new tables in production, `images.bird_bbox` remains the

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compiled harness for verification-before-completion (image-scoring-backend).
+"""Compiled harness for verification-before-completion (image-scoring-pipeline).
 
 Claim→proof catalog and optional command runner. Interpreting whether output
 supports a claim is an LLM judgment slot.

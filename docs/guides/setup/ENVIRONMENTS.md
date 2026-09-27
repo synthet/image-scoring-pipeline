@@ -94,7 +94,7 @@ For any script that uses `modules`, the database, or config (e.g. under `scripts
 
 - **From WSL** (recommended):
   ```bash
-  cd /path/to/image-scoring-backend   # use your WSL path to the repo
+  cd /path/to/image-scoring-pipeline   # use your WSL path to the repo
   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib
   source ~/.venvs/tf/bin/activate
   python scripts/path/to/script.py

@@ -2,11 +2,11 @@
 
 Date: 2026-03-15
 
-This audit evaluates the current automated integration coverage between the Python backend (**image-scoring-backend**) and the sibling Electron frontend (**image-scoring-gallery**).
+This audit evaluates the current automated integration coverage between the Python backend (**image-scoring-pipeline**) and the sibling Electron frontend (**image-scoring-gallery**).
 
 Target environment:
 - Local Windows developer workflow
-- Sibling repo layout: **image-scoring-backend** and **image-scoring-gallery** (paths on disk vary)
+- Sibling repo layout: **image-scoring-pipeline** and **image-scoring-gallery** (paths on disk vary)
 - Shared Firebird database plus backend REST/WebSocket interfaces
 
 This is not a new end-to-end harness. It is a coverage audit, a list of verified failures, and a minimum next-step test matrix.

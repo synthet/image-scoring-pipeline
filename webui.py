@@ -274,7 +274,7 @@ def main():
         version="1.0.0",
         contact={
             "name": "Vexlum Scoring WebUI",
-            "url": "https://github.com/synthet/image-scoring-backend"
+            "url": "https://github.com/synthet/image-scoring-pipeline"
         },
         license_info={
             "name": "MIT",

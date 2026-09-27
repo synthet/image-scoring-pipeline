@@ -13,7 +13,7 @@ Use when the operator wants a **local dump** of the `image_scoring` PostgreSQL d
 
 ## Action (agent)
 
-1. From **this repo root** (`image-scoring-backend`), run **with Dropbox mirror and max-3 retention** (see skill **`.cursor/skills/backup-db/SKILL.md`**):
+1. From **this repo root** (`image-scoring-pipeline`), run **with Dropbox mirror and max-3 retention** (see skill **`.cursor/skills/backup-db/SKILL.md`**):
 
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\Backup-Postgres.ps1 `

@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
         "--root",
         type=Path,
         default=Path(__file__).resolve().parents[2],
-        help="Repository root to scan (default: image-scoring-backend root)",
+        help="Repository root to scan (default: image-scoring-pipeline root)",
     )
     parser.add_argument("--file-min", type=int, default=DEFAULT_FILE_MIN)
     parser.add_argument("--fn-min", type=int, default=DEFAULT_FN_MIN)

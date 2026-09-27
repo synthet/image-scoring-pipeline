@@ -1,6 +1,6 @@
 # Install tiers
 
-Tiered install order for **image-scoring-backend** agent CLI skills. Block A commands live in [install-blocks.md](install-blocks.md) — do not duplicate full winget blocks here.
+Tiered install order for **image-scoring-pipeline** agent CLI skills. Block A commands live in [install-blocks.md](install-blocks.md) — do not duplicate full winget blocks here.
 
 ## Tier overview
 

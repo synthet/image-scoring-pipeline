@@ -1,5 +1,5 @@
 {
-    "name": "image-scoring-backend-mcp",
+    "name": "image-scoring-pipeline-mcp",
     "version": "2.1.0",
     "description": "Compact stdio MCP for Vexlum Scoring (is-be-mcp): search, dispatch, sse_status via Python worker bridge",
     "main": "dist/compactIndex.js",

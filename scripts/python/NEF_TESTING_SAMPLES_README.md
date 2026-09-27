@@ -9,7 +9,7 @@ This tree holds **third-party** `.NEF` files for **D300**, **D90**, **Z6 II**, a
 
 ## Populate
 
-From the **image-scoring-backend** repo:
+From the **image-scoring-pipeline** repo:
 
 ```text
 python scripts/python/download_nef_testing_samples.py

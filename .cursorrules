@@ -1,4 +1,4 @@
-# Vexlum Scoring (`image-scoring-backend`)
+# Vexlum Scoring (`image-scoring-pipeline`)
 
 > Stub — the authoritative agent rules live in `CLAUDE.md`, `AGENTS.md`,
 > `.cursor/rules/*.mdc`, and `docs/CANONICAL_SOURCES.md`. This file exists

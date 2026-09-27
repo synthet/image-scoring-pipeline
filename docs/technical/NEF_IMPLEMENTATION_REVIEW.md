@@ -1,7 +1,7 @@
 # NEF handling — implementation review
 
 **Date:** 2026-04-13  
-**Scope:** How **image-scoring-backend** and **image-scoring-gallery** read **Nikon NEF** files for previews, thumbnails, and ML-facing rasterization—reviewed against the structural notes in [`NEF_FORMAT_REFERENCE.md`](./NEF_FORMAT_REFERENCE.md).
+**Scope:** How **image-scoring-pipeline** and **image-scoring-gallery** read **Nikon NEF** files for previews, thumbnails, and ML-facing rasterization—reviewed against the structural notes in [`NEF_FORMAT_REFERENCE.md`](./NEF_FORMAT_REFERENCE.md).
 
 **Support goal:** Reliable behavior for **D90**, **D300**, **Z 6II**, and **Z 8** (embedded preview and delegated raw decode).
 
@@ -14,7 +14,7 @@
 
 ---
 
-## image-scoring-backend
+## image-scoring-pipeline
 
 ### `modules/thumbnails.py`
 
@@ -85,9 +85,9 @@
 
 | Location | Responsibility |
 |----------|----------------|
-| `image-scoring-backend/modules/thumbnails.py` | Embedded JPEG, thumbnails, previews, ML open |
-| `image-scoring-backend/modules/api.py` | `GET /raw-preview` |
-| `image-scoring-backend/modules/ui/assets.py` | Gradio `NefViewer` JS (fallback extraction) |
+| `image-scoring-pipeline/modules/thumbnails.py` | Embedded JPEG, thumbnails, previews, ML open |
+| `image-scoring-pipeline/modules/api.py` | `GET /raw-preview` |
+| `image-scoring-pipeline/modules/ui/assets.py` | Gradio `NefViewer` JS (fallback extraction) |
 | `image-scoring-gallery/electron/nefExtractor.ts` | ExifTool extraction in Electron |
 | `image-scoring-gallery/electron/main.ts` | IPC `nef:extract-preview` |
 | `image-scoring-gallery/src/utils/nefViewer.ts` | Tiered client fallbacks |

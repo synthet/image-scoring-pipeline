@@ -11,10 +11,10 @@
 
 | Surface | Repo | Route / entry | Styling |
 |---------|------|---------------|---------|
-| Primary product UI | **image-scoring-backend** | `/ui/` (React + Vite SPA) | Tailwind v4 + design package `tailwind-theme.css` |
-| Runs planner (buckets) | **image-scoring-backend** | `/ui/dashboard` | Same SPA; folder buckets + Drive to Complete |
-| Runs list | **image-scoring-backend** | `/ui/runs` | Active / Queued / History only |
-| Operator status | **image-scoring-backend** | `/app` (minimal Gradio) | Base Gradio + design package `gradio-snippet.css` |
+| Primary product UI | **image-scoring-pipeline** | `/ui/` (React + Vite SPA) | Tailwind v4 + design package `tailwind-theme.css` |
+| Runs planner (buckets) | **image-scoring-pipeline** | `/ui/dashboard` | Same SPA; folder buckets + Drive to Complete |
+| Runs list | **image-scoring-pipeline** | `/ui/runs` | Active / Queued / History only |
+| Operator status | **image-scoring-pipeline** | `/app` (minimal Gradio) | Base Gradio + design package `gradio-snippet.css` |
 | Desktop gallery | **image-scoring-gallery** | Electron + Vite renderer | CSS Modules + design package `tokens.css` |
 
 Stage labels and run-status icons must stay aligned with [PIPELINE_TERMINOLOGY.md](../technical/PIPELINE_TERMINOLOGY.md) (`phase_code` authority remains backend).

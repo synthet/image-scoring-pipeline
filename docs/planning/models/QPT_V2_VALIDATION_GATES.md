@@ -1,7 +1,7 @@
 # QPT V2 validation gates
 
 **Status:** Planned (implementation not started)  
-**Issue:** [#185](https://github.com/synthet/image-scoring-backend/issues/185) — calibration layer + percentile anchors  
+**Issue:** [#185](https://github.com/synthet/image-scoring-pipeline/issues/185) — calibration layer + percentile anchors  
 **Related:** [CALIBRATION_LAYER_185_STATUS.md](CALIBRATION_LAYER_185_STATUS.md), [IQA_MODEL_STACK_UPDATE_PROPOSAL.md](IQA_MODEL_STACK_UPDATE_PROPOSAL.md), [MODEL_RECOMMENDATIONS_PIPELINES.md](../../MODEL_RECOMMENDATIONS_PIPELINES.md)
 
 ---

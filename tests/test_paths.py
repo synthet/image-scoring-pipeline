@@ -216,32 +216,32 @@ class TestAllVariants:
 
 class TestRemapDockerProject:
     def test_remap_wsl_host_to_container(self, monkeypatch):
-        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WSL", "/mnt/d/Projects/image-scoring-backend")
-        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WIN", "D:\\Projects\\image-scoring-backend")
+        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WSL", "/mnt/d/Projects/image-scoring-pipeline")
+        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WIN", "D:\\Projects\\image-scoring-pipeline")
         from modules import config
         monkeypatch.setattr(config, "BASE_DIR", "/app")
 
         result = paths.remap_docker_project(
-            "/mnt/d/Projects/image-scoring-backend/thumbnails/b6/abc.jpg"
+            "/mnt/d/Projects/image-scoring-pipeline/thumbnails/b6/abc.jpg"
         )
         assert result is not None
         assert result.replace("\\", "/") == "/app/thumbnails/b6/abc.jpg"
 
     def test_remap_windows_host_to_container(self, monkeypatch):
-        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WSL", "/mnt/d/Projects/image-scoring-backend")
-        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WIN", "D:\\Projects\\image-scoring-backend")
+        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WSL", "/mnt/d/Projects/image-scoring-pipeline")
+        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WIN", "D:\\Projects\\image-scoring-pipeline")
         from modules import config
         monkeypatch.setattr(config, "BASE_DIR", "/app")
 
         result = paths.remap_docker_project(
-            "D:\\Projects\\image-scoring-backend\\thumbnails\\b6\\abc.jpg"
+            "D:\\Projects\\image-scoring-pipeline\\thumbnails\\b6\\abc.jpg"
         )
         assert result is not None
         assert result.replace("\\", "/") == "/app/thumbnails/b6/abc.jpg"
 
     def test_no_remap_outside_project(self, monkeypatch):
-        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WSL", "/mnt/d/Projects/image-scoring-backend")
-        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WIN", "D:\\Projects\\image-scoring-backend")
+        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WSL", "/mnt/d/Projects/image-scoring-pipeline")
+        monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WIN", "D:\\Projects\\image-scoring-pipeline")
         from modules import config
         monkeypatch.setattr(config, "BASE_DIR", "/app")
 
@@ -252,7 +252,7 @@ class TestRemapDockerProject:
         monkeypatch.delenv("IMAGE_SCORING_HOST_PROJECT_WSL", raising=False)
         monkeypatch.delenv("IMAGE_SCORING_HOST_PROJECT_WIN", raising=False)
 
-        result = paths.remap_docker_project("/mnt/d/Projects/image-scoring-backend/thumb.jpg")
+        result = paths.remap_docker_project("/mnt/d/Projects/image-scoring-pipeline/thumb.jpg")
         assert result is None
 
 

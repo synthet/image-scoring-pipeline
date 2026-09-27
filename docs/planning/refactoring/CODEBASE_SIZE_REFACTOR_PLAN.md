@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Codebase size refactor plan (backend)
 
-Phased checklist to reduce files ≥1000 LoC and functions/methods ≥150 LoC in **image-scoring-backend**. Derived from the latest `codebase_size_audit.py` run.
+Phased checklist to reduce files ≥1000 LoC and functions/methods ≥150 LoC in **image-scoring-pipeline**. Derived from the latest `codebase_size_audit.py` run.
 
 **Source audit:** [CODEBASE_SIZE_AUDIT_2026-07.md](../../reports/CODEBASE_SIZE_AUDIT_2026-07.md) · [June baseline](../../reports/CODEBASE_SIZE_AUDIT_2026-06.md) · Raw JSON in [docs/raw/](../../raw/)
 
@@ -20,7 +20,7 @@ Phased checklist to reduce files ≥1000 LoC and functions/methods ≥150 LoC in
 **Re-run audit:** [`.cursor/skills/codebase-size-audit/SKILL.md`](../../../.cursor/skills/codebase-size-audit/SKILL.md)
 
 ```bash
-# From image-scoring-backend root
+# From image-scoring-pipeline root
 python scripts/audit/codebase_size_audit.py
 python scripts/audit/codebase_size_audit.py --root ../image-scoring-gallery
 python scripts/audit/codebase_size_audit.py --format json -o .agent/scratch/audit-backend.json
@@ -75,7 +75,7 @@ Safe mechanical extractions already merged. Post-extraction line counts from 202
 
 Suggested domain routers (one PR per router or tightly related pair):
 
-- [x] **Gate:** Issue [#173](https://github.com/synthet/image-scoring-backend/issues/173) claimed; mechanical OpenAPI preserved (100 API tests pass)
+- [x] **Gate:** Issue [#173](https://github.com/synthet/image-scoring-pipeline/issues/173) claimed; mechanical OpenAPI preserved (100 API tests pass)
 - [x] Extract **jobs / tasks** routes → `modules/api/routers/tasks.py`
 - [x] Extract **images** routes → `modules/api/routers/data_query.py`, `utility.py`, `public.py`
 - [x] Extract **folders** routes → `modules/api/routers/electron.py`, `data_query.py`
@@ -94,7 +94,7 @@ Suggested domain routers (one PR per router or tightly related pair):
 
 ## Phase 1b — `electron.py` sub-router split
 
-**Risk: High** — OpenAPI route order for Electron/gallery endpoints. **Gate:** Issue [#298](https://github.com/synthet/image-scoring-backend/issues/298).
+**Risk: High** — OpenAPI route order for Electron/gallery endpoints. **Gate:** Issue [#298](https://github.com/synthet/image-scoring-pipeline/issues/298).
 
 | Target | Before | After (2026-07-01) |
 |--------|-------:|-------------------:|
@@ -104,7 +104,7 @@ Suggested domain routers (one PR per router or tightly related pair):
 
 Sub-modules: `electron_folders.py`, `electron_images.py`, `electron_config.py`, `electron_runs_plan.py`, `electron_runs_lifecycle.py`, `electron_scope.py`; helpers `electron_models.py`, `electron_helpers.py`, `electron_run_helpers.py`, `electron_scope_helpers.py`.
 
-- [x] **Gate:** Issue [#298](https://github.com/synthet/image-scoring-backend/issues/298) filed and claimed
+- [x] **Gate:** Issue [#298](https://github.com/synthet/image-scoring-pipeline/issues/298) filed and claimed
 - [x] Extract Pydantic models → `electron_models.py`
 - [x] Extract run/scope helpers → `electron_run_helpers.py`, `electron_scope_helpers.py`
 - [x] Split six domain routers; thin composer in `electron.py` (preserve mount order)

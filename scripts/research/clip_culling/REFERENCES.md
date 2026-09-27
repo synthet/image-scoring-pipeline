@@ -59,14 +59,14 @@ https://keras.io/api/applications/mobilenet/
 | Item | URL |
 |------|-----|
 | Project board (cross-repo queue) | https://github.com/users/synthet/projects/1 |
-| #220 Pipeline model upgrades: DINOv2 culling, SigLIP2 keywords, ARNIQA shadow | https://github.com/synthet/image-scoring-backend/issues/220 |
-| #185 Calibration layer | https://github.com/synthet/image-scoring-backend/issues/185 |
-| #180 Modernize IQA / aesthetic scoring stack (QPT V2 + TOPIQ-NR) | https://github.com/synthet/image-scoring-backend/issues/180 |
-| #181 Spike QPT V2 + TOPIQ-NR local inference | https://github.com/synthet/image-scoring-backend/issues/181 |
-| #148 Labeled dataset + classifier on embeddings (DINOv2/CLIP) | https://github.com/synthet/image-scoring-backend/issues/148 |
-| #144 Optional pyiqa and CLIP-IQA metrics | https://github.com/synthet/image-scoring-backend/issues/144 |
-| #143 Technical failure detection | https://github.com/synthet/image-scoring-backend/issues/143 |
-| #133 Atlas embedding_spaces dropdown | https://github.com/synthet/image-scoring-backend/issues/133 |
+| #220 Pipeline model upgrades: DINOv2 culling, SigLIP2 keywords, ARNIQA shadow | https://github.com/synthet/image-scoring-pipeline/issues/220 |
+| #185 Calibration layer | https://github.com/synthet/image-scoring-pipeline/issues/185 |
+| #180 Modernize IQA / aesthetic scoring stack (QPT V2 + TOPIQ-NR) | https://github.com/synthet/image-scoring-pipeline/issues/180 |
+| #181 Spike QPT V2 + TOPIQ-NR local inference | https://github.com/synthet/image-scoring-pipeline/issues/181 |
+| #148 Labeled dataset + classifier on embeddings (DINOv2/CLIP) | https://github.com/synthet/image-scoring-pipeline/issues/148 |
+| #144 Optional pyiqa and CLIP-IQA metrics | https://github.com/synthet/image-scoring-pipeline/issues/144 |
+| #143 Technical failure detection | https://github.com/synthet/image-scoring-pipeline/issues/143 |
+| #133 Atlas embedding_spaces dropdown | https://github.com/synthet/image-scoring-pipeline/issues/133 |
 
 ## This repo — internal documents
 

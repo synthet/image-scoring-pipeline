@@ -3,7 +3,7 @@
 # Idempotent — re-running updates color/description.
 set -euo pipefail
 
-REPOS=("synthet/image-scoring-backend" "synthet/image-scoring-gallery")
+REPOS=("synthet/image-scoring-pipeline" "synthet/image-scoring-gallery")
 
 # name|color|description
 LABELS=(

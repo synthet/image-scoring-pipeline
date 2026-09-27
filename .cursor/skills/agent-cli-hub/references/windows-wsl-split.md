@@ -22,7 +22,7 @@ Use for:
 
 ## Backend workspace layout
 
-Keep **image-scoring-backend** and **image-scoring-gallery** as sibling directories (e.g. `D:\Projects\` on Windows, `/mnt/d/Projects/` in WSL when needed).
+Keep **image-scoring-pipeline** and **image-scoring-gallery** as sibling directories (e.g. `D:\Projects\` on Windows, `/mnt/d/Projects/` in WSL when needed).
 
 | Task | Prefer |
 |------|--------|

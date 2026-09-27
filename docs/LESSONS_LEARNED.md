@@ -1,6 +1,6 @@
 ---
 type: Lessons Learned
-title: Lessons Learned — image-scoring-backend
+title: Lessons Learned — image-scoring-pipeline
 description: Hard-won environment, test-triage, SQL, git, and multi-agent gotchas distilled from agent session history.
 resource: docs/LESSONS_LEARNED.md
 tags: [lessons, agent, wsl, testing, database, okf]
@@ -8,7 +8,7 @@ timestamp: 2026-06-16T00:00:00Z
 okf_version: 0.1
 ---
 
-# Lessons Learned — image-scoring-backend
+# Lessons Learned — image-scoring-pipeline
 
 Hard-won lessons distilled from agent session history (Claude Code + Cursor).
 These complement `CLAUDE.md`, `AGENTS.md`, and the `.agent-memory/` system —
@@ -30,7 +30,7 @@ The Bash tool executes on the Windows host. It **cannot** reach WSL paths like
 the ML stack, go through PowerShell into WSL:
 
 ```
-wsl -e bash -lc "cd /mnt/d/Projects/image-scoring-backend && source ~/.venvs/tf/bin/activate && python ..."
+wsl -e bash -lc "cd /mnt/d/Projects/image-scoring-pipeline && source ~/.venvs/tf/bin/activate && python ..."
 ```
 
 PowerShell can reach both `D:\` and WSL; the Bash tool reaches neither WSL nor
@@ -41,7 +41,7 @@ the GPU venv. Pick the tool by what the command needs, not by habit.
   In several sessions this was the **only** venv present.
 - `~/.venvs/image-scoring-tests` — `pytest -m wsl`. Do **not** assume it exists;
   some sessions found it absent.
-- Windows `.venv\` (`D:\Projects\image-scoring-backend\.venv`) — has `ruff` and
+- Windows `.venv\` (`D:\Projects\image-scoring-pipeline\.venv`) — has `ruff` and
   `python` for fast lint/unit work on the host.
 
 ### Postgres ports

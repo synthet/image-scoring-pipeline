@@ -1,4 +1,4 @@
-# Vexlum (image-scoring-backend) — .gitignore
+# Vexlum (image-scoring-pipeline) — .gitignore
 
 # Model Checkpoints (Large files - should be downloaded separately)
 musiq_original/checkpoints/*.npz

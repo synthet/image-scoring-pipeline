@@ -31,7 +31,7 @@
 
 .EXAMPLE
     # Right-click PowerShell -> Run as Administrator, then:
-    cd D:\Projects\image-scoring-backend\scripts\powershell
+    cd D:\Projects\image-scoring-pipeline\scripts\powershell
     .\Compact-WslVhdx.ps1
 
 .EXAMPLE

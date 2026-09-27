@@ -33,4 +33,4 @@ Change **API**, **schema**, or **pipeline terminology** without breaking **Drift
 - Do not change gallery-only first for backend-owned fields.
 - Do not merge without updating canonical docs or `docs/log.md` when user-visible or integration-visible behavior changed.
 
-**Repo:** This file lives in **image-scoring-backend** — mirror copy exists in **image-scoring-gallery** `.agent/workflows/` with the same steps.
+**Repo:** This file lives in **image-scoring-pipeline** — mirror copy exists in **image-scoring-gallery** `.agent/workflows/` with the same steps.

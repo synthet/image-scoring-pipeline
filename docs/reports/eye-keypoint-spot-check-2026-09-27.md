@@ -11,7 +11,7 @@ okf_version: 0.1
 # Eye keypoint backfill and spot check (2026-09-27)
 
 > **Status:** shadow data, triage estimate. No human labels were used; every number is a starting point to re-fit
-> against owner-checked points. Supports [#426](https://github.com/synthet/image-scoring-backend/issues/426).
+> against owner-checked points. Supports [#426](https://github.com/synthet/image-scoring-pipeline/issues/426).
 
 ## Backfill
 

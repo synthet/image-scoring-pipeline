@@ -1,7 +1,7 @@
 ---
 name: imgscore-backend-implementer
 description: >-
-  Implements a single, well-scoped change in image-scoring-backend (modules/*,
+  Implements a single, well-scoped change in image-scoring-pipeline (modules/*,
   FastAPI, phases, DB layer) with minimal diff. Use for feature or fix tickets
   that touch the Python backend only—not image-scoring-gallery UI or Electron
   renderer—when the user wants focused implementation without scope creep.
@@ -28,7 +28,7 @@ description: >-
 
 ## After edits (verify)
 
-Run from **image-scoring-backend** repo root, using the same Python env the project uses (see **AGENTS.md** / **python-wsl-webapp-env** rule for WSL vs Windows).
+Run from **image-scoring-pipeline** repo root, using the same Python env the project uses (see **AGENTS.md** / **python-wsl-webapp-env** rule for WSL vs Windows).
 
 1. **Lint:** `ruff check <touched files>` when `ruff` is available (e.g. `.venv` or documented venv).
 2. **Tests:** Use the **narrowest** pytest invocation that covers the change, per **AGENTS.md** / **CLAUDE.md**:

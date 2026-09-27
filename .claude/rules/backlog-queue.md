@@ -4,7 +4,7 @@ description: Canonical task queue is the cross-repo GitHub Project board, not TO
 
 # Backlog queue (rule)
 
-The canonical task queue is the **GitHub Project board** spanning `image-scoring-backend` and `image-scoring-gallery`:
+The canonical task queue is the **GitHub Project board** spanning `image-scoring-pipeline` and `image-scoring-gallery`:
 
 **→ https://github.com/users/synthet/projects/1**
 

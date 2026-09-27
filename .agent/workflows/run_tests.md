@@ -1,5 +1,5 @@
 ---
-description: Run pytest with correct markers and venv (image-scoring-backend)
+description: Run pytest with correct markers and venv (image-scoring-pipeline)
 ---
 
 ## Purpose

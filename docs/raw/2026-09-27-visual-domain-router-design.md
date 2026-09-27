@@ -11,7 +11,7 @@ okf_version: 0.1
 # Visual Domain Router and Specialist Image Analysis
 
 **Project:** Vexlum Scoring / Driftara Gallery  
-**Primary repository:** `image-scoring-backend`  
+**Primary repository:** `image-scoring-pipeline`  
 **Consumer:** `image-scoring-gallery`  
 **Status:** Design proposal  
 **Purpose:** Introduce a preliminary visual-domain routing stage that selects specialist analysis workflows for birds, other animals, macro subjects, and future photographic domains.

@@ -9,7 +9,7 @@ versions with the current phase registry constants.
 Run in WSL with the app venv::
 
     source ~/.venvs/tf/bin/activate
-    export PYTHONPATH=/mnt/d/Projects/image-scoring-backend
+    export PYTHONPATH=/mnt/d/Projects/image-scoring-pipeline
     python scripts/maintenance/backfill_executor_version_ips.py --dry-run
     python scripts/maintenance/backfill_executor_version_ips.py --folder-path '/mnt/d/Photos/...' --limit 5000
 """

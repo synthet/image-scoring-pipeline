@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Branch cleanup and docs-only salvage (July 2026)
 
-Summary of the July 2026 branch audit across **image-scoring-backend** (`master`) and **image-scoring-gallery** (`main`).
+Summary of the July 2026 branch audit across **image-scoring-pipeline** (`master`) and **image-scoring-gallery** (`main`).
 
 **Gallery ingest detail:** [09-branch-docs-salvage-2026-07.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/reports/09-branch-docs-salvage-2026-07.md)
 

@@ -112,7 +112,7 @@ Four-phase timeline for safely removing legacy `IMAGES.KEYWORDS`:
 
 1. **Run consistency check:**
    ```bash
-   cd /path/to/image-scoring-backend
+   cd /path/to/image-scoring-pipeline
    python scripts/db/phase4_consistency_check.py
    ```
    - Document results in a new `PHASE4_RESULTS_SNAPSHOT.md`

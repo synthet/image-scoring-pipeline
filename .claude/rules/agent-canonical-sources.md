@@ -1,5 +1,5 @@
 ---
-description: Canonical sources and agent authority for image-scoring-backend
+description: Canonical sources and agent authority for image-scoring-pipeline
 ---
 
 # Agent canonical sources (backend)

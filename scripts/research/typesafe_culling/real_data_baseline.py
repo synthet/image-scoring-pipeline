@@ -492,7 +492,7 @@ def render_markdown(result: dict[str, Any]) -> str:
         "# Jev-ready culling evidence: real-data baseline",
         "",
         f"Generated: `{result['generated_at']}`  ",
-        "Tracking: [#359](https://github.com/synthet/image-scoring-backend/issues/359)",
+        "Tracking: [#359](https://github.com/synthet/image-scoring-pipeline/issues/359)",
         "",
         "This is a read-only baseline over historical image records. It evaluates whether the",
         "evidence available to a future Jev experiment carries useful pick/reject signal.",

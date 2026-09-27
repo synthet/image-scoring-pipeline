@@ -122,4 +122,4 @@ Verification (post-run):
 
 - MCP tools: `get_run_diagnostics`, `get_job_details`, `get_job_phases`, `get_job_execution_report`, `execute_sql`.
 - Repo grep across `modules/` for `executor_version`, `stale_executor`, `SCORING_EXECUTOR_VERSION`, `shared_scorer`.
-- WSL command for dry-run: `wsl -e bash -lc 'source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring-backend && python scripts/analysis/recalc_composite_scores.py --dry-run'`.
+- WSL command for dry-run: `wsl -e bash -lc 'source ~/.venvs/tf/bin/activate && cd /mnt/d/Projects/image-scoring-pipeline && python scripts/analysis/recalc_composite_scores.py --dry-run'`.

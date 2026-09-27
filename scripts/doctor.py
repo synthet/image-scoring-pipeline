@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-One-shot local health check for image-scoring-backend.
+One-shot local health check for image-scoring-pipeline.
 
 Run from repo root (prefer WSL + ~/.venvs/tf per docs/DEVELOPMENT.md):
 

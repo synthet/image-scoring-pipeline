@@ -44,7 +44,7 @@ dangerous_patterns = [
 **Impact:** Any process that can reach port 7860 (or any host when `WEBUI_HOST=0.0.0.0` is set) can exfiltrate arbitrary server-side files with a single unauthenticated POST:
 ```
 POST /api/db/query
-{"sql": "SELECT pg_read_file('/home/user/image-scoring-backend/secrets.json')", "write": false}
+{"sql": "SELECT pg_read_file('/home/user/image-scoring-pipeline/secrets.json')", "write": false}
 ```
 This returns the full contents of `secrets.json` (Anthropic API key, Cursor API key, write token, any other credentials) with no credentials required. With `dblink` installed, cross-database lateral movement is also possible.
 

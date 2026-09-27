@@ -1,4 +1,4 @@
-# Agent infrastructure inventory — image-scoring-backend
+# Agent infrastructure inventory — image-scoring-pipeline
 
 **Last reviewed:** 2026-05-31. **Maintainer:** repo maintainers; schema authority in `docs/CANONICAL_SOURCES.md`. Machine-readable mirror: [`AGENT_INFRA_STATUS.json`](AGENT_INFRA_STATUS.json).
 

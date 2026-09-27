@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Pipeline architecture — index
 
-The complete graph of the **image-scoring-backend** processing pipeline: what the phases are,
+The complete graph of the **image-scoring-pipeline** processing pipeline: what the phases are,
 what runs inside each of them, what state they can be in, what has to be true before work
 happens, and which layer decides that work should happen at all.
 

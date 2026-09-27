@@ -23,7 +23,7 @@ STAGE_FIELD_ID = "PVTSSF_lAHOAFXgIs4BWC3czhRaNZ0"
 STAGE_BACKLOG = "83b7a780"
 STAGE_READY = "ddaf7773"
 
-BACKEND = "synthet/image-scoring-backend"
+BACKEND = "synthet/image-scoring-pipeline"
 GALLERY = "synthet/image-scoring-gallery"
 
 
@@ -126,7 +126,7 @@ def make_issue(title: str, repo: str, markers: list[str], priority: str,
         body_lines += [
             "",
             "## Cross-repo",
-            "Coordinated change across `image-scoring-backend` and `image-scoring-gallery`.",
+            "Coordinated change across `image-scoring-pipeline` and `image-scoring-gallery`.",
             "Track the counterpart issue via the `cross-repo` label.",
         ]
     body_lines += [
@@ -166,7 +166,7 @@ ISSUES = [
         type_label="chore",
         source="High Priority › API & Embedding (cross-repo)",
         description="When backend API or schema changes, propagate to gallery: update `apiService.ts`, `db.ts`, and `apiTypes.ts`. Drives the cross-repo sync discipline.",
-        docs=["docs/technical/AGENT_COORDINATION.md (in image-scoring-backend)"],
+        docs=["docs/technical/AGENT_COORDINATION.md (in image-scoring-pipeline)"],
         cross_repo=True,
         ready=True,
     ),
@@ -192,7 +192,7 @@ ISSUES = [
         type_label="refactor",
         source="Database & Migration › Schema refactor — keywords / metadata (cross-repo)",
         description="Update gallery query/read paths to use the normalized `IMAGE_KEYWORDS` / `KEYWORDS_DIM` schema before backend Phase 4d removes the legacy column.",
-        docs=["docs/technical/AGENT_COORDINATION.md (in image-scoring-backend)"],
+        docs=["docs/technical/AGENT_COORDINATION.md (in image-scoring-pipeline)"],
         cross_repo=True,
         ready=True,
     ),
@@ -248,7 +248,7 @@ ISSUES = [
         type_label="feature",
         source="Medium Priority › Clustering & Embeddings (cross-repo)",
         description="Wire the bidirectional IPC/WebSocket bridge between gallery and backend per the embedding integration plan.",
-        docs=["docs/features/planned/embeddings/EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md (in image-scoring-backend)"],
+        docs=["docs/features/planned/embeddings/EMBEDDING_APP_08_GRADIO_INTEGRATION_PLAN.md (in image-scoring-pipeline)"],
         cross_repo=True,
     ),
     make_issue(

@@ -1,7 +1,7 @@
 ---
 type: Documentation Index
 title: Technical — Index
-description: Index of stable technical reference and deep-dive feature documentation for image-scoring-backend.
+description: Index of stable technical reference and deep-dive feature documentation for image-scoring-pipeline.
 resource: technical/INDEX.md
 tags: [technical, index, reference, okf]
 timestamp: 2026-09-01T00:00:00Z
@@ -89,7 +89,7 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 
 | Document / topic | Description |
 |------------------|-------------|
-| [AGENT_COORDINATION.md](AGENT_COORDINATION.md) | Integration protocols with **image-scoring-gallery** ([canonical on GitHub](https://github.com/synthet/image-scoring-backend/blob/main/docs/technical/AGENT_COORDINATION.md)) |
+| [AGENT_COORDINATION.md](AGENT_COORDINATION.md) | Integration protocols with **image-scoring-gallery** ([canonical on GitHub](https://github.com/synthet/image-scoring-pipeline/blob/main/docs/technical/AGENT_COORDINATION.md)) |
 | [ELECTRON_SYNC_IMPORT_AND_PHASES.md](ELECTRON_SYNC_IMPORT_AND_PHASES.md) | After **Sync from device**: `image_phase_status`, `jobs`, `indexing` vs Inspection, links to gallery workflow doc |
 | [CROSS_APP_INTEGRATION_AUDIT.md](../testing/CROSS_APP_INTEGRATION_AUDIT.md) | Automated integration coverage between backend and gallery |
 

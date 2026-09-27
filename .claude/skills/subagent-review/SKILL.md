@@ -62,7 +62,7 @@ For a “panel” (user wants both agents): run **sequentially** — codex then 
 
 Do **not** apply patches unless the user explicitly asks.
 
-## image-scoring-backend
+## image-scoring-pipeline
 
 - Suggest **files** from `git diff --name-only` under `modules/`, `tests/`, `migrations/`, `frontend/src/` when the user did not `@` paths.
 - Cross-repo changes: review **this workspace only**; open **image-scoring-gallery** separately for gallery diffs (v0.1 cannot span both roots in one MCP call).

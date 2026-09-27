@@ -6,7 +6,7 @@ Point-in-time record after the GitHub backlog inventory pass. **Live queue:** [P
 
 | Repo | Open issues (approx.) | New epics | Closed (tier-1) | Obsolete-open (tier-2) |
 |------|----------------------|-----------|-----------------|------------------------|
-| image-scoring-backend | 90+ | #198–#203 | #145, #122, #123 | #102, #117, #124–#130 |
+| image-scoring-pipeline | 90+ | #198–#203 | #145, #122, #123 | #102, #117, #124–#130 |
 | image-scoring-gallery | 30+ | #108–#110 | #111, #112 (dupes) | #73 |
 
 ## New epic parents (2026-05-20)
@@ -15,12 +15,12 @@ Point-in-time record after the GitHub backlog inventory pass. **Live queue:** [P
 
 | Epic | Children |
 |------|----------|
-| [#198](https://github.com/synthet/image-scoring-backend/issues/198) Architecture hardening | #169–#175 |
-| [#199](https://github.com/synthet/image-scoring-backend/issues/199) Embedding Atlas UX | #134–#142 |
-| [#200](https://github.com/synthet/image-scoring-backend/issues/200) RAW preview QA | #104–#108 |
-| [#201](https://github.com/synthet/image-scoring-backend/issues/201) AI culling XMP verification | #109–#110 |
-| [#202](https://github.com/synthet/image-scoring-backend/issues/202) Run lifecycle bugs | #156–#157, #161, #163–#166 |
-| [#203](https://github.com/synthet/image-scoring-backend/issues/203) Codex branch triage | #192–#197 |
+| [#198](https://github.com/synthet/image-scoring-pipeline/issues/198) Architecture hardening | #169–#175 |
+| [#199](https://github.com/synthet/image-scoring-pipeline/issues/199) Embedding Atlas UX | #134–#142 |
+| [#200](https://github.com/synthet/image-scoring-pipeline/issues/200) RAW preview QA | #104–#108 |
+| [#201](https://github.com/synthet/image-scoring-pipeline/issues/201) AI culling XMP verification | #109–#110 |
+| [#202](https://github.com/synthet/image-scoring-pipeline/issues/202) Run lifecycle bugs | #156–#157, #161, #163–#166 |
+| [#203](https://github.com/synthet/image-scoring-pipeline/issues/203) Codex branch triage | #192–#197 |
 
 ### Gallery
 

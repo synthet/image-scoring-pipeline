@@ -27,7 +27,7 @@ This guide implements the phased refactor described in `DB_SCHEMA_REFACTOR_PLAN.
 ## Architecture & Approach
 
 ### Schema Authority
-- **Python backend:** [db.py](https://github.com/synthet/image-scoring-backend/blob/main/modules/db.py)
+- **Python backend:** [db.py](https://github.com/synthet/image-scoring-pipeline/blob/main/modules/db.py)
   - `_init_db_impl()` (line 1009) owns all DDL via try/except migration blocks
   - New migration blocks inserted **before** `conn.close()` at line 1564
   - Uses `_table_exists()`, `_column_exists()`, `_index_exists()`, `_constraint_exists()` helpers (lines ~980-1007)
@@ -139,7 +139,7 @@ def _backup_db_gbak(suffix=""):
 
 **Goal:** Fix orphan data, add missing indexes, enforce FKs, remove duplicates. No IPC contract changes.
 
-**File:** [db.py](https://github.com/synthet/image-scoring-backend/blob/main/modules/db.py)
+**File:** [db.py](https://github.com/synthet/image-scoring-pipeline/blob/main/modules/db.py)
 **Insert location:** Before `conn.close()` at line 1564 (just before `# Seed phases` comment)
 
 ### Implementation Steps

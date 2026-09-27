@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Rename stored project root in thumbnail-related columns after moving the repo
-(e.g. image-scoring -> image-scoring-backend).
+(e.g. image-scoring -> image-scoring-pipeline).
 
 Updates:
   - images.thumbnail_path   (WSL-style paths under your configured prefix)

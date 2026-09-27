@@ -1,6 +1,6 @@
 ---
 name: wsl-tf-python-runner
-description: Runs Python, scripts, and tests the way image-scoring-backend expects — Compose gpu-shell (image-scoring-gpu-shell) for app/scripts/modules/DB/ML, optional Ubuntu ~/.venvs/tf, separate ~/.venvs/image-scoring-tests for pytest -m wsl. Use when running scripts under scripts/, anything importing modules.*, resolving Windows vs Docker vs WSL Python confusion, or choosing the correct pytest environment and markers.
+description: Runs Python, scripts, and tests the way image-scoring-pipeline expects — Compose gpu-shell (image-scoring-gpu-shell) for app/scripts/modules/DB/ML, optional Ubuntu ~/.venvs/tf, separate ~/.venvs/image-scoring-tests for pytest -m wsl. Use when running scripts under scripts/, anything importing modules.*, resolving Windows vs Docker vs WSL Python confusion, or choosing the correct pytest environment and markers.
 ---
 
 # gpu-shell / Python runner

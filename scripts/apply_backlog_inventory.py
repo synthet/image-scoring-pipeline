@@ -21,7 +21,7 @@ STAGE_FIELD_ID = "PVTSSF_lAHOAFXgIs4BWC3czhRaNZ0"
 STAGE_BACKLOG = "83b7a780"
 STAGE_DONE = "73062c96"
 
-BACKEND = "synthet/image-scoring-backend"
+BACKEND = "synthet/image-scoring-pipeline"
 GALLERY = "synthet/image-scoring-gallery"
 
 
@@ -346,7 +346,7 @@ def main() -> int:
             )
             comment_issue(
                 GALLERY, 94,
-                "Cross-repo epic counterpart: https://github.com/synthet/image-scoring-backend/issues/180",
+                "Cross-repo epic counterpart: https://github.com/synthet/image-scoring-pipeline/issues/180",
                 dry_run=False,
             )
             comment_issue(
@@ -356,7 +356,7 @@ def main() -> int:
             )
             comment_issue(
                 GALLERY, 83,
-                "Cross-repo epic parent: https://github.com/synthet/image-scoring-backend/issues/143",
+                "Cross-repo epic parent: https://github.com/synthet/image-scoring-pipeline/issues/143",
                 dry_run=False,
             )
             # Link gallery contract epic to backend #174
@@ -364,7 +364,7 @@ def main() -> int:
                 if "Cross-repo API" in key and num:
                     comment_issue(
                         GALLERY, num,
-                        "Backend counterpart: https://github.com/synthet/image-scoring-backend/issues/174",
+                        "Backend counterpart: https://github.com/synthet/image-scoring-pipeline/issues/174",
                         dry_run=False,
                     )
 

@@ -1,4 +1,4 @@
-# Command quick reference — image-scoring-backend
+# Command quick reference — image-scoring-pipeline
 
 Verified patterns from [AGENTS.md](../AGENTS.md), [.agent/INFRA_QUICKSTART.md](INFRA_QUICKSTART.md), and [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md). **Default for `modules.*` / DB / ML:** Compose **`image-scoring-gpu-shell`** ([.cursor/rules/python-wsl-webapp-env.mdc](../.cursor/rules/python-wsl-webapp-env.mdc)). Ubuntu `~/.venvs/tf` is optional.
 

@@ -32,7 +32,7 @@ STALE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("imgscore-py-*", re.compile(r"imgscore-py[-_]")),
     ("imgscore-el-gallery", re.compile(r"imgscore-el-gallery")),
     ("imgscore-el-stdio", re.compile(r"imgscore-el-stdio")),
-    ("image-scoring-backend-stdio", re.compile(r"image-scoring-backend-(stdio|webui|postgres)")),
+    ("image-scoring-pipeline-stdio", re.compile(r"image-scoring-pipeline-(stdio|webui|postgres)")),
     ("image-scoring-gallery-stdio", re.compile(r"image-scoring-gallery-(stdio|live)")),
     ("is-ga-*", re.compile(r"\bis-ga-")),
     ("ga_find", re.compile(r"\bga_find\b")),

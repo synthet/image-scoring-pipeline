@@ -98,7 +98,7 @@ OpenAPI: `docs/reference/api/openapi.yaml`
 
 - **58** unit tests: `tests/test_agent_cull_*.py` (discovery, schema, safety, apply, fingerprint, actions, CLI adapter, operator, rollback, payload/thumbnail downscale)
 - Gallery: `AgentCullReviewPanel.test.tsx` (3 tests)
-- **Gap:** Postgres integration tests ([#255](https://github.com/synthet/image-scoring-backend/issues/255))
+- **Gap:** Postgres integration tests ([#255](https://github.com/synthet/image-scoring-pipeline/issues/255))
 
 ## Safety gates implemented
 
@@ -113,15 +113,15 @@ OpenAPI: `docs/reference/api/openapi.yaml`
 
 ## Backlog (GitHub)
 
-### Backend ([#253](https://github.com/synthet/image-scoring-backend/issues/253))
+### Backend ([#253](https://github.com/synthet/image-scoring-pipeline/issues/253))
 
 | Issue | Priority | Topic |
 |-------|----------|-------|
-| [#254](https://github.com/synthet/image-scoring-backend/issues/254) | p1 | PR-ready, migration 0031, merge |
-| [#255](https://github.com/synthet/image-scoring-backend/issues/255) | p2 | Postgres integration tests |
-| [#256](https://github.com/synthet/image-scoring-backend/issues/256) | p2 | Thumbnail downscale (`max_thumbnail_edge_px`) — **done** |
-| [#257](https://github.com/synthet/image-scoring-backend/issues/257) | p2 | Export/filter semantics |
-| [#258](https://github.com/synthet/image-scoring-backend/issues/258) | p2 | Real Gemini CLI E2E |
+| [#254](https://github.com/synthet/image-scoring-pipeline/issues/254) | p1 | PR-ready, migration 0031, merge |
+| [#255](https://github.com/synthet/image-scoring-pipeline/issues/255) | p2 | Postgres integration tests |
+| [#256](https://github.com/synthet/image-scoring-pipeline/issues/256) | p2 | Thumbnail downscale (`max_thumbnail_edge_px`) — **done** |
+| [#257](https://github.com/synthet/image-scoring-pipeline/issues/257) | p2 | Export/filter semantics |
+| [#258](https://github.com/synthet/image-scoring-pipeline/issues/258) | p2 | Real Gemini CLI E2E |
 
 ### Gallery ([#134](https://github.com/synthet/image-scoring-gallery/issues/134))
 

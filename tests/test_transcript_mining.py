@@ -60,21 +60,21 @@ def test_dedupe_prefers_newer_mtime():
 
 
 def test_score_repos_in_text():
-    text = "Edit D:/Projects/image-scoring-backend/modules/api.py"
-    scores = score_repos_in_text(text, {"image-scoring-backend", "image-scoring-gallery"})
-    assert scores["image-scoring-backend"] >= 2
+    text = "Edit D:/Projects/image-scoring-pipeline/modules/api.py"
+    scores = score_repos_in_text(text, {"image-scoring-pipeline", "image-scoring-gallery"})
+    assert scores["image-scoring-pipeline"] >= 2
 
 
 def test_heuristic_candidates_wsl():
     rec = TranscriptRecord(
         uuid="abc",
-        workspace="d-Projects-image-scoring-backend",
+        workspace="d-Projects-image-scoring-pipeline",
         path=Path("x.jsonl"),
         mtime=0.0,
         user_queries=["run script in wsl with ~/.venvs/tf"],
         relevance=0.5,
     )
-    rec.repo_scores = {"image-scoring-backend": 3}
+    rec.repo_scores = {"image-scoring-pipeline": 3}
     cands = extract_heuristic_candidates(rec)
     assert any("~/.venvs/tf" in c["text"] for c in cands)
 

@@ -1,6 +1,6 @@
 # AI Agents Configuration
 
-This document describes the AI agents and MCP (Model Context Protocol) server integration for **Vexlum Scoring** (`image-scoring-backend`).
+This document describes the AI agents and MCP (Model Context Protocol) server integration for **Vexlum Scoring** (`image-scoring-pipeline`).
 
 ## Overview
 
@@ -103,8 +103,8 @@ Side-effecting dispatch (e.g. **`support.export_debug_bundle`**) requires **`con
 ```json
 "fff-be": {
   "command": "fff-mcp",
-  "args": ["${workspaceFolder:image-scoring-backend}"],
-  "cwd": "${workspaceFolder:image-scoring-backend}"
+  "args": ["${workspaceFolder:image-scoring-pipeline}"],
+  "cwd": "${workspaceFolder:image-scoring-pipeline}"
 }
 ```
 
@@ -144,7 +144,7 @@ Optional project MCP (copy into gitignored `.cursor/mcp.json` after a graph exis
 "graphify-be": {
   "command": "python",
   "args": ["-m", "graphify.serve", "graphify-out/graph.json"],
-  "cwd": "${workspaceFolder:image-scoring-backend}"
+  "cwd": "${workspaceFolder:image-scoring-pipeline}"
 }
 ```
 

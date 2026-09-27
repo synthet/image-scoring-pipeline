@@ -1,7 +1,7 @@
 ---
 name: docs-wiki
 description: >-
-  Maintain image-scoring-backend docs/ as an OKF-aligned wiki: frontmatter,
+  Maintain image-scoring-pipeline docs/ as an OKF-aligned wiki: frontmatter,
   planning vs features/planned, guides, architecture, indexes, and log.
   Triggers: wiki maintenance, docs update, documentation audit, wiki ingest/lint/query.
 ---

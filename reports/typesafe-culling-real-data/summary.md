@@ -1,7 +1,7 @@
 # Jev-ready culling evidence: real-data baseline
 
 Generated: `2026-09-22T01:37:21.684110+00:00`  
-Tracking: [#359](https://github.com/synthet/image-scoring-backend/issues/359)
+Tracking: [#359](https://github.com/synthet/image-scoring-pipeline/issues/359)
 
 This is a read-only baseline over historical image records. It evaluates whether the
 evidence available to a future Jev experiment carries useful pick/reject signal.

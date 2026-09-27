@@ -1,7 +1,7 @@
 ---
 type: Architecture
 title: Project Structure
-description: Repository layout for image-scoring-backend — entry points, modules, scripts, tests, and docs.
+description: Repository layout for image-scoring-pipeline — entry points, modules, scripts, tests, and docs.
 resource: architecture/project-structure.md
 tags: [docs, architecture, layout, scripts, okf]
 timestamp: 2026-06-21T00:00:00Z

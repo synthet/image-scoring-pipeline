@@ -1,7 +1,7 @@
 > **Status:** Point-in-time recommendation memo (not a product spec).
 > **Date:** 2026-05-29.
 > **Synthesizes:** [reports/clip-culling/SUMMARY.md](../../reports/clip-culling/SUMMARY.md) (2026-05-28 empirical spike), [MODEL_RECOMMENDATIONS_PIPELINES.md](../MODEL_RECOMMENDATIONS_PIPELINES.md), and ingested CLIP/auto-culling research reports.
-> **Tracking:** [image-scoring-backend#220](https://github.com/synthet/image-scoring-backend/issues/220) (pipeline model upgrades).  
+> **Tracking:** [image-scoring-pipeline#220](https://github.com/synthet/image-scoring-pipeline/issues/220) (pipeline model upgrades).  
 > **Input resolution study:** [INPUT_SIZE_CULLING_2026-05-29.md](INPUT_SIZE_CULLING_2026-05-29.md) (thumbnail / long-edge sweep; separate from tower choice).
 
 # Culling model recommendation
@@ -280,4 +280,4 @@ Full design for persisted sub-stacks, sequential visual→semantic clustering, b
 | [AUTO_CULLING_ALGORITHMS_RESEARCH_2026-05-23.md](AUTO_CULLING_ALGORITHMS_RESEARCH_2026-05-23.md) | Industry culling pipeline patterns |
 | [DEEP_RESEARCH_REPORT.md](DEEP_RESEARCH_REPORT.md) | IQA model selection |
 | [technical/EMBEDDINGS.md](../technical/EMBEDDINGS.md) | Embedding-space registry contract |
-| [#220 Pipeline model upgrades](https://github.com/synthet/image-scoring-backend/issues/220) | Implementation tracking |
+| [#220 Pipeline model upgrades](https://github.com/synthet/image-scoring-pipeline/issues/220) | Implementation tracking |

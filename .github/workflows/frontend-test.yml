@@ -17,12 +17,12 @@ jobs:
       run:
         # frontend/package.json links @synthet/image-scoring-design as file:../../image-scoring-ui,
         # so both repos are checked out side by side inside the workspace.
-        working-directory: image-scoring-backend/frontend
+        working-directory: image-scoring-pipeline/frontend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          path: image-scoring-backend
+          path: image-scoring-pipeline
 
       - name: Checkout design package (image-scoring-ui)
         uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: image-scoring-backend/frontend/package-lock.json
+          cache-dependency-path: image-scoring-pipeline/frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps

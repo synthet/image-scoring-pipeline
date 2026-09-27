@@ -4,7 +4,7 @@ paths:
   - "docs/**"
 ---
 
-# Documentation wiki (image-scoring-backend)
+# Documentation wiki (image-scoring-pipeline)
 
 Applies when creating, materially editing, renaming, or reorganizing files under `docs/`.
 

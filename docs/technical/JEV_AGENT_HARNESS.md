@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Jev agent harness
 
-How the coding agents in **image-scoring-backend** and **image-scoring-gallery** ask Jev (TypeSafe
+How the coding agents in **image-scoring-pipeline** and **image-scoring-gallery** ask Jev (TypeSafe
 System One) the per-turn questions that shape what the model sees and may do.
 
 ## Why
@@ -158,7 +158,7 @@ candidates and move the pick to the front. The response carries a `rerank` field
 The gallery's hooks call this backend copy with `--repo`, guarded so a missing sibling checkout
 is skipped:
 `test -f "$F" && python "$F" <event> --repo "$CLAUDE_PROJECT_DIR" || true`, where `$F` is
-`$CLAUDE_PROJECT_DIR/../image-scoring-backend/scripts/agent_harness/hook.py`. The guard matters
+`$CLAUDE_PROJECT_DIR/../image-scoring-pipeline/scripts/agent_harness/hook.py`. The guard matters
 because `python` on a missing file exits 2, and Claude Code treats exit 2 as **block**. The gallery
 has its own `.agent/jev_harness.json` and packs.
 

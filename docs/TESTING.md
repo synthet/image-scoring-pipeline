@@ -43,7 +43,7 @@ For API, schema, or phase terminology changes, run backend checks first, then ga
 
 ### OKF docs lint (CI and local)
 
-From **image-scoring-backend** repo root:
+From **image-scoring-pipeline** repo root:
 
 ```bash
 python -m pytest tests/test_okf_lint.py -q

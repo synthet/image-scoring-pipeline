@@ -95,7 +95,7 @@ Historically `bird_bbox` was written only as a side effect of BioCLIP classifica
 invisible to every completeness check — a species-complete image with no box could only be
 repaired by `scripts/backfill_bird_bbox.py`.
 
-Since [#338](https://github.com/synthet/image-scoring-backend/issues/338) a missing or retryably
+Since [#338](https://github.com/synthet/image-scoring-pipeline/issues/338) a missing or retryably
 failed box counts as real phase work. `get_phase_incomplete_sql("bird_species")` and
 `is_image_bird_species_complete` both include the box gap, so such folders surface as
 `awaiting_bird_species` and **Dashboard → Drive to Complete** repairs them unattended.

@@ -1,4 +1,4 @@
-# Agent safety and hygiene — image-scoring-backend
+# Agent safety and hygiene — image-scoring-pipeline
 
 ## Secrets and credentials
 

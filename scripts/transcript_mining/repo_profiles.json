@@ -1,5 +1,5 @@
 {
-  "image-scoring-backend": {
+  "image-scoring-pipeline": {
     "tier": "A",
     "display_name": "Vexlum Scoring backend",
     "has_agent_memory": true

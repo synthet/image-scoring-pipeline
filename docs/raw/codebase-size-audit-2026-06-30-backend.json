@@ -1,5 +1,5 @@
 {
-  "root": "/mnt/d/Projects/image-scoring-backend",
+  "root": "/mnt/d/Projects/image-scoring-pipeline",
   "file_min": 1000,
   "fn_min": 150,
   "large_files": [

@@ -1,11 +1,11 @@
 ---
-description: Map user phrases ("E2E", "docker E2E") to pytest suites in image-scoring-backend
+description: Map user phrases ("E2E", "docker E2E") to pytest suites in image-scoring-pipeline
 paths:
   - "tests/**"
   - "pytest.ini"
 ---
 
-# Pytest E2E vocabulary (`image-scoring-backend`)
+# Pytest E2E vocabulary (`image-scoring-pipeline`)
 
 When the user asks to run **E2E tests**, do **not** assume one suite. Two different E2E stacks exist:
 

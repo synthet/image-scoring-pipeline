@@ -9,7 +9,7 @@ Start a **detached hidden** keep-awake worker. Skill: **`.cursor/skills/windows-
 
 ## Action (agent)
 
-1. From **repo root** (`image-scoring-backend`), run:
+1. From **repo root** (`image-scoring-pipeline`), run:
 
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\Keep-Awake.ps1 -Action Start

@@ -13,7 +13,7 @@ import subprocess
 import sys
 from collections import defaultdict
 
-REPOS = ("synthet/image-scoring-backend", "synthet/image-scoring-gallery")
+REPOS = ("synthet/image-scoring-pipeline", "synthet/image-scoring-gallery")
 
 
 def gh_issues(repo: str) -> list[dict]:

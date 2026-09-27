@@ -1,6 +1,6 @@
 ---
 name: external-cli-reviewer
-description: Coordinate review-only Codex and Gemini runs through subagent-orchestrator MCP for image-scoring-backend, including sequential panel-style comparisons.
+description: Coordinate review-only Codex and Gemini runs through subagent-orchestrator MCP for image-scoring-pipeline, including sequential panel-style comparisons.
 ---
 
 # External CLI Reviewer

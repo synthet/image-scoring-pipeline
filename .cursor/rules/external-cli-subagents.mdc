@@ -33,7 +33,7 @@ External CLI agents (Codex, Gemini, Claude) are **review and tie-breaker** tools
 
 Claude may appear in detection but **execution is stubbed in v0.1** — use Codex or Gemini for live reviews.
 
-## image-scoring-backend
+## image-scoring-pipeline
 
 - Never pass `secrets.json`, `.env`, or full `config.json` contents in `task` or `extraContext`.
 - Do not include large binaries, model weights, `FirebirdLinux/`, or personal image libraries in `files`.

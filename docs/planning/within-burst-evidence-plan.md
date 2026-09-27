@@ -81,7 +81,7 @@ Read-only throughout: no DB write, no image mutation, no `modules/` runtime chan
 ## S0 — Board (no code)
 
 [`CLAUDE.md`](../../CLAUDE.md) forbids work without an issue. File four in
-`synthet/image-scoring-backend`, `area:python` + `priority:p1`, added to Project #1 at
+`synthet/image-scoring-pipeline`, `area:python` + `priority:p1`, added to Project #1 at
 `Stage = Ready`:
 
 1. `research(culling): subject-crop pixel source + provenance` — S1

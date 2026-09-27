@@ -1,4 +1,4 @@
-# Subagents and logical roles — image-scoring-backend
+# Subagents and logical roles — image-scoring-pipeline
 
 Physical definitions live in [`.cursor/agents/`](../.cursor/agents/) (mirrored to [`.claude/agents/`](../.claude/agents/) for Claude Code). This file maps **logical role names** (for planning) to those files and primary skills.
 

@@ -14,7 +14,7 @@ Conservative AI-assisted workflow for small already-clustered stack/substack gro
 
 
 
-**Backlog:** Backend epic [#253](https://github.com/synthet/image-scoring-backend/issues/253) · Gallery epic [#134](https://github.com/synthet/image-scoring-gallery/issues/134)
+**Backlog:** Backend epic [#253](https://github.com/synthet/image-scoring-pipeline/issues/253) · Gallery epic [#134](https://github.com/synthet/image-scoring-gallery/issues/134)
 
 
 

@@ -10,7 +10,7 @@ okf_version: 0.1
 
 # Student scorer E2 — activity checkpoint (2026-08-03)
 
-**Repo:** `synthet/image-scoring-backend`  
+**Repo:** `synthet/image-scoring-pipeline`  
 **Status:** P0 render cache **complete** — human review gate before any E2 GPU train  
 **Manifest:** `msm_8ef568a5db3d9f79` · **Protocol:** `ssp_429e3332d8ab`  
 **Contract:** [`.agent/scratch/e2_autonomous_run_contract.md`](../../.agent/scratch/e2_autonomous_run_contract.md)
@@ -72,7 +72,7 @@ Failures (enumerated):
 ## Resume commands (WSL + `~/.venvs/tf`)
 
 ```bash
-cd /mnt/d/Projects/image-scoring-backend && source ~/.venvs/tf/bin/activate
+cd /mnt/d/Projects/image-scoring-pipeline && source ~/.venvs/tf/bin/activate
 M=artifacts/student_scorer/msm_8ef568a5db3d9f79
 
 # After review approval only:

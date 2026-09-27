@@ -34,7 +34,7 @@ Local AST knowledge graph — no vector store. Soft rule: [`.cursor/rules/graphi
 "graphify-be": {
   "command": "graphify-mcp",
   "args": ["graphify-out/graph.json"],
-  "cwd": "${workspaceFolder:image-scoring-backend}"
+  "cwd": "${workspaceFolder:image-scoring-pipeline}"
 }
 ```
 

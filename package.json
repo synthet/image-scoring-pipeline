@@ -1,5 +1,5 @@
 {
-  "name": "image-scoring-backend-contract-tools",
+  "name": "image-scoring-pipeline-contract-tools",
   "private": true,
   "type": "module",
   "scripts": {

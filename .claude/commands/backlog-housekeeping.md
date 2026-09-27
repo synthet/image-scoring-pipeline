@@ -13,7 +13,7 @@ Use when the queue has drift: unstaged cards, Review cards for merged work, miss
 ## Preconditions
 
 - `gh auth status` succeeds.
-- Run from **image-scoring-backend** repo root on **Windows** (or wherever `gh` is on PATH).
+- Run from **image-scoring-pipeline** repo root on **Windows** (or wherever `gh` is on PATH).
 
 ## Action (agent)
 
@@ -22,7 +22,7 @@ Read skill **`.cursor/skills/backlog-housekeeping/SKILL.md`** and follow it.
 ### 1. Dry-run
 
 ```powershell
-cd D:\Projects\image-scoring-backend
+cd D:\Projects\image-scoring-pipeline
 python scripts/housekeeping_backlog.py
 ```
 

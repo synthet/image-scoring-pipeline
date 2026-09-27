@@ -9,15 +9,15 @@ okf_version: 0.1
 ---
 # Localization rollout stage 1 — control-plane consolidation
 
-**Date:** 2026-09-22 · **Epic:** [#345](https://github.com/synthet/image-scoring-backend/issues/345) · **Status:** exit gate met, two items carried forward
+**Date:** 2026-09-22 · **Epic:** [#345](https://github.com/synthet/image-scoring-pipeline/issues/345) · **Status:** exit gate met, two items carried forward
 
 Stage 1 of [localization-rollout.md](../architecture/pipeline/localization-rollout.md) is the
 rollout's own gate: a seventh phase must not be introduced until one registry is authoritative and
 every submission surface agrees on vocabulary, selector scope, ordering and prerequisite policy.
 
-Most of it landed earlier under [#346](https://github.com/synthet/image-scoring-backend/issues/346)
+Most of it landed earlier under [#346](https://github.com/synthet/image-scoring-pipeline/issues/346)
 (PRs #350, #352, #353, #354). This report covers the remainder — issues #364–#367, merged as
-[PR #369](https://github.com/synthet/image-scoring-backend/pull/369).
+[PR #369](https://github.com/synthet/image-scoring-pipeline/pull/369).
 
 ## What landed
 
@@ -100,7 +100,7 @@ the database was **down**.
 
 ## Carried forward
 
-- **Delegated parent/child lifecycle** ([#368](https://github.com/synthet/image-scoring-backend/issues/368)).
+- **Delegated parent/child lifecycle** ([#368](https://github.com/synthet/image-scoring-pipeline/issues/368)).
   `modules/selection_runner.py` still marks the parent's remaining stages `skipped` and completes it
   regardless of the child's outcome. The planned contract needs a durable link column and DB-backed
   recovery tests, so it is scheduled with schema work.

@@ -1,6 +1,6 @@
 # New Models — Summary
 
-Consolidated overview of **new and roadmap** ML models documented under `docs/`. For live production behavior see [technical/MODELS_SUMMARY.md](technical/MODELS_SUMMARY.md); for the full phased roadmap see [MODEL_RECOMMENDATIONS_PIPELINES.md](MODEL_RECOMMENDATIONS_PIPELINES.md) (issue [#220](https://github.com/synthet/image-scoring-backend/issues/220)).
+Consolidated overview of **new and roadmap** ML models documented under `docs/`. For live production behavior see [technical/MODELS_SUMMARY.md](technical/MODELS_SUMMARY.md); for the full phased roadmap see [MODEL_RECOMMENDATIONS_PIPELINES.md](MODEL_RECOMMENDATIONS_PIPELINES.md) (issue [#220](https://github.com/synthet/image-scoring-pipeline/issues/220)).
 
 **Target hardware assumption (roadmap):** RTX 4060 Laptop, 8 GB VRAM — permissive licenses preferred, English-only prompts.
 
@@ -64,7 +64,7 @@ flowchart LR
   **not** in aesthetic (Spearman ≈0.01 vs AVA). Anchors `p02≈0.467 / p98≈0.746`.
 - **Head:** pyiqa default `arniqa` (KonIQ head); switchable via `scoring.arniqa.metric`
 - **Modules:** `modules/arniqa.py` + `modules/engines/arniqa_model.py`
-- **Phase:** 2 in [#220](https://github.com/synthet/image-scoring-backend/issues/220) — **done (promoted to production)**
+- **Phase:** 2 in [#220](https://github.com/synthet/image-scoring-pipeline/issues/220) — **done (promoted to production)**
 
 ### Scoring — QPT-V2 (exists in code, not promoted)
 

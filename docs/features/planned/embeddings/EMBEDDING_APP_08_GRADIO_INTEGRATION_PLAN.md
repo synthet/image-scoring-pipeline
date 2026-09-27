@@ -530,7 +530,7 @@ sequenceDiagram
 
 ## Summary of Changes by File
 
-### Python repo (`image-scoring-backend`)
+### Python repo (`image-scoring-pipeline`)
 
 - `modules/events.py` -- Add `CommandDispatcher` class (action registry, `handle()`, unicast `send_to()`)
 - `webui.py` -- Wire `command_dispatcher.handle()` into WS receive loop (replace `pass`)

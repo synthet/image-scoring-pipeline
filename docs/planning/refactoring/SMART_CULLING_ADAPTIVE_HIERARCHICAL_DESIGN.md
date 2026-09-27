@@ -49,7 +49,7 @@ Adaptive hierarchical culling should preserve important diversity while aggressi
 
 ## Confirmed project assumptions
 
-- Backend/scoring repo: `image-scoring-backend`
+- Backend/scoring repo: `image-scoring-pipeline`
 - Gallery repo: `image-scoring-gallery`
 - Product names:
   - Backend/scoring: Vexlum Scoring
@@ -762,7 +762,7 @@ Goal:
 Create an adaptive hierarchical culling system that groups images by visual/time/metadata similarity, decomposes broad scene clusters into stricter near-duplicate/variant clusters, and assigns conservative pick/alternate/variant/reject/manual_review decisions using existing image quality scores.
 
 Repository assumptions:
-- Backend repo: image-scoring-backend
+- Backend repo: image-scoring-pipeline
 - Gallery repo: image-scoring-gallery
 - PostgreSQL + pgvector is primary
 - Firebird is legacy/decommissioned

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Write a redacted support bundle (zip) for image-scoring-backend.
+Write a redacted support bundle (zip) for image-scoring-pipeline.
 
 Never includes secrets.json contents. Redacts keys whose names suggest secrets
 and common password fields in nested structures.
