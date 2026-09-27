@@ -11,7 +11,7 @@ status: proposed
 
 # Visual domain router and specialist analysis — reconciliation
 
-> **Status:** proposal ingest, docs only. No code, no issue filed. Source (immutable):
+> **Status:** proposal ingest, docs only (#448). No code. Source (immutable):
 > [raw/2026-09-27-visual-domain-router-design.md](../raw/2026-09-27-visual-domain-router-design.md).
 
 The source proposes a cheap, **multi-label** router in front of specialist workflows
@@ -104,12 +104,13 @@ thresholds (spec 05 already requires them for the `birds` vs `wildlife` mass-abs
 - §32 activates `~/.venvs/tf`. That environment is optional. The primary environment for scripts
   and `scripts/doctor.py` is the `image-scoring-gpu-shell` container.
 
-## Suggested next steps (not filed)
+## Follow-ups
 
-- Add the missingness rule (item 3) to #423.
-- Add "multi-label revisit trigger" to SR-1 in the decision register.
-- File a macro / focal-plane issue only after the open-vocabulary detector benchmark, and
-  label it `stage:backlog`, not Ready.
+- Missingness rule (item 3): proposed on #423 as an addition to the v0 output contract.
+- SR-1 revisit trigger: added to the [decision register](../specs/pipeline-streamlining/07-blockers-and-decisions.md).
+- Macro / focal-plane domain (item 1): #449, at `stage:backlog`, blocked on an open-vocabulary
+  detector benchmark, macro groups in #415, and the #412 benchmark.
+- This ingest: #448.
 
 ## Related pages
 
