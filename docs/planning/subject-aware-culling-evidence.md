@@ -26,6 +26,8 @@ Companion pages:
   must do (function, I/O, open candidates)
 - [within-burst-evidence-plan.md](within-burst-evidence-plan.md) — Arm A/B crop IQA plan, which this
   page extends with non-IQA evidence
+- [visual-domain-router.md](visual-domain-router.md) — multi-label router + specialist workflow
+  proposal (bird / animal / macro), reconciled against this page and the streamlining specs
 
 Cross-repo counterparts:
 
