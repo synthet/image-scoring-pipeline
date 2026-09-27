@@ -145,7 +145,7 @@ Full categorized index for **image-scoring-backend**. Prefer small linked pages 
 | [specs/agent-assisted-cull-review/INDEX.md](specs/agent-assisted-cull-review/INDEX.md) | Agent cull review implementation spec + worklog. |
 | [specs/pipeline-streamlining/INDEX.md](specs/pipeline-streamlining/INDEX.md) | Pipeline streamlining specs (rendition, phase graph, detector cascade, subject-aware scoring, scene route, species) + roadmap. |
 | [specs/remote-gpu-worker/INDEX.md](specs/remote-gpu-worker/INDEX.md) | Remote GPU worker specs (architecture, worker protocol, XMP outbox, phase decoupling, rollout) for #435. |
-| [specs/human-labeling-sync/INDEX.md](specs/human-labeling-sync/INDEX.md) | Human labeling sync specs (architecture, task/annotation contract, storage and import, sync agent and rollout) for the mobile labeler loop, #453. |
+| [specs/human-labeling-sync/INDEX.md](specs/human-labeling-sync/INDEX.md) | Human labeling sync specs (architecture, task/annotation contract, storage and import, sync agent and rollout) for the mobile labeler loop, epic #454. |
 | [features/planned/ui-pipeline-redesign.md](features/planned/ui-pipeline-redesign.md) | Pipeline UI redesign plan. |
 | [features/planned/import-discovery-alignment.md](features/planned/import-discovery-alignment.md) | Import/discovery alignment plan. |
 | [features/planned/image-identity-and-hashing-improvements.md](features/planned/image-identity-and-hashing-improvements.md) | Image identity and hashing improvements. |

@@ -11,7 +11,7 @@ status: proposed
 
 # Human labeling sync 02: task and annotation contract
 
-**Epic:** #453 · **Hub:** [INDEX.md](INDEX.md)
+**Epic:** #454 · **Hub:** [INDEX.md](INDEX.md)
 
 ## Baseline
 

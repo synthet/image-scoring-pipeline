@@ -11,7 +11,7 @@ status: proposed
 
 # Human labeling sync 01: architecture
 
-**Epic:** #453 · **Hub:** [INDEX.md](INDEX.md)
+**Epic:** #454 · **Hub:** [INDEX.md](INDEX.md)
 
 ## Summary
 

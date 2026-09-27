@@ -11,7 +11,7 @@ status: proposed
 
 # Human labeling sync 03: storage and import
 
-**Epic:** #453 · **Hub:** [INDEX.md](INDEX.md)
+**Epic:** #454 · **Hub:** [INDEX.md](INDEX.md)
 
 All DDL below is **proposed**. Nothing exists until M1 lands:
 - an Alembic migration at the next free revision (`0036` is already claimed by [remote GPU worker M1](../remote-gpu-worker/05-rollout-and-testing.md#milestones));

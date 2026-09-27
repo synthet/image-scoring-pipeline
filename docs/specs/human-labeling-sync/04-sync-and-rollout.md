@@ -11,7 +11,7 @@ status: proposed
 
 # Human labeling sync 04: sync agent and rollout
 
-**Epic:** #453 · **Hub:** [INDEX.md](INDEX.md)
+**Epic:** #454 · **Hub:** [INDEX.md](INDEX.md)
 
 ## Sync agent CLI
 

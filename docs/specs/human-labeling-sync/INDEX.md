@@ -18,7 +18,7 @@ This hub specifies the **backend's part** of the human labeling loop:
 3. **The mobile labeler** ([synthet/image-scoring-mobile](https://github.com/synthet/image-scoring-mobile)) downloads batches, labels them offline and uploads annotations.
 4. **The backend** pulls annotations back, stores them append-only in Postgres, and projects them into the evaluation tables.
 
-**Epic:** #453 · **Status:** proposed. Nothing is implemented in this repo yet. The mobile app and a dev hub exist on the mobile repo's branch `cursor/mobile-labeler-mvp-fc18` (commit `f4feb84`).
+**Epic:** #454 · **Spec issue:** #453 · **Status:** proposed; decisions D-1 to D-6 accepted with this spec. Nothing is implemented in this repo yet. The mobile app and a dev hub exist on the mobile repo's branch `cursor/mobile-labeler-mvp-fc18` (commit `f4feb84`).
 
 ## Decisions already taken
 
@@ -41,23 +41,23 @@ This hub specifies the **backend's part** of the human labeling loop:
 
 ## Milestones
 
-Issues are filed once the decision register below is settled.
-
-| Milestone | Depends on | Summary |
-|---|---|---|
-| M0 | — | These specs (#453) |
-| M1 | M0 | Schema: an Alembic migration for the `labeling` schema, plus adopting `human_labels` without data loss. Repository functions. |
-| M2 | M1 | Task builder: experiment definitions, the #415 unit source, blind preview rendering to a content-addressed cache |
-| M3 | M1 | Import: pull annotations, append-only store, projection into `human_labels`, label audit reads it |
-| M4 | M2, M3 | Sync agent CLI and the hub contract v1 (hub-assigned cursor, asset upload, labeler identity), with mobile/hub changes landed in their repo |
-| M5 | M4 | Group culling mode on mobile (per-frame grades + best frame), for #415 parity |
-| M6 | M4 | Hardening: TLS-only hub, token rotation, preview retention, runbook verified on the real hub |
+| Milestone | Issue | Depends on | Summary |
+|---|---|---|---|
+| M0 | #453 | — | These specs |
+| M1 | #455 | M0 | Schema: an Alembic migration for the `labeling` schema, plus adopting `human_labels` without data loss. Repository functions. |
+| M2 | #456 | M1 | Task builder: experiment definitions, the #415 unit source, blind preview rendering to a content-addressed cache |
+| M3 | #457 | M1 | Import: pull annotations, append-only store, projection into `human_labels`, label audit reads it |
+| M4 | #458 | M2, M3 | Sync agent CLI and the hub contract v1 (hub-assigned cursor, asset upload, labeler identity), with mobile/hub changes landed in their repo |
+| M5 | #459 | M4 | Group culling mode on mobile (per-frame grades + best frame), for #415 parity |
+| M6 | #460 | M4 | Hardening: TLS-only hub, token rotation, preview retention, runbook verified on the real hub |
 
 M2 and M3 can run in parallel.
 
-## Decision register (open)
+## Decision register
 
-| ID | Question | Recommendation | Decide by |
+All six were accepted with the spec (2026-09-27). Revisit through the milestone issue named in **Applies from**.
+
+| ID | Question | Decision | Applies from |
 |---|---|---|---|
 | D-1 | Which image id goes off-box? | **`images.image_uuid`**, backfilled where NULL. It is already unique (`uq_images_image_uuid`), opaque and survives re-indexing better than `images.id` ([01 §Image identity](01-architecture.md#image-identity)). | M1 |
 | D-2 | How should mobile culling cover the #415 protocol (grade every frame + one best frame)? | **Add a group culling task** (one task per unit, 2–12 items) in M5. Until then, single-frame `culling` answers are stored but **not** projected into `human_labels.labels` ([02 §Culling](02-task-and-annotation-contract.md#culling-modes)). | M3 |
