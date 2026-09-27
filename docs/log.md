@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-09-27] ingest | Session transcript digests (2026-07–09)
+
+Added docs/reports/SESSION_TRANSCRIPT_DIGESTS.md hub plus four digest pages (bird-detect-v0 integration, CLI judge labelling, Postgres truncate #399, gallery contract CI #164/#177). No private paths or transcript bodies in git.
+
 ## [2026-09-24] move | Everypixel study artifacts → image-scoring-skills
 
 Phase 1 outputs moved to private [`image-scoring-skills/research/everypixel-correlation/`](https://github.com/synthet/image-scoring-skills/tree/main/research/everypixel-correlation). Backend harness defaults to sibling path; `reports/everypixel-correlation/` gitignored fallback. See [`EVERYPIXEL_CORRELATION_STUDY.md`](planning/integrations/EVERYPIXEL_CORRELATION_STUDY.md).

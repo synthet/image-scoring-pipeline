@@ -14,8 +14,9 @@ from okf_bundle import LINK_RE, resolve_internal_link  # noqa: E402
 HUB_NAMES = ("INDEX.md", "README.md")
 def lint_docs(docs_root: Path) -> dict:
     docs_root = docs_root.resolve()
-    all_md = {p.relative_to(docs_root).as_posix() for p in docs_root.rglob("*.md")}
-    hubs = [p for p in docs_root.rglob("*.md") if p.name in HUB_NAMES]
+    public_md = [p for p in docs_root.rglob("*.md") if p.relative_to(docs_root).parts[0] != "private"]
+    all_md = {p.relative_to(docs_root).as_posix() for p in public_md}
+    hubs = [p for p in public_md if p.name in HUB_NAMES]
 
     indexed: set[str] = set()
     for hub in hubs:
@@ -40,7 +41,7 @@ def lint_docs(docs_root: Path) -> dict:
             if rel in all_md and rel != md:
                 inbound[rel].add(md)
             target = docs_root / rel
-            if target.exists():
+            if target.exists() and not rel.startswith("private/"):
                 continue
             if raw.startswith("../") and "modules/" in raw:
                 broken_code.append((md, raw))

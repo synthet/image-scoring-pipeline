@@ -101,5 +101,6 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | Document | Description |
 |----------|-------------|
 | [RELEASE_HANDOFF_2026-04-10_2026-04-11.md](RELEASE_HANDOFF_2026-04-10_2026-04-11.md) | Cross-repo release handoff (dated snapshot) |
+| [SESSION TRANSCRIPT DIGESTS](SESSION_TRANSCRIPT_DIGESTS.md) | Router for wiki digests distilled from gitignored session exports (public fact layer) |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)
