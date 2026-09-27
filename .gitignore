@@ -320,3 +320,5 @@ reports/gallery-visual-review/
 docs/private/
 codex-session-*.md
 2026-??-??-*.txt
+models/*.onnx
+models/*.manifest.json

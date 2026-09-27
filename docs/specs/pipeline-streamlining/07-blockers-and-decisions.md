@@ -87,8 +87,8 @@ on `feat/414-localization-m0`; S4-1, S4-4 and S4-5 keep the current behavior.
 |---|---|---|---|
 | C-1 | Refine IoU (0.3) and padding (1.0)? | **Data.** Sweep IoU {0.2, 0.3, 0.5} × pad {0.5, 1.0, 2.0} on `det_small` and the COCO-only small boxes, and grade tightness with the LLM panel. | M2 |
 | C-2 | When both detectors fire, keep the COCO boxes as extra regions? | **No, YOLO only**, for continuity with `bird_bbox`. Revisit with multi-subject (spec 04, O-3). | M2 |
-| C-3 | Test the agreement arm (YOLO box only if COCO also sees an animal)? | **Yes. It's the cheapest false-positive filter known:** −13 of 28 YOLO false positives, 100/101 true detections kept. | M2 |
-| C-4 | Operating point: the default policy is 17% false positives, over AC-18's 10% | **Data.** Sweep the threshold. Either the matched-recall point (4%) or the agreement arm must pass AC-18. | M2 |
+| C-3 | Test the agreement arm (YOLO box only if COCO also sees an animal)? | **Yes. It's the cheapest false-positive filter known:** −13 of 28 YOLO false positives, 100/101 true detections kept. **2026-09-27:** reproduced on upstream weights (13/28 removed, 100/101 kept at 0.40/0.25); use its own permissive threshold, separate from the fallback's. | M2 |
+| C-4 | Operating point: the default policy is 17% false positives, over AC-18's 10% | **Data.** Sweep the threshold. Either the matched-recall point (4%) or the agreement arm must pass AC-18. **Resolved 2026-09-27:** 0.40 without the retry: 83% recall, 4% false positives on the independent strata ([cascade benchmark](../../reports/cascade-benchmark-2026-09-27.md)). | M2 |
 
 ### 3.5 Spec 04: subject-aware scoring (#409)
 

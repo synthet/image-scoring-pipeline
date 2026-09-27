@@ -115,6 +115,35 @@ Recommendations and deadlines: [07 — decision register](07-blockers-and-decisi
    90, measured under AC-12.
 3. Should non-RAW JPEG sources also be cached, or read directly?
 
+## Slice 1 status and measurements (2026-09-27)
+
+`modules/rendition_cache.py` implements AC-1, AC-4, AC-5 and AC-6 for RAW sources (non-RAW sources
+are decoded directly, per R-3). The key is the cheap source identity plus the rendition policy, so a
+hit never decodes the source; the descriptor is stored beside the JPEG. Pixels come from
+`localization.decode_for_localization` (same route and orientation, AC-2/AC-3 by construction), then
+are resized to 2048 px and encoded at quality 90. **No consumer reads it yet.**
+
+`scripts/research/rendition/measure_rendition.py` on 120 bird frames of one Z8 folder
+(8256 x 5504 NEFs, file cache warm):
+
+| | p50 | p95 |
+|---|---|---|
+| full-size localization decode | 0.46 s | 0.63 s |
+| rendition miss (decode + resize + write) | 0.66 s | 0.83 s |
+| **rendition hit** | **0.021 s** | **0.041 s** |
+
+| Consumer at 2048 px instead of full size | result |
+|---|---|
+| Bird detector | 118/120 found at both sizes, 2 lost at 2048 (0 gained); rank-0 box IoU median 0.986, p10 0.955; 5 below 0.9 |
+| Eye keypoints (same region) | eye shift median 0.23%, p90 0.93% of the region diagonal: far below the model's own error (about one eye-width) |
+
+**Reading:** a hit is about 22x faster than a full decode, so every later phase that reads the cache
+saves ~0.45 s per image (more when the file cache is cold: the keypoint backfill measured ~1.5 s).
+Eye keypoints and species crops can move to the rendition without measurable loss. Localization
+should move only together with the cascade's small-box refine pass (#408), because a 2048 px
+detector input drops a small share of small birds (2/120 here). Next slices: thumbnails from the
+rendition (AC-7 to AC-10, gallery notice first), then consumers, then scoring behind AC-12.
+
 ## Implementation plan
 
 **Goal:** AC-1 to AC-13 pass. Localization and thumbnails use the shared rendition, and scoring

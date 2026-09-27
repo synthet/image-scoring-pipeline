@@ -398,6 +398,9 @@ def write_run(run: dict[str, Any], regions: list[dict[str, Any]]) -> int:
 
     The previous current run for the same (image, detector) loses ``is_current`` in the
     same transaction (AC-12), so readers never see zero or two current attempts.
+
+    A region may carry its own ``object_class`` / ``provider_class_id`` (the COCO and cascade
+    providers, spec 03); the bird detector's regions default to ``bird`` / ``0``.
     """
     from modules import db
 
@@ -421,7 +424,8 @@ def write_run(run: dict[str, Any], regions: list[dict[str, Any]]) -> int:
                 "INSERT INTO image_regions (localization_run_id, object_class, provider_class_id, "
                 "confidence, rank, x1, y1, x2, y2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    run_id, OBJECT_CLASS, PROVIDER_CLASS_ID, region["conf"], region["rank"],
+                    run_id, region.get("object_class", OBJECT_CLASS),
+                    region.get("provider_class_id", PROVIDER_CLASS_ID), region["conf"], region["rank"],
                     *region["region"],
                 ),
             )
