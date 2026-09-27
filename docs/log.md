@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-09-27] ingest | Visual domain router proposal
+
+- 2026-09-27: ingested — [visual domain router and specialist analysis](planning/visual-domain-router.md) from the user-provided design ([raw](raw/2026-09-27-visual-domain-router-design.md)): section map onto specs 02–06, #415, #423, #424; SR-1 multi-label conflict; new items: macro focal-plane domain, generic subject→part model, per-measurement missingness. Backlinks from [subject-aware culling evidence](planning/subject-aware-culling-evidence.md) and [spec 05](specs/pipeline-streamlining/05-scene-route.md); rows in [planning/INDEX.md](planning/INDEX.md), [INDEX.md](INDEX.md), [raw/README.md](raw/README.md).
+
 ## [2026-09-27] ingest | Session transcript digests (2026-07–09)
 
 Added docs/reports/SESSION_TRANSCRIPT_DIGESTS.md hub plus four digest pages (bird-detect-v0 integration, CLI judge labelling, Postgres truncate #399, gallery contract CI #164/#177). No private paths or transcript bodies in git.
