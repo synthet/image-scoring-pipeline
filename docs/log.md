@@ -708,6 +708,10 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 
 - 2026-09-27: updated — [localization rollout](architecture/pipeline/localization-rollout.md) stage 5 row: `bird_species.use_regions` slice (#444). Read-only checks: normalized projection equals `images.bird_bbox` for all 76,475 images; on one folder region-mode species matched the legacy path and stored species on 283/283 bird-tagged images (181 region, 102 full frame) at 0.56 vs 0.83 s/image.
 
+## [2026-09-27] update | Spec 01 rendition cache, slice 1
+
+- 2026-09-27: updated — [spec 01](specs/pipeline-streamlining/01-rendition.md): slice 1 status (`modules/rendition_cache.py`, AC-1/4/5/6 for RAW) and measurements on 120 Z8 bird frames: hit 0.021 s vs full decode 0.46 s p50; detector at 2048 px keeps 118/120 birds (box IoU median 0.986); eye keypoints shift 0.23% of the region diagonal (#406).
+
 ## [2026-09-27] created | Detector cascade slice 1 and benchmark
 
 - 2026-09-27: created — [cascade benchmark](reports/cascade-benchmark-2026-09-27.md) (spec 03 AC-16 on upstream RTMDet weights, #408); updated [spec 03](specs/pipeline-streamlining/03-detector-cascade.md) slice 1 status and the [decision register](specs/pipeline-streamlining/07-blockers-and-decisions.md) C-3/C-4; indexed in [reports/INDEX.md](reports/INDEX.md).
