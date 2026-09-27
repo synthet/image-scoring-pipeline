@@ -253,12 +253,28 @@
     "device": "auto",
     "fail_open": true
   },
+  "bird_species": {
+    "use_regions": false
+  },
   "localization": {
     "enabled": false,
     "max_regions_per_class": 10,
     "detectors": {
       "bird": {
         "enabled": true
+      }
+    },
+    "keypoints": {
+      "bird_head": {
+        "enabled": false,
+        "model_repo": "synthet/eye-pose-v0",
+        "model_file": "eye_pose_v0.pt",
+        "local_path": "",
+        "imgsz": 640,
+        "confidence": 0.25,
+        "min_kpt_conf": 0.25,
+        "crop_pad": 0.25,
+        "device": "auto"
       }
     }
   },

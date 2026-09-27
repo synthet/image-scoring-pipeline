@@ -700,6 +700,14 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 
 - 2026-09-27: created — [remote GPU worker spec hub](specs/remote-gpu-worker/INDEX.md) with [01 architecture](specs/remote-gpu-worker/01-architecture.md), [02 worker protocol](specs/remote-gpu-worker/02-worker-protocol.md), [03 XMP outbox](specs/remote-gpu-worker/03-xmp-outbox.md), [04 phase decoupling](specs/remote-gpu-worker/04-phase-decoupling.md), [05 rollout and testing](specs/remote-gpu-worker/05-rollout-and-testing.md); linked from [INDEX.md](INDEX.md) (#435, #436).
 
+## [2026-09-27] created | Region-linked eye keypoints (#426)
+
+- 2026-09-27: created — [eye keypoint spot check](reports/eye-keypoint-spot-check-2026-09-27.md): shadow `bird_head_pose` provider (eye-pose-v0, top-down on the primary region), migration 0036 (`image_keypoint_runs`, `image_region_keypoints`), library backfill (21,380 candidates, 20,165 detected), judge-panel + Jev spot check; consumer eye threshold 0.8; rollout stage 2 addendum row updated in [localization rollout](architecture/pipeline/localization-rollout.md); indexed in [reports/INDEX.md](reports/INDEX.md).
+
+## [2026-09-27] update | Localization stage 5 slice 1
+
+- 2026-09-27: updated — [localization rollout](architecture/pipeline/localization-rollout.md) stage 5 row: `bird_species.use_regions` slice (#444). Read-only checks: normalized projection equals `images.bird_bbox` for all 76,475 images; on one folder region-mode species matched the legacy path and stored species on 283/283 bird-tagged images (181 region, 102 full frame) at 0.56 vs 0.83 s/image.
+
 ## [2026-09-27] create | Human labeling sync specs
 
 - 2026-09-27: created — [human labeling sync spec hub](specs/human-labeling-sync/INDEX.md) with [01 architecture](specs/human-labeling-sync/01-architecture.md), [02 task and annotation contract](specs/human-labeling-sync/02-task-and-annotation-contract.md), [03 storage and import](specs/human-labeling-sync/03-storage-and-import.md), [04 sync agent and rollout](specs/human-labeling-sync/04-sync-and-rollout.md), epic #454 with milestones #455–#460: backend side of the image-scoring-mobile labeler loop (blind task builder, hub push/pull, append-only import, Alembic adoption of `human_labels`, projection for #415); linked from [INDEX.md](INDEX.md), [planning/INDEX.md](planning/INDEX.md) and [human culling label set](planning/human-culling-labels.md) (#453).
