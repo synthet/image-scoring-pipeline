@@ -683,3 +683,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-26] created | Jev agent harness
 
 - 2026-09-26: created — [Jev agent harness](technical/JEV_AGENT_HARNESS.md): Jev-driven hooks (conditional rule packs with hide/short/full ladder, programmable permissions, external-review sensitivity), `scripts/agent_harness` CLI (budget, route, subgoal, bundle), `harness.*` rubrics, MCP search rerank (`typesafe.mcp_search_rerank`). Updated [MCP_SEARCH_DISPATCH.md](technical/MCP_SEARCH_DISPATCH.md), [technical/INDEX.md](technical/INDEX.md), [CANONICAL_SOURCES.md](CANONICAL_SOURCES.md).
+
+## [2026-09-27] update | Localization stage 4 M0 decisions
+
+- 2026-09-27: updated — [stage 4 slice 1 status](planning/localization-stage4-slice1-status.md), [decision register §3.1](specs/pipeline-streamlining/07-blockers-and-decisions.md) and the [rollout status table](architecture/pipeline/localization-rollout.md): S4-1..S4-5 accepted, S4-2/S4-3 implemented, bird_species rawpy double rotation fixed, legacy import dry run recorded (#414).

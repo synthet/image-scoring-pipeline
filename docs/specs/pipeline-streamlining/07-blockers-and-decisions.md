@@ -4,7 +4,7 @@ title: "Pipeline streamlining: blockers, decisions and suggestions"
 description: Status snapshot, blockers with unblock actions, a decision register covering every open question in specs 01–06 and rollout stage 4, a cost model, GPU sequencing, risks and prioritised suggestions.
 resource: docs/specs/pipeline-streamlining/07-blockers-and-decisions.md
 tags: [specs, pipeline, localization, scoring, blockers, decisions, risks]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-09-27T00:00:00Z
 okf_version: 0.1
 ---
 
@@ -39,8 +39,8 @@ stated assumptions, not a measurement.
 |---|---|---|---|---|---|
 | **B1** | Any trustworthy `-m postgres` result, and so M0 | Test DB rows leak between tests. The ordering-dependent failures seen in the #387 status doc follow from it. | Insert `1`/`0` instead of booleans, and log instead of `pass`. A one-line fix plus a regression test. | agent | #399 |
 | **B2** | Believing a green Postgres run | Wrong port, or no alembic, leads to skips rather than failures. | Make the suite fail loudly when the DB is unreachable under `-m postgres`, and add alembic to the gpu-shell image. | agent | #379 |
-| **B3** | Stage 5, and spec 04's crop backfill (needs current boxes) | The ~76k legacy outcomes were never imported. The import script exists (`scripts/import_legacy_localization.py`). | Dry run against production, compare with the 2026-09-22 survey, then run it live. | **you** (production DB) | #414 |
-| **B4** | Stage 4's exit gate | Five open questions (§3.1). | Decide them; recommendations are below. | **you** | #414 |
+| **B3** | Stage 5, and spec 04's crop backfill (needs current boxes) | The ~76k legacy outcomes were never imported. The import script exists (`scripts/import_legacy_localization.py`). | Dry run against production, compare with the 2026-09-22 survey, then run it live. **2026-09-27 dry run:** 76,475 rows, 41,263 detected / 35,209 `no_detection` / 3 terminal; the growth over the survey is new scans. | **you** (production DB) | #414 |
+| **B4** | Stage 4's exit gate | Five open questions (§3.1). | **Decided 2026-09-27:** every recommendation accepted (§3.1). | done | #414 |
 | **B5** | Spec 04 promotion (AC-22) and within-burst ranking | 54 bursts gave CIs of ±0.05–0.09 ([probe](../../reports/subject-evidence-probe-2026-09-24.md)). About 300 are needed. **No usable human labels exist today** (§4.4): all 3,374 human-session rows are undecided. | Collect ~300 bursts; this is step 3 of #415. | **you** label | #415 |
 | **B6** | Spec 03 adoption | The research ONNX weights came from a third-party product. **2026-09-25: verified tensor-for-tensor identical to the upstream OpenMMLab COCO checkpoint** ([identity report](../../reports/upstream-weights-identity-2026-09-25.md)), so the comparison numbers transfer. | Packaging only: export RTMDet-tiny from the upstream checkpoint (a one-off `mmdet`/`mmdeploy` toolchain outside the app environment) and record a manifest. A re-run is a sanity check, not a re-measurement. | agent | #408 |
 | **B7** | Spec 01 thumbnail switch; spec 04 migration | The gallery reads `image_model_scores` in `electron/db.ts`, `sortColumns.ts` and `sortSql.ts`. | The gallery adds `input_mode` filtering before the #409 migration ships. Thumbnail display is likely fine, because Chromium applies EXIF orientation by default. | gallery | gallery #176 |
@@ -54,6 +54,9 @@ stated assumptions, not a measurement.
 the maintainer. "Data" means the benchmark answers it, so a human only confirms.
 
 ### 3.1 Rollout stage 4 (#414)
+
+**Decided 2026-09-27: every recommendation below is accepted.** S4-2 and S4-3 are implemented
+on `feat/414-localization-m0`; S4-1, S4-4 and S4-5 keep the current behavior.
 
 | # | Question | Options | Recommendation | Decide by |
 |---|---|---|---|---|

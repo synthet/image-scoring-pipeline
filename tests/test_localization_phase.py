@@ -419,6 +419,75 @@ def test_ac14_a_retryable_current_run_is_retried(jpeg, writes, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# S4-2 (environment failures retry) and S4-3 (unchanged decode failures skip)
+# ---------------------------------------------------------------------------
+
+def test_s4_2_missing_rawpy_is_retryable(raw_file, monkeypatch, writes):
+    _embedded(monkeypatch, {})
+    monkeypatch.setitem(sys.modules, "rawpy", None)  # import raises ImportError
+    out = loc.localize_image(1, raw_file, _ctx(_FakeDetector()), max_regions=10)
+    run = writes[0][0]
+    assert out.status == run["status"] == "retryable_error"
+    assert run["is_retryable"] is True and run["error_code"] == "environment_missing"
+
+
+def test_s4_2_genuine_rawpy_failure_stays_terminal(raw_file, monkeypatch, writes):
+    _embedded(monkeypatch, {})
+
+    def _imread(_p):
+        raise RuntimeError("corrupt raw")
+
+    monkeypatch.setitem(sys.modules, "rawpy", types.SimpleNamespace(imread=_imread))
+    out = loc.localize_image(1, raw_file, _ctx(_FakeDetector()), max_regions=10)
+    run = writes[0][0]
+    assert out.status == run["status"] == "terminal_error"
+    assert run["error_code"] == "decode_error" and run["is_retryable"] is False
+    assert run["source_hash"] and run["source_hash_version"]
+
+
+@pytest.fixture
+def broken(tmp_path):
+    path = tmp_path / "broken.jpg"
+    path.write_bytes(b"not an image")
+    return str(path)
+
+
+def _terminal_current(run: dict, **overrides) -> dict:
+    return {
+        "status": "terminal_error", "error_code": "decode_error",
+        "detector_config_hash": run["detector_config_hash"],
+        "source_hash": run["source_hash"], "source_hash_version": run["source_hash_version"],
+        "rendition_hash": None, **overrides,
+    }
+
+
+def test_s4_3_unchanged_decode_failure_is_skipped_without_decoding(broken, writes, monkeypatch):
+    loc.localize_image(1, broken, _ctx(_FakeDetector()), max_regions=10)
+    first = writes[0][0]
+    monkeypatch.setattr(loc, "get_current_run", lambda _iid: _terminal_current(first))
+    monkeypatch.setattr(loc, "decode_for_localization",
+                        lambda _p: pytest.fail("an unchanged broken file must not be decoded"))
+    out = loc.localize_image(1, broken, _ctx(_FakeDetector()), max_regions=10)
+    assert out.status == "terminal_error" and out.unchanged is True
+    assert len(writes) == 1
+
+
+@pytest.mark.parametrize("overrides", [
+    {"source_hash": "changed"},
+    {"source_hash_version": "v0"},
+    {"detector_config_hash": "other"},
+    {"source_hash": None},          # e.g. a legacy-imported terminal row
+    {"error_code": "file_missing"},
+])
+def test_s4_3_decode_failure_is_retried_when_anything_differs(broken, writes, monkeypatch, overrides):
+    loc.localize_image(1, broken, _ctx(_FakeDetector()), max_regions=10)
+    first = writes[0][0]
+    monkeypatch.setattr(loc, "get_current_run", lambda _iid: _terminal_current(first, **overrides))
+    out = loc.localize_image(1, broken, _ctx(_FakeDetector()), max_regions=10)
+    assert out.unchanged is False and len(writes) == 2
+
+
+# ---------------------------------------------------------------------------
 # Runner: phase status (AC-11), isolation (AC-15), summary (AC-16)
 # ---------------------------------------------------------------------------
 

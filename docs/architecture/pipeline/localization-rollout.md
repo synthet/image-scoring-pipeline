@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-09-23T00:00:00Z
+timestamp: 2026-09-27T00:00:00Z
 okf_version: 0.1
 status: proposed
 ---
@@ -38,7 +38,7 @@ sections further down are unchanged, so read them together with this table.
 | 1. Control plane | Done (#346 and follow-ups) | #368 (delegated parent/child, deferred) | Spec 02 adds a third edge kind, **attempt-before**, for `localization` → `scoring` (#407). |
 | 2. Normalized persistence | Schema, import and reader landed; **legacy import not run** (B3) | #414 | Addendum: region-linked **keypoints** and **mask** artifacts (#426). |
 | 3. Rendition and crop service | Code complete; detector benchmark done (#377) | #406 | Generalized: one orientation-baked ~2048 px **inference rendition** for *every* phase, not only localization (spec 01). Fixes the thumbnail orientation gap noted in this stage (#418). |
-| 4. Shadow `localization` | Slice 1 merged (#395); five open questions, M0 | #414, #399, #379 | Adds the **YOLO → COCO-animal → small-box refine** cascade as a provider (#408, spec 03) and, later, the keypoint and mask providers (#426). **Primary-region choice** among several boxes becomes a versioned consumer policy (proposal on #408). |
+| 4. Shadow `localization` | Slice 1 merged (#395); M0 questions decided 2026-09-27 (#414) | #414, #399, #379 | Adds the **YOLO → COCO-animal → small-box refine** cascade as a provider (#408, spec 03) and, later, the keypoint and mask providers (#426). **Primary-region choice** among several boxes becomes a versioned consumer policy (proposal on #408). |
 | 5. BioCLIP on regions | Not started | spec 06, #413, #422 | **Merged with stage 7:** legacy outcomes are imported, not recomputed. Species gains list gaps, abstention and burst/folder suggestions (#422); taxa beyond birds follow after a benchmark (#413). |
 | 6. Crop/fusion experiments | Not started | #409, #423 | **Region IQA leaves the shadow-only experiment** and becomes scoring design: fusion v2 with `subject_mode`, gated on ≥ 300 labelled bursts (#415, spec 04 AC-22). Named per-criterion evidence stays research JSONL (#423). Captions, accessibility and Jev stay shadow, as designed here. |
 | 7. Repair and backfill | Not started | merged into 5; spec 04 crop-only backfill | The only new backfill is **crop scores** for images with a current box (about 41k), after the cascade is benchmarked. The "no unbenchmarked full-library rescan" invariant holds. |

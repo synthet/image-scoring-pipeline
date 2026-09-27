@@ -4,7 +4,7 @@ title: "Localization stage 4, slice 1: work status (#387)"
 description: Where the shadow localization phase slice stands when work paused. Covers what is built, the decisions taken during implementation, test evidence, open questions, blockers and next actions.
 resource: docs/planning/localization-stage4-slice1-status.md
 tags: [planning, localization, bird-detection, pipeline, status]
-timestamp: 2026-09-23T00:00:00Z
+timestamp: 2026-09-27T00:00:00Z
 okf_version: 0.1
 ---
 
@@ -89,17 +89,22 @@ The phase is **off by default** and **shadow-only**:
 9. **`/api/pipeline/submit` gets a `localization` entry branch now**, so enabling the phase
    later needs only a config change.
 
-## Open questions
+## Open questions (answered 2026-09-27, #414)
 
-1. Is migration 0035 acceptable, given that the issue assumed no migration (decision 1)?
-2. Should a failed `rawpy` decode caused by the environment (the module is not installed)
-   be retryable rather than terminal (decision 4)?
-3. Should AC-14's reuse rule also cover `terminal_error`? Today a terminal run has no
-   rendition hash, so it is always attempted again.
-4. Should the localization job end as `failed` when it contains retryable per-image
-   failures? The rollout says the stage "remains failed". This slice completes the job and
-   reports the failures in the summary, the same way `bird_species` does.
-5. The 2048 px threshold for embedded JPEGs is still the proposed value. Keep it?
+Every recommendation in the [decision register](../specs/pipeline-streamlining/07-blockers-and-decisions.md#31-rollout-stage-4-414)
+was accepted.
+
+1. **Migration 0035: accepted** as merged.
+2. **Missing `rawpy` is retryable.** `_decode_raw` raises `DecodeEnvironmentError`, and the run
+   is `retryable_error` with `error_code = environment_missing`. A genuine decode failure is
+   still `terminal_error` / `decode_error`. This replaces decision 4.
+3. **An unchanged decode failure is reused.** A `decode_error` run now stores the source hash.
+   Before decoding, `localize_image` skips an image whose current run is a `decode_error` with
+   the same detector config and source hash. A run without a hash, such as a legacy import,
+   never matches.
+4. **The job completes** and reports per-image failures in its summary. Revisit this when the
+   stage 7 repair lane exists.
+5. **Keep 2048 px** for now. #416 measures decode cost per route.
 
 ## Blockers
 
@@ -132,18 +137,20 @@ The phase is **off by default** and **shadow-only**:
 
 - [ ] Run `-m postgres --deselect` for the #336 hang on both `master` and this branch, and
       compare the lists of failing tests.
-- [ ] File an issue for the `truncate_app_tables` boolean-into-smallint rollback
+- [x] File an issue for the `truncate_app_tables` boolean-into-smallint rollback (#399, fixed in #427)
       (Blocker 2). The fix is probably `VALUES (..., 1, ...)` and making the bare `except`
       visible.
-- [ ] Answer the open questions, especially 1 (the migration) and 4 (the job status).
+- [x] Answer the open questions, especially 1 (the migration) and 4 (the job status).
 - [ ] Open a PR with `Closes #387` and move the card to **Review**.
 - [ ] Separate issue: `/task-claim` / `backlog_stage.py` cannot find #387 on the board. The
       item exists, but `gh project item-list --limit 300` does not return it, so the Stage
       had to be set directly by item id.
-- [ ] Separate finding, not fixed here: in the production `bird_species` path,
+- [x] Separate finding, fixed in #414: in the production `bird_species` path,
       `open_image_for_ml`'s `rawpy` fallback uses libraw's default rotation, and the result
       then goes through `bake_orientation`. That could rotate a portrait NEF twice. It only
-      affects files where embedded-preview extraction fails.
+      affects files where embedded-preview extraction fails. Confirmed on a portrait Z6ii NEF:
+      the rawpy fallback came back landscape. `thumbnails.open_oriented_for_ml` now skips the
+      bake on the rawpy route.
 - [ ] Work left in `.agent/scratch/localization-stage4` (an older, broader draft on
       `feat/localization-stage4`, not committed) has been superseded by this branch. It can
       be discarded once this slice is merged.

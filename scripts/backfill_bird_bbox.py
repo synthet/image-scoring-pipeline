@@ -128,7 +128,7 @@ def fetch_candidates(*, folder: str = "", limit: int = 0, all_null: bool = False
 def _decode_oriented(row: dict) -> Tuple[int, Optional[Any], Optional[str]]:
     """Decode + bake orientation. Returns (image_id, pil_image_or_None, error_or_None)."""
     from modules.bird_species import _resolve_inference_path
-    from modules.thumbnails import bake_orientation, open_image_for_ml
+    from modules.thumbnails import open_oriented_for_ml
 
     image_id = int(row["id"])
     file_path = row.get("file_path") or ""
@@ -136,12 +136,7 @@ def _decode_oriented(row: dict) -> Tuple[int, Optional[Any], Optional[str]]:
         inference_path = _resolve_inference_path(row, file_path)
         if not inference_path or not os.path.exists(inference_path):
             return image_id, None, "file_missing"
-        img = open_image_for_ml(inference_path).convert("RGB")
-        try:
-            img = bake_orientation(img, inference_path)
-        except Exception as orient_err:  # noqa: BLE001 — orientation is best-effort
-            logger.debug("bake_orientation failed for image_id=%s: %s", image_id, orient_err)
-        return image_id, img, None
+        return image_id, open_oriented_for_ml(inference_path), None
     except Exception as exc:  # noqa: BLE001 — continue batch
         return image_id, None, f"decode_error: {exc}"
 

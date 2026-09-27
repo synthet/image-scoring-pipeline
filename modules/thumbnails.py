@@ -547,6 +547,26 @@ def open_rendition_for_ml(read_path: str):
     return img, route
 
 
+def open_oriented_for_ml(read_path: str) -> Image.Image:
+    """:func:`open_image_for_ml` as upright RGB, orientation applied exactly once.
+
+    ``rawpy``'s postprocess already applies libraw's rotation, so ``bake_orientation`` on
+    that route would rotate a portrait RAW a second time. Every other route is baked.
+    Orientation is best-effort: a failure logs and returns the unrotated pixels.
+    """
+    from modules.rendition import DecodeRoute
+
+    img, route = open_rendition_for_ml(read_path)
+    img = img.convert("RGB")
+    if route is DecodeRoute.RAW_RAWPY:
+        return img
+    try:
+        return bake_orientation(img, read_path)
+    except Exception as orient_err:  # noqa: BLE001 — orientation is best-effort
+        logger.debug("bake_orientation failed for %s: %s", read_path, orient_err)
+        return img
+
+
 def _thumb_hash(image_path):
     return hashlib.md5(str(image_path).encode('utf-8')).hexdigest()
 

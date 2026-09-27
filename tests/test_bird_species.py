@@ -577,12 +577,8 @@ def test_classify_sets_detector_unavailable_when_ensure_returns_none(monkeypatch
     monkeypatch.setattr(clf, "_ensure_detector", lambda: None)
     monkeypatch.setattr(clf, "load_model", lambda: None)
     monkeypatch.setattr(
-        "modules.thumbnails.open_image_for_ml",
+        "modules.thumbnails.open_oriented_for_ml",
         lambda path: Image.new("RGB", (64, 64)),
-    )
-    monkeypatch.setattr(
-        "modules.thumbnails.bake_orientation",
-        lambda img, path: img,
     )
 
     class _Feat:
@@ -765,8 +761,7 @@ def _patch_bbox_only_batch(monkeypatch, rows, *, species_complete=True):
     monkeypatch.setattr(bs, "_load_default_species", lambda: ["American Robin"])
     monkeypatch.setattr(bs, "_resolve_inference_path", lambda row, fp: fp)
     monkeypatch.setattr(bs.os.path, "exists", lambda p: True)
-    monkeypatch.setattr("modules.thumbnails.open_image_for_ml", lambda p: Image.new("RGB", (40, 30)))
-    monkeypatch.setattr("modules.thumbnails.bake_orientation", lambda img, p: img)
+    monkeypatch.setattr("modules.thumbnails.open_oriented_for_ml", lambda p: Image.new("RGB", (40, 30)))
 
     monkeypatch.setattr(_db, "get_images_with_keyword", lambda **kw: rows)
     monkeypatch.setattr(_db, "update_job_status", lambda *a, **kw: None)
