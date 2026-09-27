@@ -156,6 +156,8 @@ POSTGRES_APP_TABLES = (
     # but naming them keeps the list honest as the schema grows.
     "image_localization_runs",
     "image_regions",
+    "image_keypoint_runs",
+    "image_region_keypoints",
 )
 
 # Default visual-embedding catalog row (re-applied after TRUNCATE in tests).
@@ -1423,5 +1425,45 @@ def _init_db_transaction():
                 "CREATE INDEX IF NOT EXISTS ix_ir_class_confidence "
                 "ON image_regions (object_class, confidence DESC);"
             )
+
+            # Region-linked keypoints (#426). Mirrors migrations/versions/0036_region_keypoints.py.
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS image_keypoint_runs (
+                id                    BIGSERIAL PRIMARY KEY,
+                region_id             BIGINT NOT NULL REFERENCES image_regions(id) ON DELETE CASCADE,
+                provider_key          TEXT NOT NULL,
+                provider_version      TEXT NOT NULL,
+                provider_config_hash  TEXT NOT NULL,
+                pass                  TEXT NOT NULL,
+                status                TEXT NOT NULL,
+                error_code            TEXT,
+                error_detail          TEXT,
+                is_current            BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT ck_ikr_status CHECK (status IN (
+                    'detected', 'no_keypoints', 'retryable_error', 'terminal_error'
+                ))
+            );
+            """)
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_ikr_current_region_provider "
+                "ON image_keypoint_runs (region_id, provider_key) WHERE is_current;"
+            )
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS image_region_keypoints (
+                id               BIGSERIAL PRIMARY KEY,
+                keypoint_run_id  BIGINT NOT NULL REFERENCES image_keypoint_runs(id) ON DELETE CASCADE,
+                name             TEXT NOT NULL,
+                x                DOUBLE PRECISION NOT NULL,
+                y                DOUBLE PRECISION NOT NULL,
+                confidence       DOUBLE PRECISION,
+                visible          BOOLEAN NOT NULL,
+                CONSTRAINT ck_irk_range CHECK (x >= 0 AND x <= 1 AND y >= 0 AND y <= 1),
+                CONSTRAINT ck_irk_confidence CHECK (
+                    confidence IS NULL OR (confidence >= 0 AND confidence <= 1)
+                ),
+                CONSTRAINT ux_irk_run_name UNIQUE (keypoint_run_id, name)
+            );
+            """)
 
             logger.info("PostgreSQL schema initialization completed.")

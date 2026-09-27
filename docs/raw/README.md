@@ -23,4 +23,5 @@ Drop articles, papers, PDFs, images, and other reference material here. Use `/wi
 | [picked-advisory-forensics-2026-06-21.json](picked-advisory-forensics-2026-06-21.json) | Agent cull picked-advisory forensics |
 | [2026-08-05-bird-crop-closeout-cursor.md](2026-08-05-bird-crop-closeout-cursor.md) | Cursor bird-crop study close-out session scratch (2026-08-05) |
 | [2026-08-05-student-scorer-e2-cursor.md](2026-08-05-student-scorer-e2-cursor.md) | Cursor student-scorer E2 session scratch (2026-08-05) |
+| [2026-09-27-visual-domain-router-design.md](2026-09-27-visual-domain-router-design.md) | Visual domain router and specialist image analysis design proposal (user-provided, 2026-09-27); ingested as [planning/visual-domain-router.md](../planning/visual-domain-router.md) |
 | [2026-08-01-student-scorer-e2-claude.md](2026-08-01-student-scorer-e2-claude.md) | Claude E2 P0 render → train session scratch (2026-08-01→05) |
