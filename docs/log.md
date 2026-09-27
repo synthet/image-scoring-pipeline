@@ -691,3 +691,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-27] update | Localization stage 4 M0 decisions
 
 - 2026-09-27: updated — [stage 4 slice 1 status](planning/localization-stage4-slice1-status.md), [decision register §3.1](specs/pipeline-streamlining/07-blockers-and-decisions.md) and the [rollout status table](architecture/pipeline/localization-rollout.md): S4-1..S4-5 accepted, S4-2/S4-3 implemented, bird_species rawpy double rotation fixed, legacy import run: 76,475 current runs (#414).
+
+## [2026-09-27] created | Region-linked eye keypoints (#426)
+
+- 2026-09-27: created — [eye keypoint spot check](reports/eye-keypoint-spot-check-2026-09-27.md): shadow `bird_head_pose` provider (eye-pose-v0, top-down on the primary region), migration 0036 (`image_keypoint_runs`, `image_region_keypoints`), library backfill (21,380 candidates, 20,165 detected), judge-panel + Jev spot check; consumer eye threshold 0.8; rollout stage 2 addendum row updated in [localization rollout](architecture/pipeline/localization-rollout.md); indexed in [reports/INDEX.md](reports/INDEX.md).
