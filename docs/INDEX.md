@@ -101,6 +101,7 @@ Full categorized index for **image-scoring-backend**. Prefer small linked pages 
 | [MODEL_RECOMMENDATIONS_PIPELINES.md](MODEL_RECOMMENDATIONS_PIPELINES.md) | Canonical pipeline model roadmap (ARNIQA, DINOv2, SigLIP2, RAM++; CLIP/OpenCLIP alternate) for scoring, culling, keywords. |
 | [planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md](planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md) | Planned model stack changes. |
 | [planning/human-culling-labels.md](planning/human-culling-labels.md) | Human culling label set (#415): sampling design, label semantics, `human_labels` storage, evaluation plan and status. |
+| [planning/visual-domain-router.md](planning/visual-domain-router.md) | Visual domain router + specialist analysis proposal, reconciled against the scene route and subject-aware specs (SR-1 conflict, macro gap). |
 | [reports/reference-culling-shadow-scores-2026-09-25.md](reports/reference-culling-shadow-scores-2026-09-25.md) | Reference culling scores as shadow models across the library: storage by type, normalisation, agreement analysis. |
 | [planning/reference-workflow-improvement-candidates.md](planning/reference-workflow-improvement-candidates.md) | Clean-room candidates for versioned evidence, deterministic reranking, uncertainty, sequence review, calibration, caches, and diagnostics. |
 | [research/STUDENT_SCORER_STUDY.md](research/STUDENT_SCORER_STUDY.md) | Ensemble → single multi-head student research program. |
@@ -143,6 +144,7 @@ Full categorized index for **image-scoring-backend**. Prefer small linked pages 
 | [features/planned/INDEX.md](features/planned/INDEX.md) | Planned feature index. |
 | [specs/agent-assisted-cull-review/INDEX.md](specs/agent-assisted-cull-review/INDEX.md) | Agent cull review implementation spec + worklog. |
 | [specs/pipeline-streamlining/INDEX.md](specs/pipeline-streamlining/INDEX.md) | Pipeline streamlining specs (rendition, phase graph, detector cascade, subject-aware scoring, scene route, species) + roadmap. |
+| [specs/remote-gpu-worker/INDEX.md](specs/remote-gpu-worker/INDEX.md) | Remote GPU worker specs (architecture, worker protocol, XMP outbox, phase decoupling, rollout) for #435. |
 | [features/planned/ui-pipeline-redesign.md](features/planned/ui-pipeline-redesign.md) | Pipeline UI redesign plan. |
 | [features/planned/import-discovery-alignment.md](features/planned/import-discovery-alignment.md) | Import/discovery alignment plan. |
 | [features/planned/image-identity-and-hashing-improvements.md](features/planned/image-identity-and-hashing-improvements.md) | Image identity and hashing improvements. |

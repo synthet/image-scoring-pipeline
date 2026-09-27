@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-09-27] ingest | Visual domain router proposal
+
+- 2026-09-27: ingested — [visual domain router and specialist analysis](planning/visual-domain-router.md) from the user-provided design ([raw](raw/2026-09-27-visual-domain-router-design.md)): section map onto specs 02–06, #415, #423, #424; SR-1 multi-label conflict; new items: macro focal-plane domain, generic subject→part model, per-measurement missingness. Backlinks from [subject-aware culling evidence](planning/subject-aware-culling-evidence.md) and [spec 05](specs/pipeline-streamlining/05-scene-route.md); rows in [planning/INDEX.md](planning/INDEX.md), [INDEX.md](INDEX.md), [raw/README.md](raw/README.md).
+
 ## [2026-09-27] ingest | Session transcript digests (2026-07–09)
 
 Added docs/reports/SESSION_TRANSCRIPT_DIGESTS.md hub plus four digest pages (bird-detect-v0 integration, CLI judge labelling, Postgres truncate #399, gallery contract CI #164/#177). No private paths or transcript bodies in git.
@@ -691,6 +695,10 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-27] update | Localization stage 4 M0 decisions
 
 - 2026-09-27: updated — [stage 4 slice 1 status](planning/localization-stage4-slice1-status.md), [decision register §3.1](specs/pipeline-streamlining/07-blockers-and-decisions.md) and the [rollout status table](architecture/pipeline/localization-rollout.md): S4-1..S4-5 accepted, S4-2/S4-3 implemented, bird_species rawpy double rotation fixed, legacy import run: 76,475 current runs (#414).
+
+## [2026-09-27] create | Remote GPU worker specs
+
+- 2026-09-27: created — [remote GPU worker spec hub](specs/remote-gpu-worker/INDEX.md) with [01 architecture](specs/remote-gpu-worker/01-architecture.md), [02 worker protocol](specs/remote-gpu-worker/02-worker-protocol.md), [03 XMP outbox](specs/remote-gpu-worker/03-xmp-outbox.md), [04 phase decoupling](specs/remote-gpu-worker/04-phase-decoupling.md), [05 rollout and testing](specs/remote-gpu-worker/05-rollout-and-testing.md); linked from [INDEX.md](INDEX.md) (#435, #436).
 
 ## [2026-09-27] created | Region-linked eye keypoints (#426)
 
