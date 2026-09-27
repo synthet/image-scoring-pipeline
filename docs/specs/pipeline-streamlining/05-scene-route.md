@@ -118,6 +118,8 @@ change for keywords is #420.
 ## Open questions
 
 Recommendations and deadlines: [07 — decision register](07-blockers-and-decisions.md#3-decision-register) (SR-1 to SR-4).
+The multi-label counter-proposal (and macro as a routed domain) is reconciled in
+[visual-domain-router.md](../../planning/visual-domain-router.md#conflict-multi-label-routing-sr-1).
 
 1. Single-label, or multi-label for mixed scenes such as people with architecture? The proposal is
    to store all probabilities and route on the top label.

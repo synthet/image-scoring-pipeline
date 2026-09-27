@@ -104,7 +104,7 @@ on `feat/414-localization-m0`; S4-1, S4-4 and S4-5 keep the current behavior.
 
 | # | Question | Recommendation | Decide by |
 |---|---|---|---|
-| SR-1 | Single-label or multi-label? | **Store all probabilities and route on the top label.** Multi-label adds nothing to routing. | M2 |
+| SR-1 | Single-label or multi-label? | **Store all probabilities and route on the top label.** Multi-label adds nothing to routing. **Revisit** when a second specialist workflow that the detector cascade doesn't cover (for example macro focal-plane analysis) gets a spec; decide then on the per-label calibrated thresholds from the AC-3 benchmark. See [visual-domain-router.md](../../planning/visual-domain-router.md#conflict-multi-label-routing-sr-1). | M2 |
 | SR-2 | CLIP ViT-B/32 or OpenCLIP ViT-L/14? | **Data. Benchmark both**, and report what fraction of the library has each vector. L/14 exists only where two-level culling ran. | M2 |
 | SR-3 | Route `people` to a person detector? | **Later, as a separate spec.** Out of scope until wildlife routing is proven. | after M4 |
 | SR-4 | Build on vectors computed from unrotated thumbnails? | **Fix #418 first**, or benchmark on corrected vectors. Otherwise portrait RAWs are classified sideways. | M2 |

@@ -479,11 +479,15 @@ def localize_image(
     *,
     max_regions: int,
     job_id: int | None = None,
+    decoded: Decoded | None = None,
 ) -> ImageOutcome:
     """Run one image through decode + detection and persist the attempt.
 
     Every path writes exactly one current run, except the unchanged skips (AC-14, and
     S4-3 for a decode failure), which write nothing. Database errors propagate to the caller.
+
+    ``decoded`` lets a caller that already decoded ``file_path`` (e.g. the keypoint
+    backfill, which needs the same pixels afterwards) skip a second decode.
     """
     import time
 
@@ -516,7 +520,8 @@ def localize_image(
 
     t0 = time.perf_counter()
     try:
-        decoded = decode_for_localization(file_path)
+        if decoded is None:
+            decoded = decode_for_localization(file_path)
     except DecodeEnvironmentError as exc:
         detail = redact_error_detail(str(exc))
         run.update(status=STATUS_RETRYABLE, is_retryable=True,

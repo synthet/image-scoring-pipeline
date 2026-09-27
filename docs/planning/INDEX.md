@@ -72,6 +72,7 @@ Aligned with root [`TODO.md`](../../TODO.md) **Highest-Impact Next Steps**. Tier
 | [subject-evidence-model-roles.md](models/subject-evidence-model-roles.md) | Functional requirements for detector, bird/mammal keypoints, subject mask and embedding roles |
 | [human-culling-labels.md](human-culling-labels.md) | **In progress** (#415) — stratified, weighted ~300-group human culling label set: blind pick/keep/reject + best frame, `human_labels` schema, evaluation plan; 20/302 done |
 | [reference-workflow-improvement-candidates.md](reference-workflow-improvement-candidates.md) | **Proposal** — versioned evidence, uncertainty-aware ranking, editable sequence boundaries, close-call review, calibration, caches, and diagnostics |
+| [visual-domain-router.md](visual-domain-router.md) | **Proposal ingest** — multi-label visual domain router + specialist (bird / animal / macro) analysis mapped onto specs 03–06, #423, #424; SR-1 conflict; new: macro focal-plane, generic part model, explicit missingness |
 
 ## Integrations (research)
 
