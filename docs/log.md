@@ -699,3 +699,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-27] create | Remote GPU worker specs
 
 - 2026-09-27: created — [remote GPU worker spec hub](specs/remote-gpu-worker/INDEX.md) with [01 architecture](specs/remote-gpu-worker/01-architecture.md), [02 worker protocol](specs/remote-gpu-worker/02-worker-protocol.md), [03 XMP outbox](specs/remote-gpu-worker/03-xmp-outbox.md), [04 phase decoupling](specs/remote-gpu-worker/04-phase-decoupling.md), [05 rollout and testing](specs/remote-gpu-worker/05-rollout-and-testing.md); linked from [INDEX.md](INDEX.md) (#435, #436).
+
+## [2026-09-27] created | Region-linked eye keypoints (#426)
+
+- 2026-09-27: created — [eye keypoint spot check](reports/eye-keypoint-spot-check-2026-09-27.md): shadow `bird_head_pose` provider (eye-pose-v0, top-down on the primary region), migration 0036 (`image_keypoint_runs`, `image_region_keypoints`), library backfill (21,380 candidates, 20,165 detected), judge-panel + Jev spot check; consumer eye threshold 0.8; rollout stage 2 addendum row updated in [localization rollout](architecture/pipeline/localization-rollout.md); indexed in [reports/INDEX.md](reports/INDEX.md).
