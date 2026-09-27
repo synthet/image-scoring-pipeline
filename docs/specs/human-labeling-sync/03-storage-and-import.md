@@ -14,7 +14,7 @@ status: proposed
 **Epic:** #454 · **Hub:** [INDEX.md](INDEX.md)
 
 All DDL below is **proposed**. Nothing exists until M1 lands:
-- an Alembic migration at the next free revision (`0036` is already claimed by [remote GPU worker M1](../remote-gpu-worker/05-rollout-and-testing.md#milestones));
+- an Alembic migration at the next free revision when M1 starts. Master already has `0036_region_keypoints`, and [remote GPU worker M1](../remote-gpu-worker/05-rollout-and-testing.md#milestones) also plans a migration, so check `migrations/versions/` and `alembic heads` first;
 - the same DDL mirrored in `modules/db_postgres.py`;
 - documented in [DB_SCHEMA.md](../../technical/DB_SCHEMA.md).
 
