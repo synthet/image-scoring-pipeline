@@ -23,6 +23,9 @@ scorer stays shadow-only and unwired from fusion, and no DDL or migration was ap
 | **Repos** | `image-scoring-backend` (work target); `image-scoring-skills` (labelling harness) |
 | **In flight at pause** | Bird-crop Track A sequential classical measures; student-scorer full E2 seed-42 train |
 
+Later **transcript digests** (no raw exports in git) are indexed at
+[SESSION_TRANSCRIPT_DIGESTS.md](SESSION_TRANSCRIPT_DIGESTS.md).
+
 ## The records
 
 | Track | Agent / model | Record | Covers |
