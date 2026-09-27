@@ -695,3 +695,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-27] create | Remote GPU worker specs
 
 - 2026-09-27: created — [remote GPU worker spec hub](specs/remote-gpu-worker/INDEX.md) with [01 architecture](specs/remote-gpu-worker/01-architecture.md), [02 worker protocol](specs/remote-gpu-worker/02-worker-protocol.md), [03 XMP outbox](specs/remote-gpu-worker/03-xmp-outbox.md), [04 phase decoupling](specs/remote-gpu-worker/04-phase-decoupling.md), [05 rollout and testing](specs/remote-gpu-worker/05-rollout-and-testing.md); linked from [INDEX.md](INDEX.md) (#435, #436).
+
+## [2026-09-27] update | Spec 01 rendition cache, slice 1
+
+- 2026-09-27: updated — [spec 01](specs/pipeline-streamlining/01-rendition.md): slice 1 status (`modules/rendition_cache.py`, AC-1/4/5/6 for RAW) and measurements on 120 Z8 bird frames: hit 0.021 s vs full decode 0.46 s p50; detector at 2048 px keeps 118/120 birds (box IoU median 0.986); eye keypoints shift 0.23% of the region diagonal (#406).
