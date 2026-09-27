@@ -703,3 +703,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-27] created | Region-linked eye keypoints (#426)
 
 - 2026-09-27: created — [eye keypoint spot check](reports/eye-keypoint-spot-check-2026-09-27.md): shadow `bird_head_pose` provider (eye-pose-v0, top-down on the primary region), migration 0036 (`image_keypoint_runs`, `image_region_keypoints`), library backfill (21,380 candidates, 20,165 detected), judge-panel + Jev spot check; consumer eye threshold 0.8; rollout stage 2 addendum row updated in [localization rollout](architecture/pipeline/localization-rollout.md); indexed in [reports/INDEX.md](reports/INDEX.md).
+
+## [2026-09-27] update | Localization stage 5 slice 1
+
+- 2026-09-27: updated — [localization rollout](architecture/pipeline/localization-rollout.md) stage 5 row: `bird_species.use_regions` slice (#444). Read-only checks: normalized projection equals `images.bird_bbox` for all 76,475 images; on one folder region-mode species matched the legacy path and stored species on 283/283 bird-tagged images (181 region, 102 full frame) at 0.56 vs 0.83 s/image.

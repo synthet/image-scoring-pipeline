@@ -253,6 +253,9 @@
     "device": "auto",
     "fail_open": true
   },
+  "bird_species": {
+    "use_regions": false
+  },
   "localization": {
     "enabled": false,
     "max_regions_per_class": 10,

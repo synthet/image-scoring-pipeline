@@ -19,6 +19,57 @@ logger = logging.getLogger(__name__)
 
 BIRD_SPECIES_RUNNER_VERSION = "1.0.0"
 
+#: ``image_keywords.source`` for species predicted from a localization region crop (stage 5,
+#: #444). The legacy path (embedded detector crop or full frame) keeps ``"bioclip"``.
+SOURCE_BIOCLIP = "bioclip"
+SOURCE_BIOCLIP_REGION = "bioclip_region"
+
+USE_REGIONS_KEY = "bird_species.use_regions"
+
+_PRIMARY_REGION_SQL = """
+    SELECT r.id AS run_id, r.status, g.id AS region_id, g.x1, g.y1, g.x2, g.y2
+    FROM image_localization_runs r
+    LEFT JOIN image_regions g ON g.localization_run_id = r.id AND g.rank = 0
+    WHERE r.image_id = ? AND r.detector_key = 'bird' AND r.is_current
+"""
+
+
+def use_regions_enabled() -> bool:
+    """``bird_species.use_regions``; default ``False`` keeps the embedded-detector path."""
+    from modules import config
+
+    return bool(config.get_config_value(USE_REGIONS_KEY, default=False))
+
+
+def species_input_for_image(image_id: int) -> dict:
+    """Choose the BioCLIP input from the image's current ``bird`` localization run.
+
+    Stage 5 of the localization rollout: species consumes localization instead of running
+    its own YOLO. Returns ``{"mode", "region", "run_id", "region_id"}`` where ``mode`` is
+
+    * ``"region"``     -- a ``detected`` run: classify a padded crop of the rank-0 region
+      (``region`` is its normalized ``(x1, y1, x2, y2)``);
+    * ``"full_frame"`` -- a ``no_detection`` run: localization already answered, classify the
+      whole frame without re-detecting;
+    * ``"legacy"``     -- no current run, an error/disabled run, or a failed lookup: the embedded
+      detector path, unchanged (fail open).
+    """
+    legacy = {"mode": "legacy", "region": None, "run_id": None, "region_id": None}
+    try:
+        row = db.get_connector().query_one(_PRIMARY_REGION_SQL, (int(image_id),))
+    except Exception:  # noqa: BLE001 -- a lookup failure must not cost the image its species
+        logger.warning("bird_species: region lookup failed for image_id=%s", image_id, exc_info=True)
+        return legacy
+    if not row:
+        return legacy
+    if row.get("status") == "detected" and row.get("region_id") is not None:
+        return {"mode": "region", "region": (float(row["x1"]), float(row["y1"]), float(row["x2"]), float(row["y2"])),
+                "run_id": row["run_id"], "region_id": row["region_id"]}
+    if row.get("status") == "no_detection":
+        return {"mode": "full_frame", "region": None, "run_id": row["run_id"], "region_id": None}
+    return legacy
+
+
 # Default candidate species list (common North American names)
 _DEFAULT_SPECIES_LIST_PATH = Path(__file__).resolve().parent.parent / "data" / "bird_species_list.txt"
 
@@ -161,6 +212,8 @@ class BioCLIPClassifier:
         self.detector = None
         self._detector_state: str | None = None
         self.last_bbox: dict | None = None
+        # Crop-only helper for region mode; never loads a model.
+        self._region_cropper = None
 
     def load_model(self):
         """Lazily load BioCLIP 2. Call once before running a batch."""
@@ -220,15 +273,33 @@ class BioCLIPClassifier:
             self._detector_state = "disabled"
             return None
 
+    def _crop_region(self, img, region):
+        """Crop ``img`` to a normalized region with the detector's configured padding."""
+        from modules.bird_detection import BirdDetector
+
+        if self._region_cropper is None:
+            self._region_cropper = BirdDetector(device="cpu")
+        w, h = img.size
+        box = {"x1": int(round(region[0] * w)), "y1": int(round(region[1] * h)),
+               "x2": int(round(region[2] * w)), "y2": int(round(region[3] * h))}
+        return self._region_cropper.crop_to_box(img, box)
+
     def classify(
         self,
         image_path: str,
         candidate_species: list[str],
         threshold: float = 0.1,
         top_k: int = 1,
+        region: tuple[float, float, float, float] | None = None,
+        use_detector: bool = True,
     ) -> list[tuple[str, float]]:
         """
         Classify a single image against candidate_species.
+
+        ``region`` (normalized display-space ``x1, y1, x2, y2``) classifies a padded crop of that
+        region and skips the embedded detector; ``use_detector=False`` without a region
+        classifies the whole frame. In both cases ``last_bbox`` stays ``None``: the caller owns
+        the box (stage 5, #444).
 
         Returns:
             List of (species_name, confidence) tuples sorted by confidence descending,
@@ -253,20 +324,26 @@ class BioCLIPClassifier:
             # after bird_species classifies — including detector_unavailable).
             from modules.bird_detection import BBOX_NOT_DETECTED, bbox_scan_failed
 
-            detector = self._ensure_detector()
-            if detector is not None:
-                try:
-                    box = detector.detect_best_box(img)
-                    if box:
-                        self.last_bbox = box
-                        img = detector.crop_to_box(img, box)
-                    else:
-                        self.last_bbox = dict(BBOX_NOT_DETECTED)
-                except Exception as det_err:  # noqa: BLE001 — fall back to whole image
-                    logger.debug("Bird detection failed for %s: %s", image_path, det_err)
-                    self.last_bbox = bbox_scan_failed(f"detect_error: {det_err}")
+            if region is not None or not use_detector:
+                # Localization owns the box (stage 5, #444): crop to its region, or keep the
+                # full frame when it found no bird. The embedded detector does not run.
+                if region is not None:
+                    img = self._crop_region(img, region)
             else:
-                self.last_bbox = bbox_scan_failed("detector_unavailable")
+                detector = self._ensure_detector()
+                if detector is not None:
+                    try:
+                        box = detector.detect_best_box(img)
+                        if box:
+                            self.last_bbox = box
+                            img = detector.crop_to_box(img, box)
+                        else:
+                            self.last_bbox = dict(BBOX_NOT_DETECTED)
+                    except Exception as det_err:  # noqa: BLE001 — fall back to whole image
+                        logger.debug("Bird detection failed for %s: %s", image_path, det_err)
+                        self.last_bbox = bbox_scan_failed(f"detect_error: {det_err}")
+                else:
+                    self.last_bbox = bbox_scan_failed("detector_unavailable")
 
             img_tensor = self.preprocess(img).unsqueeze(0).to(self.device)
 
@@ -448,9 +525,11 @@ class BirdSpeciesRunner:
             log(f"Skipped (file not found): {os.path.basename(file_path)}", "WARNING")
             return 0, 1
 
+        choice = species_input_for_image(int(row["id"])) if use_regions_enabled() else {"mode": "legacy"}
         try:
             predictions = self.classifier.classify(
-                inference_path, species_list, threshold=threshold, top_k=top_k
+                inference_path, species_list, threshold=threshold, top_k=top_k,
+                region=choice.get("region"), use_detector=choice["mode"] == "legacy",
             )
 
             try:
@@ -462,8 +541,15 @@ class BirdSpeciesRunner:
                     exc_info=True,
                 )
 
-            # classify() always sets last_bbox (box, not-detected, or scan-failed).
-            bbox = getattr(self.classifier, "last_bbox", None)
+            if choice["mode"] == "legacy":
+                # classify() always sets last_bbox (box, not-detected, or scan-failed).
+                bbox = getattr(self.classifier, "last_bbox", None)
+            else:
+                # Localization owns the box: keep the legacy column equal to the current
+                # run's projection so the gallery and rescan gates stay consistent.
+                from modules.localization_legacy import read_bird_bbox
+
+                bbox = read_bird_bbox(db.get_connector(), int(row["id"]), prefer_normalized=True)
             if bbox is not None:
                 try:
                     db.update_image_bird_bbox(int(row["id"]), bbox)
@@ -493,8 +579,9 @@ class BirdSpeciesRunner:
                     f"species:{name}".lower(): float(prob)
                     for name, prob in predictions
                 }
+                source = SOURCE_BIOCLIP_REGION if choice["mode"] == "region" else SOURCE_BIOCLIP
                 source_map = {
-                    f"species:{name}".lower(): "bioclip"
+                    f"species:{name}".lower(): source
                     for name, _ in predictions
                 }
                 db.update_image_keywords_for_image(
@@ -510,7 +597,8 @@ class BirdSpeciesRunner:
                     "done",
                     executor_version=BIRD_SPECIES_RUNNER_VERSION,
                 )
-                log(f"{os.path.basename(file_path)}: {', '.join(new_species_kws)}")
+                mode = "" if choice["mode"] == "legacy" else f" [{choice['mode']}]"
+                log(f"{os.path.basename(file_path)}: {', '.join(new_species_kws)}{mode}")
                 return 1, 0
 
             from modules.bird_species_eligibility import mark_species_exhausted
