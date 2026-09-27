@@ -172,6 +172,22 @@ def test_ac14_unchanged_image_keeps_its_current_run(image):
     assert len(_runs(image_id)) == 1
 
 
+def test_s4_3_unchanged_decode_failure_keeps_its_current_run(image, tmp_path):
+    image_id, _ = image
+    bad = tmp_path / "broken.jpg"
+    bad.write_bytes(b"not a jpeg")
+    loc.localize_image(image_id, str(bad), _ctx(_FakeDetector()), max_regions=10)
+    out = loc.localize_image(image_id, str(bad), _ctx(_FakeDetector()), max_regions=10)
+    assert out.status == "terminal_error" and out.unchanged is True
+    (run,) = _runs(image_id)
+    assert run["source_hash"] and run["source_hash_version"]
+
+    # A changed source is attempted again.
+    bad.write_bytes(b"still not a jpeg, but different")
+    loc.localize_image(image_id, str(bad), _ctx(_FakeDetector()), max_regions=10)
+    assert len(_runs(image_id)) == 2
+
+
 def _table_counts():
     conn = db.get_connector()
     tables = [r["table_name"] for r in conn.query(

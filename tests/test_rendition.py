@@ -434,6 +434,32 @@ def test_open_image_for_ml_is_unchanged_for_callers(tmp_path, no_decoders, monke
     assert not isinstance(out, tuple)
 
 
+def test_open_oriented_for_ml_does_not_rotate_rawpy_output_twice(tmp_path, no_decoders, monkeypatch):
+    """libraw already rotated a rawpy decode; baking the source orientation again would
+    turn a portrait RAW back to landscape (#414)."""
+    import numpy as np
+    import rawpy
+
+    class _Raw:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def postprocess(self, **kw):
+            return np.zeros((40, 30, 3), dtype=np.uint8)  # already portrait
+
+    monkeypatch.setattr(rawpy, "imread", lambda p: _Raw())
+    monkeypatch.setattr(no_decoders, "read_orientation", lambda p: 8)
+    assert no_decoders.open_oriented_for_ml(_raw_path(tmp_path)).size == (30, 40)
+
+
+def test_open_oriented_for_ml_bakes_the_embedded_preview(tmp_path, no_decoders, monkeypatch):
+    preview = Image.new("RGB", (40, 30))  # sensor-oriented landscape
+    monkeypatch.setattr(no_decoders, "extract_embedded_jpeg", lambda *a, **k: preview)
+    monkeypatch.setattr(no_decoders, "read_orientation", lambda p: 8)
+    assert no_decoders.open_oriented_for_ml(_raw_path(tmp_path)).size == (30, 40)
+
+
 # ---------------------------------------------------------------------------
 # build_rendition_descriptor
 # ---------------------------------------------------------------------------

@@ -104,26 +104,19 @@ def scan_bird_bbox_only(row: dict, detector) -> dict:
     queue converges instead of re-offering the same image every tick.
     """
     from modules.bird_detection import bbox_scan_failed, bird_bbox_payload
-    from modules.thumbnails import open_image_for_ml
+    from modules.thumbnails import open_oriented_for_ml
 
     file_path = row.get("file_path") or ""
     inference_path = _resolve_inference_path(row, file_path)
     if not inference_path or not os.path.exists(inference_path):
         return bbox_scan_failed("file_missing")
 
+    # Display orientation, so the stored coordinates match the classify path in
+    # ``BioCLIPClassifier.classify``.
     try:
-        img = open_image_for_ml(inference_path).convert("RGB")
+        img = open_oriented_for_ml(inference_path)
     except Exception as exc:  # noqa: BLE001 — record the failure, don't abort the batch
         return bbox_scan_failed(f"decode_error: {exc}")
-
-    # Bake EXIF orientation so the stored coordinates are in display orientation,
-    # matching the classify path in ``BioCLIPClassifier.classify``.
-    try:
-        from modules.thumbnails import bake_orientation
-
-        img = bake_orientation(img, inference_path)
-    except Exception as orient_err:  # noqa: BLE001 — orientation is best-effort
-        logger.debug("bake_orientation failed for %s: %s", inference_path, orient_err)
 
     try:
         return bird_bbox_payload(detector.detect_best_box(img))
@@ -244,22 +237,15 @@ class BioCLIPClassifier:
         """
         import torch
 
-        from modules.thumbnails import open_image_for_ml
+        from modules.thumbnails import open_oriented_for_ml
 
         self.load_model()
         self.last_image_embedding = None
         self.last_bbox = None
         try:
-            img = open_image_for_ml(image_path).convert("RGB")
-
-            # Bake EXIF orientation so detection, the crop, and the persisted bbox
-            # coordinates all share the image's display orientation.
-            try:
-                from modules.thumbnails import bake_orientation
-
-                img = bake_orientation(img, image_path)
-            except Exception as orient_err:  # noqa: BLE001 — orientation is best-effort
-                logger.debug("bake_orientation failed for %s: %s", image_path, orient_err)
+            # Display orientation, so detection, the crop, and the persisted bbox
+            # coordinates all share it.
+            img = open_oriented_for_ml(image_path)
 
             # Localize the bird and crop to its box before classifying. Falls back
             # to the whole image when the detector is unavailable or finds no bird.

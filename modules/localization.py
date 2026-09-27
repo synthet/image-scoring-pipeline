@@ -41,6 +41,7 @@ from modules.rendition import (
     DecodeRoute,
     RenditionDescriptor,
     build_rendition_descriptor,
+    source_identity,
 )
 
 logger = logging.getLogger(__name__)
@@ -213,6 +214,13 @@ class DecodeError(Exception):
     """The source could not be turned into pixels. Terminal for this source identity."""
 
 
+class DecodeEnvironmentError(DecodeError):
+    """The environment, not the source, cannot decode (e.g. ``rawpy`` not installed).
+
+    Retryable: an operator can fix it without the source changing (S4-2).
+    """
+
+
 @dataclass
 class Decoded:
     image: Any
@@ -264,7 +272,7 @@ def _decode_raw(path: str):
     try:
         import rawpy
     except ImportError as exc:
-        raise DecodeError(f"decode_error: rawpy unavailable ({exc})") from exc
+        raise DecodeEnvironmentError(f"environment_missing: rawpy unavailable ({exc})") from exc
     try:
         with rawpy.imread(path) as raw:
             # user_flip=0: orientation is applied below from EXIF, the same way as for the
@@ -331,7 +339,8 @@ def decode_for_localization(path: str) -> Decoded:
 # ---------------------------------------------------------------------------
 
 _CURRENT_RUN_SQL = """
-    SELECT id, status, detector_config_hash, source_hash, rendition_hash
+    SELECT id, status, error_code, detector_config_hash, source_hash, source_hash_version,
+           rendition_hash
     FROM image_localization_runs
     WHERE image_id = ? AND detector_key = ? AND is_current
 """
@@ -359,6 +368,28 @@ def is_unchanged(current: dict[str, Any] | None, config_hash: str, descriptor: R
         current.get("detector_config_hash") == config_hash
         and current.get("source_hash") == descriptor.source_hash
         and current.get("rendition_hash") == descriptor.rendition_hash
+    )
+
+
+def is_unchanged_decode_failure(
+    current: dict[str, Any] | None,
+    config_hash: str,
+    source_hash: str | None,
+    source_hash_version: str | None,
+) -> bool:
+    """True when ``current`` is a decode failure for this exact source (S4-3).
+
+    Lets an unchanged broken file skip the decode instead of failing again on every run.
+    A run without a source hash (e.g. a legacy import) never matches.
+    """
+    return bool(
+        source_hash
+        and current
+        and current.get("status") == STATUS_TERMINAL
+        and current.get("error_code") == "decode_error"
+        and current.get("detector_config_hash") == config_hash
+        and current.get("source_hash") == source_hash
+        and current.get("source_hash_version") == source_hash_version
     )
 
 
@@ -447,8 +478,8 @@ def localize_image(
 ) -> ImageOutcome:
     """Run one image through decode + detection and persist the attempt.
 
-    Every path writes exactly one current run, except AC-14's unchanged skip, which
-    writes nothing. Database errors propagate to the caller.
+    Every path writes exactly one current run, except the unchanged skips (AC-14, and
+    S4-3 for a decode failure), which write nothing. Database errors propagate to the caller.
     """
     import time
 
@@ -471,12 +502,29 @@ def localize_image(
         _finish(run, [])
         return ImageOutcome(status=STATUS_TERMINAL, error_detail="file_missing")
 
+    try:
+        source_hash, source_hash_version = source_identity(file_path)
+    except OSError:  # unreadable: the decode below reports it
+        source_hash = source_hash_version = None
+    current = get_current_run(image_id)
+    if is_unchanged_decode_failure(current, ctx.config_hash, source_hash, source_hash_version):
+        return ImageOutcome(status=STATUS_TERMINAL, unchanged=True)
+
     t0 = time.perf_counter()
     try:
         decoded = decode_for_localization(file_path)
+    except DecodeEnvironmentError as exc:
+        detail = redact_error_detail(str(exc))
+        run.update(status=STATUS_RETRYABLE, is_retryable=True,
+                   error_code="environment_missing", error_detail=detail)
+        _finish(run, [])
+        return ImageOutcome(status=STATUS_RETRYABLE, error_detail=detail,
+                            decode_seconds=time.perf_counter() - t0)
     except DecodeError as exc:
         detail = redact_error_detail(str(exc))
-        run.update(status=STATUS_TERMINAL, error_code="decode_error", error_detail=detail)
+        # The source hash lets the next run skip this file while it is unchanged (S4-3).
+        run.update(status=STATUS_TERMINAL, error_code="decode_error", error_detail=detail,
+                   source_hash=source_hash, source_hash_version=source_hash_version)
         _finish(run, [])
         return ImageOutcome(status=STATUS_TERMINAL, error_detail=detail,
                             decode_seconds=time.perf_counter() - t0)
@@ -494,7 +542,6 @@ def localize_image(
         decode_route=d.decode_route.value,
     )
 
-    current = get_current_run(image_id)
     if current is not None and is_unchanged(current, ctx.config_hash, d):
         return ImageOutcome(status=current["status"], unchanged=True, decode_seconds=decode_seconds)
 
