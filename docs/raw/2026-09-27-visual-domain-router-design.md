@@ -1,3 +1,13 @@
+---
+type: Archive
+title: "Raw source — Visual Domain Router and Specialist Image Analysis (design proposal, 2026-09-27)"
+description: "Immutable user-provided design proposal for a multi-label visual domain router and bird / animal / macro specialist analysis. Ingested into docs/planning/visual-domain-router.md."
+resource: docs/raw/2026-09-27-visual-domain-router-design.md
+tags: [raw, design, routing, scene, localization, evidence, macro]
+timestamp: 2026-09-27T00:00:00Z
+okf_version: 0.1
+---
+
 # Visual Domain Router and Specialist Image Analysis
 
 **Project:** Vexlum Scoring / Driftara Gallery  
