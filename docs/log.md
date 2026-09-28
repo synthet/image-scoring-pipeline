@@ -719,3 +719,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-27] create | Human labeling sync specs
 
 - 2026-09-27: created — [human labeling sync spec hub](specs/human-labeling-sync/INDEX.md) with [01 architecture](specs/human-labeling-sync/01-architecture.md), [02 task and annotation contract](specs/human-labeling-sync/02-task-and-annotation-contract.md), [03 storage and import](specs/human-labeling-sync/03-storage-and-import.md), [04 sync agent and rollout](specs/human-labeling-sync/04-sync-and-rollout.md), epic #454 with milestones #455–#460: backend side of the image-scoring-mobile labeler loop (blind task builder, hub push/pull, append-only import, Alembic adoption of `human_labels`, projection for #415); linked from [INDEX.md](INDEX.md), [planning/INDEX.md](planning/INDEX.md) and [human culling label set](planning/human-culling-labels.md) (#453).
+
+## [2026-09-28] created | Bird detector v1 shadow rescan
+
+- 2026-09-28: created — [v1 shadow rescan report](reports/bird-v1-shadow-rescan-2026-09-28.md): all 35,209 frozen legacy no-detection images rescanned with pinned v1 weights; 16,666 candidate boxes, 18,541 no detections, two missing files. Production `bird_bbox` stayed unchanged. A 36-image stratified visual check found non-bird boxes, so promotion waits for representative owner labels and a validated rule; indexed in [reports/INDEX.md](reports/INDEX.md).
