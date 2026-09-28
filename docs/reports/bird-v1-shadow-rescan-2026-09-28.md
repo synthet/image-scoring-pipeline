@@ -1,7 +1,7 @@
 ---
 type: Report
 title: Bird detector v1 shadow rescan of legacy no-detection results
-description: Complete 35,209-image shadow rescan with bird_detect_v1, owner presence labels on 216 sampled frames, and the quality gate before any bird_bbox promotion.
+description: Complete 35,209-image shadow rescan with bird_detect_v1, owner presence and primary-box labels, and the quality gate before any bird_bbox promotion.
 resource: docs/reports/bird-v1-shadow-rescan-2026-09-28.md
 tags: [report, localization, bird-detection, shadow, quality]
 timestamp: 2026-09-28T00:00:00Z
@@ -59,10 +59,33 @@ The 79 `no_bird` labels on detected photos establish clear false alarms in the s
 
 **Gate remains closed:** no confidence/area rule is supported for production promotion by these labels. A candidate rule needs box-level review and a separate, folder-separated validation sample. `images.bird_bbox` remains unchanged for all 35,209 shadow-rescanned images.
 
+## Owner primary-box review
+
+The owner then judged the **primary v1 box** on all 65 detected photos previously labelled `bird`, using a local page with the whole photo, highlighted box, and enlarged crop. The export matched the frozen image, run, and region IDs exactly: 65 unique rows, no missing or invalid labels. All 144 detected review images still had their current v1 run and the exact production no-bird sentinel. The private box-label CSV has SHA-256 `2da83663ffe040c6a7b0e0ed8511e52bce5269382a71aa3b66c0653a8223b1bf`; neither it nor the photos or IDs is committed.
+
+`Usable` means the primary box contains a bird and frames its visible body usefully. `Poor crop` means a bird is in the box, but it is cut off or framed too loosely. `Wrong target` means no bird is in the box. The 79 detected photos labelled `no_bird` in the blind review cannot have a usable bird box; they are included below as a separate outcome.
+
+| Confidence | Area | Usable | Poor crop | Wrong target | No bird in photo | Unsure |
+|---|---|---:|---:|---:|---:|---:|
+| High | Small | 6 | 5 | 2 | 2 | 1 |
+| High | Medium | 8 | 1 | 0 | 7 | 0 |
+| High | Large | 5 | 1 | 0 | 10 | 0 |
+| Mid | Small | 0 | 6 | 1 | 9 | 0 |
+| Mid | Medium | 0 | 5 | 1 | 10 | 0 |
+| Mid | Large | 2 | 1 | 0 | 13 | 0 |
+| Low | Small | 0 | 3 | 2 | 11 | 0 |
+| Low | Medium | 3 | 5 | 2 | 6 | 0 |
+| Low | Large | 5 | 0 | 0 | 11 | 0 |
+| **Detected sample** | | **29** | **27** | **8** | **79** | **1** |
+
+Only 29 of the deliberately balanced 144 detected review photos had a usable primary box. This fraction is **not an image-proportional library precision estimate**. The high-confidence, small-area cell had six usable boxes among 16, including two wrong targets on photos that do contain birds. The exploratory tighter cut (`confidence >= 0.85`, area `< 0.005`) has three usable boxes and one unsure among just four reviewed examples. The same development labels cannot validate a cut chosen after inspection.
+
+**Decision:** keep all rescanned boxes in shadow. No confidence/area rule has demonstrated a reliable usable-box yield. Improve or screen the detector/box selection first; only then freeze a candidate rule and assess it on new folder-separated photos with uncertainty. No production promotion or eye-keypoint backfill was started.
+
 ## Before promotion
 
-1. Use the owner presence labels as a development set, inspect box correctness on bird-labelled photos, and draft a candidate rule. Keep uncertain and non-bird boxes in shadow.
-2. Validate that rule on a new folder-separated sample, measuring box-level precision and recall with uncertainty. Do not choose a threshold and evaluate it on these same 216 labels.
+1. Use the presence and box labels as a development set to improve the detector or define an independent box-quality screen. Keep uncertain, non-bird, and unusable boxes in shadow.
+2. Freeze any candidate rule before validating it on a new folder-separated sample, measuring box-level precision and recall with uncertainty. Do not choose a threshold and evaluate it on these same 216 labels.
 3. If a subset passes, update only those production `bird_bbox` rows still carrying the frozen no-bird sentinel, and compute eye keypoints for the newly current v1 regions before using them. Preserve the versioned shadow and legacy runs for audit.
 
 The rescan implementation and its two selection-guard tests landed in [PR #464](https://github.com/synthet/image-scoring-pipeline/pull/464).
