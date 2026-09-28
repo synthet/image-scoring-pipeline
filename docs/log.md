@@ -724,3 +724,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 
 - 2026-09-27: updated — `bird_detection.model_file` default is now `bird_detect_v1.pt` (image-scoring-model #3/#4; published beside v0 on synthet/bird-detect-v0). On the #377 cohort v1 finds 81% of the birds v0 missed at 7% false positives on their bird-free frames and halves v0's false positives; [BIRD_SPECIES_WALKTHROUGH](technical/BIRD_SPECIES_WALKTHROUGH.md) updated. Existing `bird_bbox` values and localization runs are not recomputed by this change.
 - 2026-09-27: updated — [cascade benchmark](reports/cascade-benchmark-2026-09-27.md) addendum with `bird_detect_v1` as the first stage: v1 alone 81% recall / 7% false positives on the independent strata; the COCO fallback adds 10 points of recall at 10% false positives, so cascade slice 2 drops in priority.
+
+## [2026-09-28] created | Bird detector v1 shadow rescan
+
+- 2026-09-28: created — [v1 shadow rescan report](reports/bird-v1-shadow-rescan-2026-09-28.md): all 35,209 frozen legacy no-detection images rescanned with pinned v1 weights; 16,666 candidate boxes, 18,541 no detections, two missing files. Production `bird_bbox` stayed unchanged. A 36-image stratified visual check found non-bird boxes, so promotion waits for representative owner labels and a validated rule; indexed in [reports/INDEX.md](reports/INDEX.md).
