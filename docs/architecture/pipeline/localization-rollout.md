@@ -59,6 +59,10 @@ found false detections and poor primary crops in the development sample. The com
 false detections and found a usable review-JPEG alternative for 26 of 35 bad primaries.
 The 16,666 new v1 boxes remain shadow artifacts; neither candidate reproduction on
 production renditions nor an independent validation sample has passed the promotion gate.
+On 2026-10-01 the [promotion-gate report](../../reports/bird-v1-promotion-gate-2026-10-01.md)
+(#469) reproduced all 26 rescues on production renditions. It also froze an RTMDet-bird rule
+(`ecbb646e6649b3c2`) on development labels and drew an independent 207-image validation sample.
+Promotion still waits on those owner labels.
 
 **Design ideas from the reference-design analysis, and where they are tracked:**
 

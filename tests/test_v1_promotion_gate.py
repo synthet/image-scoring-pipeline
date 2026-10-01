@@ -73,11 +73,13 @@ def test_outcome_matches_graded_boxes_by_iou():
 
 def test_select_respects_precision_floor_and_prefers_conservative_ties():
     def r(conf, promoted, usable):
-        return {"params": {"min_coco_conf": conf, "min_iou": 0.5}, "promoted": promoted, "usable": usable,
-                "precision": usable / promoted, "rule_hash": str(conf)}
+        # Dev counts stay small; the weighted estimates (x100) drive selection.
+        return {"params": {"min_coco_conf": conf, "min_iou": 0.5}, "promoted": 20, "usable": 15,
+                "est_promoted": promoted * 100, "est_usable": usable * 100,
+                "weighted_precision": usable / promoted, "rule_hash": str(conf)}
     assert select([r(0.25, 40, 30)]) is None
     assert select([r(0.25, 20, 19), r(0.40, 20, 19)])["params"]["min_coco_conf"] == 0.40
-    assert select([r(0.25, 30, 28), r(0.40, 20, 19)])["usable"] == 28
+    assert select([r(0.25, 30, 28), r(0.40, 20, 19)])["est_usable"] == 2800
 
 
 def test_sampler_is_deterministic_and_caps_folders():

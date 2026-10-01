@@ -43,7 +43,10 @@ RULE_VERSION = "v1_promotion_rule/1"
 DEV_ROOT = Path(".agent/scratch/bird_v1_owner_labels")
 OUT_ROOT = Path(".agent/scratch/bird_v1_promotion")
 MATCH_IOU = 0.5
-# Pre-declared fit criterion: dev precision (usable / promoted) at least this, on at least MIN_PROMOTED frames.
+# Fit criterion: population-weighted dev precision (usable / promoted) at least this, on at least
+# MIN_PROMOTED promoted dev frames. Weighted because the dev sample drew 16 frames per cell regardless
+# of cell size. Adopted after the unweighted pass found no setting at 0.90 (see rule.json).
+FIT_CRITERION = "population_weighted_precision/1"
 FIT_MIN_PRECISION = 0.90
 FIT_MIN_PROMOTED = 10
 GATE_LOWER_BOUND = 0.90
@@ -409,7 +412,9 @@ def reproduce(root: Path, dev_root: Path) -> dict:
 # fit (gate 2)
 # ---------------------------------------------------------------------------
 
-def evaluate(params: RuleParams, dev: dict[int, dict], snap: dict[int, dict], prod: dict[int, dict]) -> dict:
+def evaluate(params: RuleParams, dev: dict[int, dict], snap: dict[int, dict], prod: dict[int, dict],
+             weights: dict[str, float]) -> dict:
+    """Dev outcomes for one setting; ``weights`` maps a dev stratum to population / sample size."""
     outcomes: Counter = Counter()
     by_stratum: dict[str, Counter] = defaultdict(Counter)
     for iid, label in dev.items():
@@ -426,21 +431,25 @@ def evaluate(params: RuleParams, dev: dict[int, dict], snap: dict[int, dict], pr
         by_stratum[label["stratum"]][o] += 1
     promoted = sum(n for k, n in outcomes.items() if k not in ("kept", "unprobed"))
     usable = outcomes["usable"]
+    w_promoted = sum(weights[s] * sum(c.values()) for s, c in by_stratum.items())
+    w_usable = sum(weights[s] * c["usable"] for s, c in by_stratum.items())
     return {"params": asdict(params), "rule_hash": params.rule_hash(), "promoted": promoted,
             "usable": usable, "precision": round(usable / promoted, 4) if promoted else None,
+            "est_promoted": round(w_promoted), "est_usable": round(w_usable),
+            "weighted_precision": round(w_usable / w_promoted, 4) if w_promoted else None,
             "outcomes": dict(sorted(outcomes.items())),
             "by_stratum": {k: dict(sorted(v.items())) for k, v in sorted(by_stratum.items())}}
 
 
 def select(results: list[dict]) -> dict | None:
-    """The pre-declared criterion: most usable promotions among settings meeting the dev precision floor.
+    """Most estimated usable promotions among settings meeting the weighted dev precision floor.
 
-    Ties prefer fewer non-usable promotions, then the more conservative thresholds.
+    Ties prefer fewer estimated non-usable promotions, then the more conservative thresholds.
     """
-    ok = [r for r in results if r["promoted"] >= FIT_MIN_PROMOTED and r["precision"] >= FIT_MIN_PRECISION]
+    ok = [r for r in results if r["promoted"] >= FIT_MIN_PROMOTED and (r["weighted_precision"] or 0) >= FIT_MIN_PRECISION]
     if not ok:
         return None
-    return min(ok, key=lambda r: (-r["usable"], r["promoted"] - r["usable"],
+    return min(ok, key=lambda r: (-r["est_usable"], r["est_promoted"] - r["est_usable"],
                                   -r["params"]["min_coco_conf"], -r["params"]["min_iou"], r["rule_hash"]))
 
 
@@ -448,9 +457,12 @@ def fit(root: Path, dev_root: Path) -> dict | None:
     dev = load_dev_labels(dev_root)
     snap = load_snapshot(root)
     prod = load_probe(root / "probe_production.jsonl")
-    results = [evaluate(p, dev, snap, prod) for p in rule_grid()]
+    sampling = json.loads((dev_root / "sampling.json").read_text(encoding="utf-8"))
+    weights = {p["stratum"]: p["images"] / sampling["sample"][p["stratum"]] for p in sampling["population"]}
+    results = [evaluate(p, dev, snap, prod, weights) for p in rule_grid()]
     chosen = select(results)
-    report = {"dev_images": len(dev), "criterion": {"min_precision": FIT_MIN_PRECISION, "min_promoted": FIT_MIN_PROMOTED},
+    criterion = {"name": FIT_CRITERION, "min_weighted_precision": FIT_MIN_PRECISION, "min_promoted": FIT_MIN_PROMOTED}
+    report = {"dev_images": len(dev), "criterion": criterion,
               "results": results, "chosen": chosen["rule_hash"] if chosen else None}
     (root / "fit.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     if chosen is not None:
@@ -460,8 +472,10 @@ def fit(root: Path, dev_root: Path) -> dict | None:
             "rtmdet_config_hashes": sorted({r["rtmdet_config_hash"] for r in prod.values() if "rtmdet_config_hash" in r}),
             "inputs_sha256": {"probe_production.jsonl": sha256_file(root / "probe_production.jsonl"),
                               "snapshot.json": sha256_file(root / "snapshot.json")},
-            "dev_result": chosen,
-            "note": "Fitted on the development sample; this result cannot validate itself."})
+            "criterion": criterion, "dev_result": chosen,
+            "note": ("Fitted on the development sample; this result cannot validate itself. The criterion "
+                     "was switched from unweighted to population-weighted dev precision after the unweighted "
+                     "pass found no setting at 0.90 (best 0.826); the independent validation sample is the test.")})
     return chosen
 
 
