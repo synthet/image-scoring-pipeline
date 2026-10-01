@@ -431,13 +431,15 @@ def analyze(root: Path, labels_path: Path) -> dict:
     result["selected"] = ({"arm": best[0], "score": best[1], "threshold": best[2]["threshold"],
                            "bird_skip_rate": best[2]["bird_skip_rate"], "other_run_rate": best[2]["other_run_rate"]}
                           if best else None)
-    (out / "analysis.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    # Outputs are named after the label source, so AI-judge and owner analyses never overwrite each other.
+    tag = labels_path.stem
+    (out / f"analysis_{tag}.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
     if best:
         version = preds[next(iter(cohort))][best[0]].get("version", best[0])
-        _write_new_json(out / "thresholds.json", {
+        _write_new_json(out / f"thresholds_{tag}.json", {
             "arm": best[0], "score": best[1], "run_thresholds": {"wildlife_bird": best[2]["threshold"]},
             "scene_version": version, "frozen_utc": datetime.now(timezone.utc).isoformat(),
-            "analysis_sha256": sha256_file(out / "analysis.json")})
+            "label_source": labels_path.name, "analysis_sha256": sha256_file(out / f"analysis_{tag}.json")})
     return result
 
 
