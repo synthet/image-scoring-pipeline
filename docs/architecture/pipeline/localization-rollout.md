@@ -62,7 +62,9 @@ production renditions nor an independent validation sample has passed the promot
 On 2026-10-01 the [promotion-gate report](../../reports/bird-v1-promotion-gate-2026-10-01.md)
 (#469) reproduced all 26 rescues on production renditions. It also froze an RTMDet-bird rule
 (`ecbb646e6649b3c2`) on development labels and drew an independent 207-image validation sample.
-Promotion still waits on those owner labels.
+Independent owner validation then **failed** in every stratum (best 53/60 present-and-usable,
+Wilson lower bound 0.78 against a 0.90 bar). No v1 box is promoted, and the next rule needs a new
+false-positive signal and a fresh sample.
 
 **Design ideas from the reference-design analysis, and where they are tracked:**
 
