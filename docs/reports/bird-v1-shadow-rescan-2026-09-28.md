@@ -35,9 +35,13 @@ A deterministic local contact sheet sampled four primary boxes in each of nine c
 
 **Decision:** keep the 16,666 boxes in shadow. Confidence alone cannot safely decide which ones to promote, and no production `bird_bbox` refresh has been run. The independent 339-frame [v1 benchmark](cascade-benchmark-2026-09-27.md) remains the labelled recall/false-positive evidence; its 7% false-positive point should not be inferred for this differently selected library cohort.
 
+**Owner-label follow-up (2026-09-29):** The [blind presence and primary-box review](bird-v1-owner-review-2026-09-29.md)
+found 79 no-bird frames among 144 sampled v1 detections and only 29 confirmed usable primary
+bird crops. The promotion gate remains closed; those sample fractions are not library-wide rates.
+
 ## Before promotion
 
-1. Have the owner label a representative random sample of new boxes, stratified by confidence, area, and scene type, including no-bird examples. Estimate precision with uncertainty and inspect box tightness.
+1. Freeze and label an independent validation sample stratified by confidence, area, and scene type, including no-bird examples. The completed owner review above is a development sample; its post-hoc cuts cannot validate a promotion rule. Estimate precision with uncertainty and inspect box tightness.
 2. Define and validate a promotion rule against those labels. Keep uncertain or non-bird boxes in shadow.
 3. If a subset passes, update only those production `bird_bbox` rows still carrying the frozen no-bird sentinel, and compute eye keypoints for the newly current v1 regions before using them. Preserve the versioned shadow and legacy runs for audit.
 

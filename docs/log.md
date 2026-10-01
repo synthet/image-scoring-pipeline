@@ -723,3 +723,14 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-09-28] created | Bird detector v1 shadow rescan
 
 - 2026-09-28: created — [v1 shadow rescan report](reports/bird-v1-shadow-rescan-2026-09-28.md): all 35,209 frozen legacy no-detection images rescanned with pinned v1 weights; 16,666 candidate boxes, 18,541 no detections, two missing files. Production `bird_bbox` stayed unchanged. A 36-image stratified visual check found non-bird boxes, so promotion waits for representative owner labels and a validated rule; indexed in [reports/INDEX.md](reports/INDEX.md).
+- 2026-09-28: created — [blind v0 vs v1 box comparison](reports/bird-detect-v0-v1-blind-compare-2026-09-28.md): owner A/B on 189 divergent #377 cohort frames; corrected replay found 119 v1 vs 51 v0 decisive picks overall, but v0 won 43 vs 18 when both models detected. Labels and photos are gitignored under `.agent/scratch/bird_detect_compare/`.
+
+## [2026-09-29] created | Bird v1 shadow-rescan owner review
+
+- 2026-09-29: created — [v1 owner review](reports/bird-v1-owner-review-2026-09-29.md): replayed 216 blind presence labels and 65 primary-box grades with a tracked, database-free analyzer. Among 144 detected development-sample frames, 79 had no visible bird and 29 had a usable primary crop. No shadow boxes were promoted; indexed in [reports/INDEX.md](reports/INDEX.md).
+
+## [2026-09-30] created | Bird v1 diagnostic failure-review page
+
+- 2026-09-30: created — private v1 failure-review page for 79 no-bird detections and 35 bad primary crops. [Builder](../scripts/research/detector_benchmark/build_v1_failure_review.py) uses stored v1 regions and diagnostic RTMDet/refine inference on review JPEGs; no production writes. See the [owner-review report](reports/bird-v1-owner-review-2026-09-29.md#diagnostic-failure-review-page).
+- 2026-09-30: completed — [failure-review report](reports/bird-v1-failure-review-2026-09-30.md) replays the final 114-case owner CSV with a tracked, database-free analyzer: 39 animal, 22 scene/texture and 18 other-object false detections; 26/35 bad primaries have an owner-approved alternative on review JPEGs. The page's frame-level RTMDet flag was relabelled to avoid implying spatial agreement. Shadow promotion remains blocked pending production-rendition and independent validation.
+- 2026-09-30: reviewed — read-only Codex and Antigravity CLI vision passes on private box sheets (114 and 113 cases; Antigravity was permission-blocked on one dense case) added a disagreement queue under private `failure_review/panel.html`. The owner labels remain authoritative; the panel surfaced one presence recheck and crop/target rubric differences, with no production writes.

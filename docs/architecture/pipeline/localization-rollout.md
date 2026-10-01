@@ -53,6 +53,13 @@ sections further down are unchanged, so read them together with this table.
 | Continuous-burst segmentation and picks | #424, #407 |
 | Timing | #416 |
 
+**V1 shadow-rescan gate (2026-09-30):** The [owner review](../../reports/bird-v1-owner-review-2026-09-29.md)
+found false detections and poor primary crops in the development sample. The completed
+[failure review](../../reports/bird-v1-failure-review-2026-09-30.md) classified all 79
+false detections and found a usable review-JPEG alternative for 26 of 35 bad primaries.
+The 16,666 new v1 boxes remain shadow artifacts; neither candidate reproduction on
+production renditions nor an independent validation sample has passed the promotion gate.
+
 **Design ideas from the reference-design analysis, and where they are tracked:**
 
 | Idea | Where |
