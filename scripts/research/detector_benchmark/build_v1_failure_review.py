@@ -145,12 +145,11 @@ def _sha(path: Path) -> str:
 
 def probe(root: Path, out: Path, weights: Path) -> None:
     """Infer RTMDet and small-box YOLO refine on local review JPEGs, resumably."""
-    import numpy as np
     from PIL import Image
 
     from modules.bird_detection import BirdDetector
-    from modules.detectors.rtmdet import letterbox, load_rtmdet, select_animal_boxes
-    from modules.localization_cascade import REFINE_PAD_FRAC, refine_crop
+    from modules.detectors.rtmdet import load_rtmdet
+    from scripts.research.detector_benchmark.rtmdet_probe import probe_image
 
     cases = load_cases(root)
     case_ids = {case["image_id"] for case in cases}
@@ -187,34 +186,7 @@ def probe(root: Path, out: Path, weights: Path) -> None:
             try:
                 with Image.open(source) as opened:
                     img = opened.convert("RGB")
-                w, h = img.size
-                tensor, scale, px, py = letterbox(img, rt.mean, rt.std)
-                outs = rt.session.run(None, {rt.session.get_inputs()[0].name: tensor})
-                boxes = (np.asarray(outs[0])[0].astype(np.float64) - [px, py, px, py]) / scale
-                boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, w)
-                boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, h)
-                coco = select_animal_boxes(boxes, np.asarray(outs[1])[0], w, h,
-                                           threshold=0.05, retry_threshold=0.05)
-                rec["coco"] = [{"region": b["region"], "conf": b["conf"], "cls": b["cls"]}
-                               for b in coco]
-                refined = []
-                for box in coco:
-                    region = box["region"]
-                    area = (region[2] - region[0]) * (region[3] - region[1])
-                    if box["conf"] < 0.25 or area >= 0.02:
-                        continue
-                    crop_box = refine_crop(region, REFINE_PAD_FRAC)
-                    crop = img.crop((int(crop_box[0] * w), int(crop_box[1] * h),
-                                     int(crop_box[2] * w), int(crop_box[3] * h)))
-                    cw, ch = crop.size
-                    got = [{"region": (
-                        crop_box[0] + r["region"][0] * cw / w,
-                        crop_box[1] + r["region"][1] * ch / h,
-                        crop_box[0] + r["region"][2] * cw / w,
-                        crop_box[1] + r["region"][3] * ch / h), "conf": r["conf"]}
-                           for r in yolo.detect_boxes(crop)]
-                    refined.append({"coco_region": region, "yolo": got})
-                rec["refine"] = refined
+                rec.update(probe_image(img, rt, yolo))
             except Exception as exc:  # keep per-image failures visible in the page
                 rec["error"] = f"{type(exc).__name__}: {exc}"[:200]
             handle.write(json.dumps(rec) + "\n")
