@@ -18,9 +18,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-PROMPT_SET_VERSION = "scene_v1"
+PROMPT_SET_VERSION = "scene_v2"
 
-LABELS_V1: dict[str, tuple[str, ...]] = {
+#: Major classes follow the library's keyword frequencies (2026-10-01 survey, exclusive by subject
+#: priority): bird 51%, other animal 8%, urban/architecture 7%, landscape 6%, insect 6%, people 4%,
+#: vehicles 3%, plants/flowers 3%. Reptiles and amphibians have no keyword and sit in other_animal.
+LABELS: dict[str, tuple[str, ...]] = {
     "wildlife_bird": (
         "a photo of a bird",
         "a wildlife photograph of a bird",
@@ -28,21 +31,18 @@ LABELS_V1: dict[str, tuple[str, ...]] = {
         "a bird in flight",
         "a small bird in the distance",
     ),
-    "wildlife_mammal": (
+    "other_animal": (
         "a photo of a wild mammal",
-        "a wildlife photograph of a deer, fox or squirrel",
+        "a wildlife photograph of a deer, fox, squirrel or rabbit",
         "a photo of a horse, dog or cat",
+        "a photo of a lizard, snake, frog or turtle",
         "an animal grazing in a field",
     ),
     "wildlife_insect": (
         "a macro photo of an insect",
         "a close-up photo of a butterfly or dragonfly",
         "a macro photograph of a bee on a flower",
-    ),
-    "wildlife_herp": (
-        "a photo of a lizard or snake",
-        "a photo of a frog or toad",
-        "a photo of a turtle",
+        "a macro photo of a spider",
     ),
     "people": (
         "a photo of a person",
@@ -50,23 +50,37 @@ LABELS_V1: dict[str, tuple[str, ...]] = {
         "a group of people",
         "a street photo with people",
     ),
+    "urban_architecture": (
+        "a photo of a building",
+        "an architecture photograph",
+        "a photo of a city street",
+        "a cityscape",
+        "a photo of an interior room",
+    ),
     "landscape": (
         "a landscape photograph",
         "a photo of mountains and sky",
         "a photo of a lake, river or sea",
         "a photo of a forest or field",
+        "a sunset over the water",
+        "an aerial photo of the land",
     ),
-    "architecture": (
-        "a photo of a building",
-        "an architecture photograph",
-        "a photo of a city street",
-        "a photo of an interior room",
+    "vehicles": (
+        "a photo of a car",
+        "a photo of an airplane",
+        "a photo of a train or bus",
+        "a photo of a boat",
+    ),
+    "plants_flowers": (
+        "a close-up photo of a flower",
+        "a photo of a plant",
+        "a macro photo of leaves",
     ),
     "other": (
         "a photo of an object",
-        "a close-up photo of a plant or flower",
         "a photo of food",
-        "a photo of a car or vehicle",
+        "an abstract photo",
+        "a photo taken at night",
     ),
 }
 
@@ -80,10 +94,11 @@ BACKENDS: dict[str, dict[str, str]] = {
     "hf_clip_b32": {"loader": "hf_clip", "model": "openai/clip-vit-base-patch32"},
     "openclip_b32_laion": {"loader": "open_clip", "model": "ViT-B-32", "pretrained": "laion2b_s34b_b79k"},
     "openclip_l14": {"loader": "open_clip", "model": "ViT-L-14", "pretrained": "laion2b_s32b_b82k"},
+    "siglip2_base": {"loader": "hf_siglip", "model": "google/siglip2-base-patch16-224"},
 }
 
 
-def prompt_set_hash(backend: str, labels: dict[str, tuple[str, ...]] = LABELS_V1) -> str:
+def prompt_set_hash(backend: str, labels: dict[str, tuple[str, ...]] = LABELS) -> str:
     """Identity of a classification: prompt-set version, every prompt, and the model."""
     blob = json.dumps({"version": PROMPT_SET_VERSION, "backend": BACKENDS[backend], "labels": labels},
                       sort_keys=True)
@@ -190,12 +205,14 @@ class SceneClassifier:
             raise ValueError(f"unknown scene_route backend: {backend}")
         self.backend = backend
         self.device = device
-        self.labels = list(LABELS_V1)
+        self.labels = list(LABELS)
         self.version = f"{PROMPT_SET_VERSION}/{backend}/{prompt_set_hash(backend)}"
         self._model: Any = None
         self._encode_image: Any = None
         self._label_feats = None
         self._logit_scale = 1.0
+        #: L2-normalized image embedding from the last ``classify`` call (benchmark linear probes).
+        self.last_embedding = None
 
     def load(self) -> None:
         if self._model is not None:
@@ -204,8 +221,8 @@ class SceneClassifier:
 
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
         spec = BACKENDS[self.backend]
-        prompts = [p for lab in self.labels for p in LABELS_V1[lab]]
-        counts = [len(LABELS_V1[lab]) for lab in self.labels]
+        prompts = [p for lab in self.labels for p in LABELS[lab]]
+        counts = [len(LABELS[lab]) for lab in self.labels]
         logger.info("scene_route: loading %s (%s) on %s", self.backend, spec["model"], device)
         with torch.no_grad():
             if spec["loader"] == "hf_clip":
@@ -214,6 +231,19 @@ class SceneClassifier:
                 model = CLIPModel.from_pretrained(spec["model"]).to(device).eval()
                 processor = CLIPProcessor.from_pretrained(spec["model"])
                 text = processor(text=prompts, return_tensors="pt", padding=True)
+                text_feats = _features(model.get_text_features(**{k: v.to(device) for k, v in text.items()}),
+                                       "text_embeds")
+
+                def encode_image(img):
+                    pixels = processor(images=img, return_tensors="pt")["pixel_values"].to(device)
+                    return _features(model.get_image_features(pixel_values=pixels), "image_embeds")
+            elif spec["loader"] == "hf_siglip":
+                from transformers import AutoModel, AutoProcessor
+
+                model = AutoModel.from_pretrained(spec["model"]).to(device).eval()
+                processor = AutoProcessor.from_pretrained(spec["model"])
+                # SigLIP was trained on max_length-padded text; shorter padding degrades it.
+                text = processor(text=prompts, return_tensors="pt", padding="max_length", max_length=64)
                 text_feats = _features(model.get_text_features(**{k: v.to(device) for k, v in text.items()}),
                                        "text_embeds")
 
@@ -247,4 +277,5 @@ class SceneClassifier:
         self.load()
         with torch.no_grad():
             feat = self._encode_image(image.convert("RGB")).float().cpu().numpy()
+        self.last_embedding = feat.reshape(-1) / float((feat ** 2).sum() ** 0.5)
         return score(feat, self._label_feats, self.labels, self._logit_scale, self.version)

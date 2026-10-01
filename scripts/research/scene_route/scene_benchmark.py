@@ -27,7 +27,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from modules.scene_route import LABELS_V1
+from modules.scene_route import LABELS as SCENE_LABELS
 from scripts.research.detector_benchmark.v1_promotion_gate import (
     _read_csv,
     _write_csv,
@@ -39,9 +39,21 @@ from scripts.research.detector_benchmark.v1_promotion_gate import (
 )
 
 OUT_ROOT = Path(".agent/scratch/scene_route")
-BACKENDS = ("hf_clip_b32", "openclip_b32_laion", "openclip_l14")
+BACKENDS = ("hf_clip_b32", "openclip_b32_laion", "openclip_l14", "siglip2_base")
 STRATIFY_BACKEND = "hf_clip_b32"
-LABELS = list(LABELS_V1)
+LABELS = list(SCENE_LABELS)
+ANIMAL_LABELS = ("wildlife_bird", "other_animal", "wildlife_insect")
+#: Supervised-transfer arm: ImageNet-22k ConvNeXt, class probabilities summed into animal groups
+#: (index ranges checked against timm's ImageNetInfo). It has no people/landscape classes, so it only
+#: scores the bird and animal routes.
+IMAGENET_ARM = "imagenet_convnext"
+IMAGENET_MODEL = "convnext_base.fb_in22k_ft_in1k"
+_RANGES = {
+    "wildlife_bird": ((7, 24), (80, 100), (127, 146)),
+    "wildlife_insect": ((70, 79), (300, 326)),
+    "other_animal": ((0, 6), (25, 68), (101, 126), (147, 299), (327, 397)),
+}
+IMAGENET_GROUPS = {g: [i for a, b in rs for i in range(a, b + 1)] for g, rs in _RANGES.items()}
 MAX_SKIP_RATE = 0.02  # AC-4
 #: Earlier labelled sets: excluded from the pool so this sample is new to the owner.
 PRIOR_COHORTS = (
@@ -113,6 +125,28 @@ def _v1_presence() -> dict[int, str]:
     return labels
 
 
+def imagenet_groups(probs) -> dict[str, float]:
+    """Sum ImageNet-1k class probabilities into animal groups; the remainder is ``non_animal``."""
+    groups = {g: round(float(sum(probs[i] for i in idx)), 6) for g, idx in IMAGENET_GROUPS.items()}
+    groups["non_animal"] = round(max(0.0, 1.0 - sum(groups.values())), 6)
+    return groups
+
+
+def _imagenet_arm():
+    import timm
+    import torch
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = timm.create_model(IMAGENET_MODEL, pretrained=True).to(device).eval()
+    transform = timm.data.create_transform(**timm.data.resolve_model_data_config(model), is_training=False)
+
+    def run(img) -> dict[str, float]:
+        with torch.no_grad():
+            logits = model(transform(img.convert("RGB")).unsqueeze(0).to(device))
+        return imagenet_groups(torch.softmax(logits.float(), dim=1)[0].cpu().tolist())
+    return run
+
+
 def predict(root: Path, limit: int, extra_v1: bool) -> Counter:
     from modules import db
     from modules.localization import decode_for_localization
@@ -133,10 +167,12 @@ def predict(root: Path, limit: int, extra_v1: bool) -> Counter:
     classifiers = {b: SceneClassifier(b) for b in BACKENDS}
     for c in classifiers.values():
         c.load()
+    imagenet = _imagenet_arm()
 
     counts: Counter = Counter()
     t0 = time.perf_counter()
-    with out.open("a", encoding="utf-8") as handle:
+    emb_out = out.with_name(out.stem.replace("predictions", "embeddings") + ".jsonl")
+    with out.open("a", encoding="utf-8") as handle, emb_out.open("a", encoding="utf-8") as emb_handle:
         for n, r in enumerate(todo, 1):
             iid = int(r["image_id"])
             rec = {"image_id": iid}
@@ -148,6 +184,10 @@ def predict(root: Path, limit: int, extra_v1: bool) -> Counter:
                     save_scene_label(iid, result, backend=backend, rendition_hash=rec["rendition_hash"])
                     rec[backend] = {"version": result.version, "top_label": result.top_label,
                                     "probs": result.probs, "cosines": result.cosines}
+                rec[IMAGENET_ARM] = {"version": IMAGENET_MODEL, "probs": imagenet(decoded.image)}
+                vectors = {b: [round(float(v), 5) for v in c.last_embedding] for b, c in classifiers.items()}
+                emb_handle.write(json.dumps({"image_id": iid, **vectors}) + "\n")
+                emb_handle.flush()
                 counts["ok"] += 1
             except Exception as exc:  # noqa: BLE001 — a bad file must not end the run
                 rec["error"] = f"{type(exc).__name__}: {exc}"[:200]
@@ -289,59 +329,115 @@ def weighted_confusion(rows: list[tuple[str, str, float]]) -> dict:
 
 THRESHOLDS = {"prob": [round(0.005 * k, 3) for k in range(1, 41)] + [round(0.05 * k, 2) for k in range(5, 20)],
               "cosine": [round(0.12 + 0.005 * k, 3) for k in range(0, 41)]}
+THRESHOLDS["animal_prob"] = THRESHOLDS["prob"]
+
+
+def arm_view(rec: dict, arm: str) -> tuple[str | None, dict[str, float]]:
+    """(top scene label or None, bird-route scores by kind) for one image and arm."""
+    if arm == IMAGENET_ARM:
+        g = rec[arm]["probs"]
+        return None, {"prob": g["wildlife_bird"], "animal_prob": sum(g[k] for k in ANIMAL_LABELS)}
+    r = rec[arm]
+    scores = {"prob": r["probs"]["wildlife_bird"], "animal_prob": sum(r["probs"].get(k, 0.0) for k in ANIMAL_LABELS)}
+    if "cosines" in r:
+        scores["cosine"] = r["cosines"]["wildlife_bird"]
+    return r["top_label"], scores
+
+
+def probe_predictions(embeddings: dict[int, list[float]], labels: dict[int, str], folders: dict[int, str],
+                      n_splits: int = 5) -> dict[int, dict]:
+    """Few-shot linear probe: folder-grouped out-of-fold logistic regression on image embeddings.
+
+    Every image (``cant_tell`` included) is predicted by a model that never saw its folder;
+    ``cant_tell`` images are never training targets.
+    """
+    import numpy as np
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import GroupKFold
+
+    ids = sorted(embeddings)
+    x = np.asarray([embeddings[i] for i in ids])
+    groups = [folders[i] for i in ids]
+    out: dict[int, dict] = {}
+    for train, test in GroupKFold(n_splits=n_splits).split(x, groups=groups):
+        fit = [k for k in train if labels[ids[k]] in LABELS]
+        clf = LogisticRegression(max_iter=2000, C=1.0).fit(x[fit], [labels[ids[k]] for k in fit])
+        for k, row in zip(test, clf.predict_proba(x[test])):
+            probs = {lab: 0.0 for lab in LABELS}
+            probs.update({lab: float(p) for lab, p in zip(clf.classes_, row)})
+            out[ids[k]] = {"top_label": max(probs, key=probs.get), "probs": probs}
+    return out
 
 
 def analyze(root: Path, labels_path: Path) -> dict:
     out = root / "sample"
-    cohort = {int(r["image_id"]): r["stratum"] for r in _read_csv(out / "cohort.csv")}
+    cohort = {int(r["image_id"]): r for r in _read_csv(out / "cohort.csv")}
     labels = {int(r["image_id"]): r for r in _read_csv(labels_path)}
     if set(labels) != set(cohort) or any(not r["scene"] or not r["bird_visible"] for r in labels.values()):
         raise ValueError("labels must cover every cohort image with both a scene and a bird answer")
     sampling = json.loads((out / "sampling.json").read_text(encoding="utf-8"))
     weight = {s: sampling["population"][s] / sampling["sample"][s] for s in sampling["sample"] if sampling["sample"][s]}
     preds = load_predictions(root / "predictions.jsonl")
+    embeddings = load_predictions(root / "embeddings.jsonl")
     v1_preds = load_predictions(root / "predictions_v1.jsonl")
     v1_presence = _v1_presence()
+
+    # Linear-probe arms join the predictions as ordinary arms.
+    folders = {i: folder_of(r["file_path"]) for i, r in cohort.items()}
+    probe_arms = []
+    for backend in BACKENDS:
+        arm = f"probe:{backend}"
+        oof = probe_predictions({i: embeddings[i][backend] for i in cohort},
+                                {i: labels[i]["scene"] for i in cohort}, folders)
+        for i, r in oof.items():
+            preds[i][arm] = r
+        probe_arms.append(arm)
+    arms = [*BACKENDS, IMAGENET_ARM, *probe_arms]
 
     result: dict = {"sampling": sampling, "inputs_sha256": {"labels": sha256_file(labels_path),
                                                              "cohort.csv": sha256_file(out / "cohort.csv")},
                     "owner_scene_counts": dict(Counter(r["scene"] for r in labels.values())),
                     "owner_bird_visible": sum(r["bird_visible"] == "yes" for r in labels.values()),
-                    "backends": {}}
-    for backend in BACKENDS:
-        conf = weighted_confusion([(labels[i]["scene"], preds[i][backend]["top_label"], weight[s])
-                                   for i, s in cohort.items() if labels[i]["scene"] != "cant_tell"])
+                    "arms": {}}
+    for arm in arms:
+        views = {i: arm_view(preds[i], arm) for i in cohort}
+        entry: dict = {}
+        if views[next(iter(cohort))][0] is not None:
+            entry["confusion"] = weighted_confusion([
+                (labels[i]["scene"], views[i][0], weight[c["stratum"]])
+                for i, c in cohort.items() if labels[i]["scene"] != "cant_tell"])
         routes = {}
-        for kind in ("prob", "cosine"):
-            field = "probs" if kind == "prob" else "cosines"
-            scored = [(preds[i][backend][field]["wildlife_bird"], labels[i]["bird_visible"] == "yes", weight[s])
-                      for i, s in cohort.items()]
+        for kind in views[next(iter(cohort))][1]:
+            scored = [(views[i][1][kind], labels[i]["bird_visible"] == "yes", weight[c["stratum"]])
+                      for i, c in cohort.items()]
             sweep = skip_sweep(scored, THRESHOLDS[kind])
             chosen = choose_threshold(sweep)
             side = None
-            if chosen is not None and v1_preds:
-                v1 = [(v1_preds[i][backend][field]["wildlife_bird"], v1_presence[i])
-                      for i in v1_preds if not v1_preds[i].get("error") and v1_presence.get(i) in ("bird", "no_bird")]
+            if chosen is not None and v1_preds and not arm.startswith("probe:"):
+                v1 = [(arm_view(v1_preds[i], arm)[1][kind], v1_presence[i]) for i in v1_preds
+                      if not v1_preds[i].get("error") and v1_presence.get(i) in ("bird", "no_bird")]
                 side = {"bird_frames": sum(p == "bird" for _, p in v1),
                         "bird_frames_skipped": sum(p == "bird" and s < chosen["threshold"] for s, p in v1),
                         "no_bird_frames": sum(p == "no_bird" for _, p in v1),
                         "no_bird_frames_skipped": sum(p == "no_bird" and s < chosen["threshold"] for s, p in v1)}
             routes[kind] = {"chosen": chosen, "v1_side_check": side, "sweep": sweep}
-        result["backends"][backend] = {"confusion": conf, "bird_route": routes}
+        entry["bird_route"] = routes
+        result["arms"][arm] = entry
 
-    candidates = [(b, k, r["bird_route"][k]["chosen"]) for b, r in result["backends"].items()
-                  for k in ("prob", "cosine") if r["bird_route"][k]["chosen"]]
-    # Fewest non-bird images sent to the detector at AC-4; ties prefer the cheaper backend, then probabilities.
-    best = min(candidates, key=lambda c: (c[2]["other_run_rate"], BACKENDS.index(c[0]), c[1]), default=None)
-    result["selected"] = ({"backend": best[0], "score": best[1], "threshold": best[2]["threshold"],
+    candidates = [(a, k, r["bird_route"][k]["chosen"]) for a, r in result["arms"].items()
+                  for k in r["bird_route"] if r["bird_route"][k]["chosen"]]
+    # Fewest non-bird images sent to the detector at AC-4; ties prefer earlier (cheaper, training-free) arms.
+    best = min(candidates, key=lambda c: (c[2]["other_run_rate"], arms.index(c[0]), c[1]), default=None)
+    result["selected"] = ({"arm": best[0], "score": best[1], "threshold": best[2]["threshold"],
                            "bird_skip_rate": best[2]["bird_skip_rate"], "other_run_rate": best[2]["other_run_rate"]}
                           if best else None)
     (out / "analysis.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
     if best:
+        version = preds[next(iter(cohort))][best[0]].get("version", best[0])
         _write_new_json(out / "thresholds.json", {
-            "backend": best[0], "score": best[1], "run_thresholds": {"wildlife_bird": best[2]["threshold"]},
-            "scene_version": next(iter(preds.values()))[best[0]]["version"],
-            "frozen_utc": datetime.now(timezone.utc).isoformat(), "analysis_sha256": sha256_file(out / "analysis.json")})
+            "arm": best[0], "score": best[1], "run_thresholds": {"wildlife_bird": best[2]["threshold"]},
+            "scene_version": version, "frozen_utc": datetime.now(timezone.utc).isoformat(),
+            "analysis_sha256": sha256_file(out / "analysis.json")})
     return result
 
 
@@ -371,7 +467,8 @@ def main() -> None:
             parser.error("analyze needs --labels")
         res = analyze(args.root, args.labels)
         print(json.dumps({"selected": res["selected"],
-                          "per_label": {b: r["confusion"]["per_label"] for b, r in res["backends"].items()}}, indent=1))
+                          "per_label": {a: r["confusion"]["per_label"] for a, r in res["arms"].items()
+                                        if "confusion" in r}}, indent=1))
 
 
 if __name__ == "__main__":

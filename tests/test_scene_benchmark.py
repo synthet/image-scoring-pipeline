@@ -41,3 +41,50 @@ def test_weighted_confusion_precision_and_recall():
     assert per["wildlife_bird"] == {"precision": 0.75, "recall": 0.75}
     assert per["landscape"] == {"precision": 0.0, "recall": 0.0}
     assert per["people"] == {"precision": None, "recall": None}
+
+
+def test_imagenet_groups_sum_to_one_and_hit_bird_ranges():
+    from scripts.research.scene_route.scene_benchmark import IMAGENET_GROUPS, imagenet_groups
+
+    probs = [0.0] * 1000
+    probs[130] = 0.6  # flamingo
+    probs[150] = 0.1  # sea lion
+    probs[310] = 0.1  # ant
+    probs[500] = 0.2  # a non-animal class
+    g = imagenet_groups(probs)
+    assert g == {"wildlife_bird": 0.6, "wildlife_insect": 0.1, "other_animal": 0.1, "non_animal": 0.2}
+    flat = [i for idx in IMAGENET_GROUPS.values() for i in idx]
+    assert len(flat) == len(set(flat))  # groups never overlap
+
+
+def test_arm_view_scores_bird_and_any_animal():
+    from scripts.research.scene_route.scene_benchmark import arm_view
+
+    rec = {"hf_clip_b32": {"top_label": "landscape", "probs": {"wildlife_bird": 0.2, "other_animal": 0.1,
+                                                                "landscape": 0.7},
+                           "cosines": {"wildlife_bird": 0.25}},
+           "imagenet_convnext": {"probs": {"wildlife_bird": 0.5, "other_animal": 0.1, "wildlife_insect": 0.0,
+                                           "non_animal": 0.4}}}
+    top, scores = arm_view(rec, "hf_clip_b32")
+    assert top == "landscape" and scores["prob"] == 0.2 and abs(scores["animal_prob"] - 0.3) < 1e-9
+    assert scores["cosine"] == 0.25
+    top, scores = arm_view(rec, "imagenet_convnext")
+    assert top is None and set(scores) == {"prob", "animal_prob"}
+
+
+def test_probe_is_out_of_fold_by_folder():
+    import numpy as np
+
+    from scripts.research.scene_route.scene_benchmark import probe_predictions
+
+    rng = np.random.default_rng(0)
+    emb, labels, folders = {}, {}, {}
+    for i in range(60):
+        lab = "wildlife_bird" if i % 2 else "landscape"
+        emb[i] = list(rng.normal(size=4) + (3 if lab == "wildlife_bird" else -3))
+        labels[i] = "cant_tell" if i == 7 else lab
+        folders[i] = f"f{i % 10}"
+    out = probe_predictions(emb, labels, folders)
+    assert set(out) == set(emb)  # cant_tell is still predicted
+    correct = sum(out[i]["top_label"] == labels[i] for i in emb if labels[i] != "cant_tell")
+    assert correct >= 55

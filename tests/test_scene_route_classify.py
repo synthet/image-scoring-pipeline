@@ -31,7 +31,7 @@ def test_version_changes_with_prompts_and_backend():
     base = prompt_set_hash("hf_clip_b32")
     assert base == prompt_set_hash("hf_clip_b32")
     assert base != prompt_set_hash("openclip_l14")
-    changed = {**scene_route.LABELS_V1, "other": ("a photo of a rock",)}
+    changed = {**scene_route.LABELS, "other": ("a photo of a rock",)}
     assert base != prompt_set_hash("hf_clip_b32", changed)
 
 
