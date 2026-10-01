@@ -78,6 +78,7 @@ ROUTES: dict[str, tuple[str, ...]] = {
 
 BACKENDS: dict[str, dict[str, str]] = {
     "hf_clip_b32": {"loader": "hf_clip", "model": "openai/clip-vit-base-patch32"},
+    "openclip_b32_laion": {"loader": "open_clip", "model": "ViT-B-32", "pretrained": "laion2b_s34b_b79k"},
     "openclip_l14": {"loader": "open_clip", "model": "ViT-L-14", "pretrained": "laion2b_s32b_b82k"},
 }
 
