@@ -75,6 +75,7 @@ def test_initialize_schema_keeps_dependency_order_and_seed_statements() -> None:
         "agent_cull_review_groups",
         "image_localization_runs",
         "image_regions",
+        "image_localization_selections",
         "image_scene_labels",
     ]
     positions = [tables.index(table) for table in expected_order]
