@@ -52,3 +52,42 @@ def test_rows_cascade_with_the_image(image_id):
     save_scene_label(image_id, _result("v1", "people", 0.9), backend="hf_clip_b32")
     db.get_connector().execute("DELETE FROM images WHERE id = ?", (image_id,))
     assert get_scene_label(image_id, "v1") is None
+
+
+def test_scene_route_skip_run_species_fallback_and_reopen(tmp_path):
+    """AC-7 skip record, unchanged re-run, species full frame, AC-9/AC-10 replacement by detection."""
+    from PIL import Image
+
+    from modules import localization as loc
+    from modules.bird_detection import rank_boxes
+    from modules.bird_species import species_input_for_image
+
+    path = tmp_path / "scene.jpg"
+    Image.new("RGB", (400, 300), (40, 80, 120)).save(path)
+    iid = int(db.get_connector().execute_returning(
+        "INSERT INTO images (file_path) VALUES (?) RETURNING id", (str(path),))[0]["id"])
+    decoded = loc.decode_for_localization(str(path))
+
+    class _Detector:
+        def detect_boxes(self, image):
+            return rank_boxes([{"xyxy": (10, 10, 100, 100), "conf": 0.9}], *image.size, max_det=10)
+
+    ctx = loc.DetectorContext(enabled=True, detector=_Detector(), version="test/v1", config_hash="cfg")
+
+    first = loc.record_scene_skip(iid, ctx, decoded, scene_version="scene_v2/x", top_label="landscape")
+    again = loc.record_scene_skip(iid, ctx, decoded, scene_version="scene_v2/x", top_label="landscape")
+    assert first.status == "disabled" and not first.unchanged and again.unchanged
+    run = loc.get_current_run(iid)
+    assert (run["status"], run["error_code"], run["error_detail"]) == (
+        "disabled", "scene_route", "scene_v2/x:landscape")
+    assert species_input_for_image(iid)["mode"] == "full_frame"
+
+    loc.record_scene_skip(iid, ctx, decoded, scene_version="scene_v3/x", top_label="landscape")
+    assert loc.get_current_run(iid)["error_detail"] == "scene_v3/x:landscape"
+
+    outcome = loc.localize_image(iid, str(path), ctx, max_regions=10, decoded=decoded)
+    assert outcome.status == "detected" and not outcome.unchanged
+    runs = db.get_connector().query(
+        "SELECT status, is_current FROM image_localization_runs WHERE image_id = ? ORDER BY id", (iid,))
+    assert [(r["status"], r["is_current"]) for r in runs] == [
+        ("disabled", False), ("disabled", False), ("detected", True)]

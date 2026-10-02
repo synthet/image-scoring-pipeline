@@ -29,6 +29,7 @@ from modules.localization import (
     max_regions_per_class,
 )
 from modules.phases import PhaseCode, disabled_phase_submission_error
+from modules.scene_route import scene_route_settings
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,49 @@ def _save_summary(job_id: int, summary: dict[str, Any]) -> None:
         db.save_job_report(job_id, report)
     except Exception:
         logger.exception("localization: failed to save job summary for job %s", job_id)
+
+
+class SceneRouter:
+    """Scene route ahead of detection (spec 05 AC-7/AC-8, #412); used only when ``scene_route.enabled``.
+
+    Decodes each image once, classifies the rendition, saves the scene label, then either runs the
+    bird detector on the same pixels or records a ``scene_route`` skip so consumers use the full
+    frame. Classifier failures fail open to detection.
+    """
+
+    def __init__(self, settings: dict[str, Any]) -> None:
+        from modules.scene_route import SceneClassifier
+
+        self.backend = settings["backend"]
+        self.thresholds = settings["run_thresholds"]
+        self.classifier = SceneClassifier(self.backend)
+
+    def localize(self, image_id: int, file_path: str, ctx, *, max_regions: int, job_id: int) -> ImageOutcome:
+        from modules.localization import DecodeError, decode_for_localization, record_scene_skip
+        from modules.scene_route import detectors_to_run, save_scene_label
+
+        def detect(decoded=None) -> ImageOutcome:
+            return localize_image(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id, decoded=decoded)
+
+        if not file_path or not os.path.exists(file_path):
+            return detect()  # records file_missing
+        try:
+            decoded = decode_for_localization(file_path)
+        except DecodeError:
+            return detect()  # records the decode failure the usual way
+        try:
+            result = self.classifier.classify(decoded.image)
+            save_scene_label(image_id, result, backend=self.backend,
+                             rendition_hash=decoded.descriptor.rendition_hash, job_id=job_id)
+            detectors = detectors_to_run(result, self.thresholds)
+        except Exception:  # noqa: BLE001 -- routing must never cost an image its detection
+            logger.warning("scene_route: classification failed for image %s; running detection", image_id,
+                           exc_info=True)
+            return detect(decoded)
+        if "bird" in detectors:
+            return detect(decoded)
+        return record_scene_skip(image_id, ctx, decoded, scene_version=result.version,
+                                 top_label=result.top_label, job_id=job_id)
 
 
 class LocalizationRunner:
@@ -200,6 +244,10 @@ class LocalizationRunner:
         metrics = BatchMetrics()
         _reset_gpu_peak()
         ctx = load_detector_context(cfg) if rows else None
+        scene = scene_route_settings()
+        router = SceneRouter(scene) if rows and scene["enabled"] else None
+        if router is not None:
+            log(f"Scene route on ({router.backend}, thresholds {router.thresholds or 'none: detector always runs'}).")
         if ctx is not None and not ctx.enabled:
             log("Bird detector disabled (localization.detectors.bird.enabled=false); recording 'disabled'.",
                 "WARNING")
@@ -218,7 +266,10 @@ class LocalizationRunner:
             image_id = int(row["id"])
             file_path = row.get("file_path") or ""
             try:
-                outcome = localize_image(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id)
+                if router is not None:
+                    outcome = router.localize(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id)
+                else:
+                    outcome = localize_image(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id)
             except Exception as exc:  # noqa: BLE001 — a DB fault on one image must not end the batch
                 logger.exception("localization: persisting image %s failed", image_id)
                 outcome = ImageOutcome(status="retryable_error", error_detail=f"persist_error: {exc}")

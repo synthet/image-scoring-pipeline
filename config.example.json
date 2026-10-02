@@ -256,6 +256,11 @@
   "bird_species": {
     "use_regions": false
   },
+  "scene_route": {
+    "enabled": false,
+    "backend": "hf_clip_b32",
+    "run_thresholds": {}
+  },
   "localization": {
     "enabled": false,
     "max_regions_per_class": 10,

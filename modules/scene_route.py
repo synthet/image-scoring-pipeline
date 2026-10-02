@@ -148,14 +148,25 @@ def score(image_feat, label_feats, labels: list[str], logit_scale: float, versio
 def detectors_to_run(result: SceneResult, thresholds: dict[str, float]) -> list[str]:
     """Detectors whose label probability reaches its calibrated run threshold (multi-label).
 
-    A label without a threshold never triggers its detector, so routing stays opt-in per class.
+    A routed label without a calibrated threshold always runs its detector (fail open): an
+    uncalibrated route must never skip detection.
     """
     keys: list[str] = []
     for label, detectors in ROUTES.items():
         threshold = thresholds.get(label)
-        if threshold is not None and result.probs.get(label, 0.0) >= threshold:
+        if threshold is None or result.probs.get(label, 0.0) >= threshold:
             keys.extend(d for d in detectors if d not in keys)
     return keys
+
+
+def scene_route_settings() -> dict[str, Any]:
+    """``scene_route`` config: ``enabled`` (default off), ``backend``, ``run_thresholds``."""
+    from modules import config
+
+    section = config.get_config_section("scene_route") or {}
+    return {"enabled": bool(section.get("enabled", False)),
+            "backend": section.get("backend", "hf_clip_b32"),
+            "run_thresholds": dict(section.get("run_thresholds") or {})}
 
 
 _UPSERT_SQL = """

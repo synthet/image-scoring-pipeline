@@ -46,7 +46,7 @@ def test_detectors_run_at_threshold_even_when_not_top():
     assert detectors_to_run(r, {"wildlife_bird": 0.31}) == []
 
 
-def test_labels_without_threshold_or_route_run_nothing():
-    r = _result(wildlife_bird=0.9, wildlife_mammal=0.1)
-    assert detectors_to_run(r, {}) == []
-    assert detectors_to_run(r, {"wildlife_mammal": 0.0}) == []  # no mammal detector routed yet
+def test_uncalibrated_route_fails_open_and_unrouted_labels_run_nothing():
+    r = _result(wildlife_bird=0.01, other_animal=0.99)
+    assert detectors_to_run(r, {}) == ["bird"]  # no threshold yet: never skip the detector
+    assert detectors_to_run(r, {"wildlife_bird": 0.5, "other_animal": 0.0}) == []  # no animal detector routed yet

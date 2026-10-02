@@ -107,3 +107,11 @@ def test_flag_off_is_the_legacy_path(monkeypatch, tmp_path):
     assert call == {"region": None, "use_detector": True}
     assert writes["bbox"] == [(3, legacy)]
     assert writes["sources"] == [{"species:carolina wren": "bioclip"}]
+
+
+def test_scene_route_skip_selects_full_frame_other_disabled_stays_legacy(monkeypatch):
+    _with_conn(monkeypatch, _Conn({"run_id": 7, "status": "disabled", "error_code": "scene_route",
+                                    "region_id": None}))
+    assert species_input_for_image(1)["mode"] == "full_frame"
+    _with_conn(monkeypatch, _Conn({"run_id": 7, "status": "disabled", "error_code": None, "region_id": None}))
+    assert species_input_for_image(1)["mode"] == "legacy"
