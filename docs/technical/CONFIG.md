@@ -5,7 +5,7 @@ description: Runtime settings authority for image-scoring-pipeline — config.js
 resource: technical/CONFIG.md
 tags: [config, reference]
 timestamp: 2026-10-02T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Configuration (`config.json`)
@@ -77,6 +77,8 @@ Quality analysis defaults, model membership, fusion weights, per-model options.
 | `default_sort_by`, `default_sort_order` | UI | `score_general`, `desc` |
 | `fusion` | `score_normalization.get_composite_weights()` | See `DEFAULT_COMPOSITE_WEIGHTS` in code |
 | `models` | `engines/registry.py`, `GET /api/config` | All models enabled in code paths |
+| `profile` | `engines/registry.py` — named model-set profile applied on top of `models` (switches listed models off for both production and shadow runs). Built-in: `default` (no change), `high_throughput` (skips `arniqa`, ~35% faster; composites renormalize over the remaining models). Unknown name → warning, no change. `GET /api/config` still reports raw `models`. | unset (= `default`) |
+| `profiles` | `engines/registry.py` — `{name: {"disable": [model, ...]}}`; merged over the built-ins | Built-ins only |
 | `arniqa`, `qpt_v2`, `cursor`, `claude` | Respective scorer modules | Module defaults |
 
 ### `percentile_anchors`
