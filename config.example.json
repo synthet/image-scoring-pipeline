@@ -244,7 +244,7 @@
   "bird_detection": {
     "enabled": true,
     "model_repo": "synthet/bird-detect-v0",
-    "model_file": "bird_detect_v0.pt",
+    "model_file": "bird_detect_v1.pt",
     "local_path": "",
     "confidence": 0.25,
     "padding": 0.1,

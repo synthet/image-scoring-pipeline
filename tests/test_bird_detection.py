@@ -135,7 +135,7 @@ def test_detector_config_defaults():
     det = BirdDetector(config={}, device="cpu")
     assert det.enabled is True
     assert det.model_repo == "synthet/bird-detect-v0"
-    assert det.model_file == "bird_detect_v0.pt"
+    assert det.model_file == "bird_detect_v1.pt"
     assert det.confidence == 0.25
     assert det.padding == 0.10
     assert det.imgsz == 640

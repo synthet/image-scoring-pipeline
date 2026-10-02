@@ -12,16 +12,17 @@ image), mirroring the ``open_clip`` handling in ``bird_species.py``.
 
 Defaults mirror the canonical detector contract in the sibling model repo
 `synthet/image-scoring-model <https://github.com/synthet/image-scoring-model>`_
-(``src/eye_quality/localization/bird_detector.py``: weights ``bird_detect_v0.pt``,
+(``src/eye_quality/localization/bird_detector.py``: weights ``bird_detect_v1.pt``,
 ``predict(conf=0.25, max_det=10)``, ``imgsz=640``, single class ``{0: bird}``, highest-confidence
 box wins) and its ``docs/architecture/BIRD_DETECTION.md`` (crop ``pad_frac = 0.10``).
 
 Config section ``bird_detection`` (see ``config.example.json``):
     enabled     — master toggle (default true)
     model_repo  — HuggingFace repo id (default "synthet/bird-detect-v0")
-    model_file  — weight filename within the repo (default "bird_detect_v0.pt")
+    model_file  — weight filename within the repo (default "bird_detect_v1.pt"; v0 stays on the
+                  Hub for rollback)
     local_path  — optional local .pt path; used instead of downloading when set and present.
-                  Point this at the sibling checkout's ``models/bird_detect_v0.pt`` to share one
+                  Point this at the sibling checkout's ``models/bird_detect_v1.pt`` to share one
                   weights file with the model repo instead of downloading a second copy.
     confidence  — YOLO detection confidence threshold (default 0.25)
     padding     — fraction of box size to expand the crop by (default 0.10)
@@ -38,7 +39,7 @@ from typing import List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL_REPO = "synthet/bird-detect-v0"
-_DEFAULT_MODEL_FILE = "bird_detect_v0.pt"
+_DEFAULT_MODEL_FILE = "bird_detect_v1.pt"
 _DEFAULT_CONFIDENCE = 0.25
 _DEFAULT_PADDING = 0.10
 _DEFAULT_IMGSZ = 640
