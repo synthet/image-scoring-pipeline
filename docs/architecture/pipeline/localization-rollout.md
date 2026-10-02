@@ -53,6 +53,19 @@ sections further down are unchanged, so read them together with this table.
 | Continuous-burst segmentation and picks | #424, #407 |
 | Timing | #416 |
 
+**V1 shadow-rescan gate (2026-09-30):** The [owner review](../../reports/bird-v1-owner-review-2026-09-29.md)
+found false detections and poor primary crops in the development sample. The completed
+[failure review](../../reports/bird-v1-failure-review-2026-09-30.md) classified all 79
+false detections and found a usable review-JPEG alternative for 26 of 35 bad primaries.
+The 16,666 new v1 boxes remain shadow artifacts; neither candidate reproduction on
+production renditions nor an independent validation sample has passed the promotion gate.
+On 2026-10-01 the [promotion-gate report](../../reports/bird-v1-promotion-gate-2026-10-01.md)
+(#469) reproduced all 26 rescues on production renditions. It also froze an RTMDet-bird rule
+(`ecbb646e6649b3c2`) on development labels and drew an independent 207-image validation sample.
+Independent owner validation then **failed** in every stratum (best 53/60 present-and-usable,
+Wilson lower bound 0.78 against a 0.90 bar). No v1 box is promoted, and the next rule needs a new
+false-positive signal and a fresh sample.
+
 **Design ideas from the reference-design analysis, and where they are tracked:**
 
 | Idea | Where |

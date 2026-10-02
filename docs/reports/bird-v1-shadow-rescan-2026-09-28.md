@@ -89,3 +89,12 @@ Only 29 of the deliberately balanced 144 detected review photos had a usable pri
 3. If a subset passes, update only those production `bird_bbox` rows still carrying the frozen no-bird sentinel, and compute eye keypoints for the newly current v1 regions before using them. Preserve the versioned shadow and legacy runs for audit.
 
 The rescan implementation and its two selection-guard tests landed in [PR #464](https://github.com/synthet/image-scoring-pipeline/pull/464).
+
+## Follow-ups
+
+- [Owner review replay](bird-v1-owner-review-2026-09-29.md) and [failure review](bird-v1-failure-review-2026-09-30.md):
+  causes of the 79 false detections and owner-graded alternative boxes.
+- [Promotion gate](bird-v1-promotion-gate-2026-10-01.md) (#469): a frozen RTMDet-bird rule failed
+  independent owner validation, so all 16,666 boxes stay in shadow.
+- [Scene route benchmark](scene-route-benchmark-2026-10-02.md) (#412): the SigLIP2 bird route filters
+  114 of 182 owner-labelled no-bird detections, the false-positive signal a re-gate can use.
