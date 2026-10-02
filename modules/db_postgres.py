@@ -158,6 +158,8 @@ POSTGRES_APP_TABLES = (
     "image_regions",
     "image_keypoint_runs",
     "image_region_keypoints",
+    # Scene route classifications (#412).
+    "image_scene_labels",
 )
 
 # Default visual-embedding catalog row (re-applied after TRUNCATE in tests).
@@ -1465,5 +1467,28 @@ def _init_db_transaction():
                 CONSTRAINT ux_irk_run_name UNIQUE (keypoint_run_id, name)
             );
             """)
+
+            # Scene route classifications (#412). Mirrors migrations/versions/0037_image_scene_labels.py.
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS image_scene_labels (
+                image_id        INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+                scene_version   TEXT NOT NULL,
+                backend         TEXT NOT NULL,
+                top_label       TEXT NOT NULL,
+                top_prob        DOUBLE PRECISION NOT NULL,
+                probs           JSONB NOT NULL,
+                cosines         JSONB,
+                rendition_hash  TEXT,
+                job_id          INTEGER,
+                created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (image_id, scene_version),
+                CONSTRAINT ck_isl_top_prob CHECK (top_prob >= 0 AND top_prob <= 1)
+            );
+            """)
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS ix_isl_version_label "
+                "ON image_scene_labels (scene_version, top_label);"
+            )
 
             logger.info("PostgreSQL schema initialization completed.")

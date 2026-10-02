@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Configuration (config.json)
+description: Runtime settings authority for image-scoring-pipeline — config.json, environment.json, secrets, and config.example.json.
+resource: technical/CONFIG.md
+tags: [config, reference]
+timestamp: 2026-10-02T00:00:00Z
+okf_version: 0.1
+---
+
 # Configuration (`config.json`)
 
 Authority for runtime settings in **image-scoring-pipeline**. Implementation: [`modules/config.py`](../../modules/config.py).
@@ -189,6 +199,16 @@ WSL/Windows host project roots for thumbnail path rebasing.
 | `prioritize_new_folders` | `true` | When true, folders with `folders.created_at` within `new_folder_days` sort before older backlog (even across pipeline phases). |
 | `new_folder_days` | `7` | Window for “newly imported” folder boost; aligned with MCP `get_newly_imported_folders`. |
 | `bulk_phase_status` | `true` | Run planner (`plan_scope`) phase-status lookups as one bulk fetch per scope instead of per-image (kills the "Scanning folders…" N+1). Set `false` to restore the per-image path if the bulk fetch ever diverges. |
+
+### `scene_route`
+
+Scene route ahead of localization ([spec 05](../specs/pipeline-streamlining/05-scene-route.md), #412). Read by `modules/scene_route.py` (`scene_route_settings`) and `modules/localization_runner.py` (`SceneRouter`).
+
+| Key | Default | Notes |
+|-----|---------|--------|
+| `enabled` | `false` | When true, the `localization` runner classifies each decoded rendition, saves the class to `image_scene_labels`, and runs only the detectors its scene routes to. Routes that skip the bird detector record a `disabled` run with `error_code = scene_route`, which `bird_species` region mode treats as full frame. |
+| `backend` | `hf_clip_b32` | Zero-shot classifier: `hf_clip_b32`, `openclip_b32_laion`, `openclip_l14` or `siglip2_base`. The backend is part of the stored `scene_version`. |
+| `run_thresholds` | `{}` | Per-label probability at or above which the routed detector runs, e.g. `{"wildlife_bird": 0.05}`, frozen from the benchmark. A routed label without a threshold always runs its detector (fail open). |
 
 ### Top-level misc
 

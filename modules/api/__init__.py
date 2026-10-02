@@ -29,6 +29,7 @@ Endpoints:
         GET /api/images/by-uuid/{image_uuid} - Get single image details by image_uuid
         GET /api/images/by-hash/{image_hash} - Get single image details by content hash
         GET /api/images/{image_id} - Get single image details
+        GET /api/images/{image_id}/evidence - Visual evidence overlays (grids, mask, bands)
         GET /api/images/{image_id}/exif - Cached EXIF row (image_exif)
         GET /api/images/{image_id}/xmp - Cached XMP row (image_xmp)
         POST /api/images/{image_id}/geocode/reverse - Reverse geocoding (GPS → address; Nominatim)

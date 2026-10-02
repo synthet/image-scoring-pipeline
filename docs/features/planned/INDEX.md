@@ -1,15 +1,19 @@
-# Features — planned (index)
+---
+type: Index
+title: Planned features
+description: Index of planned backend feature specifications.
+resource: docs/features/planned/INDEX.md
+tags: [features, planned, index]
+timestamp: 2026-09-30T00:00:00Z
+okf_version: 0.1
+---
 
-Specs and proposals for product work not yet fully shipped. **Database / migration** docs remain under [`../../planning/INDEX.md`](../../planning/INDEX.md). **What is already shipped** (routing catalog): [`../implemented/INDEX.md`](../implemented/INDEX.md).
+# Planned features
 
-| Document | Description |
-|----------|-------------|
-| [agent-assisted-cull-review.md](agent-assisted-cull-review.md) | AI-assisted redundancy review — [spec hub](../../specs/agent-assisted-cull-review/INDEX.md), backlog #253/#134 |
-| [embeddings/](embeddings/) | Embedding applications (8 app specs + `NEXT_STEPS`, `TODO`, [two-level culling](embeddings/two-level-culling.md)) |
-| [ui-pipeline-redesign.md](ui-pipeline-redesign.md) | Pipeline-centric UI redesign |
-| [ux-ui-implementation-plan.md](ux-ui-implementation-plan.md) | Operator UI polish (Quick Start, confirmations) |
-| [import-discovery-alignment.md](import-discovery-alignment.md) | Align gallery Import with pipeline Discovery |
-| [fix-thumbnail-generation-spec.md](fix-thumbnail-generation-spec.md) | Thumbnail generation fixes |
-| [image-identity-and-hashing-improvements.md](image-identity-and-hashing-improvements.md) | Image identity and hashing |
+| Spec | Summary |
+|------|---------|
+| [visual-evidence-stage6-persistence.md](visual-evidence-stage6-persistence.md) | Cached evidence sidecars, invalidation, burst fields (#423/#424/#426) |
+| [embeddings/EMBEDDING_APPLICATIONS_INDEX.md](embeddings/EMBEDDING_APPLICATIONS_INDEX.md) | Embedding-powered gallery/backend applications |
+| [planning/subject-aware-culling-evidence.md](../../planning/subject-aware-culling-evidence.md) | Evidence bands, ranker, explainability (planning hub) |
 
-**See also:** [Planning index](../../planning/INDEX.md) · [Main docs index](../../INDEX.md)
+Implemented catalog: [implemented/INDEX.md](../implemented/INDEX.md)

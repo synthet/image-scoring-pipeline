@@ -1,0 +1,57 @@
+{
+  "evidence_schema_version": 1,
+  "extractor_version": "visual_evidence_extractors_v1",
+  "image_id": 0,
+  "display_width": 64,
+  "display_height": 48,
+  "rendition_hash": "fixture_orientation_1",
+  "gates": {
+    "region": true,
+    "mask": true,
+    "keypoints": false,
+    "focus_grid": true,
+    "noise_grid": true
+  },
+  "limitations": [],
+  "criteria": [
+    { "criterion": "focus", "band": "acceptable", "sub_score": 70, "confidence_evidence": 0.8 },
+    { "criterion": "noise", "band": "acceptable", "sub_score": 68, "confidence_evidence": 0.75 }
+  ],
+  "focus_grid": {
+    "cells_x": 4,
+    "cells_y": 3,
+    "cell_size_px": 16,
+    "values": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    "values_normalized": [0, 0.09, 0.18, 0.27, 0.36, 0.45, 0.55, 0.64, 0.73, 0.82, 0.91, 1]
+  },
+  "noise_grid": {
+    "cells_x": 3,
+    "cells_y": 2,
+    "cell_size_px": 20,
+    "values": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    "values_normalized": [0, 0.2, 0.4, 0.6, 0.8, 1]
+  },
+  "mask_rle": {
+    "width": 8,
+    "height": 6,
+    "counts": [20, 28],
+    "max_dim": 256
+  },
+  "separation": {
+    "subject_sharpness_mean": 12.5,
+    "background_sharpness_mean": 4.0,
+    "ratio": 3.125,
+    "noise_sigma_mean": 1.2,
+    "mask_label": "subject_mask"
+  },
+  "region_bbox": {
+    "x1": 10,
+    "y1": 8,
+    "x2": 54,
+    "y2": 40,
+    "conf": 0.9,
+    "img_w": 64,
+    "img_h": 48,
+    "area_frac": 0.35
+  }
+}

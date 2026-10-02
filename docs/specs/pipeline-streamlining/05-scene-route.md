@@ -4,14 +4,16 @@ title: "Spec 05: scene route"
 description: Zero-shot scene classification from the stored CLIP image vector, benchmarked first, then used to choose which detector and species model run for each image.
 resource: docs/specs/pipeline-streamlining/05-scene-route.md
 tags: [specs, pipeline, clip, scene, routing, localization]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-10-02T00:00:00Z
 okf_version: 0.1
-status: proposed
+status: in-progress
 ---
 
 # Spec 05: scene route
 
 **Issue:** #412 · **Hub:** [INDEX.md](INDEX.md) · **Milestone:** M2 (benchmark), then M3
+
+> **Status (2026-10-02):** benchmark done and integration landed behind `scene_route.enabled`. The classifier now reads the localization rendition, not stored vectors, which resolves SR-4. SigLIP2-base beat B/32 and L/14, resolving SR-2. The bird route threshold is p >= 0.065. Labels are `scene_v2`, taken from library keyword frequencies; `wildlife_herp` is folded into `other_animal`, and vehicles and plants were added. See [scene-route-benchmark-2026-10-02](../../reports/scene-route-benchmark-2026-10-02.md).
 
 ## Summary
 

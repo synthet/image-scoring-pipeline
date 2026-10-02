@@ -27,7 +27,7 @@ SOURCE_BIOCLIP_REGION = "bioclip_region"
 USE_REGIONS_KEY = "bird_species.use_regions"
 
 _PRIMARY_REGION_SQL = """
-    SELECT r.id AS run_id, r.status, g.id AS region_id, g.x1, g.y1, g.x2, g.y2
+    SELECT r.id AS run_id, r.status, r.error_code, g.id AS region_id, g.x1, g.y1, g.x2, g.y2
     FROM image_localization_runs r
     LEFT JOIN image_regions g ON g.localization_run_id = r.id AND g.rank = 0
     WHERE r.image_id = ? AND r.detector_key = 'bird' AND r.is_current
@@ -49,8 +49,9 @@ def species_input_for_image(image_id: int) -> dict:
 
     * ``"region"``     -- a ``detected`` run: classify a padded crop of the rank-0 region
       (``region`` is its normalized ``(x1, y1, x2, y2)``);
-    * ``"full_frame"`` -- a ``no_detection`` run: localization already answered, classify the
-      whole frame without re-detecting;
+    * ``"full_frame"`` -- a ``no_detection`` run, or a ``disabled`` run the scene route recorded
+      (``error_code = scene_route``, #412): localization already answered, classify the whole
+      frame without re-detecting;
     * ``"legacy"``     -- no current run, an error/disabled run, or a failed lookup: the embedded
       detector path, unchanged (fail open).
     """
@@ -65,7 +66,8 @@ def species_input_for_image(image_id: int) -> dict:
     if row.get("status") == "detected" and row.get("region_id") is not None:
         return {"mode": "region", "region": (float(row["x1"]), float(row["y1"]), float(row["x2"]), float(row["y2"])),
                 "run_id": row["run_id"], "region_id": row["region_id"]}
-    if row.get("status") == "no_detection":
+    if row.get("status") == "no_detection" or (
+            row.get("status") == "disabled" and row.get("error_code") == "scene_route"):
         return {"mode": "full_frame", "region": None, "run_id": row["run_id"], "region_id": None}
     return legacy
 

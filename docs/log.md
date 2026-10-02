@@ -746,3 +746,14 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 
 - 2026-10-01: created — [promotion-gate report](reports/bird-v1-promotion-gate-2026-10-01.md) (#469): all 26 failure-review rescues reproduce on production renditions. A population-weighted dev fit (adopted after the unweighted pass found no setting at 0.90) froze rule `ecbb646e6649b3c2`, which promotes on an RTMDet bird box at conf ≥ 0.55 with RTMDet geometry. A 207-image validation sample excluding dev folders awaits owner labels. No production writes; indexed in [reports/INDEX.md](reports/INDEX.md).
 - 2026-10-01: updated — owner labelled the 207-image validation sample. No stratum passed the 0.90 Wilson lower bound (large 50/60, medium 53/60, small 19/27; 12 of the 147 promoted sample images had no bird). The gate stays closed and all 16,666 v1 boxes remain shadow. The [report](reports/bird-v1-promotion-gate-2026-10-01.md) lists next options.
+
+## [2026-10-01] updated | Label-free model selection report
+
+- 2026-10-01: updated — [score analytics feature page](features/implemented/11-score-analytics-and-model-suitability.md#model-selection-report-label-free) documents `scripts/analysis/model_selection_report.py`. It gives keep / optional / omittable verdicts per scenario for the production models from composite drop-one ablation, within-stack consensus, redundancy and an estimated cost table. Verdicts are statistical only, not validated against human labels. Read-only.
+- 2026-10-01: created — [session summary](reports/model-selection-session-2026-10-01.md) records what was built, the shell-hook blocker that prevented any run, the next commands and a draft backlog issue; indexed in [reports/INDEX.md](reports/INDEX.md).
+- 2026-10-02: created — [Codex handoff](reports/model-selection-codex-handoff-2026-10-02.md) and [findings snapshot](reports/model-selection-findings-2026-10-02.md); [curation plan](reports/model_evaluation_and_curation_plan.md) gained canonical evidence-source table (300-stack study audit vs full-stack label-free report). Updated session summary status and [reports index](reports/INDEX.md).
+- 2026-10-02: created — [deliver-master runbook](reports/deliver-master-runbook-2026-10-02.md) and `scripts/powershell/Consolidate-DeliverToMaster.ps1` (completes #471 merge per session export). `config.example.json`: `localization.enabled` and `scene_route` (SigLIP2 0.065) enabled.
+
+## [2026-10-02] created | Scene route benchmark
+
+- 2026-10-02: created — [scene route benchmark](reports/scene-route-benchmark-2026-10-02.md) (#412). The owner labelled 519 images. SigLIP2 zero-shot gave the best scene macro F1 (0.75), and the bird route was frozen at p >= 0.065: weighted bird-visible skip 1.6%, 5/77 raw, all incidental birds. The detector then skips 75% of non-bird images. The route also filters 114 of 182 v1 no-bird false detections. Spec 05 status and the rollout table were updated; indexed in [reports/INDEX.md](reports/INDEX.md).

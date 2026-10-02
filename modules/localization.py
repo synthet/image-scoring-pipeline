@@ -339,7 +339,7 @@ def decode_for_localization(path: str) -> Decoded:
 # ---------------------------------------------------------------------------
 
 _CURRENT_RUN_SQL = """
-    SELECT id, status, error_code, detector_config_hash, source_hash, source_hash_version,
+    SELECT id, status, error_code, error_detail, detector_config_hash, source_hash, source_hash_version,
            rendition_hash
     FROM image_localization_runs
     WHERE image_id = ? AND detector_key = ? AND is_current
@@ -576,3 +576,49 @@ def localize_image(
         decode_seconds=decode_seconds,
         inference_seconds=inference_seconds,
     )
+
+
+#: ``error_code`` of a ``disabled`` run the scene route wrote instead of detecting (spec 05 AC-7).
+SCENE_ROUTE_ERROR_CODE = "scene_route"
+
+
+def record_scene_skip(
+    image_id: int,
+    ctx: DetectorContext,
+    decoded: Decoded,
+    *,
+    scene_version: str,
+    top_label: str,
+    job_id: int | None = None,
+) -> ImageOutcome:
+    """Record that the scene route chose not to run the bird detector (spec 05 AC-7, #412).
+
+    The run is ``disabled`` with ``error_code = scene_route`` and the scene version and label in
+    ``error_detail``, so consumers fall back to the full frame. An identical current skip (same
+    rendition, detector config and scene answer) is left in place; a new scene version or label
+    replaces it (AC-9). A later route to the detector replaces it too, because ``disabled`` is
+    never reusable (AC-10).
+    """
+    d = decoded.descriptor
+    detail = f"{scene_version}:{top_label}"
+    current = get_current_run(image_id)
+    if (current is not None and current["status"] == STATUS_DISABLED
+            and current.get("error_code") == SCENE_ROUTE_ERROR_CODE and current.get("error_detail") == detail
+            and current["detector_config_hash"] == ctx.config_hash and current["rendition_hash"] == d.rendition_hash):
+        return ImageOutcome(status=STATUS_DISABLED, unchanged=True)
+    run = _base_run(image_id, job_id, ctx)
+    run.update(
+        source_hash=d.source_hash,
+        source_hash_version=d.source_hash_version,
+        rendition_hash=d.rendition_hash,
+        rendition_version=d.descriptor_version,
+        orientation=d.orientation,
+        display_width=d.display_width,
+        display_height=d.display_height,
+        decode_route=d.decode_route.value,
+        status=STATUS_DISABLED,
+        error_code=SCENE_ROUTE_ERROR_CODE,
+        error_detail=detail,
+    )
+    _finish(run, [])
+    return ImageOutcome(status=STATUS_DISABLED)

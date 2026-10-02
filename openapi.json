@@ -4880,6 +4880,59 @@
         }
       }
     },
+    "/api/images/{image_id}/evidence": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Visual evidence for inspector overlays",
+        "description": "Returns precomputed or on-demand evidence artifacts (grids, mask RLE, bands, gates) for gallery evidence layers. See docs/planning/visual-evidence-api-and-grids.md.",
+        "operationId": "get_image_evidence_api_images__image_id__evidence_get",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/images/{image_id}/neighbors": {
       "get": {
         "tags": [
@@ -14031,13 +14084,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

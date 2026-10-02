@@ -37,6 +37,30 @@ For [OWASP Agentic Skills Top 10](https://github.com/kenhuangus/agentic-skills-t
 
 **Inventory and PR review:** [.agent/SKILL_INVENTORY.md](.agent/SKILL_INVENTORY.md) · [.agent/SKILL_CHANGE_AST10_REVIEW.md](.agent/SKILL_CHANGE_AST10_REVIEW.md)
 
+### Shared skill routing (Codex, Claude Code, Cursor, Antigravity)
+
+All agents working in this repository should use the project skills when their task matches. Read the relevant canonical `SKILL.md` before applying its workflow; load supporting references only as needed. Agents without native discovery of `.cursor/skills/` should open these files directly. Use the existing sources and compiled harnesses rather than creating another copy of the skill tree.
+
+| Task | Canonical skills to read |
+|------|--------------------------|
+| Repository navigation and shell environment | [agent-cli-hub](.cursor/skills/agent-cli-hub/SKILL.md), [agent-search](.cursor/skills/agent-search/SKILL.md), [agent-platform-tooling](.cursor/skills/agent-platform-tooling/SKILL.md) |
+| Python backend, API, phases, schema | [imgscore-backend-implementer](.cursor/skills/imgscore-backend-implementer/SKILL.md) |
+| React `/ui/` and shared design tokens | [backend-frontend-ui](.cursor/skills/backend-frontend-ui/SKILL.md) |
+| Code failures and regressions | [systematic-debugging](.cursor/skills/systematic-debugging/SKILL.md); [test-driven-development](.cursor/skills/test-driven-development/SKILL.md) for behavior changes |
+| Live scoring, jobs, database diagnosis | [image-scoring-mcp](.cursor/skills/image-scoring-mcp/SKILL.md), [imgscore-mcp-debug](.cursor/skills/imgscore-mcp-debug/SKILL.md) |
+| Tests, lint, and completion evidence | [agent-dev-tooling](.cursor/skills/agent-dev-tooling/SKILL.md), [verification-before-completion](.cursor/skills/verification-before-completion/SKILL.md); [validate-implementation](.cursor/skills/validate-implementation/SKILL.md) for spec acceptance criteria |
+| Repository documentation | [docs-wiki](.cursor/skills/docs-wiki/SKILL.md) |
+| Shared LLM Wiki retrieval | [llm-wiki](.cursor/skills/llm-wiki/SKILL.md) |
+| Picking or transitioning backlog work | [backlog-queue](.cursor/skills/backlog-queue/SKILL.md) |
+| External CLI review requested by the user | [subagent-review](.cursor/skills/subagent-review/SKILL.md) |
+| Unattended runs and long backfills | [autonomous-run-contract](.cursor/skills/autonomous-run-contract/SKILL.md) |
+| Creating or changing project skills | [skill-authoring](.cursor/skills/skill-authoring/SKILL.md); [lesson-to-skill](.cursor/skills/lesson-to-skill/SKILL.md) for durable session lessons |
+| Git changes and delivery requested by the user | [agent-git-workflows](.cursor/skills/agent-git-workflows/SKILL.md), [commit-and-push](.cursor/skills/commit-and-push/SKILL.md), [deliver-branch](.cursor/skills/deliver-branch/SKILL.md) |
+
+Antigravity and generic agent assets also live in [`.agent/skills/`](.agent/skills/) and [`.agent/workflows/`](.agent/workflows/). Where an asset names a canonical Cursor skill, follow that source. Older standalone guidance must be checked against this file, [CLAUDE.md](CLAUDE.md), [docs/CANONICAL_SOURCES.md](docs/CANONICAL_SOURCES.md), and the current code before using operational commands. In particular, PostgreSQL uses port **5432** by default; old Firebird port **3050** guidance does not apply to PostgreSQL.
+
+Claude Code hooks described above are configured for Claude Code; other agents must not assume those hooks ran. Apply the relevant workflow explicitly and preserve the user's task scope and existing authorization. Compiled procedures are cataloged in [`.agent/SKILL_COMPILATION.md`](.agent/SKILL_COMPILATION.md).
+
 **Cursor slash commands** (type `/` in chat): **`/spec`**, **`/clarify`**, **`/plan`**, **`/tasks`**, **`/analyze`**, **`/decompose`**, **`/implement`**, **`/test-and-fix`**, **`/pr-ready`**, **`/task-claim`**, **`/release-notes`**, **`/release`**, **`/backup-db`**, **`/windows-keep-awake on`**, **`/windows-keep-awake off`**, **`/critical-commit-audit`**, **`/wiki-ingest`**, **`/wiki-lint`**, **`/wiki-query`**, **`/check-subagents`**, **`/run-codex-review`**, **`/run-gemini-review`**, **`/run-subagent-review`**. Index: [`.cursor/README.md`](.cursor/README.md). Spec Kit gates: [`.agent/SPEC_KIT_ADOPTION.md`](.agent/SPEC_KIT_ADOPTION.md). **Claude Code** mirrors paired commands under `.claude/commands/`. After editing `.cursor/` assets, run `python scripts/sync_assistant_trees.py`.
 
 **External CLI reviews:** sibling [`subagent-orchestrator`](../subagent-orchestrator) via MCP **`imgscore-subagent-orchestrator`** — see [docs/technical/EXTERNAL_CLI_REVIEWS.md](docs/technical/EXTERNAL_CLI_REVIEWS.md).

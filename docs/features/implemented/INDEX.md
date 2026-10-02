@@ -26,6 +26,7 @@ Catalog of shipped behavior by area. This page routes to focused pages and canon
 | Config | Runtime config loading, config validation, doctor checks, redacted debug output, and API-visible config helpers. | [09-configuration-and-limits.md](09-configuration-and-limits.md), [DIAGNOSTICS.md](../../DIAGNOSTICS.md) | `modules/config.py`, `config.example.json`, `environment.example.json` |
 | Score analytics | `/ui/scores` dashboard (rank curves with uPlot/ECharts A/B, distributions, correlations, OLS, stack culling signals, keyword layers) and the read-only Nₐ / Nᵦ model-suitability toolkit with export scripts. | [11-score-analytics-and-model-suitability.md](11-score-analytics-and-model-suitability.md), [technical/API_CONTRACT.md](../../technical/API_CONTRACT.md#score-analytics-endpoints) | `modules/score_analytics/`, `frontend/src/features/score-analytics/` |
 | Phase status telemetry | Per-image phase status and folder rollup separation from UI telemetry/action labels. | [10-phase-status-decoupling.md](10-phase-status-decoupling.md), [technical/PIPELINE_TERMINOLOGY.md](../../technical/PIPELINE_TERMINOLOGY.md) | phase/status DB helpers and UI payloads |
+| Visual evidence (API slice) | On-demand focus/noise grids, mask RLE, criterion bands, display gates; `GET /api/images/{id}/evidence`. | [12-visual-evidence-overlays.md](12-visual-evidence-overlays.md), [technical/VISUAL_EVIDENCE_API.md](../../technical/VISUAL_EVIDENCE_API.md) | `modules/visual_evidence/`, `data_query.py` |
 
 ## Sibling Gallery
 
