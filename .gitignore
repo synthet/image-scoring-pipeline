@@ -41,6 +41,12 @@ ENV/
 env.bak/
 venv.bak/
 .venv*/
+# Legacy WSL venv names (superseded by repo-root .venv / ~/.venvs/*)
+.venv_wsl/
+.venv-wsl-tests/
+# Firebird DDL/init pytest scratch (regenerable)
+temp_ddl_test/
+temp_test_init/
 musiq_env/
 musiq_gpu_env/
 musiq_gpu_env_*/

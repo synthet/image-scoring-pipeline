@@ -743,6 +743,9 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-01] updated | Label-free model selection report
 
 - 2026-10-01: updated — [score analytics feature page](features/implemented/11-score-analytics-and-model-suitability.md#model-selection-report-label-free) documents `scripts/analysis/model_selection_report.py`. It gives keep / optional / omittable verdicts per scenario for the production models from composite drop-one ablation, within-stack consensus, redundancy and an estimated cost table. Verdicts are statistical only, not validated against human labels. Read-only.
+- 2026-10-01: created — [session summary](reports/model-selection-session-2026-10-01.md) records what was built, the shell-hook blocker that prevented any run, the next commands and a draft backlog issue; indexed in [reports/INDEX.md](reports/INDEX.md).
+- 2026-10-02: created — [Codex handoff](reports/model-selection-codex-handoff-2026-10-02.md) and [findings snapshot](reports/model-selection-findings-2026-10-02.md); [curation plan](reports/model_evaluation_and_curation_plan.md) gained canonical evidence-source table (300-stack study audit vs full-stack label-free report). Updated session summary status and [reports index](reports/INDEX.md).
+- 2026-10-02: created — [deliver-master runbook](reports/deliver-master-runbook-2026-10-02.md) and `scripts/powershell/Consolidate-DeliverToMaster.ps1` (completes #471 merge per session export). `config.example.json`: `localization.enabled` and `scene_route` (SigLIP2 0.065) enabled.
 
 ## [2026-10-02] created | Scene route benchmark
 

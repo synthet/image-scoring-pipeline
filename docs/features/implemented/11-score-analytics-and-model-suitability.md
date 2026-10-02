@@ -4,7 +4,7 @@ title: Score analytics and model suitability
 description: /ui/scores dashboard, /api/analytics/scores/* endpoints and export scripts for comparing every scoring dimension globally, per keyword and inside stacks, including the Nₐ / Nᵦ model-suitability toolkit.
 resource: docs/features/implemented/11-score-analytics-and-model-suitability.md
 tags: [features, scoring, analytics, culling, statistics, frontend]
-timestamp: 2026-09-24T00:00:00Z
+timestamp: 2026-10-01T00:00:00Z
 okf_version: 0.1
 ---
 
@@ -64,3 +64,16 @@ Pick / Keep / Reject probabilities and deletion policy are out of scope until an
 | [`scripts/analysis/model_suitability_report.py`](../../../scripts/analysis/model_suitability_report.py) | Manifest (fingerprint, query / code hashes, git SHA, versions), data dictionary, label audit, profiles / percentiles / ECDF-QQ, variance decomposition, correlation matrices, culling metrics (all / test), pairwise model, global metrics, suitability map, subgroups, `REPORT.md`. |
 
 Run both in gpu-shell (see [AGENTS.md](../../../AGENTS.md)); neither writes to the database.
+
+## Model selection report (label-free)
+
+[`scripts/analysis/model_selection_report.py`](../../../scripts/analysis/model_selection_report.py) on top of [`model_selection.py`](../../../modules/score_analytics/model_selection.py) decides which models each scenario (`general`, `technical`, `aesthetic`, stack culling) can drop, using only the score data. It writes `REPORT.md`, CSV/JSON and SVG charts to `reports/model_selection/<UTC stamp>/` and never touches the database.
+
+- **Roles:** verdicts only for production models (`liqe`, `spaq`, `topiq`, `arniqa`, `ava`) and, for culling, `clip_quality_v0`. `koniq` / `paq2piq` (deprecated, partial coverage), the `refcull_*` research family and the composites are reported as reference only.
+- **Composite drop-one ablation:** the composite is recomputed without one model, with the same percentile rescaling and weight renormalization as `compute_composites`. The report gives Spearman against the full composite, share of star ratings and colour labels that change, top-10% overlap and how often the stack best frame changes. An `everywhere` row removes the model from every composite.
+- **Within-stack signal:** variance share and tie rate (identical stored values) from `stacks.py`. Consensus Kendall τ-b and top-1 agreement are measured against the leave-one-out mean rank of the other candidates, on images every candidate scored, with stack-bootstrap CIs.
+- **Redundancy:** connected groups at |ρ| ≥ 0.8, library and within stack, plus PCA of the production models.
+- **Verdicts** (`THRESHOLDS`, fixed before running): keep / optional / omittable per scenario, plus a greedy forward selection of the smallest set that reproduces each scenario target.
+- **Cost:** a static, estimated table. Per-model timings are read from `images.scores_json` only when that legacy column exists.
+
+Every verdict carries "Statistical only; not validated against human judgments": agreement with the other models is not accuracy, and agreement with `stacks.best_image_id` is agreement with production. The frozen, human-labelled study ([`model_selection_study.py`](../../../scripts/analysis/model_selection_study.py)) is the path to accuracy claims.
