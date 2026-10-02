@@ -98,3 +98,14 @@ def test_select_b_tie_breaks():
     a, b, c = res(0.55, None, 0.05), res(0.70, None, 0.05), res(0.70, 1, 0.05)
     assert select_b([a, b, c])["rule_hash"] == c["rule_hash"]
     assert select_b([a, res(0.55, 2, 0.5, usable=120, promoted=125)])["params"]["max_rt_birds"] == 2
+
+
+def test_rule_c_is_rule_b_on_scene_v3():
+    from modules.scene_route import SceneClassifier
+    from scripts.research.detector_benchmark.v1_regate import SubsetParamsV3
+
+    b, c = SubsetParams(0.55, 3, 0.5), SubsetParamsV3(0.55, 3, 0.5)
+    assert b.rule_hash() != c.rule_hash()
+    assert c.decide(SNAP, _probe_birds(0.8), 0.9).action == b.decide(SNAP, _probe_birds(0.8), 0.9).action == "promote"
+    assert SubsetParamsV3.SCENE_VERSION == SceneClassifier("siglip2_base", prompt_set="scene_v3").version
+    assert len(grid_b(SubsetParamsV3)) == 60

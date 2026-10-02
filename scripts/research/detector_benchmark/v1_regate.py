@@ -120,7 +120,7 @@ def load_validation_labels(promotion_root: Path) -> tuple[dict[int, dict], dict[
     return labels, weights, sum(sampling["population"].values())
 
 
-def load_scene_probs(image_ids) -> dict[int, float]:
+def load_scene_probs(image_ids, scene_version: str = SCENE_VERSION) -> dict[int, float]:
     from modules import db
 
     ids = sorted({int(i) for i in image_ids})
@@ -130,7 +130,7 @@ def load_scene_probs(image_ids) -> dict[int, float]:
         rows = db.get_connector().query(
             f"SELECT image_id, probs FROM image_scene_labels WHERE scene_version = ? "
             f"AND image_id IN ({','.join('?' * len(chunk))})",
-            (SCENE_VERSION, *chunk),
+            (scene_version, *chunk),
         )
         for r in rows or []:
             probs = r["probs"] if isinstance(r["probs"], dict) else json.loads(r["probs"])
@@ -228,6 +228,8 @@ def fit(promotion_root: Path, dev_root: Path, out: Path) -> dict | None:
 # ---------------------------------------------------------------------------
 
 RULE_VERSION_B = "v1_regate_rule/2"
+RULE_VERSION_C = "v1_regate_rule/3"
+SCENE_VERSION_V3 = "scene_v3/siglip2_base/91179fd7133da642"
 B_CONF = (0.55, 0.60, 0.65, 0.70, 0.75)
 B_MAX_BIRDS = (1, 2, 3, None)
 B_THRESHOLDS = (0.05, 0.50, 0.90)
@@ -241,8 +243,12 @@ class SubsetParams:
     max_rt_birds: int | None
     threshold: float
 
+    RULE_VERSION = RULE_VERSION_B
+    SCENE_VERSION = SCENE_VERSION
+
     def rule_hash(self) -> str:
-        blob = json.dumps({"version": RULE_VERSION_B, "scene_version": SCENE_VERSION, **asdict(self)}, sort_keys=True)
+        blob = json.dumps({"version": self.RULE_VERSION, "scene_version": self.SCENE_VERSION, **asdict(self)},
+                          sort_keys=True)
         return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
     def decide(self, snap_item: dict, probe: dict | None, p_bird: float | None, frozen=None) -> Decision:
@@ -263,8 +269,15 @@ class SubsetParams:
         return Decision("promote", "subset", d.primary, d.source)
 
 
-def grid_b() -> list[SubsetParams]:
-    return [SubsetParams(c, k, t) for c, k, t in itertools.product(B_CONF, B_MAX_BIRDS, B_THRESHOLDS)]
+class SubsetParamsV3(SubsetParams):
+    """``v1_regate_rule/3``: the ``/2`` family with ``p(wildlife_bird)`` from ``scene_v3`` (orca fix)."""
+
+    RULE_VERSION = RULE_VERSION_C
+    SCENE_VERSION = SCENE_VERSION_V3
+
+
+def grid_b(cls: type[SubsetParams] = SubsetParams) -> list[SubsetParams]:
+    return [cls(c, k, t) for c, k, t in itertools.product(B_CONF, B_MAX_BIRDS, B_THRESHOLDS)]
 
 
 def select_b(results: list[dict]) -> dict | None:
@@ -278,30 +291,34 @@ def select_b(results: list[dict]) -> dict | None:
                                   -r["params"]["threshold"], r["rule_hash"]))
 
 
-def fit_b(promotion_root: Path, dev_root: Path, out: Path) -> dict | None:
+def fit_b(promotion_root: Path, dev_root: Path, out: Path, cls: type[SubsetParams] = SubsetParams,
+          name: str = "b") -> dict | None:
     snap = load_snapshot(promotion_root)
     prod = load_probe(promotion_root / "probe_production.jsonl")
     dev = load_dev_labels(dev_root)
     dev_sampling = json.loads((dev_root / "sampling.json").read_text(encoding="utf-8"))
     dev_weights = {p["stratum"]: p["images"] / dev_sampling["sample"][p["stratum"]] for p in dev_sampling["population"]}
     val, val_weights, val_population = load_validation_labels(promotion_root)
-    scene = load_scene_probs(list(dev) + list(val))
+    scene = load_scene_probs(list(dev) + list(val), cls.SCENE_VERSION)
+    missing = [i for i in list(dev) + list(val) if i not in scene]
+    if missing:
+        raise ValueError(f"{len(missing)} labelled images have no {cls.SCENE_VERSION} scene label")
     results = []
-    for params in grid_b():
+    for params in grid_b(cls):
         d = evaluate_design(params, dev, dev_weights, snap, prod, scene, None)
         v = evaluate_design(params, val, val_weights, snap, prod, scene, None)
         results.append(combine(params, d, v, val_population, B_FLOORS))
     chosen = select_b(results)
-    report = {"rule_version": RULE_VERSION_B, "scene_version": SCENE_VERSION,
+    report = {"rule_version": cls.RULE_VERSION, "scene_version": cls.SCENE_VERSION,
               "criterion": dict(zip(("min_combined_weighted_precision", "min_design_weighted_precision",
                                      "min_promoted_per_design"), B_FLOORS)),
               "settings": len(results), "eligible": sum(r["eligible"] for r in results),
               "chosen": chosen["rule_hash"] if chosen else None, "results": results}
     out.mkdir(parents=True, exist_ok=True)
-    (out / "fit_b.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+    (out / f"fit_{name}.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     if chosen is not None:
-        _write_new_json(out / "rule_b.json", {
-            "rule_version": RULE_VERSION_B, "scene_version": SCENE_VERSION, "rule_hash": chosen["rule_hash"],
+        _write_new_json(out / f"rule_{name}.json", {
+            "rule_version": cls.RULE_VERSION, "scene_version": cls.SCENE_VERSION, "rule_hash": chosen["rule_hash"],
             "params": chosen["params"], "frozen_utc": datetime.now(timezone.utc).isoformat(),
             "inputs_sha256": {name: sha256_file(promotion_root / name)
                               for name in ("snapshot.json", "probe_production.jsonl")},
@@ -408,9 +425,72 @@ def agent_sample(promotion_root: Path, dev_root: Path, out: Path, seed: str, per
     return summary
 
 
+# ---------------------------------------------------------------------------
+# owner validation of /3 (registered on #472 before drawing)
+# ---------------------------------------------------------------------------
+
+VALIDATION_C_SEED = "bird-v1-regate-validation-c1"
+VALIDATION_C_BUDGET = 300
+
+
+def freeze_validation_c(promotion_root: Path, dev_root: Path, out: Path, seed: str = VALIDATION_C_SEED,
+                        budget: int = VALIDATION_C_BUDGET) -> dict:
+    """Draw the registered /3 owner sample into ``out/owner_c/validation`` (same layout as #469)."""
+    snap = load_snapshot(promotion_root)
+    prod = load_probe(promotion_root / "probe_production.jsonl")
+    rule = json.loads((out / "rule_c.json").read_text(encoding="utf-8"))
+    params = SubsetParamsV3(**rule["params"])
+    if params.rule_hash() != rule["rule_hash"]:
+        raise ValueError("rule_c.json hash does not match its parameters")
+    scene = load_scene_probs(snap, SCENE_VERSION_V3)
+
+    excluded = {int(r["image_id"]) for r in _read_csv(dev_root / "cohort.csv")}
+    excluded |= {int(i["image_id"]) for i in json.loads(
+        (dev_root / "failure_review" / "manifest.json").read_text(encoding="utf-8"))["items"]}
+    excluded |= set(load_validation_labels(promotion_root)[0])
+    excluded |= {int(r["image_id"]) for r in _read_csv(Path(".agent/scratch/scene_route/sample/cohort.csv"))}
+    excluded |= {int(r["image_id"]) for r in _read_csv(out / "agent_sample" / "cohort.csv")}
+
+    population: dict[str, list[dict]] = defaultdict(list)
+    unlabelled_scene = 0
+    for iid, item in sorted(snap.items()):
+        if scene.get(iid) is None:
+            unlabelled_scene += 1
+        d = params.decide(item, prod.get(iid), scene.get(iid))
+        if d.action != "promote":
+            continue
+        population[f"promote_{area_band(d.primary)}"].append(
+            {"image_id": iid, "folder": folder_of(item["file_path"]), "file_path": item["file_path"],
+             "box": list(d.primary), "source": d.source, "eligible": iid not in excluded})
+    eligible = {s: [m for m in v if m["eligible"]] for s, v in population.items()}
+    small_cap = len({m["folder"] for m in eligible.get("promote_small", [])})
+    rest = budget - small_cap
+    sizes = {"promote_small": small_cap, "promote_large": rest - rest // 2, "promote_medium": rest // 2}
+    picked = sample_strata(eligible, seed, sizes)
+
+    vdir = out / "owner_c" / "validation"
+    if (vdir / "cohort.csv").exists():
+        raise FileExistsError(f"{vdir / 'cohort.csv'} already exists; the sample is frozen")
+    vdir.mkdir(parents=True, exist_ok=True)
+    rows = [{"image_id": m["image_id"], "stratum": s, "file_path": m["file_path"]}
+            for s, ms in sorted(picked.items()) for m in ms]
+    _write_csv(vdir / "cohort.csv", ("image_id", "stratum", "file_path"), rows)
+    _write_new_json(vdir / "proposals.json", {str(m["image_id"]): {"box": m["box"], "source": m["source"]}
+                                              for ms in picked.values() for m in ms})
+    sampling = {"seed": seed, "rule_hash": rule["rule_hash"], "rule_version": RULE_VERSION_C,
+                "scene_version": SCENE_VERSION_V3, "frozen_utc": datetime.now(timezone.utc).isoformat(),
+                "excluded_images": len(excluded), "snapshot_images_without_v3_label": unlabelled_scene,
+                "population": {s: len(v) for s, v in sorted(population.items())},
+                "eligible": {s: len(v) for s, v in sorted(eligible.items())},
+                "sample": {s: len(v) for s, v in sorted(picked.items())},
+                "requested": sizes}
+    _write_new_json(vdir / "sampling.json", sampling)
+    return sampling
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("action", choices=("fit", "fit-b", "agent-sample"))
+    parser.add_argument("action", choices=("fit", "fit-b", "fit-c", "agent-sample", "freeze-validation-c", "page-c"))
     parser.add_argument("--promotion-root", type=Path, default=OUT_ROOT)
     parser.add_argument("--dev-root", type=Path, default=DEV_ROOT)
     parser.add_argument("--out", type=Path, default=REGATE_ROOT)
@@ -419,6 +499,19 @@ def main() -> None:
     parser.add_argument("--calib", type=int, default=30)
     parser.add_argument("--allow-seen-folders", action="store_true")
     args = parser.parse_args()
+    if args.action == "freeze-validation-c":
+        print(json.dumps(freeze_validation_c(args.promotion_root, args.dev_root, args.out), indent=1))
+        return
+    if args.action == "page-c":
+        from scripts.research.detector_benchmark.v1_promotion_gate import build_page
+
+        n = build_page(args.out / "owner_c", VALIDATION_C_SEED)
+        print(f"Built {n} items at {args.out / 'owner_c' / 'validation' / 'page' / 'index.html'}")
+        return
+    if args.action == "fit-c":
+        chosen = fit_b(args.promotion_root, args.dev_root, args.out, SubsetParamsV3, "c")
+        print(json.dumps(chosen, indent=1) if chosen else "No /3 setting meets the pre-declared criterion.")
+        return
     if args.action == "fit-b":
         chosen = fit_b(args.promotion_root, args.dev_root, args.out)
         print(json.dumps(chosen, indent=1) if chosen else "No /2 setting meets the pre-declared criterion; option (b) fails.")

@@ -84,6 +84,22 @@ LABELS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+#: ``scene_v3`` (opt-in research set, #472): ``scene_v2`` plus a ``marine_mammal`` label. Orca dorsal
+#: fins scored as birds under v2 (p up to 0.98) because no label covered cetaceans. A separate label
+#: leaves every v2 label centroid unchanged. Not the default: the routing threshold is calibrated on v2.
+LABELS_V3: dict[str, tuple[str, ...]] = {
+    **LABELS,
+    "marine_mammal": (
+        "a photo of a whale",
+        "an orca surfacing in the sea",
+        "a dolphin swimming in the ocean",
+        "a dorsal fin breaking the water surface",
+        "a seal or sea lion in the water",
+    ),
+}
+
+PROMPT_SETS: dict[str, dict[str, tuple[str, ...]]] = {"scene_v2": LABELS, "scene_v3": LABELS_V3}
+
 #: Scene label -> ``localization.detectors`` keys. Labels absent here have no detector yet:
 #: their images keep the full frame.
 ROUTES: dict[str, tuple[str, ...]] = {
@@ -98,9 +114,10 @@ BACKENDS: dict[str, dict[str, str]] = {
 }
 
 
-def prompt_set_hash(backend: str, labels: dict[str, tuple[str, ...]] = LABELS) -> str:
+def prompt_set_hash(backend: str, labels: dict[str, tuple[str, ...]] = LABELS,
+                    version: str = PROMPT_SET_VERSION) -> str:
     """Identity of a classification: prompt-set version, every prompt, and the model."""
-    blob = json.dumps({"version": PROMPT_SET_VERSION, "backend": BACKENDS[backend], "labels": labels},
+    blob = json.dumps({"version": version, "backend": BACKENDS[backend], "labels": labels},
                       sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
@@ -211,13 +228,17 @@ def _features(out, embeds_attr: str):
 class SceneClassifier:
     """Zero-shot classifier with the image and text towers of one model (never mixed)."""
 
-    def __init__(self, backend: str = "hf_clip_b32", device: str | None = None):
+    def __init__(self, backend: str = "hf_clip_b32", device: str | None = None,
+                 prompt_set: str = PROMPT_SET_VERSION):
         if backend not in BACKENDS:
             raise ValueError(f"unknown scene_route backend: {backend}")
+        if prompt_set not in PROMPT_SETS:
+            raise ValueError(f"unknown scene_route prompt set: {prompt_set}")
         self.backend = backend
         self.device = device
-        self.labels = list(LABELS)
-        self.version = f"{PROMPT_SET_VERSION}/{backend}/{prompt_set_hash(backend)}"
+        self.prompts = PROMPT_SETS[prompt_set]
+        self.labels = list(self.prompts)
+        self.version = f"{prompt_set}/{backend}/{prompt_set_hash(backend, self.prompts, prompt_set)}"
         self._model: Any = None
         self._encode_image: Any = None
         self._label_feats = None
@@ -232,8 +253,8 @@ class SceneClassifier:
 
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
         spec = BACKENDS[self.backend]
-        prompts = [p for lab in self.labels for p in LABELS[lab]]
-        counts = [len(LABELS[lab]) for lab in self.labels]
+        prompts = [p for lab in self.labels for p in self.prompts[lab]]
+        counts = [len(self.prompts[lab]) for lab in self.labels]
         logger.info("scene_route: loading %s (%s) on %s", self.backend, spec["model"], device)
         with torch.no_grad():
             if spec["loader"] == "hf_clip":

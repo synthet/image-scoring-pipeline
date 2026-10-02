@@ -18,7 +18,7 @@ from collections import Counter
 from pathlib import Path
 
 
-def classify(snapshot: Path, out: Path, backend: str, limit: int) -> Counter:
+def classify(snapshot: Path, out: Path, backend: str, limit: int, prompt_set: str = "scene_v2") -> Counter:
     from modules.localization import decode_for_localization
     from modules.scene_route import SceneClassifier, save_scene_label
 
@@ -29,7 +29,7 @@ def classify(snapshot: Path, out: Path, backend: str, limit: int) -> Counter:
     todo = [i for i in images if int(i["image_id"]) not in done]
     if limit > 0:
         todo = todo[:limit]
-    clf = SceneClassifier(backend)
+    clf = SceneClassifier(backend, prompt_set=prompt_set)
     clf.load()
     out.parent.mkdir(parents=True, exist_ok=True)
     counts: Counter = Counter()
@@ -61,8 +61,9 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--backend", default="siglip2_base")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--prompt-set", default="scene_v2")
     args = parser.parse_args()
-    print(json.dumps(classify(args.snapshot, args.out, args.backend, args.limit)))
+    print(json.dumps(classify(args.snapshot, args.out, args.backend, args.limit, args.prompt_set)))
 
 
 if __name__ == "__main__":
