@@ -90,10 +90,37 @@ class ModelRegistry:
         try:
             from modules.config import get_config_value
 
-            return get_config_value("scoring.models", default={}) or {}
+            models = get_config_value("scoring.models", default={}) or {}
+            profile = get_config_value("scoring.profile", default=None)
+            if profile:
+                profiles = {**DEFAULT_SCORING_PROFILES, **(get_config_value("scoring.profiles", default={}) or {})}
+                models = _apply_profile(models, str(profile), profiles)
+            return models
         except Exception as exc:
             logger.debug("Could not read scoring.models from config: %s", exc)
             return {}
+
+
+# Named model-set profiles selected by `scoring.profile`; `scoring.profiles` in
+# config.json overrides/extends these. `high_throughput` drops arniqa (slowest
+# model, smallest general-composite ablation delta) — see
+# docs/reports/model-selection-findings-2026-10-02.md.
+DEFAULT_SCORING_PROFILES: dict[str, dict] = {
+    "default": {"disable": []},
+    "high_throughput": {"disable": ["arniqa"]},
+}
+
+
+def _apply_profile(models: dict[str, dict], profile: str, profiles: dict) -> dict[str, dict]:
+    """Return a copy of ``models`` with the profile's ``disable`` list switched off."""
+    spec = profiles.get(profile)
+    if not isinstance(spec, dict):
+        logger.warning("Unknown scoring.profile %r; running all configured models", profile)
+        return models
+    out = dict(models)
+    for name in spec.get("disable") or []:
+        out[str(name)] = {"enabled": False, "shadow": False}
+    return out
 
 
 def _entry(name: str, cfg: dict[str, dict]) -> dict:

@@ -5,7 +5,7 @@ description: Runtime settings authority for image-scoring-pipeline — config.js
 resource: technical/CONFIG.md
 tags: [config, reference]
 timestamp: 2026-10-02T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Configuration (`config.json`)
@@ -77,6 +77,8 @@ Quality analysis defaults, model membership, fusion weights, per-model options.
 | `default_sort_by`, `default_sort_order` | UI | `score_general`, `desc` |
 | `fusion` | `score_normalization.get_composite_weights()` | See `DEFAULT_COMPOSITE_WEIGHTS` in code |
 | `models` | `engines/registry.py`, `GET /api/config` | All models enabled in code paths |
+| `profile` | `engines/registry.py` — named model-set profile applied on top of `models` (switches listed models off for both production and shadow runs). Built-in: `default` (no change), `high_throughput` (skips `arniqa`, ~35% faster; composites renormalize over the remaining models). Unknown name → warning, no change. `GET /api/config` still reports raw `models`. | unset (= `default`) |
+| `profiles` | `engines/registry.py` — `{name: {"disable": [model, ...]}}`; merged over the built-ins | Built-ins only |
 | `arniqa`, `qpt_v2`, `cursor`, `claude` | Respective scorer modules | Module defaults |
 
 ### `percentile_anchors`
@@ -123,6 +125,8 @@ Session-based culling UI and selection pipeline. Duplicates **`default_threshold
 | `clip_quality.enabled` | `selection.py` — **default false**. When true, the CLIP B/32 prompt-quality score (`clip_quality_v0`) is JIT-computed for stacked images (`modules/clip_quality.py`) and blended into the within-stack ranking. See [CULLING_ANALYTICS.md](CULLING_ANALYTICS.md#clip-prompt-quality-signal). |
 | `clip_quality.weight` | Blend weight (default **0.15**, clamped 0–1): `(1-w)·score_general + w·clip_quality_v0` for within-stack ranking. |
 | `clip_quality.reject_below` | Optional float (default `null` = off). Frames with `clip_quality_v0` below this are downgraded to `reject` — conservative (never strips a stack's last pick). |
+| `dedicated_rank.enabled` | `selection.py` — **default false**. When true, within-stack ranking uses `culling_rank` (weighted mean of percentile-rescaled `image_model_scores`) instead of `score_general`; images with no usable model rows fall back to `score_general`. `clip_quality` blending, MMR diversity and two-level allocation apply on top. See [model-selection findings](../reports/model-selection-findings-2026-10-02.md). |
+| `dedicated_rank.weights` | Model → weight map (default `{"liqe": 0.55, "spaq": 0.30, "topiq": 0.15}`); renormalized over the models present per image. Non-positive/non-numeric weights are dropped. |
 | `agent_review.*` | Agent-assisted cull review (`modules/agent_cull/`). See [agent-assisted cull review summary](../specs/agent-assisted-cull-review/summary.md). |
 | `agent_review.agent.include_all_model_scores` | Attach full `image_model_scores` map to review packets (default **true**). |
 | `agent_review.agent.flatten_model_scores` | Model names copied into packet `scores` for the prompt (default `["clip_quality_v0"]`). |

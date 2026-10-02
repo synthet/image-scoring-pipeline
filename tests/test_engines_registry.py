@@ -129,3 +129,72 @@ def test_reset_registry_clears_singleton():
     r2 = get_registry()
     assert r2 is not r1
     assert r2.get("ephemeral") is None
+
+
+# --------------------------------------------------------------------------- #
+# scoring.profile (#476)
+# --------------------------------------------------------------------------- #
+def _profile_config(monkeypatch, scoring: dict) -> None:
+    from modules import config
+
+    def fake_get(key, default=None):
+        node = {"scoring": scoring}
+        for part in key.split("."):
+            if not isinstance(node, dict) or part not in node:
+                return default
+            node = node[part]
+        return node
+
+    monkeypatch.setattr(config, "get_config_value", fake_get)
+
+
+def _reg(*names: str) -> ModelRegistry:
+    reg = ModelRegistry()
+    for n in names:
+        reg.register(_StubModel(n))
+    return reg
+
+
+def test_profile_absent_keeps_all_models(monkeypatch):
+    _profile_config(monkeypatch, {"models": {"arniqa": {"enabled": True, "shadow": False}}})
+    assert {m.name for m in _reg("liqe", "arniqa").enabled()} == {"liqe", "arniqa"}
+
+
+def test_high_throughput_profile_skips_arniqa(monkeypatch):
+    _profile_config(
+        monkeypatch,
+        {"profile": "high_throughput", "models": {"arniqa": {"enabled": True, "shadow": False}}},
+    )
+    reg = _reg("liqe", "spaq", "arniqa")
+    assert {m.name for m in reg.enabled()} == {"liqe", "spaq"}
+    assert {m.name for m in reg.all_active()} == {"liqe", "spaq"}
+
+
+def test_profile_disables_shadow_runs_too(monkeypatch):
+    _profile_config(
+        monkeypatch,
+        {"profile": "high_throughput", "models": {"arniqa": {"enabled": False, "shadow": True}}},
+    )
+    assert [m.name for m in _reg("liqe", "arniqa").all_active()] == ["liqe"]
+
+
+def test_custom_profile_from_config(monkeypatch):
+    _profile_config(
+        monkeypatch,
+        {"profile": "lean", "profiles": {"lean": {"disable": ["ava", "topiq"]}}},
+    )
+    assert {m.name for m in _reg("liqe", "ava", "topiq").enabled()} == {"liqe"}
+
+
+def test_unknown_profile_is_ignored(monkeypatch, caplog):
+    _profile_config(monkeypatch, {"profile": "nope"})
+    with caplog.at_level("WARNING"):
+        names = {m.name for m in _reg("liqe", "arniqa").enabled()}
+    assert names == {"liqe", "arniqa"}
+    assert "nope" in caplog.text
+
+
+def test_explicit_config_section_bypasses_profile(monkeypatch):
+    _profile_config(monkeypatch, {"profile": "high_throughput"})
+    reg = _reg("liqe", "arniqa")
+    assert {m.name for m in reg.enabled(config_section={})} == {"liqe", "arniqa"}

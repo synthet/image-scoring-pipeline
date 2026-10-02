@@ -304,6 +304,9 @@ DEFAULT_COMPOSITE_WEIGHTS = {
 ---
 
 ### Component 3: Selection & Burst Culling (`modules/selection.py`)
+
+> **Implemented behind a default-off flag (#474):** `culling.dedicated_rank` ([CONFIG.md](../technical/CONFIG.md)). Per-model scores are read from `image_model_scores` (not image-row columns, as the sketch below assumes) and percentile-rescaled before blending. Enabling by default still waits on the Phase 2 blind study.
+
 #### [MODIFY] `modules/selection.py`
 - Implement dedicated culling ranking score calculation combining `liqe`, `spaq`, and `topiq`:
 
