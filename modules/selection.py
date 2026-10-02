@@ -159,6 +159,77 @@ def _clip_quality_cfg() -> dict:
     }
 
 
+# Dedicated within-stack culling rank (default-off). Weights from the label-free
+# model-selection study: liqe/spaq/topiq carry the within-stack signal; see
+# docs/reports/model-selection-findings-2026-10-02.md.
+DEDICATED_RANK_FIELD = "culling_rank"
+DEFAULT_DEDICATED_RANK_WEIGHTS = {"liqe": 0.55, "spaq": 0.30, "topiq": 0.15}
+
+
+def _dedicated_rank_cfg() -> dict:
+    """Resolve ``culling.dedicated_rank`` from config.json.
+
+    Non-numeric or non-positive weights are dropped; an empty result falls back to
+    ``DEFAULT_DEDICATED_RANK_WEIGHTS``.
+    """
+    cfg = get_config_value("culling.dedicated_rank", default={}) or {}
+    weights: dict[str, float] = {}
+    for model, w in (cfg.get("weights") or {}).items():
+        try:
+            w = float(w)
+        except (TypeError, ValueError):
+            continue
+        if w > 0.0:
+            weights[str(model)] = w
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "weights": weights or DEFAULT_DEDICATED_RANK_WEIGHTS,
+    }
+
+
+def dedicated_rank_value(entries: dict, weights: dict[str, float]) -> float | None:
+    """Weighted mean of percentile-rescaled model scores over the models present.
+
+    ``entries`` is one image's ``image_model_scores`` map (``{model: {"normalized",
+    "status", ...}}``). Only ``status == "success"`` rows with a value count; weights
+    are renormalized over those. Returns None when no weighted model is usable.
+    """
+    from modules.score_normalization import rescale_scores
+
+    present = {}
+    for model in weights:
+        entry = entries.get(model) or {}
+        v = entry.get("normalized")
+        if entry.get("status") == "success" and v is not None:
+            present[model] = float(v)
+    if not present:
+        return None
+    rescaled = rescale_scores(present)
+    total_w = sum(weights[m] for m in present)
+    return sum(weights[m] * rescaled[m] for m in present) / total_w
+
+
+def apply_dedicated_rank(
+    images: list[dict],
+    ims_map: dict[int, dict],
+    weights: dict[str, float],
+    fallback_field: str,
+) -> int:
+    """Set ``img[DEDICATED_RANK_FIELD]`` on every image; return how many used the blend.
+
+    Images without usable model rows keep their ``fallback_field`` value.
+    """
+    n = 0
+    for img in images:
+        v = dedicated_rank_value(ims_map.get(img.get("id")) or {}, weights)
+        if v is None:
+            img[DEDICATED_RANK_FIELD] = img.get(fallback_field)
+        else:
+            img[DEDICATED_RANK_FIELD] = v
+            n += 1
+    return n
+
+
 @dataclass
 class SelectionSummary:
     total_images: int
@@ -350,7 +421,27 @@ class SelectionService:
                         logger.warning("[culling] clip_quality compute failed: %s", exc)
                         clip_map = {}
 
+                # Dedicated within-stack rank (default-off): liqe/spaq/topiq blend
+                # replaces score_field as the ranking base for this folder.
                 score_col = cfg.score_field
+                rank_cfg = _dedicated_rank_cfg()
+                if rank_cfg["enabled"]:
+                    try:
+                        ims_map = db.get_batch_image_model_scores(
+                            [im["id"] for im in images], include_shadow=False
+                        )
+                        n_ranked = apply_dedicated_rank(
+                            images, ims_map, rank_cfg["weights"], cfg.score_field
+                        )
+                        score_col = DEDICATED_RANK_FIELD
+                        logger.debug(
+                            "[culling] dedicated_rank folder=%s ranked=%s/%s",
+                            folder, n_ranked, len(images),
+                        )
+                    except Exception as exc:  # noqa: BLE001 — degrade to score_field
+                        logger.warning("[culling] dedicated_rank failed: %s", exc)
+                        score_col = cfg.score_field
+
                 clip_w = clip_cfg["weight"] if clip_cfg["enabled"] else 0.0
                 def sort_key(img):
                     c = img.get("created_at") or ""
@@ -377,6 +468,8 @@ class SelectionService:
                 sub_clustering_enabled = sub_thr_val is not None and sub_thr_val > 0.0
                 use_two_level = _two_level_enabled(cfg)
                 tl_cfg = _load_two_level_config(cfg) if use_two_level else None
+                if tl_cfg is not None:
+                    tl_cfg.score_field = score_col
                 policy_version = TWO_LEVEL_POLICY_VERSION if use_two_level else POLICY_VERSION
 
                 if use_two_level:
@@ -443,7 +536,7 @@ class SelectionService:
                                     k=k_picks,
                                     embeddings_dict=embeddings_dict,
                                     lambda_val=cfg.diversity_lambda,
-                                    score_key=cfg.score_field,
+                                    score_key=score_col,
                                 )
 
                         sorted_ids = [img["id"] for img in sorted_sub]
