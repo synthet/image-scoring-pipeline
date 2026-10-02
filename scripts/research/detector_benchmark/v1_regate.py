@@ -488,9 +488,50 @@ def freeze_validation_c(promotion_root: Path, dev_root: Path, out: Path, seed: s
     return sampling
 
 
+def promotion_manifest(promotion_root: Path, out: Path) -> dict:
+    """Frozen input for ``scripts/maintenance/promote_localization_selections.py`` (#472 step 6, #484).
+
+    Only strata that passed owner validation (``owner_c/validation/analysis.json``) are included.
+    """
+    analysis_path = out / "owner_c" / "validation" / "analysis.json"
+    analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+    rule = json.loads((out / "rule_c.json").read_text(encoding="utf-8"))
+    params = SubsetParamsV3(**rule["params"])
+    if params.rule_hash() != rule["rule_hash"] or analysis["rule_hash"] != rule["rule_hash"]:
+        raise ValueError("rule_c.json and analysis.json disagree on the rule hash")
+    passing = set(analysis["passing_strata"])
+    snap = load_snapshot(promotion_root)
+    prod = load_probe(promotion_root / "probe_production.jsonl")
+    scene = load_scene_probs(snap, SCENE_VERSION_V3)
+    rows, counts = [], Counter()
+    for iid, item in sorted(snap.items()):
+        d = params.decide(item, prod.get(iid), scene.get(iid))
+        if d.action != "promote":
+            continue
+        stratum = f"promote_{area_band(d.primary)}"
+        counts[stratum] += 1
+        if stratum not in passing:
+            continue
+        conf = max(b["conf"] for b in prod[iid]["coco"] if b["cls"] == "bird")
+        rows.append({"image_id": iid, "v1_run_id": int(item["run_id"]), "rendition_hash": item["rendition_hash"],
+                     "region": [round(v, 6) for v in d.primary], "conf": round(conf, 4), "source": d.source,
+                     "stratum": stratum})
+    target = out / "promotion_manifest.json"
+    _write_new_json(target, {
+        "schema_version": 1, "selected_by": f"{RULE_VERSION_C}:{rule['rule_hash']}",
+        "detector_version": RULE_VERSION_C, "detector_config_hash": rule["rule_hash"],
+        "evidence": {"issue": 472, "rule_hash": rule["rule_hash"], "scene_version": SCENE_VERSION_V3,
+                     "validation_analysis_sha256": sha256_file(analysis_path),
+                     "passing_strata": sorted(passing)},
+        "rows": rows,
+    })
+    return {"rows": len(rows), "promoted_by_stratum": dict(counts), "passing": sorted(passing), "path": str(target)}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("action", choices=("fit", "fit-b", "fit-c", "agent-sample", "freeze-validation-c", "page-c"))
+    parser.add_argument("action", choices=("fit", "fit-b", "fit-c", "agent-sample", "freeze-validation-c", "page-c",
+                                           "promotion-manifest"))
     parser.add_argument("--promotion-root", type=Path, default=OUT_ROOT)
     parser.add_argument("--dev-root", type=Path, default=DEV_ROOT)
     parser.add_argument("--out", type=Path, default=REGATE_ROOT)
@@ -499,6 +540,9 @@ def main() -> None:
     parser.add_argument("--calib", type=int, default=30)
     parser.add_argument("--allow-seen-folders", action="store_true")
     args = parser.parse_args()
+    if args.action == "promotion-manifest":
+        print(json.dumps(promotion_manifest(args.promotion_root, args.out), indent=1))
+        return
     if args.action == "freeze-validation-c":
         print(json.dumps(freeze_validation_c(args.promotion_root, args.dev_root, args.out), indent=1))
         return
