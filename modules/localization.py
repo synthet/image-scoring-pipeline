@@ -393,7 +393,7 @@ def is_unchanged_decode_failure(
     )
 
 
-def write_run(run: dict[str, Any], regions: list[dict[str, Any]]) -> int:
+def write_run(run: dict[str, Any], regions: list[dict[str, Any]], *, publish: bool = True) -> int:
     """Publish one attempt and its regions atomically. Returns the new run id.
 
     The previous current run for the same (image, detector) loses ``is_current`` in the
@@ -401,18 +401,26 @@ def write_run(run: dict[str, Any], regions: list[dict[str, Any]]) -> int:
 
     A region may carry its own ``object_class`` / ``provider_class_id`` (the COCO and cascade
     providers, spec 03); the bird detector's regions default to ``bird`` / ``0``.
+
+    ``publish=False`` stores the attempt without touching the current run (``run["is_current"]``
+    must then be false): it persists an artifact that a selection (#484) refers to while the
+    shadow run stays current.
     """
     from modules import db
 
     values = [run.get(col) for col in _RUN_COLUMNS]
     placeholders = ", ".join("?" for _ in _RUN_COLUMNS)
 
+    if not publish and run.get("is_current"):
+        raise ValueError("an unpublished run cannot be current")
+
     def _tx(tx) -> int:
-        tx.execute(
-            "UPDATE image_localization_runs SET is_current = FALSE, updated_at = CURRENT_TIMESTAMP "
-            "WHERE image_id = ? AND detector_key = ? AND is_current",
-            (run["image_id"], run["detector_key"]),
-        )
+        if publish:
+            tx.execute(
+                "UPDATE image_localization_runs SET is_current = FALSE, updated_at = CURRENT_TIMESTAMP "
+                "WHERE image_id = ? AND detector_key = ? AND is_current",
+                (run["image_id"], run["detector_key"]),
+            )
         rows = tx.execute_returning(
             f"INSERT INTO image_localization_runs ({', '.join(_RUN_COLUMNS)}) "
             f"VALUES ({placeholders}) RETURNING id",

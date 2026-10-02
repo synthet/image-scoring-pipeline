@@ -4,8 +4,8 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+timestamp: 2026-10-02T00:00:00Z
+okf_version: 0.2
 status: proposed
 ---
 
@@ -42,7 +42,7 @@ sections further down are unchanged, so read them together with this table.
 | 5. BioCLIP on regions | **Slice 1** (#444): `bird_species.use_regions` (default off) classifies the current rank-0 region, full frame on `no_detection`, legacy detector otherwise; 283/283 top-1 identical on a shadow folder, 33% faster | spec 06, #413, #422 | **Merged with stage 7:** legacy outcomes are imported, not recomputed. Species gains list gaps, abstention and burst/folder suggestions (#422); taxa beyond birds follow after a benchmark (#413). |
 | 6. Crop/fusion experiments | Not started | #409, #423 | **Region IQA leaves the shadow-only experiment** and becomes scoring design: fusion v2 with `subject_mode`, gated on ≥ 300 labelled bursts (#415, spec 04 AC-22). Named per-criterion evidence stays research JSONL (#423). Captions, accessibility and Jev stay shadow, as designed here. |
 | 7. Repair and backfill | Not started | merged into 5; spec 04 crop-only backfill | The only new backfill is **crop scores** for images with a current box (about 41k), after the cascade is benchmarked. The "no unbenchmarked full-library rescan" invariant holds. |
-| 8. Retire compatibility | Not started | — | Unchanged. |
+| 8. Retire compatibility | Groundwork (#484) | #484, #472 | **Production selections as data:** `image_localization_selections` records the revocable decision that a region is the production answer (rule hash, evidence). For selected images `bird_bbox` is a projection written only by `modules/localization_selection.py`, the first implemented piece of `dual_write_bird_bbox`. Retiring the column itself is unchanged. |
 
 **Tracks that sit beside the stages:**
 

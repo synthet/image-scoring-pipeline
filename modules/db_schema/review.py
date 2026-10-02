@@ -308,6 +308,36 @@ def initialize_review_schema(cur, *, conn) -> None:
     );
     """)
 
+    # Production localization selections (#484). Mirrors
+    # migrations/versions/0038_localization_selections.py, which carries the rationale:
+    # a revocable decision that one region is the production answer; images.bird_bbox
+    # becomes its projection for selected images.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS image_localization_selections (
+        id                    BIGSERIAL PRIMARY KEY,
+        image_id              INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+        detector_key          TEXT NOT NULL,
+        localization_run_id   BIGINT NOT NULL
+                              REFERENCES image_localization_runs(id) ON DELETE CASCADE,
+        region_id             BIGINT NOT NULL REFERENCES image_regions(id) ON DELETE CASCADE,
+        selected_by           TEXT NOT NULL,
+        evidence              JSONB,
+        previous_bird_bbox    JSONB,
+        projected_bird_bbox   JSONB NOT NULL,
+        selected_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        revoked_at            TIMESTAMP,
+        revoked_reason        TEXT
+    );
+    """)
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_ils_active_image_detector "
+        "ON image_localization_selections (image_id, detector_key) WHERE revoked_at IS NULL;"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS ix_ils_selected_by "
+        "ON image_localization_selections (selected_by, selected_at);"
+    )
+
     # Scene route classifications (#412). Mirrors migrations/versions/0037_image_scene_labels.py.
     cur.execute("""
     CREATE TABLE IF NOT EXISTS image_scene_labels (
