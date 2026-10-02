@@ -48,7 +48,7 @@ sections further down are unchanged, so read them together with this table.
 
 | Track | Issues |
 |---|---|
-| Scene route before localization | #412, with calibrated per-label thresholds (#420) |
+| Scene route before localization | #412: benchmarked 2026-10-02 ([report](../../reports/scene-route-benchmark-2026-10-02.md)); SigLIP2 bird route at p >= 0.065, wired behind `scene_route.enabled` (default off). Calibrated per-label thresholds: #420 |
 | Keywords and captions | #420, #421 |
 | Continuous-burst segmentation and picks | #424, #407 |
 | Timing | #416 |
