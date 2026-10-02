@@ -1,6 +1,7 @@
 """Unit tests for modules.score_analytics.model_selection (synthetic data, no DB)."""
 
 import importlib.util
+from itertools import permutations
 from pathlib import Path
 
 import numpy as np
@@ -112,9 +113,15 @@ def test_duplicate_model_flagged_redundant():
 
 
 def test_noise_model_low_stack_consensus():
-    series, stack_ids = _world()
+    # Every ordering of five frames appears once, so the unrelated model has
+    # exactly zero mean agreement rather than a sample-dependent correlation.
+    noise = np.asarray(list(permutations(range(5))), dtype=float) / 4
+    stack_ids = np.repeat(np.arange(1, len(noise) + 1), 5)
+    signal = np.tile(np.arange(5, dtype=float) / 4, len(noise))
+    series = {name: signal.copy() for name in ("liqe", "spaq", "topiq")}
+    series["arniqa"] = noise.ravel()
     res = ms.stack_consensus(series, ["liqe", "spaq", "topiq", "arniqa"], stack_ids, bootstrap=20)
-    assert abs(res["models"]["arniqa"]["kendall_tau_b"]) < 0.1
+    assert res["models"]["arniqa"]["kendall_tau_b"] == pytest.approx(0.0, abs=1e-12)
     assert res["models"]["liqe"]["kendall_tau_b"] > 0.3
     lo, hi = res["models"]["liqe"]["kendall_tau_b_ci"]
     assert lo <= res["models"]["liqe"]["kendall_tau_b"] <= hi

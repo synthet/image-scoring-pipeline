@@ -537,6 +537,12 @@ def test_ac15_ac16_runner_writes_only_localization_state(jpeg, writes, monkeypat
                             {"id": 3, "file_path": "/missing.jpg"}])
     monkeypatch.setattr(lr, "db", fake_db)
     monkeypatch.setattr(lr, "localization_config", lambda: {})
+    monkeypatch.setattr(lr, "scene_route_settings", lambda: {"enabled": False})
+
+    def unexpected_scene_router(_settings):
+        pytest.fail("the direct-localization test must not construct a scene classifier")
+
+    monkeypatch.setattr(lr, "SceneRouter", unexpected_scene_router)
     boxes = [{"xyxy": (10, 10, 50, 60), "conf": 0.9}]
     monkeypatch.setattr(lr, "load_detector_context", lambda _cfg: _ctx(_FakeDetector(boxes)))
     monkeypatch.setattr("modules.run_log.runner_emit", lambda *a, **k: None)
