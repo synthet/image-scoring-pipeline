@@ -39,6 +39,9 @@ log = logging.getLogger(__name__)
 SENTINEL = {"detected": False}
 DETECTOR_KEY = "bird"
 COCO_BIRD_CLASS_ID = "14"
+#: Float overshoot past the 0..1 frame that is clamped (the refine step can emit e.g. 1.00004);
+#: anything further out is skipped, never written.
+CLAMP_TOLERANCE = 1e-3
 
 _STATE_SQL = """
     SELECT i.bird_bbox, r.id AS run_id, r.is_current, r.rendition_hash, r.rendition_version,
@@ -78,10 +81,20 @@ def _json(value):
     return value
 
 
+def clamp_region(region) -> tuple[float, float, float, float] | None:
+    """Clamp tiny overshoot into ``image_regions``' 0..1 range; None when the box is genuinely outside."""
+    if any(v < -CLAMP_TOLERANCE or v > 1 + CLAMP_TOLERANCE for v in region):
+        return None
+    x1, y1, x2, y2 = (min(1.0, max(0.0, float(v))) for v in region)
+    return (x1, y1, x2, y2) if x2 > x1 and y2 > y1 else None
+
+
 def row_state(state: dict | None, active: dict | None, row: dict, selected_by: str) -> str:
     """Classify one manifest row against the live database before any write."""
     if state is None:
         return "missing_image"
+    if clamp_region(row["region"]) is None:
+        return "region_out_of_range"
     if active is not None:
         return "already_selected" if active.get("selected_by") == selected_by else "other_selection_active"
     if _json(state.get("bird_bbox")) != SENTINEL:
@@ -134,7 +147,7 @@ def _persist_run(manifest: dict, row: dict, state: dict) -> int:
         "display_width": state["display_width"], "display_height": state["display_height"],
         "status": "detected", "is_retryable": False, "is_current": False,
     }
-    region = {"conf": float(row["conf"]), "rank": 0, "region": tuple(row["region"]),
+    region = {"conf": float(row["conf"]), "rank": 0, "region": clamp_region(row["region"]),
               "object_class": "bird", "provider_class_id": COCO_BIRD_CLASS_ID}
     write_run(run, [region], publish=False)
     return int(db.get_connector().query_one(
