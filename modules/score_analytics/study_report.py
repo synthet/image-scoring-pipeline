@@ -4,7 +4,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
-from collections import Counter, defaultdict
+from collections import Counter
 from itertools import combinations
 from pathlib import Path
 
@@ -12,7 +12,7 @@ import numpy as np
 from scipy import stats
 
 from modules.score_analytics import study
-from modules.score_analytics.study_data import candidate_groups, write_json
+from modules.score_analytics.study_data import candidate_groups
 
 BASE_MODELS = ("arniqa", "ava", "clip_quality_v0", "koniq", "liqe", "paq2piq", "spaq", "topiq")
 
