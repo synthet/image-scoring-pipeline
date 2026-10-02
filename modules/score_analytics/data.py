@@ -24,7 +24,7 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -35,6 +35,10 @@ from modules import config
 logger = logging.getLogger(__name__)
 
 COMPOSITE_KEYS = ("general", "technical", "aesthetic")
+# Deprecated / research-only dimensions, hidden from API responses unless
+# ``include_legacy`` is requested (offline scripts read the full matrix).
+LEGACY_MODELS = ("koniq", "paq2piq")
+RESEARCH_PREFIXES = ("refcull_",)
 FINGERPRINT_TTL_S = 10.0
 DERIVED_CACHE_SIZE = 32
 
@@ -332,26 +336,43 @@ def scope_matrix(m: ScoreMatrix, keyword: str | None, ids: np.ndarray | None = N
     return m.subset(np.isin(m.image_ids, ids), {"kind": "keyword", "keyword": keyword})
 
 
-def get_scoped(keyword: str | None) -> ScoreMatrix:
-    """Full-library matrix or its keyword subset (cached per fingerprint)."""
+def is_legacy_dim(key: str) -> bool:
+    return key in LEGACY_MODELS or key.startswith(RESEARCH_PREFIXES)
+
+
+def drop_legacy(m: ScoreMatrix) -> ScoreMatrix:
+    """``m`` without legacy / research dimensions (same rows)."""
+    keys = [k for k in m.keys if not is_legacy_dim(k)]
+    return replace(m, keys=keys, series={k: m.series[k] for k in keys}, meta={k: m.meta[k] for k in keys})
+
+
+def get_scoped(keyword: str | None, include_legacy: bool = False) -> ScoreMatrix:
+    """Full-library matrix or its keyword subset (cached per fingerprint).
+
+    Legacy / research dimensions are dropped unless ``include_legacy``.
+    """
     keyword = normalize_keyword(keyword)
+    if not include_legacy:
+        return cached(("scope_active", keyword), lambda _m: drop_legacy(get_scoped(keyword, True)))
     if keyword is None:
         return get_matrix()
     return cached(("scope", keyword), lambda m: scope_matrix(m, keyword))
 
 
-def get_matrix_payload(keyword: str | None = None) -> tuple[bytes, str]:
+def get_matrix_payload(keyword: str | None = None, include_legacy: bool = False) -> tuple[bytes, str]:
     """Gzipped JSON payload for the matrix endpoint and its ETag."""
     keyword = normalize_keyword(keyword)
-    scoped = get_scoped(keyword)
+    scoped = get_scoped(keyword, include_legacy)
 
     def build(_m: ScoreMatrix) -> bytes:
         return gzip.compress(serialize_matrix(scoped), compresslevel=5)
 
-    body = cached(("matrix_gz", keyword), build)
+    body = cached(("matrix_gz", keyword, include_legacy), build)
     tag = scoped.fingerprint
     if keyword:
         tag += "-" + hashlib.sha1(keyword.encode()).hexdigest()[:8]
+    if include_legacy:
+        tag += "-all"
     return body, f'"{tag}"'
 
 

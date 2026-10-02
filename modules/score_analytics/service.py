@@ -31,9 +31,11 @@ def compute_stats(m: data.ScoreMatrix) -> dict[str, Any]:
     }
 
 
-def get_stats(keyword: str | None = None) -> dict[str, Any]:
+def get_stats(keyword: str | None = None, include_legacy: bool = False) -> dict[str, Any]:
     kw = data.normalize_keyword(keyword)
-    return data.cached(("stats", kw), lambda _m: compute_stats(data.get_scoped(kw)))
+    return data.cached(
+        ("stats", kw, include_legacy), lambda _m: compute_stats(data.get_scoped(kw, include_legacy))
+    )
 
 
 def default_predictors(m: data.ScoreMatrix, target: str) -> list[str]:
@@ -57,13 +59,13 @@ def resolve_regression_inputs(
 
 
 def get_regression(
-    target: str, predictors: list[str] | None, keyword: str | None = None
+    target: str, predictors: list[str] | None, keyword: str | None = None, include_legacy: bool = False
 ) -> dict[str, Any]:
     kw = data.normalize_keyword(keyword)
-    m = data.get_scoped(kw)
+    m = data.get_scoped(kw, include_legacy)
     preds = resolve_regression_inputs(m, target, predictors)
     return data.cached(
-        ("regression", kw, target, tuple(preds)), lambda _m: compute_regression(m, target, preds)
+        ("regression", kw, include_legacy, target, tuple(preds)), lambda _m: compute_regression(m, target, preds)
     )
 
 
@@ -117,11 +119,16 @@ def compute_stacks(m: data.ScoreMatrix, min_size: int, per_stack: bool = False) 
     }
 
 
-def get_stacks(keyword: str | None = None, min_size: int = stacks.DEFAULT_MIN_STACK_SIZE) -> dict[str, Any]:
+def get_stacks(
+    keyword: str | None = None, min_size: int = stacks.DEFAULT_MIN_STACK_SIZE, include_legacy: bool = False
+) -> dict[str, Any]:
     if min_size < 2:
         raise ScoreAnalyticsInputError("min_size must be at least 2")
     kw = data.normalize_keyword(keyword)
-    return data.cached(("stacks", kw, min_size), lambda _m: compute_stacks(data.get_scoped(kw), min_size))
+    return data.cached(
+        ("stacks", kw, min_size, include_legacy),
+        lambda _m: compute_stacks(data.get_scoped(kw, include_legacy), min_size),
+    )
 
 
 def keyword_profile(full: data.ScoreMatrix, layer: data.ScoreMatrix) -> list[dict[str, Any]]:
@@ -160,15 +167,16 @@ def keyword_profile(full: data.ScoreMatrix, layer: data.ScoreMatrix) -> list[dic
     return rows
 
 
-def get_keyword_profiles(limit: int = 20, min_images: int = 30) -> dict[str, Any]:
+def get_keyword_profiles(limit: int = 20, min_images: int = 30, include_legacy: bool = False) -> dict[str, Any]:
     def compute(m: data.ScoreMatrix) -> dict[str, Any]:
+        m = data.get_scoped(None, include_legacy)
         out = []
         for keyword, count in data.top_keywords(limit, min_images):
             layer = data.scope_matrix(m, keyword)
             out.append({"keyword": keyword, "images": count, "dimensions": keyword_profile(m, layer)})
         return {"fingerprint": m.fingerprint, "image_count": m.image_count, "keys": m.keys, "keywords": out}
 
-    return data.cached(("keyword_profiles", limit, min_images), compute)
+    return data.cached(("keyword_profiles", limit, min_images, include_legacy), compute)
 
 
 def _configured_weights(target: str) -> dict[str, float] | None:
@@ -187,6 +195,7 @@ def get_suitability(
     trust_xmp_ratings: bool = False,
     min_size: int = 2,
     bootstrap: int = 200,
+    include_legacy: bool = False,
 ) -> dict[str, Any]:
     """Global (Nₐ) vs intra-cluster (Nᵦ) suitability report for a layer (cached)."""
     from modules.score_analytics import labels, suitability_report
@@ -196,10 +205,13 @@ def get_suitability(
     if min_size < 2:
         raise ScoreAnalyticsInputError("min_size must be at least 2")
     kw = data.normalize_keyword(keyword)
-    key = ("suitability", kw, culling_labels, trust_xmp_ratings, min_size, bootstrap, labels.label_fingerprint())
+    key = (
+        "suitability", kw, culling_labels, trust_xmp_ratings, min_size, bootstrap, include_legacy,
+        labels.label_fingerprint(),
+    )
 
     def compute(_m: data.ScoreMatrix) -> dict[str, Any]:
-        m = data.get_scoped(kw)
+        m = data.get_scoped(kw, include_legacy)
         bundle = labels.assemble(
             m, labels.load_label_rows(), culling_policy=culling_labels, trust_xmp_ratings=trust_xmp_ratings
         )

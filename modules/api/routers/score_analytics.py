@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # bound, so FastAPI runs them in its threadpool instead of the event loop.
 
 _KEYWORD_DESC = "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library."
+_LEGACY_DESC = "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default."
 
 
 def _raise_for(exc: Exception, op: str) -> None:
@@ -50,11 +51,15 @@ def create_score_analytics_router() -> APIRouter:
             "Cached in-process; supports `If-None-Match` → 304. PostgreSQL only."
         ),
     )
-    def get_score_matrix(request: Request, keyword: str | None = Query(None, description=_KEYWORD_DESC)):
+    def get_score_matrix(
+        request: Request,
+        keyword: str | None = Query(None, description=_KEYWORD_DESC),
+        include_legacy: bool = Query(False, description=_LEGACY_DESC),
+    ):
         from modules.score_analytics import data
 
         try:
-            body_gz, etag = data.get_matrix_payload(keyword)
+            body_gz, etag = data.get_matrix_payload(keyword, include_legacy)
         except Exception as e:
             _raise_for(e, "get_score_matrix")
         headers = {"ETag": etag, "Cache-Control": "private, no-cache", "Vary": "Accept-Encoding"}
@@ -75,11 +80,14 @@ def create_score_analytics_router() -> APIRouter:
             "matrices with p-values and n. PostgreSQL only."
         ),
     )
-    def get_score_stats(keyword: str | None = Query(None, description=_KEYWORD_DESC)):
+    def get_score_stats(
+        keyword: str | None = Query(None, description=_KEYWORD_DESC),
+        include_legacy: bool = Query(False, description=_LEGACY_DESC),
+    ):
         from modules.score_analytics import service
 
         try:
-            return service.get_stats(keyword)
+            return service.get_stats(keyword, include_legacy)
         except Exception as e:
             _raise_for(e, "get_score_stats")
 
@@ -98,12 +106,13 @@ def create_score_analytics_router() -> APIRouter:
         target: str = Query("general", description="Dimension to predict (e.g. general)"),
         predictors: str | None = Query(None, description="Comma-separated predictor dimensions"),
         keyword: str | None = Query(None, description=_KEYWORD_DESC),
+        include_legacy: bool = Query(False, description=_LEGACY_DESC),
     ):
         from modules.score_analytics import service
 
         preds = [p.strip() for p in predictors.split(",") if p.strip()] if predictors else None
         try:
-            return service.get_regression(target, preds, keyword)
+            return service.get_regression(target, preds, keyword, include_legacy)
         except Exception as e:
             _raise_for(e, "get_score_regression")
 
@@ -121,11 +130,12 @@ def create_score_analytics_router() -> APIRouter:
     def get_score_stacks(
         keyword: str | None = Query(None, description=_KEYWORD_DESC),
         min_size: int = Query(2, ge=2, le=1000, description="Minimum scored images per stack"),
+        include_legacy: bool = Query(False, description=_LEGACY_DESC),
     ):
         from modules.score_analytics import service
 
         try:
-            return service.get_stacks(keyword, min_size)
+            return service.get_stacks(keyword, min_size, include_legacy)
         except Exception as e:
             _raise_for(e, "get_score_stacks")
 
@@ -142,11 +152,12 @@ def create_score_analytics_router() -> APIRouter:
     def get_score_keyword_profiles(
         limit: int = Query(20, ge=1, le=200, description="Number of keywords (by image count)"),
         min_images: int = Query(30, ge=1, description="Skip keywords with fewer images"),
+        include_legacy: bool = Query(False, description=_LEGACY_DESC),
     ):
         from modules.score_analytics import service
 
         try:
-            return service.get_keyword_profiles(limit, min_images)
+            return service.get_keyword_profiles(limit, min_images, include_legacy)
         except Exception as e:
             _raise_for(e, "get_score_keyword_profiles")
 
@@ -172,6 +183,7 @@ def create_score_analytics_router() -> APIRouter:
         trust_xmp_ratings: bool = Query(False, description="Treat image_xmp.rating as independent global labels"),
         min_size: int = Query(2, ge=2, le=1000, description="Minimum images per cluster (stack)"),
         bootstrap: int = Query(200, ge=20, le=2000, description="Cluster-bootstrap resamples"),
+        include_legacy: bool = Query(False, description=_LEGACY_DESC),
     ):
         from modules.score_analytics import service
 
@@ -182,6 +194,7 @@ def create_score_analytics_router() -> APIRouter:
                 trust_xmp_ratings=trust_xmp_ratings,
                 min_size=min_size,
                 bootstrap=bootstrap,
+                include_legacy=include_legacy,
             )
         except Exception as e:
             _raise_for(e, "get_score_suitability")

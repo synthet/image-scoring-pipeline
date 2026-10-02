@@ -5849,6 +5849,18 @@
               "title": "Keyword"
             },
             "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library."
+          },
+          {
+            "name": "include_legacy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default.",
+              "default": false,
+              "title": "Include Legacy"
+            },
+            "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default."
           }
         ],
         "responses": {
@@ -5916,6 +5928,18 @@
               "title": "Keyword"
             },
             "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library."
+          },
+          {
+            "name": "include_legacy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default.",
+              "default": false,
+              "title": "Include Legacy"
+            },
+            "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default."
           }
         ],
         "responses": {
@@ -6010,6 +6034,18 @@
               "title": "Keyword"
             },
             "description": "Restrict to images tagged with this keyword (exact, case-insensitive). Omit for the full library."
+          },
+          {
+            "name": "include_legacy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default.",
+              "default": false,
+              "title": "Include Legacy"
+            },
+            "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default."
           }
         ],
         "responses": {
@@ -6088,6 +6124,18 @@
               "title": "Min Size"
             },
             "description": "Minimum scored images per stack"
+          },
+          {
+            "name": "include_legacy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default.",
+              "default": false,
+              "title": "Include Legacy"
+            },
+            "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default."
           }
         ],
         "responses": {
@@ -6161,6 +6209,18 @@
               "title": "Min Images"
             },
             "description": "Skip keywords with fewer images"
+          },
+          {
+            "name": "include_legacy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default.",
+              "default": false,
+              "title": "Include Legacy"
+            },
+            "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default."
           }
         ],
         "responses": {
@@ -6277,6 +6337,18 @@
               "title": "Bootstrap"
             },
             "description": "Cluster-bootstrap resamples"
+          },
+          {
+            "name": "include_legacy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default.",
+              "default": false,
+              "title": "Include Legacy"
+            },
+            "description": "Include legacy (koniq, paq2piq) and research (refcull_*) dimensions, hidden by default."
           }
         ],
         "responses": {
