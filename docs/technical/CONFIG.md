@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Configuration (config.json)
+description: Runtime settings authority for image-scoring-pipeline — config.json, environment.json, secrets, and config.example.json.
+resource: technical/CONFIG.md
+tags: [config, reference]
+timestamp: 2026-10-02T00:00:00Z
+okf_version: 0.1
+---
+
 # Configuration (`config.json`)
 
 Authority for runtime settings in **image-scoring-pipeline**. Implementation: [`modules/config.py`](../../modules/config.py).

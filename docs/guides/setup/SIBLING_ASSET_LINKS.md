@@ -1,3 +1,13 @@
+---
+type: Guide
+title: Sibling asset links (one copy of weights)
+description: Hard-link bird and pose weights from image-scoring-model into the pipeline models/ directory on Windows.
+resource: guides/setup/SIBLING_ASSET_LINKS.md
+tags: [setup, models, windows, image-scoring-model]
+timestamp: 2026-10-02T00:00:00Z
+okf_version: 0.1
+---
+
 # Sibling asset links (one copy of weights)
 
 The pipeline repo and **`image-scoring-model`** can share the same `.pt` files instead of downloading duplicates from Hugging Face.

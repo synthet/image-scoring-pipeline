@@ -1,3 +1,14 @@
+---
+type: Report
+title: Model statistical evaluation, selection and curation plan
+description: Phase 1–3 roadmap for scoring model deprecation, culling rank, and human study promotion gates; links canonical evidence bundles.
+resource: reports/model_evaluation_and_curation_plan.md
+tags: [report, scoring, analytics, model-selection, curation]
+timestamp: 2026-10-02T00:00:00Z
+okf_version: 0.1
+status: active
+---
+
 # Model Statistical Evaluation, Selection & Curation Plan
 
 ## Goal Description
