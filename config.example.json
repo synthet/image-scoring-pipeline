@@ -245,7 +245,7 @@
     "enabled": true,
     "model_repo": "synthet/bird-detect-v0",
     "model_file": "bird_detect_v0.pt",
-    "local_path": "",
+    "local_path": "../image-scoring-model/models/bird_detect_v0.pt",
     "confidence": 0.25,
     "padding": 0.1,
     "imgsz": 640,
@@ -257,12 +257,14 @@
     "use_regions": false
   },
   "scene_route": {
-    "enabled": false,
-    "backend": "hf_clip_b32",
-    "run_thresholds": {}
+    "enabled": true,
+    "backend": "siglip2_base",
+    "run_thresholds": {
+      "wildlife_bird": 0.065
+    }
   },
   "localization": {
-    "enabled": false,
+    "enabled": true,
     "max_regions_per_class": 10,
     "detectors": {
       "bird": {
@@ -274,7 +276,7 @@
         "enabled": false,
         "model_repo": "synthet/eye-pose-v0",
         "model_file": "eye_pose_v0.pt",
-        "local_path": "",
+        "local_path": "../image-scoring-model/models/eye_pose_v0.pt",
         "imgsz": 640,
         "confidence": 0.25,
         "min_kpt_conf": 0.25,
