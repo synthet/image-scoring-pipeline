@@ -14,3 +14,13 @@ def test_payload_matches_bird_detection_shape():
 def test_payload_without_confidence():
     p = legacy_bbox_payload({"x1": 0.0, "y1": 0.0, "x2": 1.0, "y2": 1.0, "confidence": None}, 100, 50)
     assert p["conf"] is None and p["area_frac"] == 1.0 and (p["x2"], p["y2"]) == (100, 50)
+
+
+def test_promote_cli_clamps_float_overshoot_and_rejects_real_outliers():
+    from scripts.maintenance.promote_localization_selections import clamp_region
+
+    assert clamp_region([0.919192, 0.360949, 1.00004, 0.505676]) == (0.919192, 0.360949, 1.0, 0.505676)
+    assert clamp_region([-0.0002, 0.1, 0.5, 0.6]) == (0.0, 0.1, 0.5, 0.6)
+    assert clamp_region([0.2, 0.2, 1.05, 0.6]) is None          # genuinely outside: skipped, not written
+    assert clamp_region([0.999, 0.1, 1.0004, 0.2]) == (0.999, 0.1, 1.0, 0.2)
+    assert clamp_region([1.0, 0.1, 1.0004, 0.2]) is None         # degenerate after clamping
