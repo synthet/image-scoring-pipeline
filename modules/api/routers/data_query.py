@@ -194,6 +194,23 @@ def create_data_query_router() -> APIRouter:
         return _image_detail_payload(image_id)
 
     @router.get(
+        "/images/{image_id}/evidence",
+        summary="Visual evidence for inspector overlays",
+        description=(
+            "Returns precomputed or on-demand evidence artifacts (grids, mask RLE, bands, gates) "
+            "for gallery evidence layers. See docs/planning/visual-evidence-api-and-grids.md."
+        ),
+    )
+    async def get_image_evidence(image_id: int):
+        from modules.visual_evidence.service import build_evidence_for_image
+
+        try:
+            payload = build_evidence_for_image(image_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
+        return payload.model_dump()
+
+    @router.get(
         "/images/{image_id}/neighbors",
         summary="Get image neighbors",
         description="Find previous and next image IDs for navigation within a sorted/filtered sequence.",

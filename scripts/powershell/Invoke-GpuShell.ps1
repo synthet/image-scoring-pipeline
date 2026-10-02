@@ -20,6 +20,11 @@
 .PARAMETER Env
     Extra -e KEY=VALUE pairs (repeatable).
 
+.PARAMETER DotEnv
+    Optional path to a .env file. Forwards Hugging Face hub auth into the container
+    (HF_TOKEN / HUGGING_FACE_HUB_TOKEN). Values are never printed. When omitted,
+    uses $env:GPU_SHELL_DOTENV if set, else ../image-scoring-model/.env when present.
+
 .PARAMETER ArgList
     Command and args, e.g. python scripts/doctor.py --no-gpu
 
@@ -33,7 +38,8 @@ param(
     [string[]]$ArgList,
     [switch]$Detach,
     [switch]$Interactive,
-    [string[]]$Env = @()
+    [string[]]$Env = @(),
+    [string]$DotEnv = ""
 )
 
 Set-StrictMode -Version Latest
@@ -98,6 +104,77 @@ function Test-DockerReady {
     }
 }
 
+function Read-DotEnvValue {
+    param(
+        [string]$Path,
+        [string]$Key
+    )
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $null
+    }
+    foreach ($line in [System.IO.File]::ReadLines($Path)) {
+        $t = $line.Trim()
+        if (-not $t -or $t.StartsWith("#")) {
+            continue
+        }
+        if ($t -notmatch "=") {
+            continue
+        }
+        $name, $val = $t.Split("=", 2)
+        if ($name.Trim() -ne $Key) {
+            continue
+        }
+        $val = $val.Trim()
+        if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+            $val = $val.Substring(1, $val.Length - 2)
+        }
+        if ($val) {
+            return $val
+        }
+    }
+    return $null
+}
+
+function Get-GpuShellHfTokenPairs {
+    param(
+        [string]$RepoRoot,
+        [string]$DotEnvPath
+    )
+    $candidates = @()
+    if ($DotEnvPath) {
+        $candidates += $DotEnvPath
+    }
+    elseif ($env:GPU_SHELL_DOTENV) {
+        $candidates += $env:GPU_SHELL_DOTENV
+    }
+    $sibling = Join-Path (Split-Path $RepoRoot -Parent) "image-scoring-model\.env"
+    if (Test-Path -LiteralPath $sibling) {
+        $candidates += $sibling
+    }
+    $repoEnv = Join-Path $RepoRoot ".env"
+    if (Test-Path -LiteralPath $repoEnv) {
+        $candidates += $repoEnv
+    }
+
+    $token = $null
+    foreach ($path in $candidates | Select-Object -Unique) {
+        $token = Read-DotEnvValue -Path $path -Key "HF_TOKEN"
+        if (-not $token) {
+            $token = Read-DotEnvValue -Path $path -Key "HUGGING_FACE_HUB_TOKEN"
+        }
+        if ($token) {
+            break
+        }
+    }
+    if (-not $token -and $env:HF_TOKEN) {
+        $token = $env:HF_TOKEN
+    }
+    if (-not $token) {
+        return @()
+    }
+    return @("HF_TOKEN=$token", "HUGGING_FACE_HUB_TOKEN=$token")
+}
+
 Test-DockerReady
 
 Push-Location $RepoRoot
@@ -115,6 +192,23 @@ $converted = foreach ($arg in $ArgList) {
     Convert-GpuShellArg -Arg $arg -RepoRoot $RepoRoot
 }
 
+$envPairs = [System.Collections.Generic.List[string]]::new()
+foreach ($pair in $Env) {
+    [void]$envPairs.Add($pair)
+}
+$hasHf = $false
+foreach ($pair in $envPairs) {
+    if ($pair -match '^(HF_TOKEN|HUGGING_FACE_HUB_TOKEN)=') {
+        $hasHf = $true
+        break
+    }
+}
+if (-not $hasHf) {
+    foreach ($pair in Get-GpuShellHfTokenPairs -RepoRoot $RepoRoot -DotEnvPath $DotEnv) {
+        [void]$envPairs.Add($pair)
+    }
+}
+
 $execArgs = [System.Collections.Generic.List[string]]::new()
 [void]$execArgs.Add("exec")
 [void]$execArgs.Add("-w")
@@ -130,7 +224,7 @@ elseif ($Interactive) {
 else {
     [void]$execArgs.Add("-i")
 }
-foreach ($pair in $Env) {
+foreach ($pair in $envPairs) {
     [void]$execArgs.Add("-e")
     [void]$execArgs.Add($pair)
 }
