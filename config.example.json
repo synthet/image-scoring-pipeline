@@ -121,6 +121,11 @@
       "reject_below": null,
       "_comment_reject_below": "Optional floor e.g. 0.35 (benchmark mean rejected ~0.40); enable in environment.json override"
     },
+    "dedicated_rank": {
+      "enabled": false,
+      "weights": {"liqe": 0.55, "spaq": 0.30, "topiq": 0.15},
+      "_comment": "Within-stack ranking by percentile-rescaled model blend instead of score_general. Keep off until the blind study (docs/reports/model-selection-findings-2026-10-02.md) supports it."
+    },
     "agent_review": {
       "enabled": false,
       "dry_run_default": false,
