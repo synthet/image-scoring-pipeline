@@ -4,8 +4,8 @@ title: API Contract Summary
 description: "REST contract for the Vexlum Scoring FastAPI backend: endpoints, request/response models and error codes."
 resource: docs/technical/API_CONTRACT.md
 tags: [api, rest, contract]
-timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+timestamp: 2026-10-02T00:00:00Z
+okf_version: 0.2
 ---
 
 # API Contract Summary
@@ -368,7 +368,7 @@ Per-stack drill-down: scores, exposure, labels, GPS, keywords, embeddings, `comp
 
 ### Score analytics endpoints
 
-PostgreSQL only (501 otherwise; 422 for invalid parameters). Every endpoint except `keywords` accepts an optional `keyword` (exact `keywords_dim.keyword_norm`, case-insensitive) to restrict to that layer. Results are cached per DB fingerprint. Feature page: [11-score-analytics-and-model-suitability.md](../features/implemented/11-score-analytics-and-model-suitability.md).
+PostgreSQL only (501 otherwise; 422 for invalid parameters). Every endpoint except `keywords` accepts an optional `keyword` (exact `keywords_dim.keyword_norm`, case-insensitive) to restrict to that layer. All six accept `include_legacy` (default `false`): legacy `koniq` / `paq2piq` and research `refcull_*` dimensions are omitted unless it is `true`. Results are cached per DB fingerprint. Feature page: [11-score-analytics-and-model-suitability.md](../features/implemented/11-score-analytics-and-model-suitability.md).
 
 | Method | Path | Purpose |
 |--------|------|---------|

@@ -4,8 +4,8 @@ title: Score analytics and model suitability
 description: /ui/scores dashboard, /api/analytics/scores/* endpoints and export scripts for comparing every scoring dimension globally, per keyword and inside stacks, including the Nₐ / Nᵦ model-suitability toolkit.
 resource: docs/features/implemented/11-score-analytics-and-model-suitability.md
 tags: [features, scoring, analytics, culling, statistics, frontend]
-timestamp: 2026-10-01T00:00:00Z
-okf_version: 0.1
+timestamp: 2026-10-02T00:00:00Z
+okf_version: 0.2
 ---
 
 # Score analytics and model suitability
@@ -39,6 +39,8 @@ Measured on a synthetic 50k-image / 8k-stack PostgreSQL seed (headless Chromium)
 ## API (`/api/analytics/scores/*`, PostgreSQL only)
 
 See [API_CONTRACT.md](../../technical/API_CONTRACT.md#score-analytics-endpoints): `matrix`, `stats`, `regression`, `stacks`, `keywords`, `suitability`.
+
+Legacy (`koniq`, `paq2piq`) and research (`refcull_*`) dimensions are hidden by default; pass `include_legacy=true` to see them (#477). Offline scripts under `scripts/analysis/` still read the full matrix. None of these models is computed by the pipeline any more — `koniq`/`paq2piq` are not in `scoring.models` and `refcull_*` was a one-time research import (2026-09-25).
 
 ## Model suitability method
 

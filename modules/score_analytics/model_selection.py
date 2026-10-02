@@ -36,8 +36,8 @@ from modules.score_analytics.stats import finite_or_none
 
 PRODUCTION_MODELS = ("liqe", "spaq", "topiq", "arniqa", "ava")
 CULLING_ONLY_MODELS = ("clip_quality_v0",)
-LEGACY_MODELS = ("koniq", "paq2piq")
-RESEARCH_PREFIXES = ("refcull_",)
+LEGACY_MODELS = data.LEGACY_MODELS
+RESEARCH_PREFIXES = data.RESEARCH_PREFIXES
 COMPOSITES = data.COMPOSITE_KEYS
 CULLING = "culling"
 SCENARIOS = (*COMPOSITES, CULLING)
