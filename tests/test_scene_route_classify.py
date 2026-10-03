@@ -50,3 +50,24 @@ def test_uncalibrated_route_fails_open_and_unrouted_labels_run_nothing():
     r = _result(wildlife_bird=0.01, other_animal=0.99)
     assert detectors_to_run(r, {}) == ["bird"]  # no threshold yet: never skip the detector
     assert detectors_to_run(r, {"wildlife_bird": 0.5, "other_animal": 0.0}) == []  # no animal detector routed yet
+
+
+def test_default_prompt_set_identity_is_pinned():
+    """scene_v2 stays the default and its version string must not drift (#472 added scene_v3)."""
+    clf = scene_route.SceneClassifier("siglip2_base")
+    assert clf.version == "scene_v2/siglip2_base/f497b4a991ec716d"
+    assert clf.labels == list(scene_route.LABELS)
+
+
+def test_scene_v3_adds_marine_mammal_and_keeps_v2_labels():
+    v3 = scene_route.SceneClassifier("siglip2_base", prompt_set="scene_v3")
+    assert v3.version.startswith("scene_v3/siglip2_base/") and v3.version != "scene_v2/siglip2_base/f497b4a991ec716d"
+    assert v3.labels == [*scene_route.LABELS, "marine_mammal"]
+    assert all(scene_route.LABELS_V3[k] == v for k, v in scene_route.LABELS.items())
+
+
+def test_unknown_prompt_set_rejected():
+    import pytest
+
+    with pytest.raises(ValueError):
+        scene_route.SceneClassifier("siglip2_base", prompt_set="scene_v9")
