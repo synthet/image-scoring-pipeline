@@ -1,0 +1,10 @@
+dimension,label,kind,count,coverage_pct
+general,General,composite,77331,98.02
+technical,Technical,composite,77331,98.02
+aesthetic,Aesthetic,composite,77331,98.02
+arniqa,ARNIQA,model,77333,98.03
+ava,AVA,model,77333,98.03
+clip_quality_v0,CLIP Quality,model,77294,97.98
+liqe,LIQE,model,77333,98.03
+spaq,SPAQ,model,77333,98.03
+topiq,TOPIQ-NR,model,77333,98.03
