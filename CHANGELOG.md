@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.18.0] - 2026-10-03
+
+### Added
+- **Remote GPU runner**: run a phase's model inference (scoring, keywords, culling embeddings, localization including scene routing, bird species) in a Docker container on another PC with `docker-compose.gpu-runner.yml`. The host sends the full input, keeps every DB and XMP write, and fails fast when the runner is down or its config differs. Configure with the new `gpu_runner` section; the token goes in `secrets.json`. Runbook: `docs/guides/REMOTE_GPU_RUNNER.md`.
+- **Localization phase** (#387, #433, #451, #446, #484): shadow localization with normalized tables (migrations `0034`–`0036`, `0038`), `images.bird_bbox` import and normalized-first reader, multi-box `detect_boxes` with deterministic ranking, canonical rendition descriptor with decode-once rendition cache and content-addressed crop cache, RTMDet fallback provider and cascade benchmark, region-linked eye keypoints (shadow), and production selections as data with a `bird_bbox` projection.
+- **Scene route** (#412, #472): zero-shot scene classifier and `image_scene_labels` (migration `0037`) that routes localization by scene behind `scene_route.enabled`; OpenCLIP B/32 LAION and SigLIP2 backends, benchmark harness with blind AI judges, opt-in `scene_v3` marine-mammal prompt set, API, and UI assets.
+- **Bird species**: classify the current localization region (`use_regions`, default off) (#444); `birds` is preserved on species writes and a no-match outcome is recorded as an image-phase `skip_reason`.
+- **Score analytics**: score-dimension analytics API, stack culling signals and CSV/JSON export; `/ui/scores` dashboard with a global-vs-cluster model-suitability toolkit; label-free model selection with a blind study harness; legacy/research score dimensions hidden by default.
+- **Scoring**: opt-in `scoring.profile` with `high_throughput` (skips ARNIQA).
+- **Culling**: default-off dedicated within-stack rank (LIQE/SPAQ/TOPIQ), and tie-tolerant pick/reject ordering with calibration (`culling.tie_tolerance`, default 0) (#510).
+- **Study review page**: groups-first filter and tied-best stars, a local preview fallback when the WebUI is down, and review labels mirrored to a backup folder on every save (#515).
+- **Phase control plane**: the phase registry is the single phase→`job_type` authority, hard prerequisites are split from preferred-before edges, and `folder_ids` submissions are gated on the phase DAG.
+- **Jev / TypeSafe integration**: Jev client adapter and rubric registry behind an experimental flag, shadow-mode Jev keyword verification (report only), optional Jev rerank of low-confidence MCP action search, and Jev-driven Claude Code hooks and CLI (`scripts/agent_harness/`).
+- **Everypixel** UGC client and phase 1 correlation study (#392).
+- **Thumbnails** report which decode route produced the pixels.
+
+### Changed
+- **Bird detection now defaults to the `bird_detect_v1` weights** (#462). This changes `detector_config_hash`, so localization re-runs once per image.
+- DB facade decomposition continues: schema, processing, folder phase summary, folder cache deletion, and job queue / lifecycle operations moved into domain modules (#483, #487, #498, #503).
+- Repository references renamed to `image-scoring-pipeline`.
+- The example config enables `localization` and `scene_route`.
+- The Docker image includes `git` for the agent harness tests.
+
+### Fixed
+- **Scoring and indexing re-runs no longer wipe normalized keywords** (`image_keywords`).
+- Embeddings: pgvector `Vector` objects and transformers CLIP outputs are read correctly.
+- Pipeline: prerequisites are gated on plan position, not set membership; the parent run fails when the culling hand-off cannot be enqueued; hand-off failure messages corrected.
+- Auto-drive stops post-audit follow-ups when a phase made no progress (#303).
+- `truncate_app_tables` no longer rolls back its own `TRUNCATE`.
+- `/bird-species/start` expands its dependency prefix.
+- The `claude_scorer` raises `TimeoutError` when the SDK thread outlives its join (#215).
+- The MCP SDK import guard now actually guards.
+- Localization: rawpy double rotation; float overshoot is clamped in promote CLI regions.
+- Culling tie-tolerance calibration rule v2 (#513).
+- The analytics cache fingerprint is stable and stack stats are vectorized.
+- The board stage sync marks closed issues Done (#402).
+- `docker_refresh_webui` installs frontend dependencies when missing.
+- The missing blind review page (`study_review.html`) is restored.
+- CI: OKF frontmatter and the OpenAPI evidence route (#412); the frontend job checks out `image-scoring-ui` beside the backend (#328).
+
 ## [8.17.0] - 2026-08-31
 
 ### Added
