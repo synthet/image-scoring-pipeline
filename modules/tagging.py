@@ -458,6 +458,38 @@ class CaptionGenerator:
             logger.error(f"Caption generation failed for {image_path}: {e}")
             return ""
 
+
+def new_keyword_scorer():
+    """``KeywordScorer``, or its GPU-runner proxy when ``gpu_runner.phases.keywords`` is remote."""
+    from modules.remote_gpu.client import phase_is_remote
+
+    if phase_is_remote("keywords"):
+        from modules.remote_gpu.client import ready_client
+        from modules.remote_gpu.proxies import RemoteKeywordScorer
+
+        return RemoteKeywordScorer(ready_client("keywords"))
+    return KeywordScorer()
+
+
+def new_caption_generator():
+    """``CaptionGenerator``, or its GPU-runner proxy when keywords run remotely."""
+    from modules.remote_gpu.client import phase_is_remote
+
+    if phase_is_remote("keywords"):
+        from modules.remote_gpu.client import ready_client
+        from modules.remote_gpu.proxies import RemoteCaptionGenerator
+
+        return RemoteCaptionGenerator(ready_client("keywords"))
+    return CaptionGenerator()
+
+
+def _drop_models_from_other_mode(runner) -> None:
+    """Forget cached CLIP/BLIP built for the other ``gpu_runner`` keywords mode."""
+    from modules.remote_gpu.client import current_mode_or_none
+
+    runner.scorer = current_mode_or_none(runner.scorer, "keywords", KeywordScorer)
+    runner.captioner = current_mode_or_none(runner.captioner, "keywords", CaptionGenerator)
+
 class TaggingRunner:
     """
     Runs tagging in a local thread, yielding logs.
@@ -614,10 +646,11 @@ class TaggingRunner:
         
         # Initialize Scorer (skipped when a tagging engine was injected)
         if self.tagging_engine is None:
+            _drop_models_from_other_mode(self)
             if not self.scorer:
                 try:
                     log("Loading CLIP model (this may take a while)...")
-                    self.scorer = KeywordScorer()
+                    self.scorer = new_keyword_scorer()
                     self.scorer.load_model()
                     log("Model loaded.")
                 except Exception as e:
@@ -628,7 +661,7 @@ class TaggingRunner:
             if generate_captions and not self.captioner:
                 try:
                     log("Loading Captioning model (BLIP)...")
-                    self.captioner = CaptionGenerator()
+                    self.captioner = new_caption_generator()
                     self.captioner.load_model()
                     log("Captioning model loaded.")
                 except Exception as e:
@@ -968,9 +1001,10 @@ class TaggingRunner:
         self.status_message = "Tagging (Manual)..."
         
         # Initialize Scorer
+        _drop_models_from_other_mode(self)
         if not self.scorer:
             try:
-                self.scorer = KeywordScorer()
+                self.scorer = new_keyword_scorer()
                 self.scorer.load_model()
             except Exception as e:
                 self.status_message = "Error"
@@ -978,7 +1012,7 @@ class TaggingRunner:
 
         if generate_captions and not self.captioner:
             try:
-                self.captioner = CaptionGenerator()
+                self.captioner = new_caption_generator()
                 self.captioner.load_model()
             except Exception as e:
                 self.status_message = "Error"

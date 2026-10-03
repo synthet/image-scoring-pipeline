@@ -53,6 +53,7 @@ Gradio Settings tab saves via `save_config_section` with **merge** into existing
 | REST `X-API-Key` | `API_KEY` env, or `api.key` in config (prefer env) |
 | DB write SQL gate | `database.query_token` in config — prefer moving to env/secrets for production |
 | Cursor / Claude / geocoding keys | `secrets.json` via `get_secret(service_name)` |
+| GPU runner token | `secrets.json` `{"gpu_runner": {"token": "..."}}`; the runner container reads the same value from `GPU_RUNNER_TOKEN` |
 
 Do not commit real passwords or tokens in `config.json`.
 
@@ -214,6 +215,19 @@ Scene route ahead of localization ([spec 05](../specs/pipeline-streamlining/05-s
 | `enabled` | `false` | When true, the `localization` runner classifies each decoded rendition, saves the class to `image_scene_labels`, and runs only the detectors its scene routes to. Routes that skip the bird detector record a `disabled` run with `error_code = scene_route`, which `bird_species` region mode treats as full frame. |
 | `backend` | `hf_clip_b32` | Zero-shot classifier: `hf_clip_b32`, `openclip_b32_laion`, `openclip_l14` or `siglip2_base`. The backend is part of the stored `scene_version`. |
 | `run_thresholds` | `{}` | Per-label probability at or above which the routed detector runs, e.g. `{"wildlife_bird": 0.05}`, frozen from the benchmark. A routed label without a threshold always runs its detector (fail open). |
+
+### `gpu_runner`
+
+Offloads a phase's model inference to the GPU runner container on another machine ([runbook](../guides/REMOTE_GPU_RUNNER.md)). Off unless `enabled` is true; local runs are unchanged by default. A remote phase checks the runner at batch start and fails if it is down or its config differs for that phase; it never falls back to the local GPU.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | `false` | Master switch. |
+| `url` | `""` | Runner base URL, e.g. `http://gpu-pc:7870` (`https://` when the runner has a certificate). |
+| `phases.<phase_code>` | `local` | `local` or `remote` for `scoring`, `keywords`, `culling`, `localization`, `bird_species`. |
+| `request_timeout_seconds` | `600` | Read timeout per inference call. A timed-out call is not retried. |
+
+The runner must load the same values for the sections each remote phase depends on: `scoring` (scoring), `tagging` (keywords), `bird_detection` (localization, bird_species). Copy this host's `config.json` to the runner.
 
 ### Top-level misc
 

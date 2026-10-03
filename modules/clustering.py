@@ -214,7 +214,19 @@ class ClusteringEngine(IClusteringEngine):
         return img_ids[best_idx]
 
     def load_model(self):
+        from modules.remote_gpu.client import current_mode_or_none, phase_is_remote
+
+        self.model = current_mode_or_none(self.model, "culling")
         if self.model is None:
+
+            if phase_is_remote("culling"):
+                from modules.remote_gpu.client import ready_client
+                from modules.remote_gpu.proxies import RemoteEmbeddingModel
+
+                self.model = RemoteEmbeddingModel(ready_client("culling"))
+                logging.info("Clustering embeddings run on the GPU runner.")
+                return
+
             # Deferred import
             from tensorflow.keras.applications import MobileNetV2
             
