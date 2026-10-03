@@ -5,7 +5,7 @@ description: Handoff from Codex session export codex-session-01a0f9fc-13f8-7da1-
 resource: reports/model-selection-codex-handoff-2026-10-02.md
 tags: [report, scoring, culling, analytics, model-selection, codex]
 timestamp: 2026-10-02T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: active
 ---
 

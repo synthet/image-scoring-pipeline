@@ -5,7 +5,7 @@ description: Hard-link bird and pose weights from image-scoring-model into the p
 resource: guides/setup/SIBLING_ASSET_LINKS.md
 tags: [setup, models, windows, image-scoring-model]
 timestamp: 2026-10-02T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Sibling asset links (one copy of weights)

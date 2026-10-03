@@ -5,7 +5,7 @@ description: REST contract, extractor versioning, and module ownership for focus
 resource: docs/planning/visual-evidence-api-and-grids.md
 tags: [planning, evidence, api, grids, clean-room]
 timestamp: 2026-09-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: in_progress
 ---
 

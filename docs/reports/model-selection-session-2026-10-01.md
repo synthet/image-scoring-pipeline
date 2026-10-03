@@ -5,7 +5,7 @@ description: Session record for label-free model selection (2026-10-01). Impleme
 resource: reports/model-selection-session-2026-10-01.md
 tags: [report, session, scoring, culling, analytics, model-selection]
 timestamp: 2026-10-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: active
 ---
 

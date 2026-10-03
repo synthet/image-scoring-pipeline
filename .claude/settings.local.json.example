@@ -1,0 +1,60 @@
+{
+  "_comment": "Copy to settings.local.json (gitignored). Machine-specific overrides merged on top of settings.json.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/Projects/image-scoring-backend/scripts/agent_harness/hook.py user-prompt",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/Projects/image-scoring-backend/scripts/agent_harness/hook.py session-compact",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/Projects/image-scoring-backend/scripts/agent_harness/hook.py pre-bash",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__run_subagent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/Projects/image-scoring-backend/scripts/agent_harness/hook.py pre-review",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "additionalDirectories": [
+      "D:/Projects/image-scoring-gallery"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "is-be-mcp",
+    "is-be-webui",
+    "llmwiki-ro-core"
+  ]
+}

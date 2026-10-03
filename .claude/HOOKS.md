@@ -1,7 +1,11 @@
 # Claude Code hooks — Jev agent harness
 
 `.claude/settings.json` (tracked) wires four hooks to one entrypoint,
-[`scripts/agent_harness/hook.py`](../scripts/agent_harness/hook.py). Full design:
+[`scripts/agent_harness/hook.py`](../scripts/agent_harness/hook.py), using
+`$CLAUDE_PROJECT_DIR` (Claude Code CLI). **Cursor on Windows** often leaves that
+variable unset for hook subprocesses — copy [`.claude/settings.local.json.example`](./settings.local.json.example)
+to **`.claude/settings.local.json`** (gitignored) and set **absolute** `python …/hook.py`
+paths for your clone. Full design:
 [docs/technical/JEV_AGENT_HARNESS.md](../docs/technical/JEV_AGENT_HARNESS.md).
 
 | Event | Matcher | Argument | Effect |

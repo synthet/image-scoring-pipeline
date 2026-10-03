@@ -5,7 +5,7 @@ description: Local adoption plan for making docs/ an OKF-aligned, agent-readable
 resource: OKF_ADOPTION.md
 tags: [docs, okf, agents, governance]
 timestamp: 2026-06-16T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Open Knowledge Format adoption
@@ -42,7 +42,7 @@ description: One sentence explaining the page's purpose.
 resource: technical/EXAMPLE.md
 tags: [docs, backend]
 timestamp: 2026-06-16T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 ```
 
@@ -57,7 +57,7 @@ okf_version: 0.1
 - `resource`: repo-relative path to the page or the primary code/config artifact it describes.
 - `tags`: short lowercase tokens for filtering.
 - `timestamp`: last meaningful documentation update in ISO-8601 UTC.
-- `okf_version`: use `0.1` for pages updated under this profile.
+- `okf_version`: use `0.2` for pages updated under this profile (legacy pages may still read `0.1` until touched).
 
 ## Type vocabulary
 
