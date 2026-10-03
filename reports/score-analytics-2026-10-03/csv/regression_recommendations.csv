@@ -1,0 +1,4 @@
+severity,message
+info,arniqa is strongly skewed (skewness=-1.52); a log or rank transform may stabilise variance.
+info,topiq is strongly skewed (skewness=-1.86); a log or rank transform may stabilise variance.
+ok,No severe multicollinearity or overfitting detected for this predictor set.
