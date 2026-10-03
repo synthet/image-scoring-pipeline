@@ -157,11 +157,28 @@ def test_mark_species_classified_done_writes_done_row():
     assert kwargs.get("executor_version")
 
 
-def test_folder_phase_summary_counts_classified_without_ips_row():
-    """The bird_species aggregate must treat species:* images with no phase row as done."""
-    import inspect
+def test_folder_phase_summary_counts_classified_without_ips_row(monkeypatch):
+    """The aggregate query treats species:* images without a phase row as done."""
+    captured_sql = []
 
-    src = inspect.getsource(db_legacy.get_folder_phase_summary)
-    assert "bs_done_extra" in src
-    assert "ips.status IS NULL" in src
-    assert "species:%" in src
+    class Connector:
+        def query_one(self, _sql, _params):
+            return None
+
+        def query(self, sql, _params):
+            captured_sql.append(sql)
+            return []
+
+        def execute(self, _sql, _params):
+            return 0
+
+    connector = Connector()
+    monkeypatch.setattr(db_legacy, "get_or_create_folder", lambda _path: 42)
+    monkeypatch.setattr(db_legacy, "get_connector", lambda: connector)
+    monkeypatch.setattr(db_legacy, "_sql_bird_species_in_scope", lambda _alias: "1=1")
+    monkeypatch.setattr(db_legacy, "_sql_bird_bbox_needs_scan", lambda _alias: "1=0")
+
+    assert db_legacy.get_folder_phase_summary("/photos") == []
+    assert len(captured_sql) == 1
+    assert "ips.status IS NULL" in captured_sql[0]
+    assert "species:%" in captured_sql[0]
