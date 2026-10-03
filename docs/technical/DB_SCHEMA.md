@@ -4,8 +4,8 @@ title: Database Schema
 description: Routing catalog for the PostgreSQL + pgvector schema — table inventory by area, pgvector notes, and where the authoritative DDL lives.
 resource: technical/DB_SCHEMA.md
 tags: [database, postgres, pgvector, schema, migrations]
-timestamp: 2026-09-22T00:00:00Z
-okf_version: 0.1
+timestamp: 2026-10-02T00:00:00Z
+okf_version: 0.2
 ---
 
 # Database Schema
@@ -38,6 +38,7 @@ The current PostgreSQL initializer creates or maintains these application tables
 | Keywords | `keywords_dim`, `image_keywords`, legacy keyword text fields where retained for compatibility |
 | Embeddings | `embedding_spaces`, `image_embeddings`, `image_embeddings_512`, `image_embeddings_768` (legacy `images.image_embedding` dropped in migration 0024) |
 | Localization | `image_localization_runs`, `image_regions` (migration 0034; `image_localization_runs.decode_route` added in 0035 — which decode produced the detector's pixels, e.g. `raw_jpgfromraw` / `raw_preview` / `raw_rawpy` / `direct`). Written by the shadow `localization` phase (#387); legacy `images.bird_bbox` remains the authority until `localization.read_normalized_first` is enabled |
+| Localization selections | `image_localization_selections` (migration 0038, #484): the revocable decision that one `image_regions` row is the production answer for an image and detector — `selected_by` (rule version and hash), `evidence` (JSONB), `selected_at` / `revoked_at`. At most one active selection per (image, detector). For a selected image `images.bird_bbox` is a projection written only by `modules/localization_selection.py`; the row keeps `projected_bird_bbox` and the `previous_bird_bbox` it replaced so revocation restores it exactly |
 | Scene route | `image_scene_labels` (migration 0037, #412): one row per image and `scene_version` (prompt set + backend + prompt hash) with the resolved `top_label`, `top_prob`, every label's `probs` / `cosines` (JSONB) and the localization `rendition_hash`. Written by the scene-route benchmark and, when `scene_route.enabled`, by the `localization` runner |
 
 ## PostgreSQL / pgvector Notes

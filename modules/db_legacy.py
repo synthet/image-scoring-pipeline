@@ -15,6 +15,7 @@ from typing import Any
 from modules import audit, config
 from modules.db_operations import image_paths as _db_image_paths
 from modules.db_operations import job_reports as _db_job_reports
+from modules.db_operations import job_lifecycle as _db_job_lifecycle
 from modules.db_legacy_schema import (
     initialize_base_schema,
     run_additive_migrations,
@@ -4078,6 +4079,28 @@ def get_images_with_keyword(folder_path=None, keyword="birds", resolved_image_id
     return result
 
 
+def _job_lifecycle_services():
+    """Bind current facade collaborators so existing monkeypatch seams remain live."""
+    return _db_job_lifecycle.JobLifecycleServices(
+        get_connector=get_connector,
+        get_phase_id=get_phase_id,
+        audit=audit,
+        record_pipeline_event=record_pipeline_event,
+        event_manager=event_manager,
+        logger=logger,
+        allowed_transitions=JOB_ALLOWED_TRANSITIONS,
+        terminal_states=JOB_TERMINAL_STATES,
+        verify_completion=_strict_verify_resolved_ids_terminal_for_phase,
+        resolve_sync_phase=_resolve_multi_phase_job_phases_sync_code,
+        set_phase_state=set_job_phase_state,
+        get_phases=get_job_phases,
+        get_next_running_phase=get_next_running_job_phase,
+        reconcile_running_phases=reconcile_stale_running_phases_for_jobs,
+        post_completion_audit=run_post_completion_data_quality_audit,
+        stale_running_message=STALE_RUNNING_RECONCILED_MSG,
+    )
+
+
 def create_job(input_path, phase_code=None, job_type=None, status="pending", current_phase=None,
                next_phase_index=None, runner_state=None, queue_payload=None, description=None):
     """
@@ -4094,110 +4117,43 @@ def create_job(input_path, phase_code=None, job_type=None, status="pending", cur
         queue_payload: Optional queue metadata payload persisted as JSON.
         description: Optional human-readable reason/scope for troubleshooting (plain text).
     """
-    phase_id = None
-    if phase_code:
-        phase_id = get_phase_id(phase_code)
-        if job_type is None:
-            job_type = phase_code  # backfill legacy column
-
-    now = datetime.datetime.now()
-    payload_json = json.dumps(queue_payload) if queue_payload is not None else None
-    rows = get_connector().execute_returning(
-        """INSERT INTO jobs (input_path, phase_id, job_type, status, created_at, current_phase, next_phase_index, runner_state, enqueued_at, queue_payload, cancel_requested, description)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?) RETURNING id""",
-        (input_path, phase_id, job_type, status, now, current_phase, next_phase_index, runner_state, now, payload_json, description)
+    return _db_job_lifecycle.create_job(
+        input_path,
+        phase_code,
+        job_type,
+        status,
+        current_phase,
+        next_phase_index,
+        runner_state,
+        queue_payload,
+        description,
+        services=_job_lifecycle_services(),
     )
-    job_id = rows[0]['id'] if rows else None
-
-    audit.record_audit(
-        "jobs", job_id, "insert",
-        audit.build_insert_patch({
-            "status": status,
-            "input_path": input_path,
-            "job_type": job_type,
-            "phase_id": phase_id,
-            "current_phase": current_phase,
-            "runner_state": runner_state,
-            "description": description,
-        }),
-        run_id=job_id,
-        phase_code=phase_code,
-        source="db.create_job",
-    )
-
-    record_pipeline_event(
-        "state-change",
-        f"Job #{job_id} created ({status})",
-        workflow_run=job_id,
-        stage_run=phase_code or job_type or "pipeline",
-        step_run="job:create",
-        category="job",
-        metadata={
-            "status": status,
-            "input_path": input_path,
-            "job_type": job_type,
-            "phase_code": phase_code,
-            "description": description,
-        },
-        source="db.create_job",
-    )
-    return job_id
 
 
 def get_job(job_id):
-    row = get_connector().query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
-    return dict(row) if row else None
+    return _db_job_lifecycle.get_job(job_id, services=_job_lifecycle_services())
 
 
 def set_job_execution_cursor(job_id, current_phase=None, next_phase_index=None, runner_state=None):
     """Persist pipeline execution cursor fields on a job row."""
-    get_connector().execute(
-        "UPDATE jobs SET current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-        (current_phase, next_phase_index, runner_state, job_id),
-    )
-
-    record_pipeline_event(
-        "state-change",
-        f"Job #{job_id} cursor updated",
-        workflow_run=job_id,
-        stage_run=current_phase or "pipeline",
-        step_run="job:cursor",
-        category="phase-transition",
-        metadata={"current_phase": current_phase, "next_phase_index": next_phase_index, "runner_state": runner_state},
-        source="db.set_job_execution_cursor",
+    return _db_job_lifecycle.set_job_execution_cursor(
+        job_id,
+        current_phase,
+        next_phase_index,
+        runner_state,
+        services=_job_lifecycle_services(),
     )
 
 
 def update_job_progress(job_id, percent):
     """Broadcast percent-complete progress for long-running maintenance jobs (Runs UI WebSocket)."""
-    try:
-        p = max(0, min(100, int(percent)))
-    except (TypeError, ValueError):
-        p = 0
-    try:
-        event_manager.broadcast_threadsafe(
-            "job_progress",
-            {
-                "job_id": job_id,
-                "job_type": "maintenance",
-                "phase_code": "maintenance",
-                "current": p,
-                "total": 100,
-            },
-        )
-    except Exception:
-        logger.debug("update_job_progress: broadcast failed for job_id=%s", job_id, exc_info=True)
+    return _db_job_lifecycle.update_job_progress(job_id, percent, services=_job_lifecycle_services())
 
 
 def update_job_log(job_id, log):
     """Update ``jobs.log`` only, preserving the current job status/state-machine invariants."""
-    def _tx(tx):
-        row = tx.query_one("SELECT id FROM jobs WHERE id = ?", (job_id,))
-        if not row:
-            raise ValueError(f"Job not found: {job_id}")
-        tx.execute("UPDATE jobs SET log = ? WHERE id = ?", (log, job_id))
-
-    get_connector().run_transaction(_tx)
+    return _db_job_lifecycle.update_job_log(job_id, log, services=_job_lifecycle_services())
 
 
 def job_type_for_phase_dispatch(phase_code: str) -> str:
@@ -4207,12 +4163,7 @@ def job_type_for_phase_dispatch(phase_code: str) -> str:
     ``clustering`` are not phase codes -- they are the legacy ClusteringRunner job type,
     which the dispatcher accepts alongside ``selection`` -- so they pass through.
     """
-    from modules.phases import PHASE_TO_JOB_TYPE
-
-    pc = (phase_code or "").strip().lower()
-    if pc in ("cluster", "clustering"):
-        return pc
-    return PHASE_TO_JOB_TYPE.get(pc, pc or "scoring")
+    return _db_job_lifecycle.job_type_for_phase_dispatch(phase_code)
 
 
 def get_running_job_for_phase_continuation():
@@ -4221,288 +4172,13 @@ def get_running_job_for_phase_continuation():
     Picks the oldest ``jobs.id`` with ``status='running'`` and a ``job_phases`` row in
     ``running`` (preferred) or ``queued`` (resumable after phantom reconciliation).
     """
-    row = get_connector().query_one(
-        """
-        SELECT j.*, jp.phase_code AS _active_phase_code
-        FROM jobs j
-        INNER JOIN job_phases jp ON jp.job_id = j.id AND jp.state IN ('running', 'queued')
-        WHERE j.status = 'running'
-          AND j.job_type != 'ui_pipeline'
-        ORDER BY
-          CASE jp.state WHEN 'running' THEN 0 ELSE 1 END,
-          j.id ASC,
-          jp.phase_order ASC
-        FETCH FIRST 1 ROWS ONLY
-        """
-    )
-    return dict(row) if row else None
+    return _db_job_lifecycle.get_running_job_for_phase_continuation(services=_job_lifecycle_services())
 
 
 def update_job_status(job_id, status, log=None, current_phase=None, next_phase_index=None, runner_state=None):
-    # Normalize spelling for writes
-    effect_status = (status or "").strip().lower()
-    if effect_status == "canceled":
-        effect_status = "cancelled"
-        
-    effect_log = log
-    if effect_status == "completed":
-        strict_fail = _strict_verify_resolved_ids_terminal_for_phase(job_id)
-        if strict_fail:
-            effect_status = "failed"
-            effect_log = strict_fail if log is None else f"{log}\n{strict_fail}"
-
-    def _tx(tx):
-        row = tx.query_one(
-            "SELECT status, current_phase, next_phase_index, runner_state, log, phase_id, job_type FROM jobs WHERE id = ?",
-            (job_id,),
-        )
-        if not row:
-            raise ValueError(f"Job not found: {job_id}")
-
-        old_status = (row["status"] or "pending").strip().lower()
-        new_status = effect_status
-        root_job_type = row.get("job_type")
-
-        allowed_next = JOB_ALLOWED_TRANSITIONS.get(old_status)
-        if allowed_next is not None and old_status != new_status and new_status not in allowed_next:
-            raise ValueError(f"Invalid job status transition: {old_status} -> {new_status} (job_id={job_id})")
-
-        final_log = effect_log
-        # Keep existing cursor values unless caller explicitly overrides
-        final_phase = current_phase if current_phase is not None else row["current_phase"]
-        final_next_idx = next_phase_index if next_phase_index is not None else row["next_phase_index"]
-        final_runner_state = runner_state if runner_state is not None else row["runner_state"]
-
-        now = datetime.datetime.now()
-        count_row = tx.query_one("SELECT COUNT(*) AS cnt FROM job_phases WHERE job_id = ?", (job_id,))
-        n_phases = int(count_row["cnt"]) if count_row else 0
-
-        phase_state_map = {
-            "queued": "queued",
-            "running": "running",
-            "paused": "paused",
-            "cancel_requested": "cancel_requested",
-            "restarting": "restarting",
-            "completed": "completed",
-            "failed": "failed",
-            "canceled": "cancelled",
-            "cancelled": "cancelled",
-            "interrupted": "interrupted",
-        }
-
-        # Multi-phase: completing one stage must not mark the whole job terminal while phases remain.
-        if new_status == "completed" and n_phases > 1:
-            phase_state = phase_state_map.get(new_status, "running")
-            multi = _resolve_multi_phase_job_phases_sync_code(job_id, new_status, tx=tx)
-            if multi:
-                set_job_phase_state(
-                    job_id,
-                    multi,
-                    phase_state,
-                    error_message=effect_log if new_status in {"failed", "interrupted"} else None,
-                    tx=tx,
-                )
-
-            phases = get_job_phases(job_id, tx=tx)
-            terminal_states = {"completed", "skipped", "canceled", "cancelled"}
-
-            def _phase_terminal(p):
-                return (p.get("state") or "").strip().lower() in terminal_states
-
-            all_terminal = (not phases) or all(_phase_terminal(p) for p in phases)
-            eff_log = effect_log if effect_log is not None else row.get("log")
-
-            if not all_terminal:
-                active = next(
-                    (p for p in phases if (p.get("state") or "").strip().lower() == "running"),
-                    None,
-                )
-                if active is None:
-                    active = next((p for p in phases if not _phase_terminal(p)), None)
-                if active is None:
-                    pc_fallback = get_next_running_job_phase(job_id, tx=tx)
-                    if pc_fallback:
-                        po_fb = next(
-                            (int(p["phase_order"]) for p in phases if (p.get("phase_code") or "") == pc_fallback),
-                            0,
-                        )
-                        active = {"phase_code": pc_fallback, "phase_order": po_fb}
-                if active:
-                    pc = active.get("phase_code")
-                    po = int(active.get("phase_order") or 0)
-                    pid = get_phase_id(pc)
-                    tx.execute(
-                        "UPDATE jobs SET status = 'running', finished_at = NULL, completed_at = NULL, "
-                        "log = ?, current_phase = ?, next_phase_index = ?, runner_state = 'running', "
-                        "phase_id = COALESCE(?, phase_id) WHERE id = ?",
-                        (eff_log, pc, po, pid, job_id),
-                    )
-                    return old_status, "running", pc, po, "running", root_job_type
-
-            final_rs = runner_state if runner_state is not None else "completed"
-            tx.execute(
-                "UPDATE jobs SET status = ?, finished_at = ?, completed_at = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-                ("completed", now, now, eff_log, final_phase, final_next_idx, final_rs, job_id),
-            )
-            return old_status, "completed", final_phase, final_next_idx, final_rs, root_job_type
-
-        if new_status == "running":
-            tx.execute(
-                "UPDATE jobs SET status = ?, started_at = COALESCE(started_at, ?), log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-                (new_status, now, final_log, final_phase, final_next_idx, final_runner_state, job_id),
-            )
-        elif new_status in JOB_TERMINAL_STATES:
-            tx.execute(
-                "UPDATE jobs SET status = ?, finished_at = ?, completed_at = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-                (new_status, now, now, final_log, final_phase, final_next_idx, final_runner_state, job_id),
-            )
-        else:
-            tx.execute(
-                "UPDATE jobs SET status = ?, log = ?, current_phase = ?, next_phase_index = ?, runner_state = ? WHERE id = ?",
-                (new_status, final_log, final_phase, final_next_idx, final_runner_state, job_id),
-            )
-
-        # Keep job_phases state in sync for phase-bound jobs
-        try:
-            skip_multi_completed = new_status == "completed" and n_phases > 1
-            job_row = tx.query_one("SELECT phase_id, job_type FROM jobs WHERE id = ?", (job_id,))
-            phase_code = None
-            if job_row:
-                if job_row["phase_id"]:
-                    p_row = tx.query_one("SELECT code FROM pipeline_phases WHERE id = ?", (job_row["phase_id"],))
-                    if p_row:
-                        phase_code = p_row["code"]
-                if not phase_code and job_row["job_type"] not in ("pipeline", "ui_pipeline"):
-                    phase_code = job_row["job_type"]
-                if not phase_code and job_row["job_type"] in ("pipeline", "ui_pipeline"):
-                    phase_code = get_next_running_job_phase(job_id, tx=tx)
-
-            phase_state = phase_state_map.get(new_status, "running")
-
-            if n_phases > 1 and not skip_multi_completed:
-                multi = _resolve_multi_phase_job_phases_sync_code(job_id, new_status, tx=tx)
-                if multi:
-                    set_job_phase_state(
-                        job_id,
-                        multi,
-                        phase_state,
-                        error_message=effect_log if new_status in {"failed", "interrupted"} else None,
-                        tx=tx,
-                    )
-            elif phase_code and not (n_phases > 1):
-                set_job_phase_state(
-                    job_id,
-                    phase_code,
-                    phase_state,
-                    error_message=effect_log if new_status in {"failed", "interrupted"} else None,
-                    tx=tx,
-                )
-        except Exception as e:
-            logger.debug("update_job_status: failed to sync job_phases for job %s: %s", job_id, e)
-
-        return old_status, new_status, final_phase, final_next_idx, final_runner_state, root_job_type
-
-    old_status, broadcast_status, final_phase, final_next_idx, final_runner_state, job_type_after = get_connector().run_transaction(_tx)
-
-    audit.record_audit(
-        "jobs", job_id, "update",
-        audit.build_field_update_patch("status", old_status, broadcast_status),
-        run_id=job_id,
-        phase_code=final_phase,
-        source="db.update_job_status",
+    return _db_job_lifecycle.update_job_status(
+        job_id, status, log, current_phase, next_phase_index, runner_state, services=_job_lifecycle_services(),
     )
-
-    event_type = "state-change"
-    severity = "info"
-    if broadcast_status == "failed":
-        event_type = "error"
-        severity = "error"
-    elif broadcast_status in ("completed", "canceled"):
-        event_type = "recovery"
-        severity = "warning" if broadcast_status == "canceled" else "info"
-
-    record_pipeline_event(
-        event_type,
-        f"Job #{job_id} status: {old_status} → {broadcast_status}",
-        workflow_run=job_id,
-        stage_run=final_phase or "pipeline",
-        step_run="job:status",
-        category="job",
-        severity=severity,
-        metadata={
-            "old_status": old_status,
-            "status": broadcast_status,
-            "current_phase": final_phase,
-            "next_phase_index": final_next_idx,
-            "runner_state": final_runner_state,
-        },
-        critical=broadcast_status in ("failed", "interrupted"),
-        source="db.update_job_status",
-    )
-
-    # Broadcast job status update
-    try:
-        from modules.events import event_manager
-        payload = {
-            "job_id": job_id,
-            "status": broadcast_status,
-            "current_phase": final_phase,
-            "next_phase_index": final_next_idx,
-            "runner_state": final_runner_state,
-        }
-        if job_type_after:
-            payload["job_type"] = job_type_after
-        event_manager.broadcast_threadsafe(f"job_{broadcast_status}", payload)
-    except Exception:
-        pass
-
-    if broadcast_status in ("completed", "failed", "canceled", "cancelled", "interrupted"):
-        try:
-            from modules.phase_work_claims import release_claims_for_job
-
-            release_claims_for_job(int(job_id))
-        except Exception:
-            logger.debug("update_job_status: release work claims failed for job %s", job_id, exc_info=True)
-
-    if broadcast_status in ("completed", "failed", "canceled", "cancelled"):
-        try:
-            n_ips = reconcile_stale_running_phases_for_jobs(
-                [job_id],
-                error_message=f"{STALE_RUNNING_RECONCILED_MSG}:job_{broadcast_status}",
-                in_flight_to="failed",
-            )
-            if n_ips:
-                logger.info(
-                    "update_job_status: reconciled %s stale image_phase_status rows for job %s",
-                    n_ips,
-                    job_id,
-                )
-        except Exception:
-            logger.exception("update_job_status: image_phase_status reconcile failed for job %s", job_id)
-    elif broadcast_status == "interrupted":
-        try:
-            n_ips = reconcile_stale_running_phases_for_jobs(
-                [job_id],
-                error_message=f"{STALE_RUNNING_RECONCILED_MSG}:job_{broadcast_status}",
-                in_flight_to="not_started",
-            )
-            if n_ips:
-                logger.info(
-                    "update_job_status: reconciled %s resumable image_phase_status rows for job %s",
-                    n_ips,
-                    job_id,
-                )
-        except Exception:
-            logger.exception("update_job_status: image_phase_status reconcile failed for job %s", job_id)
-
-    if broadcast_status == "completed":
-        try:
-            run_post_completion_data_quality_audit(int(job_id))
-        except Exception:
-            logger.exception(
-                "update_job_status: post-run data quality audit failed for job %s",
-                job_id,
-            )
 
 
 _ACTIVE_JOB_STATUSES = ("queued", "running", "paused", "user_pause", "restarting")
