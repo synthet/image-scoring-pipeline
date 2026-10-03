@@ -185,11 +185,22 @@ def load_detector_context(cfg: dict[str, Any], bird_cfg: dict[str, Any] | None =
             config_hash=detector_config_hash(STATUS_DISABLED, *knobs),
         )
 
-    detector = BirdDetector(config=bird_cfg)
     try:
-        weights_path = detector._resolve_weights_path()
-        weights_hash = weights_sha256(weights_path)
-        detector.load_model()
+        from modules.remote_gpu.client import phase_is_remote
+
+        if phase_is_remote("localization"):
+            # Same context as a local run; only the forward pass goes to the GPU runner,
+            # whose weights digest keeps ``config_hash`` equal to a local run's.
+            from modules.remote_gpu.client import ready_client
+            from modules.remote_gpu.proxies import RemoteBirdDetector
+
+            detector = RemoteBirdDetector(ready_client("localization"), config=bird_cfg)
+            weights_hash = detector.remote_weights_sha256()
+        else:
+            detector = BirdDetector(config=bird_cfg)
+            weights_path = detector._resolve_weights_path()
+            weights_hash = weights_sha256(weights_path)
+            detector.load_model()
     except Exception as exc:  # noqa: BLE001 — a load failure is an outcome, not a crash
         logger.warning("localization: bird detector unavailable: %s", exc)
         return DetectorContext(

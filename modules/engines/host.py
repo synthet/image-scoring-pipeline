@@ -293,6 +293,15 @@ class MultiModelHost(IScoringEngine):
 
         if not write_metadata or avg is None:
             return
+        self._write_nef_metadata(results, normalized, image_path, avg)
+
+    def _write_nef_metadata(
+        self,
+        results: dict[str, Any],
+        normalized: dict[str, float],
+        image_path: str,
+        avg: float,
+    ) -> None:
         if not getattr(self._backend, "is_nef_file", lambda _p: False)(image_path):
             return
         try:

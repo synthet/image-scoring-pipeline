@@ -120,7 +120,16 @@ class SceneRouter:
 
         self.backend = settings["backend"]
         self.thresholds = settings["run_thresholds"]
-        self.classifier = SceneClassifier(self.backend)
+        from modules.remote_gpu.client import phase_is_remote
+
+        if phase_is_remote(PHASE_CODE):
+            # Scene routing is localization GPU work too; only the towers go remote.
+            from modules.remote_gpu.client import get_client
+            from modules.remote_gpu.proxies import RemoteSceneClassifier
+
+            self.classifier = RemoteSceneClassifier(get_client(), self.backend)
+        else:
+            self.classifier = SceneClassifier(self.backend)
 
     def localize(self, image_id: int, file_path: str, ctx, *, max_regions: int, job_id: int) -> ImageOutcome:
         from modules.localization import DecodeError, decode_for_localization, record_scene_skip
