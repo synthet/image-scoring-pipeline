@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blind model study review</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1d2330;--muted:#5d6678;--card:#fff;--line:#d8dce4;--accent:#2f6fd6;--pick:#1f8f4e;--keep:#a07a10;--reject:#c23b3b;--sel:#2f6fd6}
+@media (prefers-color-scheme:dark){:root{--bg:#14171d;--fg:#e6e9ef;--muted:#99a2b3;--card:#1d2129;--line:#323846;--accent:#6d9cf0;--pick:#3cbf72;--keep:#d9a92b;--reject:#e46262;--sel:#6d9cf0}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+header h1{font-size:15px;margin:0 8px 0 0}
+header input{width:110px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}
+.progress{color:var(--muted)}
+.bar{flex:1;min-width:120px;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--accent);width:0}
+main{max-width:1500px;margin:0 auto;padding:16px}
+.unit-head{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;margin-bottom:10px}
+.unit-head .kind{font-weight:600}
+.unit-head .help{color:var(--muted)}
+.single img{display:block;max-width:100%;max-height:72vh;margin:0 auto;border-radius:6px;cursor:zoom-in;background:#000}
+.ratings{display:grid;grid-template-columns:110px repeat(5,44px);gap:6px;align-items:center;justify-content:center;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.frame{background:var(--card);border:2px solid var(--line);border-radius:8px;padding:6px}
+.frame.best{border-color:var(--sel)}
+.frame img{display:block;width:100%;height:220px;object-fit:contain;background:#000;border-radius:4px;cursor:zoom-in}
+.frame .row{display:flex;gap:6px;margin-top:6px;align-items:center}
+.frame .n{color:var(--muted);margin-right:auto}
+button{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.on{color:#fff;border-color:transparent}
+button.g0.on{background:var(--reject)} button.g1.on{background:var(--keep)} button.g2.on{background:var(--pick)}
+button.rate.on,button.star.on{background:var(--sel)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:18px 0 6px}
+.actions .primary{background:var(--accent);color:#fff;border-color:transparent}
+.msg{min-height:20px;text-align:center;color:var(--muted)}
+.msg.err{color:var(--reject)}
+.saved{color:var(--pick)}
+.missing{display:flex;align-items:center;justify-content:center;height:220px;color:var(--muted);background:var(--bg);border-radius:4px}
+#zoom{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:5;cursor:zoom-out}
+#zoom img{max-width:98vw;max-height:98vh}
+kbd{font:12px ui-monospace,monospace;padding:0 4px;border:1px solid var(--line);border-radius:3px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Blind model study</h1>
+  <label>Reviewer <input id="reviewer" autocomplete="off"></label>
+  <span class="progress" id="progress">loading…</span>
+  <div class="bar"><span id="bar"></span></div>
+  <button id="prev" title="Previous unit (←)">←</button>
+  <button id="next" title="Next unit (→)">→</button>
+  <button id="todo" title="Next unreviewed unit (n)">Next unreviewed</button>
+</header>
+<main>
+  <div class="unit-head"><span class="kind" id="kind"></span><span id="pos" class="progress"></span><span class="help" id="help"></span><span id="state"></span></div>
+  <div id="body"></div>
+  <div class="actions">
+    <button class="primary" id="save" title="Save (Enter)">Save</button>
+    <button id="uncertain" title="Save as uncertain (u)">Uncertain</button>
+    <button id="skip" title="Skip this unit (s)">Skip</button>
+  </div>
+  <div class="msg" id="msg"></div>
+</main>
+<div id="zoom"><img alt=""></div>
+<script>
+"use strict";
+const TOKEN = "__CSRF_TOKEN__";
+const FIELDS = ["general", "technical", "aesthetic"];
+const GRADES = [["Reject", "g0"], ["Keep", "g1"], ["Pick", "g2"]];
+const HELP = {
+  single: "Rate the photo 1–5 for general quality, technical quality and aesthetics. Keys 1–5 fill the next empty rating.",
+  stack: "Grade every frame Reject / Keep / Pick and mark the best frame (★). The best frame must be a pick; reject all if none is usable.",
+  burst: "Grade every frame Reject / Keep / Pick and mark the best frame (★). The best frame must be a pick; reject all if none is usable."
+};
+const $ = (id) => document.getElementById(id);
+let units = [], reviews = {}, idx = 0, draft = null, shownAt = 0;
+
+function reviewerName() {
+  return ($("reviewer").value || "").trim();
+}
+function storeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function storeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } }
+
+async function loadReviews() {
+  const who = reviewerName();
+  reviews = {};
+  if (!who) return;
+  const res = await fetch("/api/reviews?reviewer=" + encodeURIComponent(who));
+  for (const r of await res.json()) reviews[r.unit_id] = r;   // later records win
+}
+
+function blankDraft(u) {
+  return u.kind === "single"
+    ? { ratings: {} }
+    : { frames: Object.fromEntries(u.image_ids.map((id) => [id, { grade: null, best: false }])) };
+}
+function draftFrom(u, r) {
+  const d = blankDraft(u);
+  if (!r || r.status !== "done") return d;
+  if (u.kind === "single") d.ratings = { ...r.ratings };
+  else for (const f of r.frames) d.frames[f.image_id] = { grade: f.grade, best: f.best };
+  return d;
+}
+
+function setProgress() {
+  const done = units.filter((u) => reviews[u.id]).length;
+  $("progress").textContent = `${done} / ${units.length} reviewed`;
+  $("bar").style.width = units.length ? (100 * done / units.length).toFixed(1) + "%" : "0";
+}
+
+function img(id, cls) {
+  const el = document.createElement("img");
+  el.src = "/image/" + id;
+  el.alt = "";
+  el.loading = "lazy";
+  if (cls) el.className = cls;
+  el.onclick = () => { $("zoom").querySelector("img").src = el.src; $("zoom").style.display = "flex"; };
+  el.onerror = () => {
+    const box = document.createElement("div");
+    box.className = "missing";
+    box.textContent = "Preview unavailable — retry later or skip this unit";
+    el.replaceWith(box);
+  };
+  return el;
+}
+
+function button(label, cls, on, click) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.className = cls + (on ? " on" : "");
+  b.onclick = click;
+  return b;
+}
+
+function render() {
+  const u = units[idx];
+  if (!u) return;
+  $("kind").textContent = u.kind === "single" ? "Single photo" : `${u.kind === "burst" ? "Burst" : "Stack"} · ${u.image_ids.length} frames`;
+  $("pos").textContent = `unit ${idx + 1} of ${units.length}`;
+  $("help").textContent = HELP[u.kind] || "";
+  const r = reviews[u.id];
+  $("state").innerHTML = r ? `<span class="saved">saved: ${r.status}</span>` : "";
+  const body = $("body");
+  body.innerHTML = "";
+  if (u.kind === "single") {
+    const wrap = document.createElement("div");
+    wrap.className = "single";
+    wrap.append(img(u.image_ids[0]));
+    const grid = document.createElement("div");
+    grid.className = "ratings";
+    for (const f of FIELDS) {
+      const lab = document.createElement("span");
+      lab.textContent = f[0].toUpperCase() + f.slice(1);
+      grid.append(lab);
+      for (let v = 1; v <= 5; v++) {
+        grid.append(button(String(v), "rate", draft.ratings[f] === v, () => { draft.ratings[f] = v; render(); }));
+      }
+    }
+    wrap.append(grid);
+    body.append(wrap);
+  } else {
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    u.image_ids.forEach((id, n) => {
+      const st = draft.frames[id];
+      const card = document.createElement("div");
+      card.className = "frame" + (st.best ? " best" : "");
+      card.append(img(id));
+      const row = document.createElement("div");
+      row.className = "row";
+      const num = document.createElement("span");
+      num.className = "n";
+      num.textContent = "#" + (n + 1);
+      row.append(num);
+      GRADES.forEach(([label, cls], g) => row.append(button(label, cls, st.grade === g, () => {
+        st.grade = g;
+        if (g !== 2) st.best = false;
+        render();
+      })));
+      row.append(button("★", "star", st.best, () => {
+        const make = !st.best;
+        for (const other of Object.values(draft.frames)) other.best = false;
+        st.best = make;
+        if (make) st.grade = 2;
+        render();
+      }));
+      card.append(row);
+      grid.append(card);
+    });
+    body.append(grid);
+  }
+}
+
+function show(i) {
+  if (!units.length) return;
+  idx = Math.max(0, Math.min(units.length - 1, i));
+  draft = draftFrom(units[idx], reviews[units[idx].id]);
+  shownAt = Date.now();
+  msg("");
+  render();
+  storeSet("study-pos", units[idx].id);
+}
+function nextTodo() {
+  for (let k = 1; k <= units.length; k++) {
+    const j = (idx + k) % units.length;
+    if (!reviews[units[j].id]) return show(j);
+  }
+  msg("Every unit has a saved review.");
+}
+function msg(text, err) {
+  $("msg").textContent = text;
+  $("msg").className = "msg" + (err ? " err" : "");
+}
+
+/** Client-side mirror of study.validate_review; returns an error message or "". */
+function problem(u, d) {
+  if (u.kind === "single") {
+    const missing = FIELDS.filter((f) => !Number.isInteger(d.ratings[f]));
+    return missing.length ? "Rate " + missing.join(", ") + " (1–5)." : "";
+  }
+  const fr = Object.values(d.frames);
+  if (fr.some((f) => f.grade === null)) return "Grade every frame.";
+  if (fr.some((f) => f.grade > 0) && !fr.some((f) => f.best)) return "Choose a best frame (★), or reject all frames.";
+  return "";
+}
+
+async function save(status) {
+  const u = units[idx];
+  const who = reviewerName();
+  if (!who) { msg("Enter a reviewer name first.", true); $("reviewer").focus(); return; }
+  const record = { unit_id: u.id, reviewer: who, status, source: "human_blind", elapsed_ms: Date.now() - shownAt };
+  if (status === "done") {
+    const p = problem(u, draft);
+    if (p) { msg(p, true); return; }
+    if (u.kind === "single") record.ratings = { ...draft.ratings };
+    else record.frames = u.image_ids.map((id) => ({ image_id: id, grade: draft.frames[id].grade, best: draft.frames[id].best }));
+  }
+  const res = await fetch("/api/reviews", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Study-Token": TOKEN },
+    body: JSON.stringify(record)
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) { msg(out.error || ("Save failed: HTTP " + res.status), true); return; }
+  reviews[u.id] = record;
+  setProgress();
+  nextTodo();
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if ($("zoom").style.display === "flex") { if (e.key === "Escape") $("zoom").style.display = "none"; return; }
+  const u = units[idx];
+  if (!u) return;
+  if (e.key === "ArrowRight") show(idx + 1);
+  else if (e.key === "ArrowLeft") show(idx - 1);
+  else if (e.key === "n") nextTodo();
+  else if (e.key === "u") save("uncertain");
+  else if (e.key === "s") save("skipped");
+  else if (e.key === "Enter") save("done");
+  else if (u.kind === "single" && /^[1-5]$/.test(e.key)) {
+    const f = FIELDS.find((x) => !Number.isInteger(draft.ratings[x])) || FIELDS[FIELDS.length - 1];
+    draft.ratings[f] = Number(e.key);
+    render();
+  }
+});
+$("zoom").onclick = () => { $("zoom").style.display = "none"; };
+$("prev").onclick = () => show(idx - 1);
+$("next").onclick = () => show(idx + 1);
+$("todo").onclick = nextTodo;
+$("save").onclick = () => save("done");
+$("uncertain").onclick = () => save("uncertain");
+$("skip").onclick = () => save("skipped");
+$("reviewer").onchange = async () => {
+  storeSet("study-reviewer", reviewerName());
+  await loadReviews();
+  setProgress();
+  show(idx);
+};
+
+(async function init() {
+  $("reviewer").value = storeGet("study-reviewer") || "owner";
+  const data = await (await fetch("/api/units")).json();
+  units = data.units;
+  document.title = "Blind model study · " + data.study_id;
+  await loadReviews();
+  setProgress();
+  const last = units.findIndex((u) => u.id === storeGet("study-pos"));
+  if (last >= 0) show(last); else { idx = units.length - 1; nextTodo(); if (!draft) show(0); }
+})().catch((e) => msg("Could not load the study: " + e, true));
+</script>
+</body>
+</html>
