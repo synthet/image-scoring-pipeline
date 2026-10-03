@@ -80,17 +80,45 @@ def _groups(n, large_gap):
 
 
 def test_calibration_recommends_largest_chance_level_tolerance():
+    # 300 near-tied pairs ordered at chance: CI upper bound ~0.56 <= 0.60 margin.
+    result = tie_tolerance_curve(_groups(300, 0.0035), resamples=200)
+    by_eps = {c["epsilon"]: c for c in result["curve"]}
+    assert result["rule"] == "v2" and result["margin"] == 0.60
+    assert by_eps[0.0025]["pairs"] == 300 and by_eps[0.0025]["qualifies"]
+    assert by_eps[0.005]["pairs"] == 900 and by_eps[0.005]["eligible"] and not by_eps[0.005]["qualifies"]
+    assert result["recommended_epsilon"] == 0.0025
+
+
+def test_calibration_absence_of_evidence_does_not_qualify():
+    # Run-1 shape: few chance-level pairs give a wide CI; v1 would have qualified it.
     result = tie_tolerance_curve(_groups(40, 0.0035), resamples=200)
     by_eps = {c["epsilon"]: c for c in result["curve"]}
-    assert by_eps[0.0025]["pairs"] == 40 and by_eps[0.0025]["qualifies"]
-    assert by_eps[0.005]["pairs"] == 120 and not by_eps[0.005]["qualifies"]
-    assert result["recommended_epsilon"] == 0.0025
+    assert by_eps[0.0025]["eligible"] and by_eps[0.0025]["ci95"][1] > 0.60
+    assert result["recommended_epsilon"] is None
+
+
+def test_calibration_informative_score_does_not_qualify():
+    groups = [{"id": f"g{k}", "grades": [2, 1], "scores": [0.501, 0.500]} for k in range(300)]
+    result = tie_tolerance_curve(groups, resamples=200)
+    assert result["recommended_epsilon"] is None
+    assert all(not c["qualifies"] for c in result["curve"])
+
+
+def test_calibration_smaller_failing_tolerance_blocks_larger_one():
+    # Δ=0.001 pairs always agree (ε=0.0025 eligible, fails); adding the disagreeing
+    # Δ≈0.004 pairs pulls cumulative agreement to 1/3, which alone would qualify.
+    groups = [{"id": f"g{k}", "grades": [2, 1, 0], "scores": [0.5, 0.499, 0.5035]} for k in range(100)]
+    result = tie_tolerance_curve(groups, resamples=200)
+    by_eps = {c["epsilon"]: c for c in result["curve"]}
+    assert by_eps[0.0025]["eligible"] and not by_eps[0.0025]["qualifies"]
+    assert by_eps[0.005]["qualifies"]
+    assert result["recommended_epsilon"] is None
 
 
 def test_calibration_needs_enough_groups():
     result = tie_tolerance_curve(_groups(4, 0.0035), resamples=200)
     assert result["recommended_epsilon"] is None
-    assert all(not c["qualifies"] for c in result["curve"])
+    assert all(not c["eligible"] and not c["qualifies"] for c in result["curve"])
 
 
 def test_calibration_reports_equal_grade_gaps():

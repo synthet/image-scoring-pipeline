@@ -184,15 +184,18 @@ def bootstrap_metric(rows, metric, *, resamples=1000, seed=20261001):
 TIE_TOLERANCE_GRID = (0.0025, 0.005, 0.01, 0.015, 0.02, 0.03, 0.05)
 
 
-def tie_tolerance_curve(groups, grid=TIE_TOLERANCE_GRID, *, min_pairs=30, min_groups=10,
+def tie_tolerance_curve(groups, grid=TIE_TOLERANCE_GRID, *, margin=0.60, min_pairs=30, min_groups=10,
                         resamples=1000, seed=20261001):
-    """Calibrate ``culling.tie_tolerance`` from human-graded groups (pre-registered in #508).
+    """Calibrate ``culling.tie_tolerance`` from human-graded groups (rule v2, pre-registered in #513).
 
     ``groups`` items: ``{"id", "scores", "grades"}``. Pairs with different grades score
     agreement 1 when the score order matches the grade order (0.5 on an exact score
     tie). For each ε, agreement among pairs with |Δscore| <= ε gets a group-cluster
-    bootstrap CI. The recommendation is the largest ε whose CI lower bound is <= 0.5
-    with at least ``min_pairs`` pairs from ``min_groups`` groups; otherwise None.
+    bootstrap CI. An ε is eligible with at least ``min_pairs`` pairs from ``min_groups``
+    groups and a defined CI; it qualifies when the CI upper bound is <= ``margin``
+    (evidence that the score orders such pairs at most marginally better than chance).
+    The recommendation is the largest qualifying ε with no failing smaller eligible ε;
+    otherwise None.
     """
     pairs, equal = [], []
     for g in groups:
@@ -208,19 +211,22 @@ def tie_tolerance_curve(groups, grid=TIE_TOLERANCE_GRID, *, min_pairs=30, min_gr
     def agreement(rows, w):
         return float(np.average([r["agree"] for r in rows], weights=w))
 
-    curve, recommended = [], None
-    for eps in grid:
+    curve, recommended, blocked = [], None, False
+    for eps in sorted(grid):
         rows = [p for p in pairs if p["delta"] <= eps + 1e-12]
         boot = bootstrap_metric(rows, agreement, resamples=resamples, seed=seed)
-        lower = boot["ci95"][0] if boot["ci95"] else None
-        qualifies = (lower is not None and lower <= 0.5
-                     and len(rows) >= min_pairs and boot["blocks"] >= min_groups)
+        upper = boot["ci95"][1] if boot["ci95"] else None
+        eligible = upper is not None and len(rows) >= min_pairs and boot["blocks"] >= min_groups
+        qualifies = eligible and upper is not None and upper <= margin
         curve.append({"epsilon": eps, "pairs": len(rows), "groups": boot["blocks"],
-                      "agreement": boot["value"], "ci95": boot["ci95"], "qualifies": qualifies})
-        if qualifies:
+                      "agreement": boot["value"], "ci95": boot["ci95"], "eligible": eligible,
+                      "qualifies": qualifies})
+        if eligible and not qualifies:
+            blocked = True
+        elif qualifies and not blocked:
             recommended = eps
     q = np.quantile(equal, [0.25, 0.5, 0.75, 0.9]).tolist() if equal else None
-    return {"curve": curve, "recommended_epsilon": recommended,
+    return {"rule": "v2", "margin": margin, "curve": curve, "recommended_epsilon": recommended,
             "different_grade_pairs": len(pairs), "groups": len(groups),
             "equal_grade_pairs": {"n": len(equal), "abs_delta_q25_50_75_90": q}}
 
