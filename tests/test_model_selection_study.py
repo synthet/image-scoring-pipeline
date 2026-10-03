@@ -54,6 +54,19 @@ def test_review_validation_rejects_model_labels_and_incomplete_grades():
         study.validate_review(unit, record)
 
 
+def test_several_starred_picks_mark_a_tie_for_best():
+    unit = {"id": "u", "kind": "burst", "image_ids": [1, 2, 3]}
+    record = {"unit_id": "u", "reviewer": "owner", "status": "done", "source": "human_blind",
+              "frames": [{"image_id": 1, "grade": 2, "best": True},
+                         {"image_id": 2, "grade": 2, "best": True},
+                         {"image_id": 3, "grade": 0, "best": False}]}
+    study.validate_review(unit, record)
+    best = [True, True, False]
+    assert study.group_metrics([0.6, 0.5, 0.1], [2, 2, 0], best)["top1"] == 1.0
+    assert study.group_metrics([0.5, 0.6, 0.1], [2, 2, 0], best)["top1"] == 1.0
+    assert study.group_metrics([0.1, 0.2, 0.6], [2, 2, 0], best)["top1"] == 0.0
+
+
 def test_blind_payload_does_not_expose_scores_strata_or_split():
     unit = {"id": "u", "kind": "single", "image_ids": [42], "stratum": "bad",
             "weight": 2, "split": "test", "repeat_of": "secret", "scores": {"liqe": 1}}
