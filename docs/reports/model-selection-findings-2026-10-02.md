@@ -5,7 +5,7 @@ description: Short wiki snapshot of label-free verdicts and exploratory study st
 resource: reports/model-selection-findings-2026-10-02.md
 tags: [report, scoring, culling, analytics, model-selection]
 timestamp: 2026-10-02T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: active
 ---
 
@@ -45,7 +45,7 @@ status: active
 
 - **koniq / paq2piq:** ~49% coverage; high library collinearity; weak burst signal in suitability/exploratory tables.
 - **refcull_* (7):** shadow research family; high stack ties; do not treat as independent fusion inputs.
-- **arniqa:** slowest static cost (~115 ms); smallest general composite ablation delta; candidate for `high_throughput` profile only after config issue.
+- **arniqa:** smallest general composite ablation delta. The static table put it slowest (~115 ms), but measured 2026-10-02 on an RTX 4060 Laptop GPU: per-model `predict()` mean spaq 42.6 / ava 37.8 / topiq 37.4 / liqe 33.1 / **arniqa 28.6 ms**; ensemble 179.5 → 150.9 ms without `arniqa`, i.e. **~16% of model time** (less end to end, since RAW decode and IO are unchanged) — #494; candidate for `high_throughput` profile only after config issue.
 
 ## Correlation theme
 
