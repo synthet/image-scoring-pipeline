@@ -1,0 +1,13 @@
+n,finding
+1,Culling labels are NOT verified independent of the scores: treat Cⱼ and Nᵦ membership as provisional.
+2,Global labels are NOT verified independent: Gⱼ and Nₐ membership are provisional or unavailable.
+3,"arniqa: role=global, G=0.376, C=0.547 (provisional)"
+4,"ava: role=culling, G=0.315, C=0.655 (provisional)"
+5,"clip_quality_v0: role=global, G=0.348, C=0.547 (provisional)"
+6,"liqe: role=both, G=0.557, C=0.731 (provisional)"
+7,"spaq: role=both, G=0.437, C=0.678 (provisional)"
+8,"topiq: role=global, G=0.416, C=0.599 (provisional)"
+9,general × clip_quality_v0: pooled ρ=0.62 vs within-cluster ρ=0.18
+10,technical × clip_quality_v0: pooled ρ=0.60 vs within-cluster ρ=0.16
+11,arniqa × liqe: pooled ρ=0.59 vs within-cluster ρ=0.16
+12,"Pairwise logistic ensemble on untouched test: accuracy 0.858, log loss 0.469, ECE 0.111."

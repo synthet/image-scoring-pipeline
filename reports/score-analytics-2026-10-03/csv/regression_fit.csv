@@ -1,0 +1,2 @@
+target,predictors,image_count,complete_rows,n,k,dof,rank_deficient,intercept,intercept_se,intercept_t,intercept_p,intercept_ci_lo,intercept_ci_hi,r2,adj_r2,cv_r2,rmse,mae,f_stat,f_p,residual_sample
+general,"arniqa,ava,clip_quality_v0,liqe,spaq,topiq",78890,77294,77294,6,77287,False,-0.5235166756244776,0.0014759194314997006,-354.7054564438694,0.0,-0.5264094698573276,-0.5206238813916275,0.9687024220301355,0.9686999923140407,0.9686501160272281,0.03194379592156034,0.018209579649061697,398689.5522902289,0.0,20000
