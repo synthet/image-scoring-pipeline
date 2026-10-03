@@ -97,6 +97,8 @@
     "default_time_gap": 120,
     "auto_export_default": false,
     "sub_cluster_distance_threshold": 0.05,
+    "tie_tolerance": 0.0,
+    "_comment_tie_tolerance": "Rank-value gap (0-1 scale) treated as no quality difference; ties resolve by ISO, exposure, earliest capture, id. 0 = exact ordering. Calibrate: model_selection_study.py tie-tolerance",
     "two_level": {
       "enabled": false,
       "picks_per_substack": 3,

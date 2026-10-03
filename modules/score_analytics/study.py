@@ -181,6 +181,50 @@ def bootstrap_metric(rows, metric, *, resamples=1000, seed=20261001):
             "successful_resamples": len(samples)}
 
 
+TIE_TOLERANCE_GRID = (0.0025, 0.005, 0.01, 0.015, 0.02, 0.03, 0.05)
+
+
+def tie_tolerance_curve(groups, grid=TIE_TOLERANCE_GRID, *, min_pairs=30, min_groups=10,
+                        resamples=1000, seed=20261001):
+    """Calibrate ``culling.tie_tolerance`` from human-graded groups (pre-registered in #508).
+
+    ``groups`` items: ``{"id", "scores", "grades"}``. Pairs with different grades score
+    agreement 1 when the score order matches the grade order (0.5 on an exact score
+    tie). For each ε, agreement among pairs with |Δscore| <= ε gets a group-cluster
+    bootstrap CI. The recommendation is the largest ε whose CI lower bound is <= 0.5
+    with at least ``min_pairs`` pairs from ``min_groups`` groups; otherwise None.
+    """
+    pairs, equal = [], []
+    for g in groups:
+        s, gr = np.asarray(g["scores"], float), np.asarray(g["grades"], int)
+        for a, b in combinations(range(len(s)), 2):
+            d = abs(s[a] - s[b])
+            if gr[a] == gr[b]:
+                equal.append(d)
+                continue
+            agree = 0.5 if d <= 1e-9 else float((s[a] - s[b]) * (gr[a] - gr[b]) > 0)
+            pairs.append({"block": g["id"], "weight": 1.0, "delta": d, "agree": agree})
+
+    def agreement(rows, w):
+        return float(np.average([r["agree"] for r in rows], weights=w))
+
+    curve, recommended = [], None
+    for eps in grid:
+        rows = [p for p in pairs if p["delta"] <= eps + 1e-12]
+        boot = bootstrap_metric(rows, agreement, resamples=resamples, seed=seed)
+        lower = boot["ci95"][0] if boot["ci95"] else None
+        qualifies = (lower is not None and lower <= 0.5
+                     and len(rows) >= min_pairs and boot["blocks"] >= min_groups)
+        curve.append({"epsilon": eps, "pairs": len(rows), "groups": boot["blocks"],
+                      "agreement": boot["value"], "ci95": boot["ci95"], "qualifies": qualifies})
+        if qualifies:
+            recommended = eps
+    q = np.quantile(equal, [0.25, 0.5, 0.75, 0.9]).tolist() if equal else None
+    return {"curve": curve, "recommended_epsilon": recommended,
+            "different_grade_pairs": len(pairs), "groups": len(groups),
+            "equal_grade_pairs": {"n": len(equal), "abs_delta_q25_50_75_90": q}}
+
+
 def inference_cost(models, timings, dependencies):
     components = {d for m in models for d in dependencies.get(m, [m])}
     if any(timings.get(d) is None for d in components):

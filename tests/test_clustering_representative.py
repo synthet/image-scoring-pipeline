@@ -186,6 +186,22 @@ class TestSelectBestImageScore:
         # No EXIF in stub map → tie-break is lowest id
         assert result == 10
 
+    def test_tie_tolerance_treats_near_equal_raw_scores_as_tied(self):
+        engine = make_engine()
+        img_ids = [10, 20, 30]
+        id_to_score = {10: 0.503, 20: 0.500, 30: 0.40}
+        id_to_exif = {
+            10: {"iso": 800, "exposure_time": "1/250", "date_time_original": "2020-01-02"},
+            20: {"iso": 100, "exposure_time": "1/250", "date_time_original": "2020-01-02"},
+            30: {"iso": 50, "exposure_time": "1/250", "date_time_original": "2020-01-02"},
+        }
+        with cfg_patch("score"):
+            assert engine._select_best_image(img_ids, id_to_score, id_to_exif=id_to_exif) == 10
+        with patch("modules.clustering.config.get_config_section",
+                   return_value={"best_image_strategy": "score", "tie_tolerance": 0.005}):
+            # 0.503 vs 0.500 is a tie (lower ISO wins); 0.40 is outside the tolerance.
+            assert engine._select_best_image(img_ids, id_to_score, id_to_exif=id_to_exif) == 20
+
 
 # ---------------------------------------------------------------------------
 # Tests: centroid strategy

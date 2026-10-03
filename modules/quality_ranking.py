@@ -12,6 +12,18 @@ from collections.abc import Mapping
 from typing import Any
 
 
+def parse_tie_tolerance(value: Any) -> float:
+    """``culling.tie_tolerance``: rank gap treated as no quality difference (0 = off).
+
+    Invalid, missing or negative values fall back to 0.0.
+    """
+    try:
+        tol = float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    return tol if tol > 0.0 else 0.0
+
+
 def parse_exposure_seconds(value: Any) -> float | None:
     """
     Parse exposure_time from EXIF (often ``\"1/250\"`` or a decimal string) to seconds.
