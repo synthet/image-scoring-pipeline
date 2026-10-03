@@ -118,8 +118,8 @@ def main():
             ci = "n/a" if c["ci95"] is None else f"[{c['ci95'][0]:.2f}, {c['ci95'][1]:.2f}]"
             agree = "n/a" if c["agreement"] is None else f"{c['agreement']:.2f}"
             print(f"eps={c['epsilon']:<7} pairs={c['pairs']:<5} groups={c['groups']:<4} "
-                  f"agreement={agree:<5} ci95={ci:<13} qualifies={c['qualifies']}")
-        print(f"recommended_epsilon={result['recommended_epsilon']} "
+                  f"agreement={agree:<5} ci95={ci:<13} eligible={c['eligible']} qualifies={c['qualifies']}")
+        print(f"rule={result['rule']} (CI upper <= {result['margin']}) recommended_epsilon={result['recommended_epsilon']} "
               f"(groups={result['groups']}, equal-grade pairs={result['equal_grade_pairs']})")
     print(root)
     return 0
