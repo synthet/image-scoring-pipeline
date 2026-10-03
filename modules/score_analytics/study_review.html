@@ -52,6 +52,11 @@ kbd{font:12px ui-monospace,monospace;padding:0 4px;border:1px solid var(--line);
   <button id="prev" title="Previous unit (←)">←</button>
   <button id="next" title="Next unit (→)">→</button>
   <button id="todo" title="Next unreviewed unit (n)">Next unreviewed</button>
+  <label>Show <select id="filter">
+    <option value="all">All units</option>
+    <option value="groups">Groups only</option>
+    <option value="single">Singles only</option>
+  </select></label>
 </header>
 <main>
   <div class="unit-head"><span class="kind" id="kind"></span><span id="pos" class="progress"></span><span class="help" id="help"></span><span id="state"></span></div>
@@ -71,11 +76,11 @@ const FIELDS = ["general", "technical", "aesthetic"];
 const GRADES = [["Reject", "g0"], ["Keep", "g1"], ["Pick", "g2"]];
 const HELP = {
   single: "Rate the photo 1–5 for general quality, technical quality and aesthetics. Keys 1–5 fill the next empty rating.",
-  stack: "Grade every frame Reject / Keep / Pick and mark the best frame (★). The best frame must be a pick; reject all if none is usable.",
-  burst: "Grade every frame Reject / Keep / Pick and mark the best frame (★). The best frame must be a pick; reject all if none is usable."
+  stack: "Grade every frame Reject / Keep / Pick and mark the best frame (★). The best frame must be a pick; reject all if none is usable. If several frames are equally good, star all of them (any starred frame counts as best) and give indistinguishable frames the same grade.",
+  burst: "Grade every frame Reject / Keep / Pick and mark the best frame (★). The best frame must be a pick; reject all if none is usable. If several frames are equally good, star all of them (any starred frame counts as best) and give indistinguishable frames the same grade."
 };
 const $ = (id) => document.getElementById(id);
-let units = [], reviews = {}, idx = 0, draft = null, shownAt = 0;
+let allUnits = [], units = [], reviews = {}, idx = 0, draft = null, shownAt = 0;
 
 function reviewerName() {
   return ($("reviewer").value || "").trim();
@@ -104,9 +109,14 @@ function draftFrom(u, r) {
   return d;
 }
 
+function applyFilter() {
+  const f = $("filter").value;
+  units = f === "all" ? allUnits : allUnits.filter((u) => (u.kind === "single") === (f === "single"));
+}
 function setProgress() {
   const done = units.filter((u) => reviews[u.id]).length;
-  $("progress").textContent = `${done} / ${units.length} reviewed`;
+  const all = allUnits.filter((u) => reviews[u.id]).length;
+  $("progress").textContent = `${done} / ${units.length} reviewed` + (units === allUnits ? "" : ` (all: ${all} / ${allUnits.length})`);
   $("bar").style.width = units.length ? (100 * done / units.length).toFixed(1) + "%" : "0";
 }
 
@@ -180,10 +190,8 @@ function render() {
         render();
       })));
       row.append(button("★", "star", st.best, () => {
-        const make = !st.best;
-        for (const other of Object.values(draft.frames)) other.best = false;
-        st.best = make;
-        if (make) st.grade = 2;
+        st.best = !st.best;
+        if (st.best) st.grade = 2;
         render();
       }));
       card.append(row);
@@ -250,7 +258,7 @@ async function save(status) {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (e.target.tagName === "INPUT") return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
   if ($("zoom").style.display === "flex") { if (e.key === "Escape") $("zoom").style.display = "none"; return; }
   const u = units[idx];
   if (!u) return;
@@ -273,6 +281,16 @@ $("todo").onclick = nextTodo;
 $("save").onclick = () => save("done");
 $("uncertain").onclick = () => save("uncertain");
 $("skip").onclick = () => save("skipped");
+$("filter").onchange = () => {
+  storeSet("study-filter", $("filter").value);
+  const current = units[idx] && units[idx].id;
+  applyFilter();
+  setProgress();
+  const keep = units.findIndex((u) => u.id === current);
+  if (keep >= 0) show(keep);
+  else if (units.some((u) => !reviews[u.id])) { idx = units.length - 1; nextTodo(); }
+  else show(0);
+};
 $("reviewer").onchange = async () => {
   storeSet("study-reviewer", reviewerName());
   await loadReviews();
@@ -283,7 +301,9 @@ $("reviewer").onchange = async () => {
 (async function init() {
   $("reviewer").value = storeGet("study-reviewer") || "owner";
   const data = await (await fetch("/api/units")).json();
-  units = data.units;
+  allUnits = data.units;
+  if (["all", "groups", "single"].includes(storeGet("study-filter"))) $("filter").value = storeGet("study-filter");
+  applyFilter();
   document.title = "Blind model study · " + data.study_id;
   await loadReviews();
   setProgress();
