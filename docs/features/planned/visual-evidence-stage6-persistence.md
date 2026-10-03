@@ -5,7 +5,7 @@ description: Persist evidence artifacts at inference time, version with renditio
 resource: docs/features/planned/visual-evidence-stage6-persistence.md
 tags: [features, planned, evidence, localization, clean-room]
 timestamp: 2026-09-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Visual evidence — Stage 6 persistence

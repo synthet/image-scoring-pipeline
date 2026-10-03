@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python D:/Projects/image-scoring-backend/scripts/agent_harness/hook.py user-prompt",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" user-prompt",
             "timeout": 15
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python D:/Projects/image-scoring-backend/scripts/agent_harness/hook.py session-compact",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" session-compact",
             "timeout": 10
           }
         ]
@@ -68,11 +68,21 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" pre-bash",
+            "timeout": 15
+          }
+        ]
+      },
+      {
         "matcher": "mcp__.*__run_subagent",
         "hooks": [
           {
             "type": "command",
-            "command": "python D:/Projects/image-scoring-backend/scripts/agent_harness/hook.py pre-review",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py\" pre-review",
             "timeout": 15
           }
         ]
@@ -80,11 +90,12 @@
     ]
   },
   "enabledMcpjsonServers": [
-    "is-be-mcp",
-    "is-be-webui"
+    "is-be-mcp"
   ],
   "disabledMcpjsonServers": [
     "playwright",
+    "is-be-webui",
+    "is-be-live",
     "is-be-maint",
     "is-be-full",
     "is-be-pg"

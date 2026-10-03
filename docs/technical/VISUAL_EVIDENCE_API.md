@@ -5,7 +5,7 @@ description: Canonical JSON contract for GET /api/images/{id}/evidence consumed 
 resource: docs/technical/VISUAL_EVIDENCE_API.md
 tags: [technical, api, evidence, overlays, clean-room]
 timestamp: 2026-09-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: partial
 ---
 

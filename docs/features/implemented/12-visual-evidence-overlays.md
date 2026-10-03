@@ -5,7 +5,7 @@ description: On-demand evidence payload, focus/noise grids, mask RLE, and GET /a
 resource: docs/features/implemented/12-visual-evidence-overlays.md
 tags: [features, evidence, overlays, api, clean-room]
 timestamp: 2026-09-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Visual evidence overlays (API slice)

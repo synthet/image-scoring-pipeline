@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to settings.json (tracked default). Claude Code MCP: copy .mcp.json.example \u2192 .mcp.json and enable compact tools only (search/dispatch/sse_status). Hooks run the Jev agent harness \u2014 see .claude/HOOKS.md.",
+  "_comment": "Tracked default (settings.json). Machine overrides: copy settings.local.json.example \u2192 settings.local.json (gitignored). Put absolute hook paths and personal MCP keys only in settings.local.json. Claude Code MCP: copy .mcp.json.example \u2192 .mcp.json. Hooks: .claude/HOOKS.md.",
   "permissions": {
     "allow": [
       "mcp__is-be-mcp__search",

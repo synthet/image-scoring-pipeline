@@ -5,7 +5,7 @@ description: Completes partial delivery from Claude session export (PR #470 merg
 resource: reports/deliver-master-runbook-2026-10-02.md
 tags: [report, delivery, git]
 timestamp: 2026-10-02T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: active
 ---
 
@@ -20,18 +20,30 @@ status: active
 
 **Cursor agent terminal:** If every command fails with `D:\scripts\agent_harness\hook.py`, fix [`.claude/settings.json`](../../.claude/settings.json) (absolute path to `hook.py`) and **reload the window**, or run the script below in **Windows Terminal / PowerShell outside Cursor**.
 
-## One-shot (recommended)
+## Status (2026-10-02)
+
+**Delivery completed:** [PR #473](https://github.com/synthet/image-scoring-pipeline/pull/473) merged to `master` (closes **#412**). PR **#471** was closed without merge.
+
+If your machine still shows `master` at `97f2a57`, you are **behind** — only run sync:
 
 ```powershell
 cd D:\Projects\image-scoring-backend
+git fetch origin
+git checkout master
+git pull --ff-only origin master   # expect e93d7f3 or later
+```
+
+## One-shot guard (idempotent)
+
+```powershell
 .\scripts\powershell\Consolidate-DeliverToMaster.ps1 -Execute
 ```
 
-Dry-run first (default):
+When #473 is already merged, this **only fast-forwards `master`** and exits (no duplicate commits). Dry-run: omit `-Execute`.
 
-```powershell
-.\scripts\powershell\Consolidate-DeliverToMaster.ps1
-```
+**Do not** re-run the old commit blocks from an outdated script copy — they can fork `feat/scene-route-412` off `75b53e8` and fail `git push`.
+
+Preferred for new work: `python scripts/agent_skills/deliver_branch.py` (see deliver-branch skill).
 
 ## What the script does
 
