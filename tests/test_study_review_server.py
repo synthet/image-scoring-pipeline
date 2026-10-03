@@ -110,3 +110,47 @@ def test_unknown_image_is_refused_without_contacting_the_backend(server):
     with pytest.raises(urllib.error.HTTPError) as e:
         _get(base + "/image/999")
     assert e.value.code == 404
+
+
+def test_local_path_maps_wsl_drives_on_windows(monkeypatch):
+    monkeypatch.setattr(study_review.os, "name", "nt")
+    assert study_review.local_path("/mnt/d/Photos/a.NEF") == "D:/Photos/a.NEF"
+    assert study_review.local_path("D:/Photos/a.NEF") == "D:/Photos/a.NEF"
+    monkeypatch.setattr(study_review.os, "name", "posix")
+    assert study_review.local_path("/mnt/d/Photos/a.NEF") == "/mnt/d/Photos/a.NEF"
+
+
+def test_local_preview_applies_exif_orientation_and_downscales(tmp_path):
+    from PIL import Image
+
+    src = tmp_path / "portrait.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6  # stored landscape, displayed rotated 90 degrees clockwise
+    Image.new("RGB", (4000, 3000), (200, 10, 10)).save(src, exif=exif)
+    out = Image.open(__import__("io").BytesIO(study_review.local_preview(str(src))))
+    assert out.size == (1536, 2048)
+
+
+def test_server_falls_back_to_local_preview_when_backend_is_down(tmp_path):
+    from PIL import Image
+
+    photo = tmp_path / "frame.jpg"
+    Image.new("RGB", (800, 600), (10, 200, 10)).save(photo)
+    write_json(tmp_path / "sample.json", {"study_id": "s", "units": [
+        {"id": "u", "kind": "single", "image_ids": [7]}]})
+    write_json(tmp_path / "snapshot.json.gz", {"images": [{"id": 7, "path": str(photo)}]})
+    (tmp_path / "reviews.jsonl").touch()
+    port, dead_backend = _free_port(), f"http://127.0.0.1:{_free_port()}"
+    threading.Thread(target=study_review.serve, args=(tmp_path,),
+                     kwargs={"port": port, "backend": dead_backend}, daemon=True).start()
+    base = f"http://127.0.0.1:{port}"
+    for _ in range(50):
+        try:
+            with urllib.request.urlopen(base + "/image/7", timeout=5) as r:
+                assert r.status == 200 and r.headers.get_content_type() == "image/jpeg"
+                assert Image.open(__import__("io").BytesIO(r.read())).size == (800, 600)
+            break
+        except urllib.error.URLError:
+            time.sleep(0.05)
+    else:
+        pytest.fail("review server did not serve the local preview")
