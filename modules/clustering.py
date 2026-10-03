@@ -15,7 +15,7 @@ from modules.events import event_manager
 from modules.indexing_policy import filter_image_rows_for_nef_policy
 from modules.phases import PhaseCode, PhaseStatus
 from modules.phases_policy import explain_phase_run_decision
-from modules.quality_ranking import quality_tiebreak_sort_key_best_first
+from modules.quality_ranking import parse_tie_tolerance, quality_tiebreak_sort_key_best_first
 from modules.run_log import runner_emit
 from modules.version import APP_VERSION
 
@@ -153,9 +153,18 @@ class ClusteringEngine(IClusteringEngine):
             strategy = 'score'
 
         if strategy == 'score':
-            max_ns = float(np.max(norm_scores))
-            tol = 1e-9
-            best_indices = [j for j in range(len(img_ids)) if abs(norm_scores[j] - max_ns) <= tol]
+            # culling.tie_tolerance > 0: raw scores within it of the max count as tied
+            # (compared unstretched; per-stack min-max would inflate tiny gaps).
+            tie_tol = parse_tie_tolerance(
+                (config.get_config_section('culling') or {}).get('tie_tolerance')
+            )
+            if tie_tol > 0.0:
+                max_s = float(np.max(scores))
+                best_indices = [j for j in range(len(img_ids)) if max_s - scores[j] <= tie_tol + 1e-12]
+            else:
+                max_ns = float(np.max(norm_scores))
+                tol = 1e-9
+                best_indices = [j for j in range(len(img_ids)) if abs(norm_scores[j] - max_ns) <= tol]
             if len(best_indices) == 1:
                 return img_ids[best_indices[0]]
             candidates = [img_ids[j] for j in best_indices]

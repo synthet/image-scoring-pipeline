@@ -15,6 +15,8 @@ from modules.sub_clustering import compute_sub_clusters
 
 TWO_LEVEL_POLICY_VERSION = "2.0"
 LEVEL2_DEFAULT_DISTANCE_THRESHOLD = 0.06
+# Best-first ordering of one group; replaces ``sorted(group, key=sort_key)`` when given.
+OrderFn = Callable[[Sequence[Mapping]], list]
 
 
 @dataclass(frozen=True)
@@ -131,6 +133,7 @@ def build_substack_persist_rows(
     level2_space: str,
     sort_key: Callable[[Mapping], tuple],
     id_key: str = "id",
+    order_fn: OrderFn | None = None,
 ) -> list[dict]:
     """Build dicts for ``db.create_sub_stacks_batch``.
 
@@ -141,7 +144,7 @@ def build_substack_persist_rows(
     for idx, group in enumerate(leaf_groups):
         if not group:
             continue
-        sorted_group = sorted(group, key=sort_key)
+        sorted_group = order_fn(group) if order_fn else sorted(group, key=sort_key)
         best_id = None
         image_ids: list[int] = []
         for img in sorted_group:
@@ -180,6 +183,7 @@ def assign_decisions_for_stack(
     score_field: str,
     embeddings_for_mmr: Mapping[int, object],
     id_key: str = "id",
+    order_fn: OrderFn | None = None,
 ) -> list[tuple]:
     """Return ``(image_id, decision, file_path)`` tuples for one root stack."""
     from modules.diversity import reorder_with_mmr
@@ -188,7 +192,7 @@ def assign_decisions_for_stack(
     for group, pick_slots in zip(leaf_groups, slot_counts):
         if not group:
             continue
-        sorted_sub = sorted(group, key=sort_key)
+        sorted_sub = order_fn(group) if order_fn else sorted(group, key=sort_key)
         k = int(pick_slots)
 
         if diversity_enabled and k > 1 and len(sorted_sub) > k:
@@ -240,6 +244,7 @@ def process_stack_two_level(
     sort_key: Callable[[Mapping], tuple],
     *,
     id_key: str = "id",
+    order_fn: OrderFn | None = None,
 ) -> tuple[list[dict], list[tuple], int]:
     """Compute one root stack's sub-stacks + pick/reject decisions (pure).
 
@@ -251,6 +256,8 @@ def process_stack_two_level(
     Returns ``(persist_rows, decisions, leaf_count)`` where ``persist_rows`` feed
     ``db.create_sub_stacks_batch`` and ``decisions`` feed
     ``db.batch_update_cull_decisions`` (policy ``TWO_LEVEL_POLICY_VERSION``).
+    ``order_fn`` (optional) replaces ``sorted(group, key=sort_key)`` for best-first
+    ordering, e.g. ``selection.tie_tolerant_order``.
     """
     if len(images) < max(2, int(tl_cfg.min_stack_size_for_substack)):
         leaf_groups = [list(images)]
@@ -290,6 +297,7 @@ def process_stack_two_level(
             level2_space=tl_cfg.level2.embedding_space,
             sort_key=sort_key,
             id_key=id_key,
+            order_fn=order_fn,
         )
 
     decisions = assign_decisions_for_stack(
@@ -302,6 +310,7 @@ def process_stack_two_level(
         score_field=tl_cfg.score_field,
         embeddings_for_mmr=embeddings,
         id_key=id_key,
+        order_fn=order_fn,
     )
 
     return persist_rows, decisions, len(leaf_groups)

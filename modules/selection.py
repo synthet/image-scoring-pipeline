@@ -21,7 +21,7 @@ from modules.culling_embeddings import (
 from modules.embedding_extractors import is_supported
 from modules.embedding_spaces import OPENCLIP_L14_IMAGE_SPACE_CODE
 from modules.indexing_policy import filter_image_rows_for_nef_policy
-from modules.quality_ranking import quality_tiebreak_sort_key_best_first
+from modules.quality_ranking import parse_tie_tolerance, quality_tiebreak_sort_key_best_first
 from modules.selection_metadata import write_selection_metadata
 from modules.selection_policy import POLICY_VERSION, classify_sorted_ids
 from modules.sub_clustering import compute_sub_clusters
@@ -109,6 +109,40 @@ def blended_rank_value(img: dict, score_field: str, clip_weight: float) -> float
         if cq is not None:
             base = (1.0 - clip_weight) * base + clip_weight * float(cq)
     return base
+
+
+def tie_tolerant_order(
+    group: list[dict],
+    value_fn: Callable[[dict], float],
+    tiebreak_key: Callable[[dict], tuple],
+    tolerance: float,
+) -> list[dict]:
+    """Best-first order where rank values within ``tolerance`` count as tied.
+
+    ``tolerance <= 0`` is plain ``(-value, tiebreak)`` sorting. Otherwise frames are
+    grouped into head-anchored tiers (every frame within ``tolerance`` of the tier's
+    first frame; no chaining, so a tier spans at most ``tolerance``) and each tier is
+    ordered by ``tiebreak_key`` alone: a score gap below the tolerance is no evidence
+    of a quality difference, so the choice is made deterministically instead.
+    """
+    ranked = sorted(group, key=lambda im: (-value_fn(im), tiebreak_key(im)))
+    if tolerance <= 0.0:
+        return ranked
+    ordered: list[dict] = []
+    i = 0
+    while i < len(ranked):
+        head = value_fn(ranked[i])
+        j = i + 1
+        while j < len(ranked) and head - value_fn(ranked[j]) <= tolerance + 1e-12:
+            j += 1
+        ordered.extend(sorted(ranked[i:j], key=tiebreak_key))
+        i = j
+    return ordered
+
+
+def _tie_tolerance_cfg() -> float:
+    """Resolve ``culling.tie_tolerance``; default 0.0 keeps exact-value ordering."""
+    return parse_tie_tolerance(get_config_value("culling.tie_tolerance", default=0.0))
 
 
 def apply_clip_reject_guard(
@@ -443,15 +477,26 @@ class SelectionService:
                         score_col = cfg.score_field
 
                 clip_w = clip_cfg["weight"] if clip_cfg["enabled"] else 0.0
-                def sort_key(img):
+                def rank_value(img):
+                    return blended_rank_value(img, score_col, clip_w)
+
+                def tiebreak_key(img):
                     c = img.get("created_at") or ""
                     i = img.get("id") or 0
-                    return (
-                        -blended_rank_value(img, score_col, clip_w),
-                        quality_tiebreak_sort_key_best_first(img),
-                        str(c),
-                        int(i),
-                    )
+                    return (quality_tiebreak_sort_key_best_first(img), str(c), int(i))
+
+                def sort_key(img):
+                    return (-rank_value(img), *tiebreak_key(img))
+
+                # Tie tolerance (default 0 = exact ordering): rank gaps within it are
+                # treated as no quality difference and resolved by tiebreak_key.
+                tie_tol = _tie_tolerance_cfg()
+
+                def order(group):
+                    return tie_tolerant_order(group, rank_value, tiebreak_key, tie_tol)
+
+                if tie_tol > 0.0:
+                    logger.debug("[culling] tie_tolerance=%s folder=%s", tie_tol, folder)
 
                 # Resolve sub-cluster threshold once per folder. A None or
                 # non-positive value disables the second pass and preserves
@@ -500,6 +545,7 @@ class SelectionService:
                             emb_level2,
                             tl_cfg,
                             sort_key,
+                            order_fn=order,
                         )
                         folder_subcluster_count += leaf_count
                         if persist_rows:
@@ -522,7 +568,7 @@ class SelectionService:
                     folder_subcluster_count += len(sub_groups)
 
                     for sub_group in sub_groups:
-                        sorted_sub = sorted(sub_group, key=sort_key)
+                        sorted_sub = order(sub_group)
 
                         if cfg.diversity_enabled and len(sorted_sub) > 2:
                             from modules.diversity import reorder_with_mmr

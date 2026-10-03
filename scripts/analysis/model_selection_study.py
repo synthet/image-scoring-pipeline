@@ -18,7 +18,8 @@ if str(ROOT) not in sys.path:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["create", "explore", "serve", "progress", "select", "test", "benchmark"])
+    parser.add_argument("command", choices=["create", "explore", "serve", "progress", "select", "test", "benchmark",
+                                                "tie-tolerance"])
     parser.add_argument("--study", type=Path, required=True)
     parser.add_argument("--singles", type=int, default=600)
     parser.add_argument("--groups", type=int, default=300)
@@ -101,6 +102,25 @@ def main():
         from modules.score_analytics.study_benchmark import benchmark
 
         benchmark(snapshot, sample, root, args.models.split(","), args.benchmark_images, args.repeats)
+    elif args.command == "tie-tolerance":
+        from modules.score_analytics.study import tie_tolerance_curve
+
+        # Calibration may only see train + validation; the test split stays unread (#508).
+        rows = [r for split in ("train", "validation")
+                for r in study_report._rows(snapshot, sample, reviews, "culling", split, ("general",))[0]]
+        assert all(r["split"] != "test" for r in rows)
+        result = tie_tolerance_curve(
+            [{"id": r["id"], "scores": r["x"][:, 0], "grades": r["grades"]} for r in rows],
+            resamples=args.bootstrap,
+        )
+        write_json(root / "tie_tolerance.json", result)
+        for c in result["curve"]:
+            ci = "n/a" if c["ci95"] is None else f"[{c['ci95'][0]:.2f}, {c['ci95'][1]:.2f}]"
+            agree = "n/a" if c["agreement"] is None else f"{c['agreement']:.2f}"
+            print(f"eps={c['epsilon']:<7} pairs={c['pairs']:<5} groups={c['groups']:<4} "
+                  f"agreement={agree:<5} ci95={ci:<13} qualifies={c['qualifies']}")
+        print(f"recommended_epsilon={result['recommended_epsilon']} "
+              f"(groups={result['groups']}, equal-grade pairs={result['equal_grade_pairs']})")
     print(root)
     return 0
 
