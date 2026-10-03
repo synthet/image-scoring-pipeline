@@ -58,7 +58,18 @@ def local_preview(path: str, long_edge: int = PREVIEW_LONG_EDGE) -> bytes:
     return out.getvalue()
 
 
-def serve(root: Path, *, host="127.0.0.1", port=7862, backend="http://127.0.0.1:7860"):
+def mirror_reviews(source: Path, mirror_dir: Path) -> None:
+    """Copy ``reviews.jsonl`` to ``mirror_dir`` (latest + one dated copy per day), atomically."""
+    data = source.read_bytes()
+    day = datetime.now(timezone.utc).strftime("%Y%m%d")
+    for name in ("reviews.jsonl", f"reviews_{day}.jsonl"):
+        tmp = mirror_dir / (name + ".tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, mirror_dir / name)
+
+
+def serve(root: Path, *, host="127.0.0.1", port=7862, backend="http://127.0.0.1:7860",
+          mirror_dir: Path | None = None):
     sample = read_json(root / "sample.json")
     snapshot = read_json(root / "snapshot.json.gz")
     units = {u["id"]: u for u in sample["units"]}
@@ -71,6 +82,11 @@ def serve(root: Path, *, host="127.0.0.1", port=7862, backend="http://127.0.0.1:
     backend_down_until = [0.0]
     page = (Path(__file__).with_name("study_review.html")).read_text(encoding="utf-8")
     page = page.replace("__CSRF_TOKEN__", token)
+    if mirror_dir is not None:
+        # Fail fast: the owner relies on this backup while labelling.
+        mirror_dir.mkdir(parents=True, exist_ok=True)
+        mirror_reviews(root / "reviews.jsonl", mirror_dir)
+        logging.info("Mirroring reviews to %s on every save", mirror_dir)
 
     class Handler(BaseHTTPRequestHandler):
         def send(self, status, payload, content_type="application/json"):
@@ -134,11 +150,20 @@ def serve(root: Path, *, host="127.0.0.1", port=7862, backend="http://127.0.0.1:
                 study.validate_review(unit, record)
                 record["study_id"] = sample["study_id"]
                 record["saved_at"] = datetime.now(timezone.utc).isoformat()
-                with lock, (root / "reviews.jsonl").open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(record, allow_nan=False) + "\n")
-                    f.flush()
-                    os.fsync(f.fileno())
-                self.send(200, {"saved": True})
+                mirrored = None
+                with lock:
+                    with (root / "reviews.jsonl").open("a", encoding="utf-8") as f:
+                        f.write(json.dumps(record, allow_nan=False) + "\n")
+                        f.flush()
+                        os.fsync(f.fileno())
+                    if mirror_dir is not None:
+                        try:
+                            mirror_reviews(root / "reviews.jsonl", mirror_dir)
+                            mirrored = True
+                        except OSError as exc:  # the save itself succeeded; never fail it
+                            logging.warning("Review mirror to %s failed: %s", mirror_dir, exc)
+                            mirrored = False
+                self.send(200, {"saved": True} if mirrored is None else {"saved": True, "mirrored": mirrored})
             except (ValueError, TypeError, KeyError) as exc:
                 self.send(400, {"error": str(exc)})
 
