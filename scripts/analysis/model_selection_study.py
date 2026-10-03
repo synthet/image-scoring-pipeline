@@ -30,6 +30,8 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7862)
     parser.add_argument("--backend", default="http://127.0.0.1:7860")
+    parser.add_argument("--mirror-dir", type=Path, default=None,
+                        help="serve: copy reviews.jsonl here after every save (e.g. a Dropbox folder)")
     parser.add_argument("--benchmark-images", type=int, default=20)
     parser.add_argument("--repeats", type=int, default=3)
     args = parser.parse_args()
@@ -69,7 +71,7 @@ def main():
     if args.command == "serve":
         from modules.score_analytics.study_review import serve
 
-        serve(root, host=args.host, port=args.port, backend=args.backend)
+        serve(root, host=args.host, port=args.port, backend=args.backend, mirror_dir=args.mirror_dir)
         return 0
     from modules.score_analytics import study_report
 

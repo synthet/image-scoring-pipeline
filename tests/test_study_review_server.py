@@ -21,8 +21,7 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture
-def server(tmp_path: Path):
+def _start(tmp_path: Path, **kwargs):
     units = [
         {"id": "u-single", "kind": "single", "image_ids": [1], "stratum": "secret", "split": "test", "weight": 3.0},
         {"id": "u-burst", "kind": "burst", "image_ids": [2, 3], "stratum": "secret", "split": "train", "weight": 1.0},
@@ -31,7 +30,8 @@ def server(tmp_path: Path):
     write_json(tmp_path / "snapshot.json.gz", {"images": [{"id": i, "path": f"/p/{i}.jpg"} for i in (1, 2, 3)]})
     (tmp_path / "reviews.jsonl").touch()
     port = _free_port()
-    threading.Thread(target=study_review.serve, args=(tmp_path,), kwargs={"port": port}, daemon=True).start()
+    threading.Thread(target=study_review.serve, args=(tmp_path,), kwargs={"port": port, **kwargs},
+                     daemon=True).start()
     base = f"http://127.0.0.1:{port}"
     for _ in range(50):
         try:
@@ -40,6 +40,11 @@ def server(tmp_path: Path):
         except OSError:
             time.sleep(0.05)
     return base, tmp_path
+
+
+@pytest.fixture
+def server(tmp_path: Path):
+    return _start(tmp_path)
 
 
 def _get(url: str):
@@ -90,6 +95,33 @@ def test_valid_records_are_saved_and_listed_per_reviewer(server):
     assert [r["unit_id"] for r in listed] == ["u-single", "u-burst", "u-burst"]
     assert json.loads(_get(base + "/api/reviews?reviewer=someone-else")) == []
     assert len((root / "reviews.jsonl").read_text(encoding="utf-8").splitlines()) == 3
+
+
+_SINGLE = {"unit_id": "u-single", "reviewer": "owner", "status": "done", "source": "human_blind",
+           "ratings": {"general": 4, "technical": 3, "aesthetic": 5}}
+
+
+def test_saves_are_mirrored_to_latest_and_dated_copies(tmp_path):
+    mirror = tmp_path / "backup" / "study"
+    base, root = _start(tmp_path, mirror_dir=mirror)
+    assert (mirror / "reviews.jsonl").read_bytes() == b""  # copied once at startup
+    assert _post(base, _SINGLE, _token(_get(base + "/"))) == (200, {"saved": True, "mirrored": True})
+    saved = (root / "reviews.jsonl").read_bytes()
+    assert saved and (mirror / "reviews.jsonl").read_bytes() == saved
+    dated = list(mirror.glob("reviews_*.jsonl"))
+    assert len(dated) == 1 and dated[0].read_bytes() == saved
+    assert not list(mirror.glob("*.tmp"))
+
+
+def test_mirror_failure_never_loses_the_save(tmp_path):
+    mirror = tmp_path / "backup"
+    base, root = _start(tmp_path, mirror_dir=mirror)
+    for f in mirror.iterdir():
+        f.unlink()
+    mirror.rmdir()
+    mirror.write_text("not a folder")  # every mirror write now fails
+    assert _post(base, _SINGLE, _token(_get(base + "/"))) == (200, {"saved": True, "mirrored": False})
+    assert len((root / "reviews.jsonl").read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_invalid_records_and_bad_tokens_are_rejected(server):
