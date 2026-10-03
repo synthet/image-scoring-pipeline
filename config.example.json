@@ -17,7 +17,7 @@
     "default_sort_by": "score_general",
     "default_sort_order": "desc",
     "profile": "default",
-    "_comment_profile": "\"high_throughput\" skips arniqa (~35% faster scoring). Profiles: engines/registry.py DEFAULT_SCORING_PROFILES, extend via scoring.profiles.",
+    "_comment_profile": "\"high_throughput\" skips arniqa (~16% less model inference time measured on an RTX 4060 Laptop; RAW decode/IO unchanged). Profiles: engines/registry.py DEFAULT_SCORING_PROFILES, extend via scoring.profiles.",
     "fusion": {
       "general":   { "liqe": 0.35, "spaq": 0.30, "topiq": 0.13, "arniqa": 0.10, "ava": 0.12 },
       "technical": { "topiq": 0.30, "arniqa": 0.25, "spaq": 0.25, "liqe": 0.20 },

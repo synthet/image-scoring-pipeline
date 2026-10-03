@@ -5,7 +5,7 @@ description: Phase 1–3 roadmap for scoring model deprecation, culling rank, an
 resource: reports/model_evaluation_and_curation_plan.md
 tags: [report, scoring, analytics, model-selection, curation]
 timestamp: 2026-10-02T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: active
 ---
 
@@ -147,6 +147,8 @@ Models that correlate strongly across the diverse full library frequently lose a
 | **Full Pipeline** | PyTorch + TF | **~3.2 GB** | **~332 ms** | Full 5-model ensemble | Production Default |
 | **Fast Pipeline** | PyTorch + TF | **~1.8 GB** | **~217 ms** | `liqe` + `spaq` + `topiq` + `ava` (omit `arniqa`)| **35% speedup (~2.5h on 77k backfill)** |
 
+> **Correction (measured):** the latencies above are static estimates. Measured: measured 2026-10-02 on an RTX 4060 Laptop GPU: per-model `predict()` mean spaq 42.6 / ava 37.8 / topiq 37.4 / liqe 33.1 / **arniqa 28.6 ms**; ensemble 179.5 → 150.9 ms without `arniqa`, i.e. **~16% of model time** (less end to end, since RAW decode and IO are unchanged) — #494. `arniqa` is the fastest model, not the slowest.
+
 ---
 
 ## Model Recommendations by Scenario
@@ -196,8 +198,8 @@ OPERATIONAL SCENARIO RECOMMENDED CONFIGURATIONS
 - **Action**: Decommission shadow computation in background jobs. Do not run or query them in culling workflows.
 
 ### 3. High-Throughput Bypass: `arniqa`
-- **Current State**: `arniqa` is the slowest active model (~115ms) and has low intra-burst discriminability ($C = 0.547$, match rate 45.0%). In drop-one ablation, removing `arniqa` drops general composite Spearman by only **0.0042** (retaining $\rho = 0.9958$).
-- **Action**: Provide a config-driven `high_throughput` profile (`liqe` + `spaq` + `topiq` + `ava`) that bypasses `arniqa`, yielding a **35% batch scoring speedup** (~2.5 hours saved on a full backfill).
+- **Current State**: `arniqa` was estimated as the slowest active model (~115ms; measured fastest at 28.6 ms, #494) and has low intra-burst discriminability ($C = 0.547$, match rate 45.0%). In drop-one ablation, removing `arniqa` drops general composite Spearman by only **0.0042** (retaining $\rho = 0.9958$).
+- **Action**: Provide a config-driven `high_throughput` profile (`liqe` + `spaq` + `topiq` + `ava`) that bypasses `arniqa`, estimated at a 35% batch speedup; measured **~16% of model time** (#494).
 
 ---
 
@@ -259,7 +261,7 @@ timeline
 > 1. **Immediate Deprecation of `koniq`, `paq2piq`, and `refcull_*`**: Approve removing them from default analytics views and stopping shadow pipeline calculations.
 > 2. **Adoption of Dedicated Culling Score in [`modules/selection.py`](file:///D:/Projects/image-scoring-backend/modules/selection.py)**: Replace generic `score_general` sorting in burst culling with the dedicated formula:
 >    $$\text{culling\_rank} = 0.55 \cdot \text{liqe} + 0.30 \cdot \text{spaq} + 0.15 \cdot \text{topiq}$$
-> 3. **`arniqa` Profiling**: Approve adding the `high_throughput` scoring profile toggle to `config.json` allowing users to bypass `arniqa` for a 35% speedup when desired.
+> 3. **`arniqa` Profiling**: Approve adding the `high_throughput` scoring profile toggle to `config.json` allowing users to bypass `arniqa` (measured ~16% less model time, #494) when desired.
 > 4. **Human Label Review Initiation**: Confirm readiness to utilize the frozen study at `reports/model-selection-2026-10-01/` for ground-truth labeling.
 
 ---
