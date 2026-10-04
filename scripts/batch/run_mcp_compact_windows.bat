@@ -10,8 +10,9 @@ set MCP_TOOL_PROFILE=compact
 if exist "%PROJECT_ROOT%\.venv\Scripts\activate.bat" (
     call "%PROJECT_ROOT%\.venv\Scripts\activate.bat"
 ) else (
-    echo ERROR: .venv not found. Run scripts\setup\setup_windows_native.bat first. 1>&2
-    exit /b 1
+    REM No Windows .venv: run the same server in image-scoring-gpu-shell instead.
+    call "%~dp0run_mcp_in_gpu_shell.bat" modules.mcp.router_server
+    exit /b !ERRORLEVEL!
 )
 
 python -m modules.mcp.router_server

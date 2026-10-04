@@ -33,6 +33,7 @@ from typing import Any
 # inert metadata, and the mock server ignores them.
 try:
     from mcp.server.fastmcp import FastMCP
+    from mcp.server.transport_security import TransportSecuritySettings
     from mcp.types import ToolAnnotations
     MCP_AVAILABLE = True
 except ImportError:
@@ -221,8 +222,23 @@ def set_gradio_context(
 
 # --- Create FastMCP server instance ---
 
+# The SDK's DNS-rebinding guard only admits localhost Host headers by default, which
+# rejects (421) MCP stdio workers in image-scoring-gpu-shell reaching http://webui:7860.
+# Keep the guard on and also admit the compose service names; client IPs are still
+# limited to loopback/private networks by wrap_mcp_app_with_security.
+_SSE_HOSTS = ("127.0.0.1", "localhost", "[::1]", "webui", "image-scoring-webui")
+
+
+def _sse_transport_security():
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[f"{h}:*" for h in _SSE_HOSTS],
+        allowed_origins=[f"http://{h}:*" for h in _SSE_HOSTS],
+    )
+
+
 if MCP_AVAILABLE:
-    mcp = FastMCP("image-scoring")
+    mcp = FastMCP("image-scoring", transport_security=_sse_transport_security())
 else:
     # Fallback mock so module can be imported without MCP SDK
     class _MockMCP:
@@ -1038,7 +1054,7 @@ def _get_compact_mcp_sse():
         from modules.mcp.names import BE_WEBUI
         from modules.mcp.router_tools import register_compact_tools
 
-        _compact_mcp_sse = FastMCP(BE_WEBUI)
+        _compact_mcp_sse = FastMCP(BE_WEBUI, transport_security=_sse_transport_security())
         register_compact_tools(_compact_mcp_sse)
     return _compact_mcp_sse
 
