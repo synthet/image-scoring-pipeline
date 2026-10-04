@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-04] updated | GPU runner request and model boundaries
+
+Updated guides/REMOTE_GPU_RUNNER.md with streamed upload caps, admission and upload deadlines, cached-config restart requirements, scoring response validation, and remote accessibility ranking. Updated guides/INDEX.md and added tests/test_remote_gpu_hardening.py.
+
 ## [2026-10-03] created | Remote GPU runner
 
 Created [guides/REMOTE_GPU_RUNNER.md](guides/REMOTE_GPU_RUNNER.md) (HTTP runner container on another PC, full input in, full output out; host keeps DB/XMP writes) and documented the `gpu_runner` keys in [technical/CONFIG.md](technical/CONFIG.md). Relationship to the lease-worker epic noted in [specs/remote-gpu-worker/INDEX.md](specs/remote-gpu-worker/INDEX.md). Indexed in [guides/INDEX.md](guides/INDEX.md) and [INDEX.md](INDEX.md).
