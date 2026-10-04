@@ -71,3 +71,46 @@ def test_regenerate_missing_thumbnails_batch_respects_limit(monkeypatch, limit, 
     assert captured["fetch"] == fetch_expected
     assert stats["regenerated"] == limit
     assert stats["failed"] == 0
+
+
+def test_regenerate_missing_thumbnails_batch_stops_when_requested(monkeypatch):
+    """A cancel check between images must skip the rest of the batch."""
+    generated: list[str] = []
+
+    class FakeConnector:
+        def query(self, sql, params=None):
+            return [
+                {
+                    "id": i,
+                    "file_path": f"/tmp/img{i}.jpg",
+                    "thumbnail_path": None,
+                    "thumbnail_path_win": None,
+                }
+                for i in range(1, 6)
+            ]
+
+    monkeypatch.setattr(
+        "modules.thumbnail_maintenance.db.get_connector",
+        lambda: FakeConnector(),
+    )
+    monkeypatch.setattr(
+        "modules.thumbnail_maintenance.filesystem_path_for_image",
+        lambda p: p,
+    )
+    monkeypatch.setattr("modules.thumbnail_maintenance.resolved_thumb_ok", lambda *a: False)
+
+    def _gen(path, **kw):
+        generated.append(path)
+        return f"/thumb/{os.path.basename(path)}"
+
+    monkeypatch.setattr("modules.thumbnail_maintenance.thumbnails.generate_thumbnail", _gen)
+    monkeypatch.setattr("modules.thumbnail_maintenance.os.path.isfile", lambda p: True)
+    monkeypatch.setattr("modules.thumbnail_maintenance.os.path.getsize", lambda p: 10)
+    monkeypatch.setattr("modules.thumbnail_maintenance.db.update_image_thumbnail_paths", lambda *a, **k: True)
+
+    stats = thumbnail_maintenance.regenerate_missing_thumbnails_batch(
+        limit=10,
+        should_stop=lambda: len(generated) >= 1,
+    )
+    assert generated == ["/tmp/img1.jpg"]
+    assert stats["regenerated"] == 1

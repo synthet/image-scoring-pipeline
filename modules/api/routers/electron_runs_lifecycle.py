@@ -358,6 +358,7 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
                             "clustering",
                             "selection",
                             "bird_species",
+                            "maintenance",
                         ):
                             if _stop_runner_for_phase(ph):
                                 break
