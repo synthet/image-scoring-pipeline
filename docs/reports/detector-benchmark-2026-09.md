@@ -5,7 +5,7 @@ description: Human-labelled 339-frame stratified benchmark; higher resolution re
 resource: reports/detector-benchmark-2026-09.md
 tags: [bird_species, localization, detector, benchmark, report]
 timestamp: 2026-09-23T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Detector benchmark — September 2026

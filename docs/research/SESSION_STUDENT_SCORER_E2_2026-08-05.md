@@ -5,7 +5,7 @@ description: Consolidated record of the 2026-08-05 E2 session from both agents �
 resource: docs/research/SESSION_STUDENT_SCORER_E2_2026-08-05.md
 tags: [session, research, student-scorer, e2, render, training, wsl, gpu]
 timestamp: 2026-08-05T21:46:46-05:00
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session record — student scorer E2: P0 render → ConvNeXt train

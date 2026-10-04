@@ -5,7 +5,7 @@ description: Install Docker Desktop / WSL tooling and run Postgres + WebUI via d
 resource: guides/setup/DOCKER_SETUP.md
 tags: [docker, setup, postgres, gpu, wsl]
 timestamp: 2026-08-14T21:10:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Docker Setup Guide

@@ -5,7 +5,7 @@ description: Feasibility, pros/cons, and phased implementation plan for exportin
 resource: docs/planning/models/ONNX_CONVERSION_FEASIBILITY.md
 tags: [planning, models, onnx, inference]
 timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # ONNX conversion feasibility

@@ -5,7 +5,7 @@ description: Operator guide for enabling agent-assisted cull review when the bac
 resource: docs/guides/setup/agent-cull-review-gemini-cli.md
 tags: [guides, setup, culling, agent-cull-review, antigravity, gemini, docker, gallery-docs]
 timestamp: 2026-06-20T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Agent cull review — Antigravity / Gemini CLI setup

@@ -5,7 +5,7 @@ description: Public summary of why truncate_app_tables() left image_scoring_test
 resource: docs/reports/SESSION_TRANSCRIPT_DIGEST_2026-09-postgres-truncate.md
 tags: [session, digest, postgres, testing, truncate]
 timestamp: 2026-09-27T16:55:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session digest — Postgres test truncate rollback ([#399](https://github.com/synthet/image-scoring-pipeline/issues/399))

@@ -5,7 +5,7 @@ description: Non-secret facts extracted from July 2026 agent session exports abo
 resource: docs/reports/SESSION_TRANSCRIPT_DIGEST_2026-07-bird-detect-v0.md
 tags: [session, digest, bird-detection, bird-species, transcript]
 timestamp: 2026-09-27T16:55:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session digest — bird-detect-v0 integration (2026-07)

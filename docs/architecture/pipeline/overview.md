@@ -5,7 +5,7 @@ description: The backend processing pipeline in one page — layers, the six pha
 resource: architecture/pipeline/overview.md
 tags: [pipeline, architecture, phases, overview]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Pipeline overview

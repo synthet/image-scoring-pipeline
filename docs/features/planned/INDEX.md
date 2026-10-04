@@ -5,7 +5,7 @@ description: Index of planned backend feature specifications.
 resource: docs/features/planned/INDEX.md
 tags: [features, planned, index]
 timestamp: 2026-09-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Planned features

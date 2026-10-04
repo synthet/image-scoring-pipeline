@@ -5,7 +5,7 @@ description: Can zero-inference signals decide whether a bird crop is in focus? 
 resource: docs/reports/BIRD_CROP_FOCUS_MEASURES_2026-08-03.md
 tags: [research, bird-detection, focus, iqa, exif, autofocus, crop]
 timestamp: 2026-08-03T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Bird-crop focus decision — classical measures and camera AF intent

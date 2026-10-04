@@ -5,7 +5,7 @@ description: Immutable source documents for wiki ingest; machine outputs and ref
 resource: docs/raw/README.md
 tags: [docs, raw, wiki]
 timestamp: 2026-07-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Raw Sources

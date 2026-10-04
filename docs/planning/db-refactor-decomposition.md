@@ -5,7 +5,7 @@ description: Phased decomposition of modules/db_legacy.py into domain-specific m
 resource: docs/planning/db-refactor-decomposition.md
 tags: [docs, planning, refactoring, database]
 timestamp: 2026-06-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # DB.py God Object Refactoring Plan

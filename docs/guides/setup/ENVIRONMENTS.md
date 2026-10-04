@@ -5,7 +5,7 @@ description: Python venvs for WebUI, WSL tests, and optional Windows/research; g
 resource: guides/setup/ENVIRONMENTS.md
 tags: [venv, wsl, python, setup, docker]
 timestamp: 2026-08-14T21:10:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Virtual Environments and Script Usage

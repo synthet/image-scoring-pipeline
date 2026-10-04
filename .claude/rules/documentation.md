@@ -16,7 +16,7 @@ Applies when creating, materially editing, renaming, or reorganizing files under
 ## OKF metadata
 
 - Treat `docs/` as an OKF-aligned knowledge bundle: markdown concept pages with YAML frontmatter, relative markdown links, folder indexes, and append-only `docs/log.md` entries.
-- New living docs and materially edited living docs should begin with YAML frontmatter containing at least `type`; prefer `title`, `description`, `resource`, `tags`, `timestamp`, and `okf_version: 0.1` as described in `docs/OKF_ADOPTION.md`.
+- New living docs and materially edited living docs should begin with YAML frontmatter containing at least `type`; prefer `title`, `description`, `resource`, `tags`, `timestamp`, and `okf_version: 0.2` as described in `docs/OKF_ADOPTION.md`.
 - Choose clear human-readable `type` values from the OKF profile when possible, such as `Documentation Hub`, `Documentation Index`, `Technical Reference`, `Runbook`, `Guide`, `Feature Spec`, `Implemented Feature`, `Report`, or `Archive`.
 - Do not bulk-edit archived snapshots or perform rename-only churn solely to add OKF metadata; add metadata opportunistically when content changes.
 

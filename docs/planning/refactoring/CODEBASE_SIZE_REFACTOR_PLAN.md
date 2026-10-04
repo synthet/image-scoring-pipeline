@@ -5,7 +5,7 @@ description: Phased checkbox backlog to reduce files â‰¥1000 LoC and functions â
 resource: docs/planning/refactoring/CODEBASE_SIZE_REFACTOR_PLAN.md
 tags: [docs, planning, refactoring, codebase-size]
 timestamp: 2026-06-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Codebase size refactor plan (backend)

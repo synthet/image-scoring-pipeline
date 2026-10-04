@@ -5,7 +5,7 @@ description: Authority map for APIs, schema, phases, diagnostics, testing, and c
 resource: CANONICAL_SOURCES.md
 tags: [docs, canonical-sources, contracts, okf]
 timestamp: 2026-06-16T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Canonical Sources

@@ -5,7 +5,7 @@ description: Configuration, pricing, and usage of modules.everypixel for stock a
 resource: docs/integrations/EVERYPIXEL.md
 tags: [integrations, everypixel, scoring, api]
 timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Everypixel Labs photo quality connector

@@ -5,7 +5,7 @@ description: Complete owner diagnosis of 79 false detections and 35 bad primary 
 resource: reports/bird-v1-failure-review-2026-09-30.md
 tags: [report, localization, bird-detection, shadow, owner-labels, failure-review]
 timestamp: 2026-09-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Bird v1 shadow-rescan failure review (2026-09-30)

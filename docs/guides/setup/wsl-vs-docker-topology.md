@@ -5,7 +5,7 @@ description: "Operator map of Ubuntu vs docker-desktop, gpu-shell, shutdown safe
 resource: guides/setup/wsl-vs-docker-topology.md
 tags: [wsl, docker, setup, postgres, gpu]
 timestamp: 2026-08-09T16:15:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # WSL vs Docker topology

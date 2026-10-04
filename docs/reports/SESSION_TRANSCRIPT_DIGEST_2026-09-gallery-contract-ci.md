@@ -5,7 +5,7 @@ description: Cross-repo facts from September 2026 sessions on making gallery ESL
 resource: docs/reports/SESSION_TRANSCRIPT_DIGEST_2026-09-gallery-contract-ci.md
 tags: [session, digest, gallery, ci, openapi, eslint, cross-repo]
 timestamp: 2026-09-27T16:55:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session digest — gallery contract gate ([#164](https://github.com/synthet/image-scoring-gallery/issues/164) / [#177](https://github.com/synthet/image-scoring-gallery/pull/177))

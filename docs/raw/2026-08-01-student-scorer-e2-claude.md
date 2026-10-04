@@ -5,7 +5,7 @@ description: "Immutable Claude Code session scratch for the student-scorer E2 ar
 resource: docs/raw/2026-08-01-student-scorer-e2-claude.md
 tags: [raw, session, student-scorer, render, training]
 timestamp: 2026-08-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session summary — E2 P0 render resume → E2 ConvNeXt train

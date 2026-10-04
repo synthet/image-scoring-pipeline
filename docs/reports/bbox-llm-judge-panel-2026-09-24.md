@@ -5,7 +5,7 @@ description: Box-quality grades for bird_detect_v0 at 640 and 1280 and an open C
 resource: docs/reports/bbox-llm-judge-panel-2026-09-24.md
 tags: [research, localization, detector, bird-detection, llm-judge, jev, benchmark]
 timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Bird bounding boxes judged by an LLM-agent panel (2026-09-24)

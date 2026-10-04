@@ -5,7 +5,7 @@ description: Bird Species ID internals — YOLO detection, crop, BioCLIP-2 class
 resource: architecture/pipeline/phases/bird-species.md
 tags: [pipeline, phases, bird-species, bioclip, yolo, detection]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phase: `bird_species`

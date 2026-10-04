@@ -5,7 +5,7 @@ description: A transactional xmp_sync_outbox table with a pg_notify trigger, and
 resource: docs/specs/remote-gpu-worker/03-xmp-outbox.md
 tags: [specs, remote-worker, xmp, outbox, postgres]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

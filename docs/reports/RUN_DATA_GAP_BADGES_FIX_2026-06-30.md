@@ -5,7 +5,7 @@ description: Why completed single-phase auto-drive runs showed a permanent "Data
 resource: modules/db_legacy.py
 tags: [reports, auto-drive, post-run-audit, runs, indexing, badges]
 timestamp: 2026-06-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Misleading "Data gaps" badges on completed runs

@@ -5,7 +5,7 @@ description: YOLO bird detection missed 39 of 59 frames on a bald-eagle shoot; t
 resource: reports/bird-detection-recall-2026-09-07.md
 tags: [bird_species, bird_bbox, detector, recall, report]
 timestamp: 2026-09-07T20:48:01Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 # Bird detection recall floor — A41 eagle set
 
