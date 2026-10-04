@@ -553,8 +553,10 @@ def localize_image(
             decoded = decode_for_localization(file_path)
     except DecodeEnvironmentError as exc:
         detail = redact_error_detail(str(exc))
+        # The source hash gives the attempt an artifact identity for bounded repair (#527).
         run.update(status=STATUS_RETRYABLE, is_retryable=True,
-                   error_code="environment_missing", error_detail=detail)
+                   error_code="environment_missing", error_detail=detail,
+                   source_hash=source_hash, source_hash_version=source_hash_version)
         _finish(run, [])
         return ImageOutcome(status=STATUS_RETRYABLE, error_detail=detail,
                             decode_seconds=time.perf_counter() - t0)
