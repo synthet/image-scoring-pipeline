@@ -15,7 +15,6 @@ import hmac
 import json
 import logging
 import os
-import tempfile
 import threading
 import time
 from typing import Any
@@ -40,13 +39,11 @@ from modules.remote_gpu.contract import (
     PHASE_CONFIG_SECTIONS,
     SCENE,
     SCORING,
-    as_vector,
-    decode_array,
-    decode_png,
     json_default,
     phase_fingerprint,
     section_hashes,
 )
+from modules.remote_gpu.runtime import InferenceRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +224,14 @@ _PARAM_MODELS = {
 }
 
 
+def validate_params(endpoint: str, params) -> dict[str, Any]:
+    """Shared method validation for HTTP uploads and embedded execution."""
+    if not isinstance(params, dict):
+        raise ValueError("meta must be a JSON object")
+    model = _PARAM_MODELS.get(endpoint)
+    return model.model_validate(params).model_dump() if model is not None else params
+
+
 def parse_meta(request: Request, meta: str = Form("{}")) -> dict[str, Any]:
     """Malformed metadata is an input error, rather than a failed inference."""
     try:
@@ -235,14 +240,11 @@ def parse_meta(request: Request, meta: str = Form("{}")) -> dict[str, Any]:
         raise HTTPException(422, "meta must be a JSON object") from exc
     if not isinstance(params, dict):
         raise HTTPException(422, "meta must be a JSON object")
-    model = _PARAM_MODELS.get(request.url.path)
-    if model is not None:
-        try:
-            return model.model_validate(params).model_dump()
-        except ValidationError as exc:
-            detail = [{"loc": error["loc"], "msg": error["msg"]} for error in exc.errors()]
-            raise HTTPException(422, detail) from exc
-    return params
+    try:
+        return validate_params(request.url.path, params)
+    except ValidationError as exc:
+        detail = [{"loc": error["loc"], "msg": error["msg"]} for error in exc.errors()]
+        raise HTTPException(422, detail) from exc
 
 
 class GuardMiddleware:
@@ -328,6 +330,7 @@ def create_app(
 
         config_loader = config.load_config
     provider = provider or ModelProvider()
+    runtime = InferenceRuntime(provider)
     # Loaded model instances must never be paired with a newer configuration.
     # A restart is required to apply a changed model configuration safely.
     startup_cfg = copy.deepcopy(config_loader() or {})
@@ -366,29 +369,10 @@ def create_app(
             return _json(500, {"error": f"{type(exc).__name__}: {exc}"})
         return _json(200, result)
 
-    def temp_input(upload: UploadFile, data: bytes) -> str:
-        suffix = os.path.splitext(upload.filename or "")[1].lower()
-        if not suffix[1:].isalnum() or len(suffix) > 9:
-            suffix = ".bin"
-        fd, path = tempfile.mkstemp(prefix="gpu-runner-", suffix=suffix)
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(data)
-        return path
-
-    def with_temp_file(upload: UploadFile, fn):
-        data = upload.file.read()
-
-        def call():
-            path = temp_input(upload, data)
-            try:
-                return fn(path)
-            finally:
-                try:
-                    os.remove(path)
-                except OSError:
-                    logger.debug("gpu_runner: temp cleanup failed for %s", path, exc_info=True)
-
-        return call
+    def execute(request, endpoint, params, file=None):
+        data = file.file.read() if file is not None else None
+        filename = (file.filename or "input.bin") if file is not None else "input.bin"
+        return run(request, endpoint, runtime.execute, endpoint, params, data, filename=filename)
 
     @app.get(HEALTHZ)
     def healthz():
@@ -408,52 +392,19 @@ def create_app(
 
     @app.get(DETECTOR_INFO)
     def detector_info(request: Request):
-        return run(request, DETECTOR_INFO, provider.detector_info)
+        return execute(request, DETECTOR_INFO, {})
 
     @app.post(SCORING)
     def scoring(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
-
-        def score(path: str):
-            return provider.scoring_host().run_all_models(
-                path,
-                external_scores=params.get("external_scores") or None,
-                logger=lambda msg: logger.debug("gpu_runner scoring: %s", msg),
-                write_metadata=False,
-            )
-
-        return run(request, SCORING, with_temp_file(file, score))
+        return execute(request, SCORING, params, file)
 
     @app.post(KEYWORDS)
     def keywords(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
-
-        def predict(path: str):
-            scorer = provider.keyword_scorer()
-            tags, confidence_map, relevance_map = scorer.predict(
-                path,
-                keywords=params.get("keywords"),
-                threshold=float(params.get("threshold", 0.2)),
-                top_k=int(params.get("top_k", 5)),
-                return_scores=True,
-                image_embedding=as_vector(params.get("image_embedding")),
-            )
-            return {
-                "keywords": tags,
-                "confidence_map": confidence_map,
-                "relevance_map": relevance_map,
-                "last_image_embedding": scorer.last_image_embedding,
-            }
-
-        return run(request, KEYWORDS, with_temp_file(file, predict))
+        return execute(request, KEYWORDS, params, file)
 
     @app.post(CAPTION)
     def caption(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
-
-        def generate(path: str):
-            captioner = provider.captioner()
-            text = captioner.generate(path, extract_embedding=bool(params.get("extract_embedding")))
-            return {"caption": text, "last_image_embedding": captioner.last_image_embedding}
-
-        return run(request, CAPTION, with_temp_file(file, generate))
+        return execute(request, CAPTION, params, file)
 
     @app.post(ACCESSIBILITY)
     def accessibility(request: Request, params: dict = Depends(parse_meta), file: UploadFile | None = File(None)):
@@ -464,80 +415,23 @@ def create_app(
         if image_embedding is None and file is None:
             raise HTTPException(422, "an image file or image_embedding is required")
 
-        def rank(path=None):
-            from modules.clip_accessibility import _rank_prompts_from_image_path
-
-            scorer = provider.keyword_scorer()
-            if image_embedding is not None:
-                scorer.load_model()
-                _, cosines, embedding = scorer._score_prompts_from_embedding(image_embedding, prompts)
-                ranked = sorted(zip(prompts, cosines), key=lambda item: item[1], reverse=True)
-            else:
-                embedding, ranked = _rank_prompts_from_image_path(path, prompts, scorer=scorer)
-            return {"image_embedding": embedding, "ranked": ranked}
-
-        return run(request, ACCESSIBILITY, with_temp_file(file, rank) if image_embedding is None else rank)
+        return execute(request, ACCESSIBILITY, params, file if image_embedding is None else None)
 
     @app.post(EMBEDDING)
     def embedding(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
-        batch = decode_array(file.file.read())
-
-        def predict():
-            return {"vectors": provider.embedding_model().predict(batch, verbose=0)}
-
-        return run(request, EMBEDDING, predict)
+        return execute(request, EMBEDDING, params, file)
 
     @app.post(DETECT)
     def detect(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
-        image = decode_png(file.file.read())
-
-        def raw_boxes():
-            detector = provider.bird_detector()
-            detector.confidence = float(params["conf"])
-            detector.imgsz = int(params["imgsz"])
-            detector.max_det = int(params["max_det"])
-            return {"boxes": detector._predict_raw_boxes(image)}
-
-        return run(request, DETECT, raw_boxes)
+        return execute(request, DETECT, params, file)
 
     @app.post(SCENE)
     def scene(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
-        image = decode_png(file.file.read())
-
-        def classify():
-            classifier = provider.scene_classifier(str(params["backend"]), str(params["prompt_set"]))
-            classifier.classify(image)
-            # The host scores these with the same ``score`` a local run uses.
-            return {
-                "version": classifier.version,
-                "image_feat": classifier.last_embedding,
-                "label_feats": classifier._label_feats,
-                "logit_scale": classifier._logit_scale,
-            }
-
-        return run(request, SCENE, classify)
+        return execute(request, SCENE, params, file)
 
     @app.post(BIOCLIP)
     def bird_species(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
-
-        def classify(path: str):
-            classifier = provider.bioclip()
-            region = params.get("region")
-            predictions = classifier.classify(
-                path,
-                list(params.get("candidate_species") or []),
-                threshold=float(params.get("threshold", 0.1)),
-                top_k=int(params.get("top_k", 1)),
-                region=tuple(region) if region is not None else None,
-                use_detector=bool(params.get("use_detector", True)),
-            )
-            return {
-                "predictions": [[name, prob] for name, prob in predictions],
-                "last_bbox": classifier.last_bbox,
-                "last_image_embedding": classifier.last_image_embedding,
-            }
-
-        return run(request, BIOCLIP, with_temp_file(file, classify))
+        return execute(request, BIOCLIP, params, file)
 
     return app
 
