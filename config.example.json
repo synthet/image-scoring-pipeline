@@ -316,7 +316,27 @@
       "localization": "local",
       "bird_species": "local"
     },
-    "request_timeout_seconds": 600
+    "request_timeout_seconds": 600,
+    "timeouts": {
+      "connect_seconds": 5,
+      "health_seconds": 5,
+      "write_seconds": 60,
+      "pool_seconds": 5,
+      "max_connections": 4
+    },
+    "retry": {
+      "max_retries": 3,
+      "base_delay_seconds": 1,
+      "max_delay_seconds": 8,
+      "budget_seconds": 30
+    },
+    "fallback": {
+      "enabled": true,
+      "local_url": "http://127.0.0.1:7870",
+      "embedded": true,
+      "cooldown_seconds": 30,
+      "max_cooldown_seconds": 300
+    }
   },
   "debug": false,
   "typesafe": {
