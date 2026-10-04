@@ -10,6 +10,7 @@ import logging
 import os
 import platform
 import re
+from collections.abc import Callable
 from typing import TypedDict
 
 from modules import config, db, thumbnails
@@ -115,12 +116,17 @@ def folder_like_patterns(prefix: str) -> list[str]:
     return out
 
 
-def regenerate_missing_thumbnails_batch(limit: int = 500) -> RegenerateBatchResult:
+def regenerate_missing_thumbnails_batch(
+    limit: int = 500,
+    should_stop: Callable[[], bool] | None = None,
+) -> RegenerateBatchResult:
     """
     Regenerate up to ``limit`` missing/stale thumbnails globally (ordered by image id).
 
     Fetches up to ``limit * 3`` candidate rows from SQL, then stops after ``limit``
     successful regenerations (many candidates skip as thumb already OK).
+    ``should_stop`` is checked before each image so a canceled maintenance job
+    releases the runner instead of holding the dispatch queue.
     """
     try:
         limit = max(1, int(limit))
@@ -146,6 +152,9 @@ def regenerate_missing_thumbnails_batch(limit: int = 500) -> RegenerateBatchResu
     failed = 0
 
     for row in rows:
+        if should_stop is not None and should_stop():
+            logger.info("Thumbnail regenerate stopped early (processed=%s regenerated=%s)", processed, regenerated)
+            break
         if regenerated >= limit:
             break
 
