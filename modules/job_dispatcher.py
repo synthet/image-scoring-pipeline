@@ -162,6 +162,7 @@ class JobDispatcher:
         # dispatch lock because the bucket scan can be heavy on large libraries.
         if idle:
             self._maybe_drive_tick()
+            self._maybe_localization_lane()
 
         self._log_tick_summary(tick_continuation, tick_dequeued, tick_stale_demotions, start_tick)
 
@@ -235,6 +236,15 @@ class JobDispatcher:
             runs_autodrive.drive_tick()
         except Exception:
             logger.debug("Dispatcher: drive_tick failed", exc_info=True)
+
+    def _maybe_localization_lane(self) -> None:
+        """Admit one localization repair-lane job when core work is idle (#527). Never raises."""
+        try:
+            from modules import localization_lane
+
+            localization_lane.maybe_enqueue()
+        except Exception:
+            logger.debug("Dispatcher: localization lane tick failed", exc_info=True)
 
     @staticmethod
     def _parse_queue_payload(job: dict[str, Any]) -> dict[str, Any]:

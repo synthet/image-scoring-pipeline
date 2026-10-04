@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-04] edit | Localization stage 4 remainder in review (#527)
+
+[localization-rollout.md](architecture/pipeline/localization-rollout.md) stage 4 status and the consolidated table now point at the four #527 PRs: `new_images_only` + `localization_enablement` boundary (migration 0039), bounded repair from run history, phantom reconciliation from the current terminal run, and the dispatcher-idle repair lane (`modules/localization_lane.py`). [technical/CONFIG.md](technical/CONFIG.md) gains a `localization` section; [technical/DB_SCHEMA.md](technical/DB_SCHEMA.md) a `localization_enablement` row. The exit gate is recorded as met only after merge and one live lane cycle.
+
 ## [2026-10-04] updated | Compact MCP worker uses gpu-shell
 
 Windows `is-be-mcp` now starts `scripts/mcp/compact_worker.py` in `image-scoring-gpu-shell` instead of requiring Ubuntu `~/.venvs/tf`. `IS_BE_MCP_USE_WSL=1` keeps the old venv path. Guide: [guides/setup/mcp-compact-servers.md](guides/setup/mcp-compact-servers.md).
