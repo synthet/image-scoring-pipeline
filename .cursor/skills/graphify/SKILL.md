@@ -13,6 +13,7 @@ Local AST knowledge graph — no vector store. Soft rule: [`.cursor/rules/graphi
 ## When to use
 
 - Cross-module “how does X connect to Y”, god nodes, community / subsystem maps
+- If `rg` or fff might still answer, ask Jev whether this query needs the graph before building or querying it. Protocol: [jev-mcp](../jev-mcp/SKILL.md).
 - `graphify-out/graph.json` exists (build: `graphify . --code-only`)
 - MCP server **`graphify-be`** is connected (or fall back to CLI)
 

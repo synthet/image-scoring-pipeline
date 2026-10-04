@@ -27,13 +27,15 @@ or run in parallel branches by separate agents.
 4. **Test boundaries** — For each subtask, the minimal test or assertion that confirms
    it is done without depending on other subtasks being complete.
 
-5. **Route each subtask (Jev harness)** — price it per context rebuild, not per token:
+5. **Route each subtask (Jev)** — price it per context rebuild, not per token:
    `python scripts/agent_harness/cli.py route --task "<title + done means>" --files <brief files>`.
    `stay` keeps it on the main model; `delegate` means hand a sub-agent **only** that brief and ask for a
-   compact result. Restricted files (secrets/env) always stay first-party.
+   compact result. Restricted files (secrets/env) always stay first-party. If the CLI is unavailable,
+   ask the same question on **`jev-rw-systemone`** ([jev-mcp](../skills/jev-mcp/SKILL.md)).
 
 6. **Deduplicate** — register each subtask before launching it:
    `python scripts/agent_harness/cli.py subgoal add "<title>"`; skip anything reported as `duplicate_of`.
+   If the CLI is unavailable, ask Jev whether that subgoal is already done or in flight before launching it.
 
 ## Done when
 

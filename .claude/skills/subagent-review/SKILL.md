@@ -33,7 +33,9 @@ Note: **Claude** is detection-only in v0.1 — do not rely on it for live `run_s
   `python scripts/agent_harness/cli.py bundle` → `.agent-runs/bundle-<sha>.md` (reused while HEAD and the
   diff are unchanged; restricted files are excluded). Pass that path in `files` instead of re-searching.
 - The Jev harness `PreToolUse` hook denies `run_subagent` calls that include restricted files or
-  secret-looking text in `task`/`extraContext`.
+  secret-looking text in `task`/`extraContext`. When that hook did not run, ask Jev the sensitivity
+  of those files (public / application code / proprietary / secrets) before `run_subagent`.
+  Restricted files and secret-looking text stay out. Protocol: [jev-mcp](../jev-mcp/SKILL.md).
 - **mode** — `review` (default) or `tie-breaker` when comparing opinions
 - **allowWrites** — always `false`
 - **dryRun** — `true` when user says “dry run” or you are validating setup

@@ -18,7 +18,7 @@ User `~/.cursor/mcp.json`: **`github`**, **`subagent-orchestrator`**, etc. — *
 
 ## Compact dispatch (default)
 
-**`is-be-mcp`** and **`is-be-live`** (default compact SSE) expose only **`search`** and **`dispatch`** — not raw tool names from AGENTS.md. Workflow: **`search(query)`** → **`dispatch(action_id, arguments)`** using registry `action_id` values (`category.tool`). On **`unknown_action`**, read `details.suggestions`; use `search(..., include_schemas=True)` before dispatch when unsure. Contract: [docs/technical/MCP_SEARCH_DISPATCH.md](../../docs/technical/MCP_SEARCH_DISPATCH.md); skill: `.cursor/skills/image-scoring-mcp/SKILL.md`.
+**`is-be-mcp`** and **`is-be-live`** (default compact SSE) expose only **`search`** and **`dispatch`** — not raw tool names from AGENTS.md. Workflow: **`search(query)`** → **`dispatch(action_id, arguments)`** using registry `action_id` values (`category.tool`). When `search` returns several plausible actions, ask **`jev-rw-systemone`** to pick one (include `none`) before dispatch. Protocol: `.cursor/skills/jev-mcp/SKILL.md`. On **`unknown_action`**, read `details.suggestions`; use `search(..., include_schemas=True)` before dispatch when unsure. Contract: [docs/technical/MCP_SEARCH_DISPATCH.md](../../docs/technical/MCP_SEARCH_DISPATCH.md); skill: `.cursor/skills/image-scoring-mcp/SKILL.md`.
 
 Gallery: **`is-ui-mcp`** → same **`search`** / **`dispatch`** over gallery actions (`mcp-server/action_registry.json`).
 

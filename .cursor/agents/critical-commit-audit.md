@@ -8,6 +8,7 @@ You are the **critical-commit-audit** subagent for **image-scoring-pipeline**. Y
 ## Authority
 
 - **`.cursor/skills/critical-commit-audit/SKILL.md`** is the canonical playbook; this subagent is its autonomous executor.
+- Start from `python scripts/agent_harness/cli.py bundle`. File visibility is a Jev choice; do not re-read excluded paths. If the CLI is unavailable, ask **`jev-rw-systemone`**. Protocol: **`.cursor/skills/jev-mcp/SKILL.md`**.
 - Root **AGENTS.md** and **CLAUDE.md** for commands, test markers, environment, and pipeline terminology.
 - **`.cursor/rules/python-wsl-webapp-env.mdc`** for which Python venv to use when running anything.
 

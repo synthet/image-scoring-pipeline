@@ -781,3 +781,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-02] created | Scene route benchmark
 
 - 2026-10-02: created — [scene route benchmark](reports/scene-route-benchmark-2026-10-02.md) (#412). The owner labelled 519 images. SigLIP2 zero-shot gave the best scene macro F1 (0.75), and the bird route was frozen at p >= 0.065: weighted bird-visible skip 1.6%, 5/77 raw, all incidental birds. The detector then skips 75% of non-bird images. The route also filters 114 of 182 v1 no-bird false detections. Spec 05 status and the rollout table were updated; indexed in [reports/INDEX.md](reports/INDEX.md).
+
+## [2026-10-03] updated | Jev MCP for session decisions
+
+- 2026-10-03: updated — [Jev agent harness](technical/JEV_AGENT_HARNESS.md) now tells Cursor, Codex, and Antigravity to ask `jev-rw-systemone` for visibility, tool pick, routing, permissions, and file sensitivity when the Claude Code hooks did not run. Protocol: `.cursor/skills/jev-mcp/SKILL.md`. `AGENTS.md`, `CLAUDE.md`, and the decision-bearing skills point at it.
