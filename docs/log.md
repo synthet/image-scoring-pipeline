@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-03] created | Remote GPU runner
+
+Created [guides/REMOTE_GPU_RUNNER.md](guides/REMOTE_GPU_RUNNER.md) (HTTP runner container on another PC, full input in, full output out; host keeps DB/XMP writes) and documented the `gpu_runner` keys in [technical/CONFIG.md](technical/CONFIG.md). Relationship to the lease-worker epic noted in [specs/remote-gpu-worker/INDEX.md](specs/remote-gpu-worker/INDEX.md). Indexed in [guides/INDEX.md](guides/INDEX.md) and [INDEX.md](INDEX.md).
+
 ## [2026-09-27] ingest | Visual domain router proposal
 
 - 2026-09-27: ingested — [visual domain router and specialist analysis](planning/visual-domain-router.md) from the user-provided design ([raw](raw/2026-09-27-visual-domain-router-design.md)): section map onto specs 02–06, #415, #423, #424; SR-1 multi-label conflict; new items: macro focal-plane domain, generic subject→part model, per-measurement missingness. Backlinks from [subject-aware culling evidence](planning/subject-aware-culling-evidence.md) and [spec 05](specs/pipeline-streamlining/05-scene-route.md); rows in [planning/INDEX.md](planning/INDEX.md), [INDEX.md](INDEX.md), [raw/README.md](raw/README.md).

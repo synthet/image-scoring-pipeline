@@ -18,6 +18,8 @@ This hub designs a **remote GPU inference worker**: a separate Docker app on a L
 
 **Epic:** #435 · **Status:** proposed; nothing is implemented yet.
 
+> **Related, implemented separately:** the [remote GPU runner](../../guides/REMOTE_GPU_RUNNER.md) is a stateless HTTP offload (host sends the input, runner returns the output, host persists). It has no leases, gateway, worker DB role or XMP outbox, and uses its own `gpu_runner` config section so the `remote_worker.*` keys below stay reserved for this design. Its proxies wrap the existing model classes, so a later lease worker can reuse the same server endpoints.
+
 ## Decisions already taken
 
 | Question | Decision |

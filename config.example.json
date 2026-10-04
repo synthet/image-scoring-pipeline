@@ -306,6 +306,18 @@
       "bioclip_2_image": "hf-hub:imageomics/bioclip-2"
     }
   },
+  "gpu_runner": {
+    "enabled": false,
+    "url": "",
+    "phases": {
+      "scoring": "local",
+      "keywords": "local",
+      "culling": "local",
+      "localization": "local",
+      "bird_species": "local"
+    },
+    "request_timeout_seconds": 600
+  },
   "debug": false,
   "typesafe": {
     "enabled": false,

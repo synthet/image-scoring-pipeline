@@ -1,0 +1,53 @@
+# GPU runner: run this on the machine that has the GPU, from a clone of this repo.
+# It opens no database and writes no XMP; the host sends inputs and persists results.
+# Runbook: docs/guides/REMOTE_GPU_RUNNER.md
+#
+#   1. Copy the host's config.json next to this file (the runner refuses requests
+#      whose config sections differ from the host's), and seed ./models from the host.
+#   2. GPU_RUNNER_TOKEN=<same as secrets.json gpu_runner.token> \
+#        docker compose -f docker-compose.gpu-runner.yml up -d --build
+
+services:
+  gpu-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: image-scoring:latest
+    container_name: image-scoring-gpu-runner
+    shm_size: 1gb
+    ports:
+      - "${GPU_RUNNER_PORT:-7870}:7870"
+    environment:
+      - DOCKER_CONTAINER=1
+      - PYTHONPATH=/app
+      - GPU_RUNNER_HOST=0.0.0.0
+      - GPU_RUNNER_PORT=7870
+      - GPU_RUNNER_TOKEN=${GPU_RUNNER_TOKEN:?set GPU_RUNNER_TOKEN}
+    volumes:
+      # .dockerignore keeps models/ and config.json out of the image.
+      - ./models:/app/models
+      - ${GPU_RUNNER_CONFIG:-./config.json}:/app/config.json:ro
+      - hf_cache:/root/.cache/huggingface
+      - torch_cache:/root/.cache/torch
+      - keras_cache:/root/.keras
+    # Not scripts/docker_entrypoint.sh: that initializes the database and starts the WebUI.
+    entrypoint: ["python", "-m", "modules.remote_gpu.server"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7870/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  hf_cache:
+  torch_cache:
+  keras_cache:

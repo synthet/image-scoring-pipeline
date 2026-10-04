@@ -50,6 +50,10 @@ dumps/
 image-scoring-pipeline.code-workspace
 secrets.json
 webui.lock
+# Per-machine config: compose bind-mounts it; never bake one host's settings into the image.
+config.json
+environment.json
+.env
 
 # Logs
 *.log
