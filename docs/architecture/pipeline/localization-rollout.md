@@ -22,6 +22,10 @@ current graph and its implementation are documented in [phase-graph.md](phase-gr
 
 ## Consolidated status (2026-10-04)
 
+This page is the status of record. Epic #345's issue body still describes September 2026
+(the live import "not yet run", stage 4 "open questions pending"). Replacing that body
+needs a token that can edit issues; this page and #527 are the update.
+
 This page remains the design of record for the eight stages. Later plans that change a stage
 are folded into the table, not into a second rollout:
 
@@ -43,7 +47,7 @@ than this table, this table wins.
 | 5. BioCLIP on regions | **Slice 1 in code, off** (#444). `bird_species.use_regions` defaults false. One folder: 283/283 top-1 matched the legacy path, about 33% faster. | Do not flip the flag on this one folder. Abstention and list gaps (#422). Taxa beyond birds (#413). Multi-region classification flag is still design-only. | Legacy boxes are imported, not recomputed, before any species refresh. |
 | 6. Crop / fusion | **Not started.** | #409 (crop score storage + fusion), #423 (evidence JSONL), #415 (~300 labelled bursts). | Region IQA is scoring design, gated on those bursts, not a global crop switch. Captions, accessibility, and Jev stay shadow. |
 | 7. Repair and backfill | **Split.** Legacy import is done (stage 2). v1 rescan of 35,209 legacy misses is done and stays shadow unless a selection says otherwise. Bounded repair and the auto-drive lane are not built. | Repair lane (was stage 4, still missing). Crop-score backfill waits on #409. `scripts/backfill_bird_bbox.py` still writes the JSON column and must be retired or rerouted before normalized authority. | No unbenchmarked full-library rescan. The v1 rescan was an explicit, resumable job, not an automatic scan of every new image. |
-| 8. Retire `bird_bbox` | **Groundwork only** (#484). | Column stays. Gallery still reads it. `read_normalized_first` stays false. No compatibility period has started. | `image_localization_selections` (migration 0038) is the revocable production decision. For a selected image, `bird_bbox` is a projection written only by `modules/localization_selection.py`. |
+| 8. Retire `bird_bbox` | **Groundwork only** (#484). 4,401 selections already project `bird_bbox`. | Column stays. Gallery still reads it. `read_normalized_first` stays false. No compatibility period has started. | `image_localization_selections` (migration 0038) is the revocable production decision. For a selected image, `bird_bbox` is a projection written only by `modules/localization_selection.py`. |
 
 **Beside the stages**
 
@@ -59,24 +63,30 @@ than this table, this table wins.
 
 The [2026-10-01 gate](../../reports/bird-v1-promotion-gate-2026-10-01.md) (#469) **failed**.
 Rule `ecbb646e6649b3c2` did not clear a 0.90 Wilson lower bound on a fresh 207-image sample
-(best stratum 53/60, lower bound 0.78). The 16,666 v1 boxes are not promoted as a set.
+(best stratum 53/60, lower bound 0.78). Those 16,666 v1 boxes were not promoted as a set.
 
-#472 then re-gated that cohort with the scene route as a false-positive filter and wrote a
-promotion manifest. #484 can persist a passing box as a non-current localization run plus an
-`image_localization_selections` row, and project `bird_bbox`. An apply aborted on one
-out-of-range coordinate (`ck_ir_range`); #488 clamps overshoot of at most 1e-3. **No wiki
-entry records a finished production apply after that fix.** Until that run is logged, treat
-live `bird_bbox` as unchanged by this promotion path.
+#472 re-gated the cohort with the scene route. Rule `v1_regate_rule/3`
+(`v1_regate_rule/3:a1c2e1f64b24cc79`: RTMDet conf ≥ 0.55, ≤ 3 RTMDet birds, SigLIP2
+`scene_v3` p(bird) ≥ 0.5) passed owner validation on large (93/95) and medium (123/123).
+The small stratum failed (42/45 usable, Wilson lower bound 0.821) and stays in shadow.
+
+Step 6 finished on 2026-10-03 after the #488 clamp. The closing note on #472 records
+**4,401** active selections, each projecting `images.bird_bbox`, each replacing
+`{"detected": false}`. Promoted runs are stored and are not `is_current` (the v1 shadow
+run stays current). Backup: `backups/postgres/image_scoring_20261002_184257.dump`.
+Rollback is `promote_localization_selections.py revoke` on the same manifest.
+
+Follow-ups, not part of the apply: eye keypoints on the selected region (#492), and a
+shadow species re-run on those 4,401 images (#493).
 
 ### What is left
 
 In order. Do not start a later row while an earlier blocker is open.
 
-1. **Record the #472 apply** (or explicitly leave it unapplied). Dry-run
-   `scripts/maintenance/promote_localization_selections.py` after #488, then apply only with
-   a DB backup. That is the only production write still sitting between shadow boxes and
-   the gallery.
-2. **Stage 4 remainder**, as its own issues under #345 if they are not already filed:
+1. **#492 and #493** after the 4,401 promotions: keypoints on the selected region, and a
+   shadow species comparison before any keyword rewrite. The small stratum stays in shadow.
+2. **#527 stage 4 remainder** (repair lane, new-image boundary, auto-drive bucket, phantom
+   reconciliation). The exit-gate text is:
    bounded repair (3 attempts, 1 min / 5 min, one repair job while core work is idle);
    a persisted enablement boundary for new or source-changed images;
    auto-drive must not use localization as the earliest blocking bucket;
@@ -101,7 +111,7 @@ In order. Do not start a later row while an earlier blocker is open.
 | S4-4 | Should a localization job with retryable per-image failures end `failed`? | **No.** Completed, failures in the summary. | Repair lane exists. |
 | S4-5 | Keep the 2048 px embedded-JPEG threshold? | **Yes.** | #416 measures decode cost per route. |
 | C-1, C-2 | Refine IoU/padding, and whether COCO boxes are extra regions when YOLO also fires. | Unresolved. Cascade is not production. | #408 adoption review. |
-| Promo | Did the #472 manifest get applied after the #488 clamp? | **Unknown in git.** | Operator log or a short report. |
+| Promo | Which v1 boxes are production? | **4,401** large and medium selections (`v1_regate_rule/3`). Small stratum stays shadow. | A new rule and a fresh sample, not a rerun of #469. |
 | Flags | `config.example.json` enables `localization` and `scene_route`. Live `config.json` is not in git. | Example is the intended default, not proof the library is running that way. | Next operator config review. |
 | G-2 | Drop the `keywords` → `bird_species` edge? | **No**, until `use_regions` is the production path. | Stage 5 promotion. |
 | SR-1 | Multi-label scene routing? | Store all probabilities; route on the bird threshold. | A second specialist workflow. |
@@ -111,8 +121,8 @@ In order. Do not start a later row while an earlier blocker is open.
 
 | Blocker | Stops | Issue |
 |---|---|---|
-| Unlogged promotion apply | Knowing whether gallery boxes moved | #472 / #484 |
-| No repair lane or new-image boundary | Calling stage 4's exit gate met | not filed as its own issue; was #387 non-goals |
+| Small v1 stratum failed the owner gate | Promoting the rest of the 16,666 shadow boxes | #472 (closed; small stays shadow) |
+| No repair lane or new-image boundary | Calling stage 4's exit gate met | #527 |
 | Portrait RAW thumbnails unrotated | Scene, keyword, and embedding quality on those files | #418 |
 | ~300 labelled bursts do not exist | Promoting subject-aware scores | #415 |
 | No timing baseline on the 8 GB card | Crop-backfill cost and the 2048 px decision | #416 |
