@@ -1,3 +1,13 @@
+---
+type: Documentation Index
+title: Reference — Index
+description: Index of API artifacts, model weight notes, and OKF spec pointers under docs/reference/.
+resource: reference/INDEX.md
+tags: [docs, index, reference, api]
+timestamp: 2026-10-04T00:00:00Z
+okf_version: 0.2
+---
+
 # Reference — Index
 
 | Section | Description |

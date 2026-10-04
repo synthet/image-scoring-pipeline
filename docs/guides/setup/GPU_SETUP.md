@@ -23,7 +23,7 @@ Download from [NVIDIA CUDA](https://developer.nvidia.com/cuda-downloads), or use
 conda install cudatoolkit=11.8
 ```
 
-See [INSTALL_CUDA.md](INSTALL_CUDA.md) for RTX 4060-specific instructions.
+See [install_cuda.md](install_cuda.md) for RTX 4060-specific instructions.
 
 ### 2. Install Python Dependencies
 
@@ -92,5 +92,5 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 ## Related Documentation
 
 - [WSL2_TENSORFLOW_GPU_SETUP.md](WSL2_TENSORFLOW_GPU_SETUP.md) — TensorFlow GPU in WSL2
-- [INSTALL_CUDA.md](INSTALL_CUDA.md) — CUDA installation (RTX 4060)
+- [install_cuda.md](install_cuda.md) — CUDA installation (RTX 4060)
 - [ENVIRONMENTS.md](ENVIRONMENTS.md) — Virtual environment overview
