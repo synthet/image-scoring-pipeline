@@ -69,7 +69,9 @@ class EventManager:
         }
         json_message = json.dumps(message)
         
-        logger.debug(f"Broadcasting event: {event_type}")
+        # log_line mirrors run log lines one-for-one; logging each broadcast only doubles the noise.
+        if event_type != "log_line":
+            logger.debug(f"Broadcasting event: {event_type}")
         
         # Snapshot under lock so disconnect_sync / other threads cannot mutate mid-copy
         with self._connections_lock:
