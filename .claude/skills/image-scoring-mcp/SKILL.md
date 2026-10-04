@@ -14,10 +14,11 @@ description: Vexlum Scoring MCP — compact search+dispatch on is-be-mcp / is-be
 3. **`dispatch` takes `action_id` strings** in the form `category.name` (e.g. `diagnostics.get_error_summary`). Bare legacy names like `execute_sql` are accepted when they match `legacy_tool_name` in the registry.
 4. **On `unknown_action`**, read `details.suggestions` and `details.hint` in the error envelope — do not guess another `category.tool` id from AGENTS.md.
 5. **Writes / maintenance / `execute_code`** are not on compact stdio. Use **`is-be-live`** with `MCP_SSE_PROFILE=full` for the legacy ~54-tool surface.
+6. When `search` returns several plausible `action_id`s, ask Jev to pick one (include a `none` option) before `dispatch`. Protocol: [jev-mcp](../jev-mcp/SKILL.md). Config rerank (`typesafe.mcp_search_rerank`) is a separate server-side path and stays off unless enabled.
 
 ## Setup
 
-Copy [`.cursor/mcp.example.json`](../../../.cursor/mcp.example.json) → `.cursor/mcp.json`. Attach **`is-be-mcp`** (WSL + `~/.venvs/tf` via `run_mcp_compact_wsl.bat`); add **`is-be-live`** when WebUI is running.
+Copy [`.cursor/mcp.example.json`](../../../.cursor/mcp.example.json) → `.cursor/mcp.json`. Attach **`is-be-mcp`** (Node `mcp-server/dist/compactIndex.js`; the Python worker runs in `image-scoring-gpu-shell` on Windows). Set `IS_BE_MCP_USE_WSL=1` only when Ubuntu `~/.venvs/tf` should be used instead. Add **`is-be-live`** when WebUI is running.
 
 ## Preferred workflow (backend)
 

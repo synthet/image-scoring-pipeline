@@ -21,6 +21,7 @@ Use this agent when the user asks for an external CLI review, a subagent review,
 - Treat Claude as detection-only in v0.1; do not select Claude for live review.
 - Do not run `codex`, `gemini`, or `claude` directly in the terminal unless the user explicitly asks to bypass MCP.
 - Do not pass secrets, `.env` content, credentials, tokens, private keys, or certificate material in prompts or context.
+- Before `run_subagent`, ask **`jev-rw-systemone`** how sensitive the files are when the harness hook did not already deny the call. Restricted files stay out. Share one `cli.py bundle` across reviewers. Protocol: **`.cursor/skills/jev-mcp/SKILL.md`**.
 - Do not apply suggested patches unless the user explicitly asks.
 
 ## Agent Selection

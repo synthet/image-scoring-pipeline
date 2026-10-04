@@ -32,6 +32,7 @@
 ## MCP
 
 - Treat `execute_code`, `set_config_value`, `run_processing_job`, and other write-capable tools as **high risk**. Prefer read-only diagnostics unless the user explicitly requests writes ([.agent/workflows/safe_mcp_diagnostics.md](workflows/safe_mcp_diagnostics.md)).
+- Jev (`jev-rw-systemone`) `state` omits secrets, tokens, and raw `.env` contents. Jev may tighten allow → ask → deny. It must not relax a deny or an ask. Protocol: [`.cursor/skills/jev-mcp/SKILL.md`](../.cursor/skills/jev-mcp/SKILL.md).
 - On shared machines, SSE MCP attaches to a live WebUI; do not assume an isolated process.
 
 ## External CLI reviews (subagent-orchestrator)

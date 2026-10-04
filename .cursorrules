@@ -21,6 +21,7 @@ React SPA at `/ui/`; Gradio operator page at `/app`.
 - `docs/technical/DB_SCHEMA.md` — schema reference.
 - `.agent/PROJECT_GUIDE.md`, `.agent/SAFETY.md`, `.agent/COMMANDS.md`.
 - `.cursor/rules/` — short, focused rules (each `.mdc` documents its scope).
+- `.cursor/skills/jev-mcp/SKILL.md` — Jev MCP for tool, route, permission, visibility, and file-sensitivity decisions.
 - `.agent/AGENT_INFRA_INVENTORY.md` — every agent-facing file with its status.
 
 ## Core technologies (current)

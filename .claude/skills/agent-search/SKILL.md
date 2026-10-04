@@ -27,6 +27,7 @@ Locate files and code quickly using the right CLI tool for the job — before op
 6. **`tree`/`eza`** for directory layout only — not content search.
 7. **Cursor IDE:** Grep tool ≈ `rg`; SemanticSearch for meaning; Glob ≈ `fd`.
 8. **fff MCP:** When **project** `fff-be` is connected, prefer `grep`/`find_files`/`multi_grep` for repeated repo search; one-off probes may still use `rg`/`fd` — see [tool-selection.md](references/tool-selection.md) and [AGENTS.md § fff](../../../AGENTS.md).
+9. **Ambiguous tool:** when two rows below both fit, ask Jev (`jev-rw-systemone`) which one to run. Do not run both. Skip the call when the matrix names a single tool. Protocol: [jev-mcp](../jev-mcp/SKILL.md).
 
 ## When to use (scenario → tool)
 

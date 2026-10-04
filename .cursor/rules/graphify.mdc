@@ -5,7 +5,7 @@ alwaysApply: false
 
 # Graphify (soft — architecture map)
 
-Optional local knowledge graph for **code/architecture** questions. Prefer `rg` / **fff** / **`is-be-mcp`** first; escalate here for “how does X connect to Y”, god nodes, or subsystem maps.
+Optional local knowledge graph for **code/architecture** questions. Prefer `rg` / **fff** / **`is-be-mcp`** first; escalate here for “how does X connect to Y”, god nodes, or subsystem maps. If those might still answer, ask **`jev-rw-systemone`** before querying the graph. Protocol: `.cursor/skills/jev-mcp/SKILL.md`.
 
 ## When to use
 

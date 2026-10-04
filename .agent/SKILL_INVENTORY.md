@@ -59,6 +59,7 @@ Central list of **first-party** `SKILL.md` files in this repository for governan
 | deliver-branch | `.cursor/skills/deliver-branch/SKILL.md` | Current branch -> PR -> green CI -> merge -> ff local master; harness `scripts/agent_skills/deliver_branch.py` | L2 | Yes | 2026-09-23 |
 | lesson-to-skill | `.cursor/skills/lesson-to-skill/SKILL.md` | Turn session corrections, mistakes, and repetitions into enriched or new assets | L1 | Yes | 2026-07-25 |
 | autonomous-run-contract | `.cursor/skills/autonomous-run-contract/SKILL.md` | Metric, budget, revert rule, and stop conditions before an unattended or fanned-out run | L1 | Yes | 2026-07-25 |
+| jev-mcp | `.cursor/skills/jev-mcp/SKILL.md` | TypeSafe System One judgments (visibility, tools, route, permissions, security, subgoals) | L2 | Yes | 2026-10-03 |
 
 ## Claude Code mirror
 
@@ -75,6 +76,7 @@ Skills listed with **Mirror = Yes** must stay in sync with **`.cursor/skills/<na
 | webui-dev | `.agent/skills/webui-dev/SKILL.md` | WebUI dev workflow | L1 | 2026-04-25 |
 | webui-gradio | `.agent/skills/webui-gradio/SKILL.md` | Gradio UI architecture | L1 | 2026-04-25 |
 | docs-wiki | `.agent/skills/docs-wiki/SKILL.md` | Alias → `.cursor/skills/docs-wiki` | L1 | 2026-05-31 |
+| jev-mcp | `.agent/skills/jev-mcp/SKILL.md` | Alias → `.cursor/skills/jev-mcp` | L2 | 2026-10-03 |
 
 ## Subagents (Cursor / Claude Code)
 

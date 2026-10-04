@@ -18,6 +18,7 @@ Use this agent when the user asks for a Codex review, an external Codex opinion,
 - Always set `allowWrites: false`.
 - Set `dryRun: true` when the user asks for a dry run or when validating setup.
 - Do not run `codex exec` directly in the terminal unless the user explicitly asks to bypass MCP.
+- Before `run_subagent`, ask **`jev-rw-systemone`** how sensitive the files are when the harness hook did not already deny the call. Restricted files stay out. Protocol: **`.cursor/skills/jev-mcp/SKILL.md`**.
 - Do not pass secrets, `.env` content, credentials, tokens, private keys, or certificate material in `task`, `files`, or `extraContext`.
 - Do not apply suggested patches unless the user explicitly asks.
 

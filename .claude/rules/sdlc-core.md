@@ -13,6 +13,10 @@ Read root **AGENTS.md** first when present; it overrides generic guidance for co
 - Use the **terminal** to investigate; do not only suggest commands for the user to run.
 - **Do not** commit secrets, API keys, or `.env` files with real credentials.
 
+## Decisions (Jev)
+
+Semantic choices a written rule does not already settle go to Jev MCP **`jev-rw-systemone`**, one batched `jev_system_one` call: how much of a chunk to load (hide / short / long / full), which tool fits, whether a subtask may leave this model, whether a command may run (allow / ask / deny), and how sensitive the files are. Jev returns a typed answer; it does not write code. Deterministic policy runs first, and Jev only tightens it. Omit secrets from `state`. If the server is not connected, follow the written policy and say Jev was not asked. Protocol: [`.cursor/skills/jev-mcp/SKILL.md`](../skills/jev-mcp/SKILL.md).
+
 ## Context budget
 
 Reading, searching, and command output dominate an agent's token spend, so keep retrieval bounded:
