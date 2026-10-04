@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { resolveWorkerLaunch } from "./pythonBridge.js";
+
 /**
  * Unit tests for request-id response routing (logic mirrored from pythonBridge).
  * Full worker I/O is covered by MCP protocol smoke tests.
@@ -28,5 +30,21 @@ describe("pythonBridge response routing", () => {
     it("stripRequestId passes through payloads without id", () => {
         const out = stripRequestId({ status: "success" });
         assert.deepEqual(out, { status: "success" });
+    });
+
+    it("windows default starts the worker in gpu-shell", () => {
+        const launch = resolveWorkerLaunch({}, "win32");
+        assert.equal(launch.mode, "gpu-shell");
+        assert.equal(launch.command, "docker");
+        assert.equal(launch.container, "image-scoring-gpu-shell");
+        assert.ok(launch.args.includes("python"));
+        assert.ok(launch.args.includes("/app/scripts/mcp/compact_worker.py"));
+    });
+
+    it("IS_BE_MCP_USE_WSL=1 keeps the Ubuntu venv worker", () => {
+        const launch = resolveWorkerLaunch({ IS_BE_MCP_USE_WSL: "1" }, "win32");
+        assert.equal(launch.mode, "wsl");
+        assert.equal(launch.command, "wsl");
+        assert.ok(launch.args.some((arg) => arg.includes("~/.venvs/tf/bin/activate")));
     });
 });

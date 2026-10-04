@@ -215,6 +215,7 @@ FirebirdLinux/
 # IDE and Tools
 # Track .cursor/rules, commands, skills, agents, mcp.example.json; keep operator-local files out of git
 .cursor/mcp.json
+.codex/config.toml
 .cursor/worktrees.json
 .cursor/plans/
 mcp_config.json
