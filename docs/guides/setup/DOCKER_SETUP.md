@@ -354,6 +354,6 @@ sudo groupdel docker
 ## Next Steps
 
 - [wsl-vs-docker-topology.md](wsl-vs-docker-topology.md) — Ubuntu vs docker-desktop; [disk reclaim / unregister](wsl-vs-docker-topology.md#sunsetting-ubuntu--disk-reclaim)
-- Review [docker-compose.yml](../../docker-compose.yml) for configuration options
-- See [README.md](../../README.md) for application documentation
+- Review [docker-compose.yml](../../../docker-compose.yml) for configuration options
+- See [README.md](../../../README.md) for application documentation
 - [ENVIRONMENTS.md](ENVIRONMENTS.md) — WSL venvs when not using Docker WebUI
