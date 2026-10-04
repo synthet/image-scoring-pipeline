@@ -218,7 +218,7 @@ Scene route ahead of localization ([spec 05](../specs/pipeline-streamlining/05-s
 
 ### `gpu_runner`
 
-Offloads a phase's model inference to the GPU runner container on another machine ([runbook](../guides/REMOTE_GPU_RUNNER.md)). Off unless `enabled` is true; local runs are unchanged by default. A remote phase checks the runner at batch start and fails if it is down or its config differs for that phase; it never falls back to the local GPU.
+Offloads a phase's model inference to the GPU runner container on another machine ([runbook](../guides/REMOTE_GPU_RUNNER.md)). Off unless `enabled` is true; phases configured as local keep their existing behavior. Remote phases use an ordered fallback chain: configured runner, same-machine HTTP runner, then embedded inference. Availability failures can advance to the next backend; config, authentication, API contract, and ambiguous submitted-request failures remain errors.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -226,8 +226,20 @@ Offloads a phase's model inference to the GPU runner container on another machin
 | `url` | `""` | Runner base URL, e.g. `http://gpu-pc:7870` (`https://` when the runner has a certificate). |
 | `phases.<phase_code>` | `local` | `local` or `remote` for `scoring`, `keywords`, `culling`, `localization`, `bird_species`. |
 | `request_timeout_seconds` | `600` | Read timeout per inference call. A timed-out call is not retried. |
+| `timeouts.connect_seconds`, `timeouts.health_seconds` | `5`, `5` | Connection establishment and health probe read timeouts. |
+| `timeouts.write_seconds`, `timeouts.pool_seconds` | `60`, `5` | Upload I/O and connection pool waits. Pool timeout also bounds embedded admission waits. |
+| `timeouts.max_connections` | `4` | Maximum HTTP connections and keepalive connections per backend. |
+| `retry.max_retries` | `3` | Maximum safe retries per HTTP operation (0–10). Submitted inference with an ambiguous result is never replayed. |
+| `retry.base_delay_seconds`, `retry.max_delay_seconds` | `1`, `8` | Exponential retry delay ceiling, with full jitter. |
+| `retry.budget_seconds` | `30` | Scheduling budget for safe retries, including waits already spent. Does not cancel admitted inference. Admission refusals honor Retry-After. |
+| `fallback.enabled` | `true` | Allow availability failover for phases configured as remote. `false` restores strict remote-only behavior. |
+| `fallback.local_url` | `http://127.0.0.1:7870` | Same-machine runner base URL. Use `host.docker.internal` from a Docker host application when the service publishes its port on the host. Empty string skips this backend; it uses the same bearer token. |
+| `fallback.embedded` | `true` | Allow lazy embedded model inference after HTTP backends are unavailable. Requires local inference dependencies and model weights. |
+| `fallback.cooldown_seconds`, `fallback.max_cooldown_seconds` | `30`, `300` | Initial and maximum exponential circuit cooldown ceilings, with jitter. One caller probes recovery; Retry-After can extend the minimum wait. |
 
 The runner must load the same values for the sections each remote phase depends on: `scoring` (scoring), `tagging` (keywords), `bird_detection` (localization, bird_species). Copy this host's `config.json` to the runner.
+
+Embedded execution shares the worker's inference code and retains models across runner URL/token changes. Restart the host after changing model settings once embedded models have loaded. Localization failover verifies identical detector weights and version before using an existing context. See the runbook for exact retry/fallback boundaries.
 
 ### Top-level misc
 

@@ -5,12 +5,14 @@ description: Run a phase's model inference in a Docker container on another PC. 
 resource: guides/REMOTE_GPU_RUNNER.md
 tags: [docs, guides, gpu, remote, docker, runner, okf]
 timestamp: 2026-10-03T00:00:00Z
-okf_version: 0.2
+okf_version: 0.3
 ---
 
 # Remote GPU runner
 
 The GPU runner is a stateless HTTP service (`modules/remote_gpu/server.py`) in a Docker container on a machine with a GPU. A host phase routed to it keeps its normal flow (preprocessing, skip checks, persistence, XMP), and only the model forward pass crosses the network.
+
+If the configured runner becomes unavailable, the host tries a runner on this machine, then embedded inference in the host process. Both HTTP and embedded execution use `modules/remote_gpu/runtime.py`, so they run the same methods and return the same contract. Models for embedded fallback load only when it is first used; embedded inference is serialized across phases.
 
 It is separate from the lease-worker design in [specs/remote-gpu-worker](../specs/remote-gpu-worker/INDEX.md) (#435). That design has the worker pull work and write Postgres itself; the runner opens no database at all.
 
@@ -74,20 +76,45 @@ To change these limits in Docker Compose, export the corresponding variable befo
   "enabled": true,
   "url": "http://gpu-pc:7870",
   "phases": { "scoring": "remote", "keywords": "remote", "culling": "local", "localization": "remote", "bird_species": "remote" },
-  "request_timeout_seconds": 600
+  "request_timeout_seconds": 600,
+  "fallback": {
+    "enabled": true,
+    "local_url": "http://127.0.0.1:7870",
+    "embedded": true,
+    "cooldown_seconds": 30,
+    "max_cooldown_seconds": 300
+  }
 }
 ```
 
 Phases left at `local` keep using this machine's GPU.
 
+### Local fallback setup
+
+1. Run the same GPU-runner Compose service on the host machine, with the same phase configuration, weights, and bearer token. `fallback.local_url` identifies this service. When the host application runs inside Docker and the fallback service publishes its port on Windows, use `http://host.docker.internal:7870` instead of the container's loopback address.
+2. Install the normal inference dependencies and model weights in the host application's environment for embedded fallback. The existing GPU WebUI/gpu-shell image provides the inference stack. The embedded runner uses the host's normal model device selection; it requires enough RAM/VRAM to load the configured models.
+3. Watch host logs for `gpu_runner: phase ... uses ... (fallback)`. An unavailable backend opens its circuit; repeated failures increase the cooldown exponentially from `cooldown_seconds` to `max_cooldown_seconds`, with jitter between half and all of that interval. Only one caller probes a backend after its cooldown; other callers keep using fallback. A successful probe restores the preferred backend and resets its failure count. No service is started automatically.
+
+These fallback settings are the defaults even when omitted. Set `local_url` to an empty string to skip the local HTTP runner, `embedded` to `false` to prevent loading models in the host, or `enabled` to `false` to restore strict remote-only behavior. The local service and embedded host must use the same detector weights for a localization context to remain valid during failover.
+
+### Retry and timeout policy
+
+Safe retries use exponential delays with full jitter: up to 1, 2, and 4 seconds by default, capped by `retry.max_delay_seconds` (8 seconds). There are at most `retry.max_retries` (3) retries per HTTP operation. A 30-second `retry.budget_seconds` limits scheduling retries; connection/pool waits on retries are clipped to the remaining budget. The budget does not cancel an admitted inference. `429`/`503` admission refusals honor `Retry-After` (seconds or HTTP date). If the requested wait exceeds the remaining budget, the host falls back and does not probe that backend before the server's requested time.
+
+HTTP I/O timeouts are configured under `gpu_runner.timeouts`: `connect_seconds` (5), `health_seconds` (5), `write_seconds` (60), and `pool_seconds` (5). Inference reads use `request_timeout_seconds` (600). `max_connections` (4) bounds each HTTP connection pool. Embedded callers also have a bounded admission wait using `pool_seconds`; once embedded inference starts, it is synchronous and cannot be forcibly interrupted. Use the local HTTP service when process isolation and client timeouts are required.
+
+Model configuration changes after embedded loading require a host restart. Restart the host after changing transport/fallback settings if phase proxies are already cached; newly constructed clients use the updated settings immediately.
+
 ## Failure behaviour
 
-- **Runner down or config drift at batch start:** the phase fails at model load with a message naming the unreachable URL or the differing config sections. Localization records `retryable_error` / `detector_unavailable` for the batch, the same as a local weights failure.
+- **Runner down at batch start or mid-batch:** connection failures advance through the fallback chain. If every permitted backend is unavailable, the phase fails. Embedded model failures surface with the embedded endpoint and failure detail.
+- **Config drift, authentication failure, incompatible API, or invalid output:** the phase fails instead of changing backends. These errors need correction; fallback does not bypass them.
 - **Worker model config edited after startup:** health reports the affected phases under `restart_required`; requests for those phases return HTTP 409 until the worker restarts. This prevents cached models from being advertised with newer settings. The host also rejects incompatible API versions before starting a phase.
-- **Connect error mid-batch:** retried once, since nothing reached the runner. **Read timeout:** not retried, because the runner may still be computing; that image fails.
-- **503 busy:** retried after 1, 2 and 4 seconds.
+- **Connect or connection-pool failure:** bounded exponential retries, then fallback, since nothing reached the runner. **Inference read/write timeout or broken connection after submission:** no retry or fallback for that image, because inference may still be running. The backend enters cooldown so subsequent images can use fallback. A failed health probe can fall back before submitting inference.
+- **429 rate limit / 503 busy:** bounded exponential retries with jitter and `Retry-After`, then fallback. A completed worker error (`500` with the worker's error envelope) can also fall back; gateway `502`/`504` responses remain ambiguous and fail the submitted image.
 - **Invalid upload:** malformed lengths return 400, missing lengths 411, excessive bodies 413, and upload deadlines 408. Malformed metadata returns 422. Invalid, empty, or nonfinite scoring results fail before host persistence.
-- Nothing ever falls back to the local GPU.
+- **Localization identity:** before a fallback detector runs, its weights digest and version must match the active context. Different weights fail the image rather than persisting boxes under the original detector identity.
+- **Embedded config edited after models load:** restart the host to apply it; embedded execution rejects stale model settings as the HTTP worker does.
 
 ## Limits
 
@@ -97,7 +124,9 @@ Phases left at `local` keep using this machine's GPU.
 ## Verify
 
 ```powershell
-docker exec image-scoring-gpu-shell python -m pytest tests/test_remote_gpu_runner.py tests/test_remote_gpu_hardening.py tests/test_clip_accessibility.py -q
+docker exec image-scoring-gpu-shell python -m pytest tests/test_remote_gpu_runner.py tests/test_remote_gpu_hardening.py tests/test_remote_gpu_fallback.py tests/test_remote_gpu_resilience.py tests/test_clip_accessibility.py -q
 ```
 
 Live check: route one folder's `scoring` to the runner and compare `image_model_scores` against a local run of the same images (they should match within float tolerance). Then run localization twice; the second run should report every image unchanged and write no new `is_current` rows.
+
+For failover, stop the remote service and verify that the host logs selection of the local HTTP runner. Stop the local runner and verify embedded inference with the same inputs. Restart the remote service, wait for the cooldown, and verify that the next inference returns to it. Compare output and host persistence across all three modes. Use a small folder and identical detector weights for this live check.
