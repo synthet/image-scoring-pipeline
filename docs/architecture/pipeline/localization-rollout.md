@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-10-02T00:00:00Z
+timestamp: 2026-10-04T00:00:00Z
 okf_version: 0.2
 status: proposed
 ---
@@ -20,51 +20,105 @@ This is a **target design**, not a description of behavior already present in pr
 current graph and its implementation are documented in [phase-graph.md](phase-graph.md) and
 [phases/bird-species.md](phases/bird-species.md).
 
-## Consolidated status and changes (2026-09-25)
+## Consolidated status (2026-10-04)
 
-This page remains the design of record for the eight stages. Since 2026-09-25 two documents build
-on it:
-- the [pipeline-streamlining plan](../../planning/pipeline-streamlining.md) (#410), with its
-  [spec hub](../../specs/pipeline-streamlining/INDEX.md) and
-  [blockers and decision register](../../specs/pipeline-streamlining/07-blockers-and-decisions.md)
-- the [subject-aware culling evidence plan](../../planning/subject-aware-culling-evidence.md),
-  which covers evidence, ranking and explainability
+This page remains the design of record for the eight stages. Later plans that change a stage
+are folded into the table, not into a second rollout:
 
-The table below is the single place that says where each stage stands and what changed. The stage
-sections further down are unchanged, so read them together with this table.
+- [pipeline streamlining](../../planning/pipeline-streamlining.md) (#410) and its
+  [spec hub](../../specs/pipeline-streamlining/INDEX.md)
+- [blockers and decision register](../../specs/pipeline-streamlining/07-blockers-and-decisions.md)
+  (historical snapshot 2026-09-25, with a 2026-10-04 delta at the top)
+- [subject-aware culling evidence](../../planning/subject-aware-culling-evidence.md)
 
-| Stage | Status | Owned by | Change since the original design |
+Stage sections below stay the original design. Where a section's own status heading is older
+than this table, this table wins.
+
+| Stage | Status on 2026-10-04 | Still open | What changed from the original design |
 |---|---|---|---|
-| 1. Control plane | Done (#346 and follow-ups) | #368 (delegated parent/child, deferred) | Spec 02 adds a third edge kind, **attempt-before**, for `localization` → `scoring` (#407). |
-| 2. Normalized persistence | Done. Legacy import ran 2026-09-27: every `bird_bbox` row has a current run (76,475) | #414 | Addendum: region-linked **keypoints** and **mask** artifacts (#426). Keypoint tables and provider landed in shadow; library backfill + [spot check](../../reports/eye-keypoint-spot-check-2026-09-27.md) 2026-09-27. |
-| 3. Rendition and crop service | Code complete; detector benchmark done (#377) | #406 | Generalized: one orientation-baked ~2048 px **inference rendition** for *every* phase, not only localization (spec 01). Fixes the thumbnail orientation gap noted in this stage (#418). |
-| 4. Shadow `localization` | Slice 1 merged (#395); **M0 done** 2026-09-27 (#414) | #414, #399, #379 | Adds the **YOLO → COCO-animal → small-box refine** cascade as a provider (#408, spec 03) and, later, the keypoint and mask providers (#426). **Primary-region choice** among several boxes becomes a versioned consumer policy (proposal on #408). |
-| 5. BioCLIP on regions | **Slice 1** (#444): `bird_species.use_regions` (default off) classifies the current rank-0 region, full frame on `no_detection`, legacy detector otherwise; 283/283 top-1 identical on a shadow folder, 33% faster | spec 06, #413, #422 | **Merged with stage 7:** legacy outcomes are imported, not recomputed. Species gains list gaps, abstention and burst/folder suggestions (#422); taxa beyond birds follow after a benchmark (#413). |
-| 6. Crop/fusion experiments | Not started | #409, #423 | **Region IQA leaves the shadow-only experiment** and becomes scoring design: fusion v2 with `subject_mode`, gated on ≥ 300 labelled bursts (#415, spec 04 AC-22). Named per-criterion evidence stays research JSONL (#423). Captions, accessibility and Jev stay shadow, as designed here. |
-| 7. Repair and backfill | Not started | merged into 5; spec 04 crop-only backfill | The only new backfill is **crop scores** for images with a current box (about 41k), after the cascade is benchmarked. The "no unbenchmarked full-library rescan" invariant holds. |
-| 8. Retire compatibility | Groundwork (#484) | #484, #472 | **Production selections as data:** `image_localization_selections` records the revocable decision that a region is the production answer (rule hash, evidence). For selected images `bird_bbox` is a projection written only by `modules/localization_selection.py`, the first implemented piece of `dual_write_bird_bbox`. Retiring the column itself is unchanged. |
+| 1. Control plane | **Done** (#346 and follow-ups). `localization` is a real phase after `metadata`. | **#368** delegated parent/child lifecycle. **#407** attempt-before edge and burst/picks split, not started. | Spec 02 adds **attempt-before** for `localization` → `scoring`. |
+| 2. Normalized persistence | **Done.** Legacy import 2026-09-27: 76,475 current runs. Reader exists; `localization.read_normalized_first` stays off, so `bird_bbox` is still the production read. | Mask artifacts and a second keypoint pass (#426). | Region-linked keypoints landed in shadow (migration 0036, eye-pose backfill, [spot check](../../reports/eye-keypoint-spot-check-2026-09-27.md)). |
+| 3. Rendition and crops | **Code complete** (#375). Detector benchmark done (#377). Default weights are `bird_detect_v1.pt` (#462), still `imgsz=640`. | Shared decode-once for every phase (#406). Slice 1 cache/pruner landed (#446). Portrait RAW thumbnails still reach CLIP/BLIP/MobileNet unrotated (#418). | One ~2048 px inference rendition for every phase (spec 01), not only localization. |
+| 4. Shadow localization | **Slice 1 + M0 done** (#395, #414). Decisions S4-1..S4-5 accepted. Example config turns the phase and the bird detector **on**. | Repair lane, new/changed-only auto scope, and a separate auto-drive bucket were **never implemented** (`localization.repair.enabled` and `localization.new_images_only` are not in code). Phantom reconciliation for this phase is not done. Cascade is code (#451) but not the production detector (#408 still open). | YOLO → COCO-animal → small-box refine is a shadow provider. Primary-region choice is still a proposal on #408. Scene route can skip detection (#412, closed). |
+| 5. BioCLIP on regions | **Slice 1 in code, off** (#444). `bird_species.use_regions` defaults false. One folder: 283/283 top-1 matched the legacy path, about 33% faster. | Do not flip the flag on this one folder. Abstention and list gaps (#422). Taxa beyond birds (#413). Multi-region classification flag is still design-only. | Legacy boxes are imported, not recomputed, before any species refresh. |
+| 6. Crop / fusion | **Not started.** | #409 (crop score storage + fusion), #423 (evidence JSONL), #415 (~300 labelled bursts). | Region IQA is scoring design, gated on those bursts, not a global crop switch. Captions, accessibility, and Jev stay shadow. |
+| 7. Repair and backfill | **Split.** Legacy import is done (stage 2). v1 rescan of 35,209 legacy misses is done and stays shadow unless a selection says otherwise. Bounded repair and the auto-drive lane are not built. | Repair lane (was stage 4, still missing). Crop-score backfill waits on #409. `scripts/backfill_bird_bbox.py` still writes the JSON column and must be retired or rerouted before normalized authority. | No unbenchmarked full-library rescan. The v1 rescan was an explicit, resumable job, not an automatic scan of every new image. |
+| 8. Retire `bird_bbox` | **Groundwork only** (#484). | Column stays. Gallery still reads it. `read_normalized_first` stays false. No compatibility period has started. | `image_localization_selections` (migration 0038) is the revocable production decision. For a selected image, `bird_bbox` is a projection written only by `modules/localization_selection.py`. |
 
-**Tracks that sit beside the stages:**
+**Beside the stages**
 
-| Track | Issues |
+| Track | State |
 |---|---|
-| Scene route before localization | #412: benchmarked 2026-10-02 ([report](../../reports/scene-route-benchmark-2026-10-02.md)); SigLIP2 bird route at p >= 0.065, wired behind `scene_route.enabled` (default off). Calibrated per-label thresholds: #420 |
-| Keywords and captions | #420, #421 |
-| Continuous-burst segmentation and picks | #424, #407 |
-| Timing | #416 |
+| Scene route (#412) | **Closed.** SigLIP2 bird route at p ≥ 0.065 ([benchmark](../../reports/scene-route-benchmark-2026-10-02.md)). Wired in the localization runner. `config.example.json` sets `scene_route.enabled` true. Per-label thresholds remain #420. |
+| Keywords / captions | #420, #421 open. |
+| Burst segmentation and picks | #424, #407 open. |
+| Timing baseline | #416 open. Blocks the 2048 px threshold revisit (S4-5) and crop-backfill cost. |
+| Remote GPU phases | #440, #441 open. Localization is not on that rollout yet. |
 
-**V1 shadow-rescan gate (2026-09-30):** The [owner review](../../reports/bird-v1-owner-review-2026-09-29.md)
-found false detections and poor primary crops in the development sample. The completed
-[failure review](../../reports/bird-v1-failure-review-2026-09-30.md) classified all 79
-false detections and found a usable review-JPEG alternative for 26 of 35 bad primaries.
-The 16,666 new v1 boxes remain shadow artifacts; neither candidate reproduction on
-production renditions nor an independent validation sample has passed the promotion gate.
-On 2026-10-01 the [promotion-gate report](../../reports/bird-v1-promotion-gate-2026-10-01.md)
-(#469) reproduced all 26 rescues on production renditions. It also froze an RTMDet-bird rule
-(`ecbb646e6649b3c2`) on development labels and drew an independent 207-image validation sample.
-Independent owner validation then **failed** in every stratum (best 53/60 present-and-usable,
-Wilson lower bound 0.78 against a 0.90 bar). No v1 box is promoted, and the next rule needs a new
-false-positive signal and a fresh sample.
+**Promotion of v1 boxes**
+
+The [2026-10-01 gate](../../reports/bird-v1-promotion-gate-2026-10-01.md) (#469) **failed**.
+Rule `ecbb646e6649b3c2` did not clear a 0.90 Wilson lower bound on a fresh 207-image sample
+(best stratum 53/60, lower bound 0.78). The 16,666 v1 boxes are not promoted as a set.
+
+#472 then re-gated that cohort with the scene route as a false-positive filter and wrote a
+promotion manifest. #484 can persist a passing box as a non-current localization run plus an
+`image_localization_selections` row, and project `bird_bbox`. An apply aborted on one
+out-of-range coordinate (`ck_ir_range`); #488 clamps overshoot of at most 1e-3. **No wiki
+entry records a finished production apply after that fix.** Until that run is logged, treat
+live `bird_bbox` as unchanged by this promotion path.
+
+### What is left
+
+In order. Do not start a later row while an earlier blocker is open.
+
+1. **Record the #472 apply** (or explicitly leave it unapplied). Dry-run
+   `scripts/maintenance/promote_localization_selections.py` after #488, then apply only with
+   a DB backup. That is the only production write still sitting between shadow boxes and
+   the gallery.
+2. **Stage 4 remainder**, as its own issues under #345 if they are not already filed:
+   bounded repair (3 attempts, 1 min / 5 min, one repair job while core work is idle);
+   a persisted enablement boundary for new or source-changed images;
+   auto-drive must not use localization as the earliest blocking bucket;
+   phantom reconciliation only when a current terminal attempt exists.
+   Revisit S4-4 (job stays `completed` with failures in the summary) when the repair lane exists.
+3. **#368** before any restart/recovery work that assumes parent/child outcomes propagate.
+4. **#418** before trusting scene, keyword, or embedding vectors on portrait RAWs.
+5. **#408** adopt-or-drop the cascade. Slice 1 is in tree; production detection is still
+   YOLO `bird_detect_v1` at 640. Do not change `imgsz` on the failed #377/#469 evidence.
+6. **Stage 5 flag** stays off until a second folder (or a labelled species sample) matches
+   the legacy path and #422's abstention rule is decided.
+7. **Stage 6** waits on #415 labels, then #409 storage (prefer a sibling score table over
+   changing the `image_model_scores` primary key; see the decision register) and #423.
+8. **Stage 8** waits on a release where selections, region reads, and rollback of
+   `read_normalized_first` have all been exercised. Physical drop of `bird_bbox` stays out
+   of this rollout.
+
+### Open questions
+
+| ID | Question | Current answer | Revisit when |
+|---|---|---|---|
+| S4-4 | Should a localization job with retryable per-image failures end `failed`? | **No.** Completed, failures in the summary. | Repair lane exists. |
+| S4-5 | Keep the 2048 px embedded-JPEG threshold? | **Yes.** | #416 measures decode cost per route. |
+| C-1, C-2 | Refine IoU/padding, and whether COCO boxes are extra regions when YOLO also fires. | Unresolved. Cascade is not production. | #408 adoption review. |
+| Promo | Did the #472 manifest get applied after the #488 clamp? | **Unknown in git.** | Operator log or a short report. |
+| Flags | `config.example.json` enables `localization` and `scene_route`. Live `config.json` is not in git. | Example is the intended default, not proof the library is running that way. | Next operator config review. |
+| G-2 | Drop the `keywords` → `bird_species` edge? | **No**, until `use_regions` is the production path. | Stage 5 promotion. |
+| SR-1 | Multi-label scene routing? | Store all probabilities; route on the bird threshold. | A second specialist workflow. |
+| O-storage | Crop scores in `image_model_scores` or a sibling table? | **Sibling table**, unless a single table is required. | #409 design. |
+
+### Blockers
+
+| Blocker | Stops | Issue |
+|---|---|---|
+| Unlogged promotion apply | Knowing whether gallery boxes moved | #472 / #484 |
+| No repair lane or new-image boundary | Calling stage 4's exit gate met | not filed as its own issue; was #387 non-goals |
+| Portrait RAW thumbnails unrotated | Scene, keyword, and embedding quality on those files | #418 |
+| ~300 labelled bursts do not exist | Promoting subject-aware scores | #415 |
+| No timing baseline on the 8 GB card | Crop-backfill cost and the 2048 px decision | #416 |
+| Gallery must filter `input_mode` before a score-table migration | #409 | gallery #176 |
+| Postgres suite can skip when the port or Alembic is wrong | Trusting `-m postgres` on a host Python | #379 |
+| Delegated culling parent completes without the child outcome | Recovery tests for later phases | #368 |
 
 **Design ideas from the reference-design analysis, and where they are tracked:**
 
@@ -181,6 +235,10 @@ Use flags with explicit defaults so each stage is independently deployable:
 | `typesafe.enabled` | `false` | Enable the shared text-only Jev client; never enables a consumer by itself. |
 | `typesafe.keyword_shadow.enabled` | `false` | Report-only Jev keyword verification over allowlisted textual evidence. |
 | `typesafe.culling_shadow.enabled` | `false` | Proposed stack-scoped Jev culling experiment; no production effect. |
+
+`config.example.json` (2026-10-02) turns `localization.enabled`, `localization.detectors.bird.enabled`,
+and `scene_route.enabled` **on**. `bird_species.use_regions` stays off. `localization.repair.enabled`
+and `localization.new_images_only` are not read anywhere in code yet.
 
 Flags are configuration controls, not provenance. Detector/model/config and crop-policy versions
 must still be persisted with artifacts. Calibration-sensitive Jev experiments pin a versioned model
@@ -326,7 +384,12 @@ remains readable through the compatibility representation and eligible for contr
 - Query plans cover current artifact lookup by image and detector without table scans.
 - Database growth per positive, negative, and error outcome is measured.
 
-### Status — schema, import and reader landed; the live import has not been run
+### Status — schema, import and reader landed; normalized reads stay off
+
+The live import **has** run (2026-09-27, #414): 76,475 current runs. The paragraph
+below is the 2026-09-22 survey that sized that import. The reader is still not on the
+production path — `localization.read_normalized_first` is false — because turning it on
+changes `is_image_bird_species_complete`. See the [2026-10-04 status](#consolidated-status-2026-10-04).
 
 Issue #370. `migrations/versions/0034_image_localization.py` creates both tables, mirrored in
 `modules/db_postgres.py` and registered in `POSTGRES_APP_TABLES`.
@@ -357,10 +420,9 @@ Two clarifications the implementation forced:
   region** rather than a clamped box. The detection is a historical fact; clamping would invent a
   box nobody detected.
 
-Still open for this stage: the import has **not** been run against the production library, and the
-reader is not yet wired into any production read path — that wiring changes
-`is_image_bird_species_complete`, which feeds work selection, so it wants database-backed
-verification.
+Still open after the import: the reader is not wired into any production read path. That
+wiring changes `is_image_bird_species_complete`, which feeds work selection, so it stays
+off until stage 5 promotes `bird_species.use_regions`.
 
 ### Rollback
 
@@ -551,7 +613,14 @@ unconditionally successful.
 
 Set `localization.enabled=false`. Existing normalized artifacts remain readable but no new phase
 work is planned. Disable `localization.repair.enabled` to stop queued retry admission without
-invalidating artifacts.
+invalidating artifacts. That repair flag is design-only as of 2026-10-04; it is not read by code.
+
+### Status — slice 1 and M0 done; exit gate not met
+
+Registry, gated runner, provenance-stamped regions, and the S4-1..S4-5 decisions are in.
+`config.example.json` enables the phase. The exit gate in this section is **not** met:
+there is no repair lane, no new/changed-image boundary, and no separate auto-drive bucket.
+Details: [consolidated status](#consolidated-status-2026-10-04).
 
 ---
 
