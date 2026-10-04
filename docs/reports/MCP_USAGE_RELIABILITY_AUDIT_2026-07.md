@@ -5,7 +5,7 @@ description: Transcript usage heatmap for compact is-be-mcp / is-ui-mcp actions,
 resource: docs/reports/MCP_USAGE_RELIABILITY_AUDIT_2026-07.md
 tags: [docs, reports, mcp, agents, audit]
 timestamp: 2026-07-22T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # MCP tools usage and reliability audit — July 2026

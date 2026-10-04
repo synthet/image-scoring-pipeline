@@ -5,7 +5,7 @@ description: Milestone breakdown, test matrix, local-vs-remote parity gates, sec
 resource: docs/specs/remote-gpu-worker/05-rollout-and-testing.md
 tags: [specs, remote-worker, rollout, testing, runbook]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

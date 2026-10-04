@@ -5,7 +5,7 @@ description: Per-phase deep references for the six backend pipeline phases.
 resource: architecture/pipeline/phases/INDEX.md
 tags: [pipeline, phases, index, okf]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Pipeline phases — index

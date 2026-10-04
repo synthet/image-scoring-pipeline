@@ -2,10 +2,10 @@
 type: Research Report
 title: Picked-image quality advisory gap (image 195193)
 description: Forensics, A/B prompt study, and production fix for agent cull picked_image_advisories returning empty on a misfocus hero pick despite vision evidence.
-resource: PICKED_ADVISORY_GAP_195193_2026-06-21.md
+resource: reports/PICKED_ADVISORY_GAP_195193_2026-06-21.md
 tags: [reports, agent-cull-review, culling, vision, misfocus, antigravity, study]
 timestamp: 2026-06-21T17:30:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Picked-image quality advisory gap (image 195193)

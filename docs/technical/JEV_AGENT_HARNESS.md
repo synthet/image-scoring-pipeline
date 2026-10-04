@@ -5,7 +5,7 @@ description: How Claude Code / Cursor agents in both repos use Jev (TypeSafe Sys
 resource: docs/technical/JEV_AGENT_HARNESS.md
 tags: [agents, jev, typesafe, harness, hooks, mcp]
 timestamp: 2026-09-26T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Jev agent harness

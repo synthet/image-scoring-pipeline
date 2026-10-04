@@ -5,7 +5,7 @@ description: Router for the two research workstreams that ran concurrently on 20
 resource: docs/reports/RESEARCH_SESSIONS_2026-08-05.md
 tags: [session, index, research, bird-detection, student-scorer, wsl, multi-agent]
 timestamp: 2026-08-05T21:46:00-05:00
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Research sessions hub — 2026-08-05

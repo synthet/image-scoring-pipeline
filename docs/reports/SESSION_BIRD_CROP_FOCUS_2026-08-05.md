@@ -5,7 +5,7 @@ description: What one Claude Code session built, measured, and got wrong across 
 resource: docs/reports/SESSION_BIRD_CROP_FOCUS_2026-08-05.md
 tags: [session, research, bird-detection, focus, iqa, exif, autofocus, crop, technical-failures]
 timestamp: 2026-08-05T21:50:00-05:00
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session record — bird-crop re-sweep → focus research → algorithmic scorer

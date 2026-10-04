@@ -5,7 +5,7 @@ description: Library-wide shadow backfill of bird head keypoints (eye-pose-v0, t
 resource: docs/reports/eye-keypoint-spot-check-2026-09-27.md
 tags: [report, localization, keypoints, eye, shadow, judge-panel]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Eye keypoint backfill and spot check (2026-09-27)

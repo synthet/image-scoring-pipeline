@@ -5,7 +5,7 @@ description: Spec 03 AC-16 on the #377 cohort with the repo-verified upstream RT
 resource: docs/reports/cascade-benchmark-2026-09-27.md
 tags: [report, localization, detector, cascade, benchmark, rtmdet]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Detector cascade benchmark on upstream RTMDet weights (2026-09-27)

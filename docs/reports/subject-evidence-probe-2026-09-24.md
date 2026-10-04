@@ -5,7 +5,7 @@ description: Arm A (existing whole-frame scores) vs an Arm B probe (six subject-
 resource: docs/reports/subject-evidence-probe-2026-09-24.md
 tags: [research, culling, evidence, localization, bird-crop, clean-room]
 timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Subject-evidence probe (2026-09-24)

@@ -5,7 +5,7 @@ description: Inspection phase internals — UUID synchronisation, EXIF and XMP e
 resource: architecture/pipeline/phases/metadata.md
 tags: [pipeline, phases, metadata, exif, xmp, thumbnails]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phase: `metadata`

@@ -5,7 +5,7 @@ description: "Immutable Cursor Agent session scratch for the bird-crop close-out
 resource: docs/raw/2026-08-05-bird-crop-closeout-cursor.md
 tags: [raw, session, bird-detection, focus, labelling]
 timestamp: 2026-08-05T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session summary — bird-crop study close-out

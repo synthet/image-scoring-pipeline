@@ -5,7 +5,7 @@ description: The canonical phase codes, execution order, prerequisite DAG, execu
 resource: architecture/pipeline/phase-graph.md
 tags: [pipeline, phases, dag, prerequisites, executors]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phase graph and prerequisites

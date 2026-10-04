@@ -5,7 +5,7 @@ description: Hard-won environment, test-triage, SQL, git, and multi-agent gotcha
 resource: docs/LESSONS_LEARNED.md
 tags: [lessons, agent, wsl, testing, database, okf]
 timestamp: 2026-06-16T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Lessons Learned — image-scoring-pipeline

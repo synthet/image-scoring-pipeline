@@ -5,7 +5,7 @@ description: Status snapshot, blockers with unblock actions, a decision register
 resource: docs/specs/pipeline-streamlining/07-blockers-and-decisions.md
 tags: [specs, pipeline, localization, scoring, blockers, decisions, risks]
 timestamp: 2026-10-04T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Pipeline streamlining: blockers, decisions and suggestions

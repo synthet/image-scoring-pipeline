@@ -5,7 +5,7 @@ description: Router for wiki articles distilled from operator-local session expo
 resource: docs/reports/SESSION_TRANSCRIPT_DIGESTS.md
 tags: [session, digest, index, transcript]
 timestamp: 2026-09-27T16:55:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session transcript digests

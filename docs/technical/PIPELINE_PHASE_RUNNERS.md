@@ -5,7 +5,7 @@ description: How the phase system is wired — which phases exist, which runner 
 resource: technical/PIPELINE_PHASE_RUNNERS.md
 tags: [pipeline, phases, runners, orchestrator]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Pipeline Phases and Runners

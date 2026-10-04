@@ -25,7 +25,7 @@ description: One sentence summary.
 resource: guides/example.md
 tags: [docs, backend]
 timestamp: 2026-06-16T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Example

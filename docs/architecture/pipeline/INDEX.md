@@ -5,7 +5,7 @@ description: Entry point for the comprehensive backend pipeline documentation se
 resource: architecture/pipeline/INDEX.md
 tags: [pipeline, architecture, phases, index, okf]
 timestamp: 2026-09-08T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Pipeline architecture — index

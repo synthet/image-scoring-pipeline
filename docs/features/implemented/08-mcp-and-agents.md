@@ -5,7 +5,7 @@ description: Compact Node stdio MCP (search, dispatch, sse_status) for IDE agent
 resource: docs/features/implemented/08-mcp-and-agents.md
 tags: [mcp, agents, implemented]
 timestamp: 2026-06-20T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # MCP and agents

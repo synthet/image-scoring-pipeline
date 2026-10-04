@@ -5,7 +5,7 @@ description: What each GitHub Actions workflow enforces on a pull request, which
 resource: testing/CI_GATES.md
 tags: [docs, testing, ci, github-actions, contract, coverage, okf]
 timestamp: 2026-07-23T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # CI gates

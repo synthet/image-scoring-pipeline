@@ -5,7 +5,7 @@ description: How to fill the 236-row within-burst verdict set that unblocks the 
 resource: docs/guides/BIRD_CROP_LABELLING.md
 tags: [research, labelling, bird-detection, culling, ground-truth, runbook]
 timestamp: 2026-08-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Bird-crop study — human labelling runbook

@@ -5,7 +5,7 @@ description: Operating contract for picking, claiming, and transitioning backlog
 resource: project/00-backlog-workflow.md
 tags: [backlog, project-board, workflow, agents]
 timestamp: 2026-09-24T06:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Backlog workflow — claiming work, tracking status, keeping the queue truthful

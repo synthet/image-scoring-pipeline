@@ -5,7 +5,7 @@ description: Does a subject-localized crop beat the whole downscaled frame, per 
 resource: docs/reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md
 tags: [research, bird-detection, crop, iqa, culling, captions, species, bbox]
 timestamp: 2026-08-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Bird-bbox crop study — pinned re-sweep close-out

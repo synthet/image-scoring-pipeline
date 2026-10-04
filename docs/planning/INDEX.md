@@ -5,7 +5,7 @@ description: Index of database migrations, schema phases, refactors, and model r
 resource: docs/planning/INDEX.md
 tags: [docs, planning, index]
 timestamp: 2026-09-25T18:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Planning & migrations — index

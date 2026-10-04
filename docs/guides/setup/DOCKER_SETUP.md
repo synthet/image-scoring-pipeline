@@ -5,7 +5,7 @@ description: Install Docker Desktop / WSL tooling and run Postgres + WebUI via d
 resource: guides/setup/DOCKER_SETUP.md
 tags: [docker, setup, postgres, gpu, wsl]
 timestamp: 2026-08-14T21:10:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Docker Setup Guide
@@ -354,6 +354,6 @@ sudo groupdel docker
 ## Next Steps
 
 - [wsl-vs-docker-topology.md](wsl-vs-docker-topology.md) — Ubuntu vs docker-desktop; [disk reclaim / unregister](wsl-vs-docker-topology.md#sunsetting-ubuntu--disk-reclaim)
-- Review [docker-compose.yml](../../docker-compose.yml) for configuration options
-- See [README.md](../../README.md) for application documentation
+- Review [docker-compose.yml](../../../docker-compose.yml) for configuration options
+- See [README.md](../../../README.md) for application documentation
 - [ENVIRONMENTS.md](ENVIRONMENTS.md) — WSL venvs when not using Docker WebUI

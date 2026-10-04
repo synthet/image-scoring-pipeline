@@ -5,7 +5,7 @@ description: Clean-room plan for region-, keypoint- and mask-conditioned quality
 resource: docs/planning/subject-aware-culling-evidence.md
 tags: [planning, culling, localization, evidence, scoring, keypoints, saliency, bursts, clean-room]
 timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

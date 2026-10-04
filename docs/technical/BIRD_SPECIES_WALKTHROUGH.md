@@ -5,7 +5,7 @@ description: End-to-end flow of the bird_species phase — YOLO bird detection a
 resource: technical/BIRD_SPECIES_WALKTHROUGH.md
 tags: [technical, bird-species, bioclip, detection, pipeline]
 timestamp: 2026-07-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Bird Species Classification — Walkthrough

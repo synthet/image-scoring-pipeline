@@ -5,7 +5,7 @@ description: The four layers that decide what runs and when — JobDispatcher, P
 resource: architecture/pipeline/control-plane.md
 tags: [pipeline, dispatcher, orchestrator, autodrive, healing, planner]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Pipeline control plane

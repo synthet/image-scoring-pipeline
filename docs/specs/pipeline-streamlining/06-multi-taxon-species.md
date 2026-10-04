@@ -5,7 +5,7 @@ description: A two-level BioCLIP 2 zero-shot pass — taxon class, then species 
 resource: docs/specs/pipeline-streamlining/06-multi-taxon-species.md
 tags: [specs, species, bioclip, taxonomy, wildlife]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

@@ -4,8 +4,8 @@ title: Documentation Index
 description: Categorized map of the image-scoring-pipeline documentation bundle.
 resource: INDEX.md
 tags: [docs, index, navigation, okf]
-timestamp: 2026-09-25T18:00:00Z
-okf_version: 0.1
+timestamp: 2026-10-04T00:00:00Z
+okf_version: 0.2
 ---
 
 # Documentation Index
@@ -99,6 +99,7 @@ Full categorized index for **image-scoring-pipeline**. Prefer small linked pages
 | [technical/MULTI_MODEL_SCORING.md](technical/MULTI_MODEL_SCORING.md) | Multi-model scoring notes. |
 | [technical/WEIGHTED_SCORING_STRATEGY.md](technical/WEIGHTED_SCORING_STRATEGY.md) | Weighted scoring strategy. |
 | [reference/models/MODEL_WEIGHTS.md](reference/models/MODEL_WEIGHTS.md) | Current model weights and scoring logic. |
+| [reference/OKF_SPEC_v0.2.md](reference/OKF_SPEC_v0.2.md) | Upstream Open Knowledge Format v0.2 spec pointer. |
 | [MODEL_RECOMMENDATIONS_PIPELINES.md](MODEL_RECOMMENDATIONS_PIPELINES.md) | Canonical pipeline model roadmap (ARNIQA, DINOv2, SigLIP2, RAM++; CLIP/OpenCLIP alternate) for scoring, culling, keywords. |
 | [planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md](planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md) | Planned model stack changes. |
 | [planning/human-culling-labels.md](planning/human-culling-labels.md) | Human culling label set (#415): sampling design, label semantics, `human_labels` storage, evaluation plan and status. |

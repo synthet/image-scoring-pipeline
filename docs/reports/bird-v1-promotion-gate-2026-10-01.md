@@ -5,7 +5,7 @@ description: Production-rendition reproduction of the failure-review rescues, th
 resource: reports/bird-v1-promotion-gate-2026-10-01.md
 tags: [report, localization, bird-detection, shadow, promotion-gate]
 timestamp: 2026-10-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Bird v1 shadow-box promotion gate (2026-10-01)

@@ -4,19 +4,19 @@ title: Open Knowledge Format Adoption
 description: Local adoption plan for making docs/ an OKF-aligned, agent-readable knowledge bundle without disruptive renames.
 resource: OKF_ADOPTION.md
 tags: [docs, okf, agents, governance]
-timestamp: 2026-06-16T00:00:00Z
+timestamp: 2026-10-04T00:00:00Z
 okf_version: 0.2
 ---
 
 # Open Knowledge Format adoption
 
-This repository treats `docs/` as an **OKF-aligned knowledge bundle**: a directory of markdown concept files with small YAML frontmatter blocks, normal markdown cross-links, folder indexes, and an append-only activity log.
+This repository treats `docs/` as an **OKF v0.2–aligned knowledge bundle**: a directory of markdown concept files with small YAML frontmatter blocks, normal markdown cross-links, folder indexes, and an append-only activity log.
 
 OKF alignment is intentionally incremental. The existing documentation tree remains stable for humans, GitHub links, Cursor/Claude rules, and sibling-repo references; new and materially edited living docs should add OKF-compatible frontmatter and improve local indexes rather than perform large rename-only churn.
 
 ## Why this structure
 
-The Open Knowledge Format (OKF) blog announcement describes OKF v0.1 as a portable directory of markdown files with YAML frontmatter. It emphasizes plain markdown, plain files, queryable frontmatter fields, normal markdown links, optional `index.md`/`log.md` files, and one required concept field: `type`.
+The [Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) describes a portable directory of markdown files with YAML frontmatter. It emphasizes plain markdown, plain files, queryable frontmatter fields, normal markdown links, optional `index.md`/`log.md` files, and one required concept field: `type`. v0.2 adds **optional** trust and lifecycle signals (`sources`, `generated`, `verified`, `status`, `stale_after`, attested-computation types) without breaking v0.1 bundles.
 
 For this repo, those ideas map cleanly to the current wiki conventions:
 
@@ -50,14 +50,28 @@ okf_version: 0.2
 
 - `type`: the document category or concept kind. Consumers must tolerate unknown values, so choose clear human-readable values.
 
-### Recommended fields
+### Recommended fields (Vexlum profile)
 
 - `title`: display title used by indexes and graph views.
 - `description`: concise summary for search snippets and agent routing.
 - `resource`: repo-relative path to the page or the primary code/config artifact it describes.
 - `tags`: short lowercase tokens for filtering.
 - `timestamp`: last meaningful documentation update in ISO-8601 UTC.
-- `okf_version`: use `0.2` for pages updated under this profile (legacy pages may still read `0.1` until touched).
+- `okf_version`: `0.2` for all living concept pages in this bundle (bundle root [`INDEX.md`](INDEX.md) declares bundle target version).
+
+### Optional OKF v0.2 trust fields
+
+Adopt when a page benefits from explicit provenance or freshness (reports, audits, contract snapshots). All are optional; absence is valid.
+
+| Field | Use in this repo |
+|---|---|
+| `sources` | Structured citations (preferred over a bare `# Citations` list for new reports). Each entry may include `id`, `resource`, `title`, and optional credibility metadata per the spec. |
+| `generated` | `{ by, at }` — who/what produced the doc body (e.g. agent session, human author). |
+| `verified` | `{ by, at }` or list — human or process sign-off on claims. |
+| `status` | `draft`, `stable`, or `deprecated` (absent means stable). |
+| `stale_after` | ISO date after which consumers should treat the page as stale until refreshed. |
+
+v0.2 consumers may fall back to v0.1 forms: top-level `timestamp` (superseded by `generated.at` for new work) and body `# Citations` lists (superseded by `sources` when populated).
 
 ## Type vocabulary
 
@@ -89,36 +103,45 @@ Prefer these type values unless a page needs a more specific one:
 
 - **Do now:** add frontmatter to edited living docs, keep hubs thin, and strengthen links to canonical sources.
 - **Implemented:** automated OKF lint via `scripts/okf_lint.py` and combined `scripts/wiki_lint.py` (see [Automated lint](#automated-lint) below).
-- **Avoid:** bulk-editing archived snapshots, changing URL-stable filenames without redirects, or duplicating canonical technical content in indexes.
+- **2026-10-04:** living `docs/` concept frontmatter `okf_version` normalized to **0.2**; governance pages updated to reference OKF v0.2 spec.
+- **Avoid:** bulk-editing archived snapshots for metadata-only churn, changing URL-stable filenames without redirects, or duplicating canonical technical content in indexes.
 
 ## Official OKF reference
 
-OKF v0.1 is specified in the [Google knowledge-catalog repository](https://github.com/GoogleCloudPlatform/knowledge-catalog/):
+Canonical spec (v0.2):
 
-- [OKF SPEC v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) — conformance rules, reserved filenames, cross-linking.
-- [OKF README](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/README.md) — format goals and reference producer/consumer tooling.
+- [open-knowledge-format — SPEC.md](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) — self-contained v0.2 rules; §13 summarizes changes from v0.1.
+- [openknowledge.sh — SPEC.html](https://openknowledge.sh/wiki/SPEC.html) — pinned HTML mirror.
+- [Google Cloud blog — OKF v0.2 trust signals](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals) — overview of optional provenance fields.
+
+Mirror copy (same spec text): [knowledge-catalog/okf/SPEC.md](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+
+Local pointer (no full spec paste): [reference/OKF_SPEC_v0.2.md](reference/OKF_SPEC_v0.2.md).
 
 This repo does **not** depend on Google's `enrichment-agent` package. We adopt the spec and local lint tooling only.
 
-## Vexlum profile vs OKF v0.1
+## Vexlum profile vs OKF v0.2
 
-| Topic | OKF v0.1 spec | Vexlum local profile |
+| Topic | OKF v0.2 spec | Vexlum local profile |
 |---|---|---|
 | Required frontmatter | `type` only | `type`, `title`, `description`, `resource`, `tags`, `timestamp` (`vexlum` lint profile) |
-| Hub / index files | Lowercase `index.md`, no frontmatter | Uppercase `INDEX.md` / `README.md` with frontmatter for agent routing |
+| Hub / index files | Lowercase `index.md`, no frontmatter (except bundle-root `okf_version`) | Uppercase `INDEX.md` / `README.md` with frontmatter for agent routing |
 | `resource` field | Canonical URI for underlying asset | Repo-relative path under `docs/` (also accepts `docs/<path>` for gallery parity) |
-| `okf_version` | Optional on bundle-root `index.md` only | Recommended on materially updated concept pages |
+| `okf_version` | Optional on bundle-root `index.md` only | Declared on [`INDEX.md`](INDEX.md) and recommended on concept pages |
+| Trust / lifecycle | Optional `sources`, `generated`, `verified`, `status`, `stale_after`, … | Opt-in on reports and audits; not required for routine technical reference |
 | Activity log | Optional `log.md` | Required append-only [`log.md`](log.md); **no** frontmatter on log files |
 | Archive snapshots | Not specified | Excluded from lint via `--exclude-prefix archive/` |
 
-## Citations (OKF §8)
+## Citations and sources
 
-Reports and audits that cite external sources should add a `# Citations` section at the bottom of the page:
+**v0.2 (preferred for new reports):** populate `sources` in frontmatter and use footnote-style body references keyed by `id`.
+
+**Legacy / simple:** add a `# Citations` section at the bottom of the page:
 
 ```markdown
 # Citations
 
-[1] [OKF SPEC v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+[1] [OKF SPEC v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md)
 ```
 
 ## Automated lint
@@ -129,7 +152,7 @@ From repo root (WSL or Windows Python with PyYAML):
 # Backend docs — Vexlum profile (default); skip archived snapshots
 python scripts/okf_lint.py --profile vexlum --exclude-prefix archive/
 
-# OKF v0.1 minimal conformance (type + parseable frontmatter only)
+# OKF baseline conformance (type + parseable frontmatter; v0.1-compatible bundles pass)
 python scripts/okf_lint.py --profile minimal --exclude-prefix archive/
 
 # Sibling gallery bundle (from backend clone)
