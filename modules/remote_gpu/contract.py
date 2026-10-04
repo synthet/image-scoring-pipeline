@@ -54,7 +54,19 @@ FINGERPRINT_HEADER = "X-Config-Fingerprint"
 
 
 class RemoteGpuError(RuntimeError):
-    """The GPU runner call failed. Callers surface it; nothing falls back to the local GPU."""
+    """The GPU runner call failed; input, contract, and ambiguous errors stay visible."""
+
+
+class RemoteGpuUnavailable(RemoteGpuError):
+    """Inference was refused or ended without a result; another backend may run it."""
+
+    def __init__(self, message, *, retry_after=0.0):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class RemoteGpuAmbiguous(RemoteGpuError):
+    """Submitted inference may still be running; never replay this input elsewhere."""
 
 
 def json_default(value: Any) -> Any:

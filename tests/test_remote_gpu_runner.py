@@ -254,12 +254,12 @@ def test_busy_runner_is_retried_with_backoff(monkeypatch):
     assert http.calls == 3
 
 
-def test_connect_error_retried_once_then_fails(monkeypatch):
+def test_connect_error_retried_with_bounded_policy_then_fails(monkeypatch):
     monkeypatch.setattr(client_mod.time, "sleep", lambda _s: None)
-    http = _ScriptedHttp([httpx.ConnectError("refused"), httpx.ConnectError("refused")])
+    http = _ScriptedHttp([httpx.ConnectError("refused")] * 4)
     with pytest.raises(RemoteGpuError, match="unreachable"):
         GpuRunnerClient("http://r", TOKEN, http=http).health()
-    assert http.calls == 2
+    assert http.calls == 4
 
 
 def test_read_timeout_is_not_retried(monkeypatch):
