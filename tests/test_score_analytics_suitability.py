@@ -173,6 +173,28 @@ def test_labels_assemble_provenance_and_leakage():
     assert few.culling_source == "pick_status_unverified" and not few.culling_independent
 
 
+def test_labels_assemble_excludes_xmp_flags_written_by_auto_cull():
+    series, stack, grades, _label = _synthetic(n_clusters=40, n_solo=10)
+    m = _matrix(series, stack, grades)
+    ids = m.image_ids.tolist()
+    xmp_ps = {2: 1, 1: 0, 0: -1}
+    flagged = [i for i, g in enumerate(grades) if g in (0, 2)]
+    auto_culled, untouched = flagged[: len(flagged) // 2], flagged[len(flagged) // 2 :]
+    rows = {
+        # Auto-cull classified the first half (policy version set, even where the DB flag is now 0).
+        "pick_status": [(ids[i], 0, "2.0") for i in auto_culled],
+        "xmp": [(ids[i], None, xmp_ps[int(grades[i])], None) for i in flagged],
+    }
+    b = labels.assemble(m, rows, culling_policy="unverified")
+    src = b.audit["sources"]
+    assert src["xmp_flags_app_written"]["images"] == len(auto_culled)
+    assert src["xmp_flags_app_written"]["independent"] is False
+    idx = {iid: r for r, iid in enumerate(ids)}
+    assert all(b.culling_grades[idx[ids[i]]] in (-1, 1) for i in auto_culled)  # dropped (or neutral fill)
+    assert all(b.culling_grades[idx[ids[i]]] == grades[i] for i in untouched)
+    assert src["pick_status_unverified"]["picks"] + src["pick_status_unverified"]["rejects"] == len(untouched)
+
+
 def test_build_report_recovers_roles_on_synthetic_library():
     series, stack, grades, label = _synthetic(n_clusters=400, n_solo=800)
     m = _matrix(series, stack, grades)
