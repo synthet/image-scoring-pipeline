@@ -9,18 +9,23 @@ the returned output. One inference runs at a time.
 
 from __future__ import annotations
 
+import asyncio
+import copy
 import hmac
 import json
 import logging
 import os
 import tempfile
 import threading
+import time
 from typing import Any
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, FiniteFloat, ValidationError
 
 from modules.remote_gpu.contract import (
+    ACCESSIBILITY,
     API_VERSION,
     BIOCLIP,
     CAPTION,
@@ -46,6 +51,8 @@ from modules.remote_gpu.contract import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_BODY_MB = 256
+DEFAULT_MAX_CONCURRENCY = 4
+DEFAULT_UPLOAD_TIMEOUT_SECONDS = 60.0
 _LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 
 
@@ -168,13 +175,90 @@ def _json(status: int, payload: dict[str, Any]) -> JSONResponse:
     return JSONResponse(status_code=status, content=json.loads(json.dumps(payload, default=json_default)))
 
 
-class GuardMiddleware:
-    """Checks the bearer token and the declared body size before any body is read."""
+class _UploadRejected(Exception):
+    def __init__(self, status: int, message: str) -> None:
+        self.status = status
+        self.message = message
 
-    def __init__(self, app, *, token: str, max_body_bytes: int) -> None:
+
+class ScoringParams(BaseModel):
+    external_scores: dict[str, Any] = Field(default_factory=dict)
+
+
+class KeywordParams(BaseModel):
+    keywords: list[str] | None = None
+    threshold: FiniteFloat = Field(default=0.2, ge=0, le=1)
+    top_k: int = Field(default=5, ge=1)
+    image_embedding: list[FiniteFloat] | None = None
+
+
+class CaptionParams(BaseModel):
+    extract_embedding: bool = False
+
+
+class DetectorParams(BaseModel):
+    conf: FiniteFloat = Field(ge=0, le=1)
+    imgsz: int = Field(gt=0)
+    max_det: int = Field(gt=0)
+
+
+class SceneParams(BaseModel):
+    backend: str = Field(min_length=1)
+    prompt_set: str = Field(min_length=1)
+
+
+class BioCLIPParams(BaseModel):
+    candidate_species: list[str] = Field(default_factory=list)
+    threshold: FiniteFloat = Field(default=0.1, ge=0, le=1)
+    top_k: int = Field(default=1, ge=1)
+    region: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat] | None = None
+    use_detector: bool = True
+
+
+class AccessibilityParams(BaseModel):
+    prompts: list[str] = Field(min_length=1)
+    image_embedding: list[FiniteFloat] | None = None
+
+
+_PARAM_MODELS = {
+    SCORING: ScoringParams, KEYWORDS: KeywordParams, CAPTION: CaptionParams,
+    DETECT: DetectorParams, SCENE: SceneParams, BIOCLIP: BioCLIPParams,
+    ACCESSIBILITY: AccessibilityParams,
+}
+
+
+def parse_meta(request: Request, meta: str = Form("{}")) -> dict[str, Any]:
+    """Malformed metadata is an input error, rather than a failed inference."""
+    try:
+        params = json.loads(meta)
+    except (ValueError, RecursionError) as exc:
+        raise HTTPException(422, "meta must be a JSON object") from exc
+    if not isinstance(params, dict):
+        raise HTTPException(422, "meta must be a JSON object")
+    model = _PARAM_MODELS.get(request.url.path)
+    if model is not None:
+        try:
+            return model.model_validate(params).model_dump()
+        except ValidationError as exc:
+            detail = [{"loc": error["loc"], "msg": error["msg"]} for error in exc.errors()]
+            raise HTTPException(422, detail) from exc
+    return params
+
+
+class GuardMiddleware:
+    """Authenticate and admit requests before parsing uploads; bound streamed bytes and time."""
+
+    def __init__(self, app, *, token: str, max_body_bytes: int,
+                 max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+                 upload_timeout: float = DEFAULT_UPLOAD_TIMEOUT_SECONDS, check_config=None) -> None:
+        if max_body_bytes <= 0 or max_concurrency <= 0 or upload_timeout <= 0:
+            raise ValueError("GPU runner limits must be positive")
         self.app = app
         self._expected = f"Bearer {token}".encode() if token else None
         self._max_body = max_body_bytes
+        self._slots = threading.BoundedSemaphore(max_concurrency)
+        self._upload_timeout = upload_timeout
+        self._check_config = check_config
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope["path"] == HEALTHZ:
@@ -191,10 +275,42 @@ class GuardMiddleware:
             if declared is None:
                 await _json(411, {"error": "content-length required"})(scope, receive, send)
                 return
-            if int(declared) > self._max_body:
+            if not declared.isdigit():
+                await _json(400, {"error": "invalid content-length"})(scope, receive, send)
+                return
+            if len(declared) > 20 or int(declared) > self._max_body:
                 await _json(413, {"error": f"body exceeds {self._max_body} bytes"})(scope, receive, send)
                 return
-        await self.app(scope, receive, send)
+        if self._check_config is not None:
+            fingerprint = headers.get(FINGERPRINT_HEADER.lower().encode(), b"").decode("ascii", errors="replace")
+            error = self._check_config(scope["path"], fingerprint)
+            if error is not None:
+                await error(scope, receive, send)
+                return
+        if not self._slots.acquire(blocking=False):
+            await _json(503, {"error": "GPU runner busy"})(scope, receive, send)
+            return
+        received = 0
+        deadline = time.monotonic() + self._upload_timeout
+
+        async def bounded_receive():
+            nonlocal received
+            try:
+                message = await asyncio.wait_for(receive(), timeout=max(0, deadline - time.monotonic()))
+            except TimeoutError as exc:
+                raise _UploadRejected(408, "upload deadline exceeded") from exc
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self._max_body:
+                    raise _UploadRejected(413, f"body exceeds {self._max_body} bytes")
+            return message
+
+        try:
+            await self.app(scope, bounded_receive, send)
+        except _UploadRejected as exc:
+            await _json(exc.status, {"error": exc.message})(scope, receive, send)
+        finally:
+            self._slots.release()
 
 
 def create_app(
@@ -203,6 +319,8 @@ def create_app(
     provider: ModelProvider | None = None,
     config_loader=None,
     max_body_bytes: int = DEFAULT_MAX_BODY_MB * 1024 * 1024,
+    max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    upload_timeout: float = DEFAULT_UPLOAD_TIMEOUT_SECONDS,
 ) -> FastAPI:
     """Build the runner app. Tests inject a fake ``provider`` and ``config_loader``."""
     if config_loader is None:
@@ -210,22 +328,38 @@ def create_app(
 
         config_loader = config.load_config
     provider = provider or ModelProvider()
+    # Loaded model instances must never be paired with a newer configuration.
+    # A restart is required to apply a changed model configuration safely.
+    startup_cfg = copy.deepcopy(config_loader() or {})
     gpu_lock = threading.Lock()
     app = FastAPI(title="Vexlum GPU runner", version=str(API_VERSION))
-    app.add_middleware(GuardMiddleware, token=token, max_body_bytes=max_body_bytes)
+
+    def check_config(endpoint: str, fingerprint: str):
+        phase = ENDPOINT_PHASE.get(endpoint)
+        if phase is None:
+            return None
+        expected = phase_fingerprint(startup_cfg, phase)
+        if phase_fingerprint(config_loader() or {}, phase) != expected:
+            return _json(409, {"error": f"GPU runner config changed for {phase}; restart the runner", "phase": phase})
+        if fingerprint != expected:
+            return _json(409, {
+                "error": f"config fingerprint mismatch for phase {phase}", "phase": phase,
+                "sections": section_hashes(startup_cfg, phase),
+            })
+        return None
+
+    app.add_middleware(
+        GuardMiddleware, token=token, max_body_bytes=max_body_bytes,
+        max_concurrency=max_concurrency, upload_timeout=upload_timeout, check_config=check_config,
+    )
 
     def run(request: Request, endpoint: str, fn, *args, **kwargs):
         """Check the host's config fingerprint, then run ``fn`` under the GPU lock."""
-        phase = ENDPOINT_PHASE[endpoint]
-        cfg = config_loader() or {}
-        if request.headers.get(FINGERPRINT_HEADER) != phase_fingerprint(cfg, phase):
-            return _json(409, {
-                "error": f"config fingerprint mismatch for phase {phase}",
-                "phase": phase,
-                "sections": section_hashes(cfg, phase),
-            })
         try:
             with gpu_lock:
+                error = check_config(endpoint, request.headers.get(FINGERPRINT_HEADER, ""))
+                if error is not None:
+                    return error
                 result = fn(*args, **kwargs)
         except Exception as exc:  # noqa: BLE001 — reported to the host, which fails the image
             logger.exception("gpu_runner: %s failed", endpoint)
@@ -267,17 +401,17 @@ def create_app(
             "ok": True,
             "api_version": API_VERSION,
             "gpu": _gpu_name(),
-            "phase_sections": {phase: section_hashes(cfg, phase) for phase in PHASE_CONFIG_SECTIONS},
+            "phase_sections": {phase: section_hashes(startup_cfg, phase) for phase in PHASE_CONFIG_SECTIONS},
+            "restart_required": [phase for phase in PHASE_CONFIG_SECTIONS
+                                 if phase_fingerprint(cfg, phase) != phase_fingerprint(startup_cfg, phase)],
         })
 
     @app.get(DETECTOR_INFO)
-    def detector_info():
-        with gpu_lock:
-            return _json(200, provider.detector_info())
+    def detector_info(request: Request):
+        return run(request, DETECTOR_INFO, provider.detector_info)
 
     @app.post(SCORING)
-    def scoring(request: Request, meta: str = Form(...), file: UploadFile = File(...)):
-        params = json.loads(meta)
+    def scoring(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
 
         def score(path: str):
             return provider.scoring_host().run_all_models(
@@ -290,8 +424,7 @@ def create_app(
         return run(request, SCORING, with_temp_file(file, score))
 
     @app.post(KEYWORDS)
-    def keywords(request: Request, meta: str = Form(...), file: UploadFile = File(...)):
-        params = json.loads(meta)
+    def keywords(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
 
         def predict(path: str):
             scorer = provider.keyword_scorer()
@@ -313,8 +446,7 @@ def create_app(
         return run(request, KEYWORDS, with_temp_file(file, predict))
 
     @app.post(CAPTION)
-    def caption(request: Request, meta: str = Form(...), file: UploadFile = File(...)):
-        params = json.loads(meta)
+    def caption(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
 
         def generate(path: str):
             captioner = provider.captioner()
@@ -323,8 +455,31 @@ def create_app(
 
         return run(request, CAPTION, with_temp_file(file, generate))
 
+    @app.post(ACCESSIBILITY)
+    def accessibility(request: Request, params: dict = Depends(parse_meta), file: UploadFile | None = File(None)):
+        prompts = params.get("prompts")
+        if not isinstance(prompts, list) or not prompts or not all(isinstance(p, str) for p in prompts):
+            raise HTTPException(422, "prompts must be a nonempty list of strings")
+        image_embedding = params.get("image_embedding")
+        if image_embedding is None and file is None:
+            raise HTTPException(422, "an image file or image_embedding is required")
+
+        def rank(path=None):
+            from modules.clip_accessibility import _rank_prompts_from_image_path
+
+            scorer = provider.keyword_scorer()
+            if image_embedding is not None:
+                scorer.load_model()
+                _, cosines, embedding = scorer._score_prompts_from_embedding(image_embedding, prompts)
+                ranked = sorted(zip(prompts, cosines), key=lambda item: item[1], reverse=True)
+            else:
+                embedding, ranked = _rank_prompts_from_image_path(path, prompts, scorer=scorer)
+            return {"image_embedding": embedding, "ranked": ranked}
+
+        return run(request, ACCESSIBILITY, with_temp_file(file, rank) if image_embedding is None else rank)
+
     @app.post(EMBEDDING)
-    def embedding(request: Request, meta: str = Form("{}"), file: UploadFile = File(...)):
+    def embedding(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
         batch = decode_array(file.file.read())
 
         def predict():
@@ -333,8 +488,7 @@ def create_app(
         return run(request, EMBEDDING, predict)
 
     @app.post(DETECT)
-    def detect(request: Request, meta: str = Form(...), file: UploadFile = File(...)):
-        params = json.loads(meta)
+    def detect(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
         image = decode_png(file.file.read())
 
         def raw_boxes():
@@ -347,8 +501,7 @@ def create_app(
         return run(request, DETECT, raw_boxes)
 
     @app.post(SCENE)
-    def scene(request: Request, meta: str = Form(...), file: UploadFile = File(...)):
-        params = json.loads(meta)
+    def scene(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
         image = decode_png(file.file.read())
 
         def classify():
@@ -365,8 +518,7 @@ def create_app(
         return run(request, SCENE, classify)
 
     @app.post(BIOCLIP)
-    def bird_species(request: Request, meta: str = Form(...), file: UploadFile = File(...)):
-        params = json.loads(meta)
+    def bird_species(request: Request, params: dict = Depends(parse_meta), file: UploadFile = File(...)):
 
         def classify(path: str):
             classifier = provider.bioclip()
@@ -408,12 +560,16 @@ def main() -> None:
 
     mark_serving()
     max_body = int(os.environ.get("GPU_RUNNER_MAX_BODY_MB", str(DEFAULT_MAX_BODY_MB))) * 1024 * 1024
-    app = create_app(token=token, max_body_bytes=max_body)
+    concurrency = int(os.environ.get("GPU_RUNNER_MAX_CONCURRENCY", str(DEFAULT_MAX_CONCURRENCY)))
+    app = create_app(
+        token=token, max_body_bytes=max_body, max_concurrency=concurrency,
+        upload_timeout=float(os.environ.get("GPU_RUNNER_UPLOAD_TIMEOUT_SECONDS", str(DEFAULT_UPLOAD_TIMEOUT_SECONDS))),
+    )
     uvicorn.run(
         app,
         host=host,
         port=port,
-        limit_concurrency=int(os.environ.get("GPU_RUNNER_MAX_CONCURRENCY", "16")),
+        limit_concurrency=concurrency + 2,
         timeout_keep_alive=30,
         ssl_certfile=os.environ.get("GPU_RUNNER_SSL_CERTFILE") or None,
         ssl_keyfile=os.environ.get("GPU_RUNNER_SSL_KEYFILE") or None,

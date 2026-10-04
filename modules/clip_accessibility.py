@@ -333,8 +333,17 @@ def describe_from_clip(
 
     ranked: list[tuple[str, float]] = []
     image_emb = get_stored_clip_embedding(image_id) if image_id else None
+    if image_emb is None and not image_path:
+        return {"error": "image_id or image_path required", "alt_text": "", "extended_description": ""}
+    from modules.remote_gpu.client import phase_is_remote
 
-    if image_emb is not None:
+    if not getattr(scorer, "runs_remotely", False) and phase_is_remote("keywords"):
+        from modules.tagging import new_keyword_scorer
+
+        scorer = new_keyword_scorer()
+    if getattr(scorer, "runs_remotely", False):
+        image_emb, ranked = scorer.rank_accessibility(image_path, prompts, image_embedding=image_emb)
+    elif image_emb is not None:
         ranked = _rank_prompts_by_embedding(image_emb, prompts)
     elif image_path:
         image_emb, ranked = _rank_prompts_from_image_path(image_path, prompts, scorer=scorer)
