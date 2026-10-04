@@ -5,7 +5,7 @@ description: "Frozen evaluation protocol for the student-scorer study — splits
 resource: docs/research/STUDENT_SCORER_PROTOCOL.md
 tags: [research, student-scorer, protocol, evaluation]
 timestamp: 2026-07-29T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Student Scorer Protocol

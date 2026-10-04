@@ -5,7 +5,7 @@ description: Completion report for stage 1 of the early-localization rollout; re
 resource: reports/localization-stage1-control-plane-2026-09-22.md
 tags: [pipeline, localization, control-plane, phases, rollout, report]
 timestamp: 2026-09-22T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 # Localization rollout stage 1 — control-plane consolidation
 

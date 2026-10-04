@@ -5,7 +5,7 @@ description: Per-phase refactor that separates GPU compute from filesystem acces
 resource: docs/specs/remote-gpu-worker/04-phase-decoupling.md
 tags: [specs, remote-worker, refactor, pipeline, xmp]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

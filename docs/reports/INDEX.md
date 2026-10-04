@@ -5,7 +5,7 @@ description: Index of historical reports, research, reviews, and debugging sessi
 resource: docs/reports/INDEX.md
 tags: [docs, reports, index]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Reports — Index

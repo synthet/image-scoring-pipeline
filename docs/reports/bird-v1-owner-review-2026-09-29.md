@@ -5,7 +5,7 @@ description: Blind presence and primary-box review of a folder-balanced, stratif
 resource: reports/bird-v1-owner-review-2026-09-29.md
 tags: [report, localization, bird-detection, shadow, owner-labels, quality]
 timestamp: 2026-09-29T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Bird detector v1 shadow-rescan owner review (2026-09-29)

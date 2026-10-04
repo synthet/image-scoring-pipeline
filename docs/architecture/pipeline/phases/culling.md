@@ -5,7 +5,7 @@ description: Similarity Clustering internals — burst pre-grouping, time batchi
 resource: architecture/pipeline/phases/culling.md
 tags: [pipeline, phases, culling, clustering, stacks, embeddings]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phase: `culling`

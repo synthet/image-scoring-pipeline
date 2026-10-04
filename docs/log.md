@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-04] reorganized | OKF v0.2 documentation migration
+
+Living `docs/` concept frontmatter now declares `okf_version: 0.2`. [OKF_ADOPTION.md](OKF_ADOPTION.md) and [WIKI_SCHEMA.md](WIKI_SCHEMA.md) reference the upstream v0.2 spec (trust fields, official links). Added [reference/OKF_SPEC_v0.2.md](reference/OKF_SPEC_v0.2.md) as an upstream pointer. Agent wiki skills and `wiki_scaffold.py` default to 0.2.
+
 ## [2026-10-04] edit | Localization status records the 4,401 promotions
 
 Corrects the same-day status note: #472 step 6 did finish. 4,401 large and medium boxes under `v1_regate_rule/3` are active selections and project `bird_bbox`. The small stratum stays shadow. Follow-ups are #492 and #493. Stage 4's unmet exit gate is #527.

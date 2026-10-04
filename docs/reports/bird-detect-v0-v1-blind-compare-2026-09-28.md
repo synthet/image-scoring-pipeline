@@ -5,7 +5,7 @@ description: Owner A/B preferences on 189 divergent frames from the #377 detecto
 resource: docs/reports/bird-detect-v0-v1-blind-compare-2026-09-28.md
 tags: [report, localization, bird-detection, benchmark, v0, v1]
 timestamp: 2026-09-28T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Blind v0 vs v1 box comparison (2026-09-28)

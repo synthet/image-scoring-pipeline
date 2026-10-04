@@ -8,7 +8,7 @@ tags:
   - scoring
   - research
 timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Everypixel UGC correlation study

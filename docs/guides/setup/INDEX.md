@@ -5,7 +5,7 @@ description: "Routes setup guides: Docker and gpu-shell, host topology, GPU, Pos
 resource: guides/setup/INDEX.md
 tags: [setup, docker, wsl, gpu, index]
 timestamp: 2026-08-09T16:10:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Setup & Deployment — Index
@@ -29,7 +29,7 @@ okf_version: 0.1
 | Document | Description |
 |----------|-------------|
 | [GPU_SETUP.md](GPU_SETUP.md) | GPU setup guide (merged) |
-| [INSTALL_CUDA.md](INSTALL_CUDA.md) | CUDA installation (RTX 4060) |
+| [install_cuda.md](install_cuda.md) | CUDA installation (RTX 4060) |
 | [WSL2_TENSORFLOW_GPU_SETUP.md](WSL2_TENSORFLOW_GPU_SETUP.md) | TensorFlow GPU in WSL2 |
 
 ## WSL Environment

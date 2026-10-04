@@ -5,7 +5,7 @@ description: One orientation-baked decode per image produces the thumbnail and a
 resource: docs/specs/pipeline-streamlining/01-rendition.md
 tags: [specs, pipeline, rendition, thumbnails, raw, performance]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

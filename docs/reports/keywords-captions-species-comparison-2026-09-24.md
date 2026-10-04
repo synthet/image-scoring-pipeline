@@ -5,7 +5,7 @@ description: Production CLIP B/32 keywords, BLIP captions and BioCLIP 2 species 
 resource: docs/reports/keywords-captions-species-comparison-2026-09-24.md
 tags: [research, keywords, captions, species, clip, siglip2, florence2, bioclip, clean-room]
 timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Keyword, caption and species models (2026-09-24)

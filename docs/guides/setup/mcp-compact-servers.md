@@ -5,7 +5,7 @@ description: Unified Node stdio entrypoint, sse_status probe, resilient SSE prox
 resource: docs/guides/setup/mcp-compact-servers.md
 tags: [mcp, agents, cursor, setup, gallery-docs, cross-repo]
 timestamp: 2026-06-20T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Compact MCP servers (is-be-mcp / is-ui-mcp)

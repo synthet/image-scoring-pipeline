@@ -5,7 +5,7 @@ description: Index of operator and environment guides under docs/guides/.
 resource: docs/guides/INDEX.md
 tags: [docs, guides, index]
 timestamp: 2026-08-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Guides — index

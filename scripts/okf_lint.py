@@ -222,7 +222,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--profile",
         choices=PROFILES,
         default="vexlum",
-        help="minimal = OKF v0.1 (type only); vexlum = local agent profile (default)",
+        help="minimal = OKF baseline (type only; v0.1-compatible); vexlum = local agent profile (default)",
     )
     parser.add_argument(
         "--bundle-name",

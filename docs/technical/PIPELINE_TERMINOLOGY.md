@@ -5,7 +5,7 @@ description: Canonical mapping between user-facing stage names, DB phase_code va
 resource: technical/PIPELINE_TERMINOLOGY.md
 tags: [pipeline, terminology, phases, naming]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Pipeline terminology (Gradio, Vite UI, API, DB)
