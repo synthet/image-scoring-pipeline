@@ -4,17 +4,32 @@ title: "Pipeline streamlining: blockers, decisions and suggestions"
 description: Status snapshot, blockers with unblock actions, a decision register covering every open question in specs 01–06 and rollout stage 4, a cost model, GPU sequencing, risks and prioritised suggestions.
 resource: docs/specs/pipeline-streamlining/07-blockers-and-decisions.md
 tags: [specs, pipeline, localization, scoring, blockers, decisions, risks]
-timestamp: 2026-09-27T00:00:00Z
+timestamp: 2026-10-04T00:00:00Z
 okf_version: 0.1
 ---
 
 # Pipeline streamlining: blockers, decisions and suggestions
 
-**Issue:** #417 · **Hub:** [INDEX.md](INDEX.md) · **As of:** 2026-09-25, `master` at `0863767`
+**Issue:** #417 · **Hub:** [INDEX.md](INDEX.md) · **Original snapshot:** 2026-09-25, `master` at `0863767`
 
 This page collects what the specs leave open: blockers, decisions, numbers and risks. It
 recommends; you decide. Figures cite their source. Anything marked **estimate** is arithmetic on
 stated assumptions, not a measurement.
+
+## Update 2026-10-04
+
+The sections below are the September snapshot. These facts supersede them:
+
+| September claim | Now |
+|---|---|
+| Stage 4 questions still open on #414 | **#414 closed.** S4-1..S4-5 accepted. S4-4 and S4-5 stay as decided until repair (#345 stage 4 remainder) and #416. |
+| #399 truncate rollback open (B1) | **#399 closed.** |
+| B3 legacy import not run | **Done** 2026-09-27 (76,475 current runs). |
+| Specs 01–06 have no implementation | Partial. #412 scene route **closed** and enabled in `config.example.json`. #446 is #406 slice 1. #451 is #408 slice 1 (not adopted). #444 is stage 5 slice 1, flag off. #426 keypoints are in shadow; the issue stays open for masks. |
+| B4 five open stage-4 questions | **Done.** Replacement blockers are in the [rollout status](../../architecture/pipeline/localization-rollout.md#blockers). |
+
+#379, #415, #416, #418, #368, and gallery #176 are still open. The current ordered list of
+remaining localization work is [What is left](../../architecture/pipeline/localization-rollout.md#what-is-left).
 
 ## 1. Status snapshot
 
