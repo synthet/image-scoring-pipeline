@@ -14,10 +14,16 @@ from the same provider config is skipped (``--force`` re-runs it).
 Candidates default to bird-tagged images whose legacy ``bird_bbox`` found a bird
 (``--all-boxes`` drops the keyword gate).
 
+``--selected-by <rule>`` (#492) instead targets images with an active production selection
+(``image_localization_selections``) by that rule, and uses the *selected* region, which is
+usually not on the current localization run. The selection's run must match the decoded
+rendition; there is no re-localization in this mode.
+
 Usage (gpu-shell container, project root):
   python scripts/backfill_region_keypoints.py --folder "/mnt/d/Photos/..." --localize-missing
   python scripts/backfill_region_keypoints.py --image-ids 101,102 --localize-missing
   python scripts/backfill_region_keypoints.py --limit 200 --localize-missing --dry-run
+  python scripts/backfill_region_keypoints.py --selected-by "v1_regate_rule/3:a1c2e1f64b24cc79" --limit 20 --dry-run
 """
 from __future__ import annotations
 
@@ -58,8 +64,30 @@ WHERE r.image_id = ? AND r.detector_key = ? AND r.is_current
 """
 
 
-def fetch_candidates(folder: str, image_ids: list[int], limit: int, all_boxes: bool = False) -> list[dict]:
+_SQL_SELECTION_CANDIDATES = """
+SELECT i.id, i.file_path
+FROM image_localization_selections s
+JOIN images i ON i.id = s.image_id
+JOIN folders f ON i.folder_id = f.id
+WHERE s.selected_by = ? AND s.detector_key = ? AND s.revoked_at IS NULL
+  AND (? = '' OR f.path = ?)
+ORDER BY f.path, i.id
+"""
+
+_SQL_SELECTED_REGION = """
+SELECT r.id AS run_id, r.rendition_hash, r.coord_space, g.id AS region_id,
+       g.x1, g.y1, g.x2, g.y2
+FROM image_localization_selections s
+JOIN image_localization_runs r ON r.id = s.localization_run_id
+JOIN image_regions g ON g.id = s.region_id AND g.localization_run_id = r.id
+WHERE s.image_id = ? AND s.detector_key = ? AND s.selected_by = ? AND s.revoked_at IS NULL
+"""
+
+
+def fetch_candidates(folder: str, image_ids: list[int], limit: int, all_boxes: bool = False,
+                     selected_by: str = "") -> list[dict]:
     from modules import db
+    from modules.localization import DETECTOR_KEY
 
     conn = db.get_connector()
     if image_ids:
@@ -68,16 +96,22 @@ def fetch_candidates(folder: str, image_ids: list[int], limit: int, all_boxes: b
             row = conn.query_one("SELECT id, file_path FROM images WHERE id = ?", (iid,))
             if row:
                 rows.append(row)
+    elif selected_by:
+        rows = conn.query(_SQL_SELECTION_CANDIDATES, (selected_by, DETECTOR_KEY, folder, folder))
     else:
         rows = conn.query(_SQL_CANDIDATES, (all_boxes, folder, folder))
     return rows[:limit] if limit > 0 else rows
 
 
-def primary_region(image_id: int) -> dict | None:
+def primary_region(image_id: int, selected_by: str = "") -> dict | None:
+    """Rank-0 region of the current run, or the region actively selected by ``selected_by``."""
     from modules import db
     from modules.localization import DETECTOR_KEY
 
-    return db.get_connector().query_one(_SQL_PRIMARY_REGION, (int(image_id), DETECTOR_KEY))
+    conn = db.get_connector()
+    if selected_by:
+        return conn.query_one(_SQL_SELECTED_REGION, (int(image_id), DETECTOR_KEY, selected_by))
+    return conn.query_one(_SQL_PRIMARY_REGION, (int(image_id), DETECTOR_KEY))
 
 
 def main() -> int:
@@ -91,7 +125,12 @@ def main() -> int:
                     help="run the shadow bird detector when no current display-space run matches")
     ap.add_argument("--force", action="store_true", help="re-run regions that already have keypoints")
     ap.add_argument("--dry-run", action="store_true", help="infer but write nothing")
+    ap.add_argument("--selected-by", default="",
+                    help="use the region actively selected by this rule (image_localization_selections.selected_by)")
     a = ap.parse_args()
+    selected_by = a.selected_by.strip()
+    if selected_by and a.localize_missing:
+        ap.error("--localize-missing cannot be combined with --selected-by (selected regions are never re-localized)")
 
     from modules.keypoints import (
         get_current_keypoint_run,
@@ -124,7 +163,7 @@ def main() -> int:
         return 2
 
     ids = [int(x) for x in a.image_ids.split(",") if x.strip()]
-    rows = fetch_candidates(a.folder.strip(), ids, a.limit, a.all_boxes)
+    rows = fetch_candidates(a.folder.strip(), ids, a.limit, a.all_boxes, selected_by)
     logger.info("candidates: %d (provider %s, config %s)", len(rows), kctx.version, kctx.config_hash)
 
     counts: Counter = Counter()
@@ -138,7 +177,10 @@ def main() -> int:
             continue
         # Cheap resume: a region that already has this provider's answer is skipped without
         # decoding (its localization run was matched to the rendition when it was written).
-        cur = primary_region(image_id)
+        cur = primary_region(image_id, selected_by)
+        if selected_by and cur is None:
+            counts["no_selection"] += 1
+            continue
         if (not a.force and cur and cur.get("region_id") is not None
                 and cur.get("coord_space") == COORD_SPACE_DISPLAY
                 and is_unchanged(get_current_keypoint_run(int(cur["region_id"])), kctx.config_hash)):
@@ -151,10 +193,13 @@ def main() -> int:
             continue
         want_hash = decoded.descriptor.rendition_hash
 
-        cur = primary_region(image_id)
+        cur = primary_region(image_id, selected_by)
         matches = bool(cur) and cur.get("coord_space") == COORD_SPACE_DISPLAY \
             and cur.get("rendition_hash") == want_hash
         if not matches:
+            if selected_by:
+                counts["selection_rendition_mismatch"] += 1
+                continue
             if dctx is None or a.dry_run:
                 counts["no_matching_localization"] += 1
                 continue
