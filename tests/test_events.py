@@ -65,3 +65,13 @@ def test_websocket_connection(ws_client):
 def test_threadsafe_broadcast():
     """Ensure broadcast_threadsafe does not crash when no loop is set."""
     event_manager.broadcast_threadsafe("test_thread", {})
+
+
+def test_broadcast_does_not_debug_log_log_line_events(caplog):
+    """log_line is one event per run log line; only other event types are debug-logged."""
+    with caplog.at_level("DEBUG", logger="modules.events"):
+        asyncio.run(event_manager.broadcast("log_line", {"message": "x"}))
+        asyncio.run(event_manager.broadcast("job_progress", {}))
+    messages = [r.getMessage() for r in caplog.records]
+    assert "Broadcasting event: log_line" not in messages
+    assert "Broadcasting event: job_progress" in messages
