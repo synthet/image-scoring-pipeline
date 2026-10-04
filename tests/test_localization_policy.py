@@ -128,3 +128,91 @@ def test_explicit_ids_all_claimed_elsewhere_marks_nothing(mock_claim, mock_runni
 
     assert JobDispatcher._claim_explicit_ids(9, "localization", [1]) == []
     mock_running.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Bounded repair: repair_state
+# ---------------------------------------------------------------------------
+
+_ID = ("cfg-a", "src-1", "size-mtime-head-1")
+
+
+def _run(status="retryable_error", age=0.0, error_code="detect_error", ident=_ID):
+    cfg, src, ver = ident
+    return {"status": status, "error_code": error_code, "age_seconds": age,
+            "detector_config_hash": cfg, "source_hash": src, "source_hash_version": ver}
+
+
+def test_no_history_or_success_is_not_limited():
+    assert policy.repair_state([]) == policy.RepairState()
+    assert not policy.repair_state([_run(status="detected", error_code=None)]).blocked
+
+
+def test_backoff_one_minute_after_first_failure():
+    assert policy.repair_state([_run(age=10)]).wait_seconds == pytest.approx(50)
+    assert not policy.repair_state([_run(age=61)]).blocked
+
+
+def test_backoff_five_minutes_after_second_failure():
+    state = policy.repair_state([_run(age=100), _run(age=500)])
+    assert state.attempts == 2 and state.wait_seconds == pytest.approx(200)
+    assert not policy.repair_state([_run(age=301), _run(age=900)]).blocked
+
+
+def test_third_failure_exhausts():
+    state = policy.repair_state([_run(age=10_000)] * 3)
+    assert state.exhausted and state.blocked
+
+
+def test_success_ends_the_streak():
+    history = [_run(age=5), _run(status="no_detection", error_code=None), _run(), _run()]
+    assert policy.repair_state(history).attempts == 1
+
+
+def test_identity_change_inside_history_ends_the_streak():
+    history = [_run(), _run(ident=("cfg-old", "src-1", "size-mtime-head-1")), _run()]
+    assert policy.repair_state(history).attempts == 1
+
+
+def test_changed_next_identity_starts_over():
+    history = [_run(age=10_000)] * 3
+    assert policy.repair_state(history, _ID).exhausted
+    assert policy.repair_state(history, ("cfg-a", "src-2", "size-mtime-head-1")) == policy.RepairState()
+    assert policy.repair_state(history, ("cfg-b", "src-1", "size-mtime-head-1")) == policy.RepairState()
+
+
+def test_detector_outage_never_counts():
+    outage = _run(error_code="detector_unavailable", ident=("unavailable", None, None))
+    assert policy.repair_state([outage] * 5) == policy.RepairState()
+    # Outage rows between two real failures neither count nor break the streak.
+    assert policy.repair_state([_run(age=400), outage, outage, _run()]).attempts == 2
+
+
+# ---------------------------------------------------------------------------
+# Runner: deferral and dispatcher flag
+# ---------------------------------------------------------------------------
+
+def test_runner_defers_exhausted_and_cooling(monkeypatch):
+    from modules.localization_runner import LocalizationRunner
+
+    monkeypatch.setattr("modules.localization_runner.source_identity", lambda p: _ID[1:])
+    ctx = loc.DetectorContext(enabled=True, config_hash="cfg-a")
+
+    assert LocalizationRunner._repair_deferral([_run(age=10_000)] * 3, "/p", ctx) == "exhausted"
+    assert LocalizationRunner._repair_deferral([_run(age=5)], "/p", ctx) == "cooling_down"
+    assert LocalizationRunner._repair_deferral([_run(age=120)], "/p", ctx) is None
+    # A new detector config is a new artifact identity.
+    ctx_b = loc.DetectorContext(enabled=True, config_hash="cfg-b")
+    assert LocalizationRunner._repair_deferral([_run(age=10_000)] * 3, "/p", ctx_b) is None
+
+
+def test_runner_unreadable_file_uses_empty_source_identity(monkeypatch):
+    from modules.localization_runner import LocalizationRunner
+
+    def _missing(path):
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr("modules.localization_runner.source_identity", _missing)
+    ctx = loc.DetectorContext(enabled=True, config_hash="cfg-a")
+    history = [_run(age=10_000, ident=("cfg-a", None, None))] * 3
+    assert LocalizationRunner._repair_deferral(history, "/gone", ctx) == "exhausted"
