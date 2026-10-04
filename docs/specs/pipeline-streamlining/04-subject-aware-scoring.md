@@ -5,7 +5,7 @@ description: Scoring consumes the localized subject — technical IQA models als
 resource: docs/specs/pipeline-streamlining/04-subject-aware-scoring.md
 tags: [specs, scoring, localization, iqa, fusion, migration]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

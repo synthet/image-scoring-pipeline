@@ -10,6 +10,18 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 Added ordered remote, same-machine HTTP, and embedded inference fallback with cooldown/recovery, bounded exponential retries, explicit timeouts, and shared model-method execution. Configured fallback options and documented no-replay boundaries, detector identity checks, and host restart requirements. Paths: modules/remote_gpu/, tests/test_remote_gpu_fallback.py, tests/test_remote_gpu_resilience.py, config.example.json, docs/guides/REMOTE_GPU_RUNNER.md, docs/technical/CONFIG.md.
 
+## [2026-10-04] reorganized | OKF v0.2 documentation migration
+
+Living `docs/` concept frontmatter now declares `okf_version: 0.2`. [OKF_ADOPTION.md](OKF_ADOPTION.md) and [WIKI_SCHEMA.md](WIKI_SCHEMA.md) reference the upstream v0.2 spec (trust fields, official links). Added [reference/OKF_SPEC_v0.2.md](reference/OKF_SPEC_v0.2.md) as an upstream pointer. Agent wiki skills and `wiki_scaffold.py` default to 0.2.
+
+## [2026-10-04] edit | Localization status records the 4,401 promotions
+
+Corrects the same-day status note: #472 step 6 did finish. 4,401 large and medium boxes under `v1_regate_rule/3` are active selections and project `bird_bbox`. The small stratum stays shadow. Follow-ups are #492 and #493. Stage 4's unmet exit gate is #527.
+
+## [2026-10-04] edit | Localization rollout status brought to 2026-10-04
+
+[localization-rollout.md](architecture/pipeline/localization-rollout.md) replaces the 2026-09-25 status table. Stages 2 and 5 are no longer "import not run" / "not started": the legacy import and `use_regions` (default off) landed, and stage 4's exit gate is explicitly unmet (no repair lane, no new-image boundary). The v1 promotion gate (#469) stays failed; #472/#484/#488 are recorded as an unlogged apply. [07-blockers-and-decisions.md](specs/pipeline-streamlining/07-blockers-and-decisions.md) keeps the September snapshot and adds a delta.
+
 ## [2026-10-04] updated | GPU runner request and model boundaries
 
 Updated guides/REMOTE_GPU_RUNNER.md with streamed upload caps, admission and upload deadlines, cached-config restart requirements, scoring response validation, and remote accessibility ranking. Updated guides/INDEX.md and added tests/test_remote_gpu_hardening.py.

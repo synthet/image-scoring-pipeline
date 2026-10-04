@@ -5,7 +5,7 @@ description: Index of stable technical reference and deep-dive feature documenta
 resource: technical/INDEX.md
 tags: [technical, index, reference, okf]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Technical — Index

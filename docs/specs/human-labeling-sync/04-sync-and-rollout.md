@@ -5,7 +5,7 @@ description: The labeling_sync CLI (push-batch, pull-annotations, status), hub v
 resource: docs/specs/human-labeling-sync/04-sync-and-rollout.md
 tags: [specs, labeling, sync, previews, rollout, testing, runbook]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

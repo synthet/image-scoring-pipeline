@@ -2,10 +2,10 @@
 type: Report
 title: Misleading "Data gaps" badges on completed runs — fix
 description: Why completed single-phase auto-drive runs showed a permanent "Data gaps" badge, and the two-part fix (hash-based indexing completeness + phase-scoped post-run audit badge).
-resource: modules/db_legacy.py
+resource: reports/RUN_DATA_GAP_BADGES_FIX_2026-06-30.md
 tags: [reports, auto-drive, post-run-audit, runs, indexing, badges]
 timestamp: 2026-06-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Misleading "Data gaps" badges on completed runs

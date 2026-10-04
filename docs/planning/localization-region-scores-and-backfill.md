@@ -5,7 +5,7 @@ description: Synthesis of planned backfill for bird regions vs region IQA scores
 resource: docs/planning/localization-region-scores-and-backfill.md
 tags: [planning, localization, bird-detection, scoring, database, backfill]
 timestamp: 2026-09-23T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Region scores, bbox backfill, and parallel full-frame vs crop storage

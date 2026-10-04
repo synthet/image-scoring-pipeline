@@ -5,7 +5,7 @@ description: "Template to fill once a checkpoint clears the locked shadow gates.
 resource: docs/research/STUDENT_SCORER_MODEL_CARD.md
 tags: [research, student-scorer, model-card, template]
 timestamp: 2026-07-29T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Student Scorer Model Card (template)

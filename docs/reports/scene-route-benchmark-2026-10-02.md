@@ -5,7 +5,7 @@ description: Owner-labelled benchmark of zero-shot and probe scene classifiers o
 resource: reports/scene-route-benchmark-2026-10-02.md
 tags: [report, scene-route, localization, clip, siglip, benchmark]
 timestamp: 2026-10-02T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Scene route benchmark (2026-10-02)

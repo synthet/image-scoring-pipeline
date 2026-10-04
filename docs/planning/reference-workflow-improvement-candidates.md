@@ -5,7 +5,7 @@ description: Clean-room improvement candidates for evidence contracts, ranking, 
 resource: docs/planning/reference-workflow-improvement-candidates.md
 tags: [docs, planning, scoring, culling, evidence, clean-room]
 timestamp: 2026-09-25T18:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

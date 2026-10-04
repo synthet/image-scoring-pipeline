@@ -5,7 +5,7 @@ description: The Cursor-agent half of the 2026-08-05 bird-crop close-out — mul
 resource: docs/reports/SESSION_BIRD_CROP_CLOSEOUT_2026-08-05.md
 tags: [session, research, bird-detection, focus, labelling, multi-agent, crop, iqa]
 timestamp: 2026-08-05T21:46:47-05:00
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session record — bird-crop close-out: labelling, Track A, Arm B

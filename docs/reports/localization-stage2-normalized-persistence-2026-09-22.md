@@ -5,7 +5,7 @@ description: Completion report for stage 2; records the schema design, a read-on
 resource: reports/localization-stage2-normalized-persistence-2026-09-22.md
 tags: [pipeline, localization, bird_bbox, schema, migration, rollout, report]
 timestamp: 2026-09-22T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 # Localization rollout stage 2 — normalized persistence and compatibility reader
 

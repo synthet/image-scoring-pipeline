@@ -5,7 +5,7 @@ description: Drop the keywords→scoring prerequisite, split burst grouping from
 resource: docs/specs/pipeline-streamlining/02-phase-graph.md
 tags: [specs, pipeline, phases, dag, scoring, culling, localization]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

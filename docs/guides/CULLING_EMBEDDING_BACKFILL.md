@@ -5,7 +5,7 @@ description: Operational runbook for culling embedding backfill, sub-stack rebui
 resource: guides/CULLING_EMBEDDING_BACKFILL.md
 tags: [docs, guides, culling, embeddings, backfill, clip, okf]
 timestamp: 2026-06-21T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Backfill plan — optional culling embedding spaces

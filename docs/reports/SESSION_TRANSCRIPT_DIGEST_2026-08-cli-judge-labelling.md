@@ -5,7 +5,7 @@ description: Design facts from image-scoring-skills session exports on using ext
 resource: docs/reports/SESSION_TRANSCRIPT_DIGEST_2026-08-cli-judge-labelling.md
 tags: [session, digest, labelling, multi-agent, bird-crop, skills]
 timestamp: 2026-09-27T16:55:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Session digest — CLI agents as labelling judges (2026-08)

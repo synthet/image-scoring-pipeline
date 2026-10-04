@@ -5,7 +5,7 @@ description: Cross-repo branch audit outcome; gallery docs-only branches archive
 resource: docs/reports/BRANCH_DOCS_SALVAGE_2026-07.md
 tags: [reports, housekeeping, branch-cleanup, cross-repo]
 timestamp: 2026-07-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Branch cleanup and docs-only salvage (July 2026)

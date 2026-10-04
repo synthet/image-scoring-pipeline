@@ -51,7 +51,7 @@ python scripts/agent_skills/wiki_scaffold.py lint
 ## OKF requirements
 
 - Treat `docs/` as the repository's OKF-aligned knowledge bundle.
-- New living docs and materially edited living docs should add YAML frontmatter with at least `type`; prefer `title`, `description`, `resource`, `tags`, `timestamp`, and `okf_version: 0.1`.
+- New living docs and materially edited living docs should add YAML frontmatter with at least `type`; prefer `title`, `description`, `resource`, `tags`, `timestamp`, and `okf_version: 0.2`.
 - Use the type vocabulary in `docs/OKF_ADOPTION.md` when possible; consumers must tolerate unknown clear human-readable `type` values.
 - Avoid bulk metadata-only churn in archived or untouched docs; add OKF metadata opportunistically when content changes.
 - Validate with `wiki_scaffold.py lint` (or `python scripts/okf_lint.py --profile vexlum --exclude-prefix archive/`) before claiming wiki health.

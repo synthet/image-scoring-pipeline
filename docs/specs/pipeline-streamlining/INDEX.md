@@ -5,7 +5,7 @@ description: Implementation specs, roadmap, dependencies and shared conventions 
 resource: docs/specs/pipeline-streamlining/INDEX.md
 tags: [specs, pipeline, localization, scoring, detection, roadmap]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

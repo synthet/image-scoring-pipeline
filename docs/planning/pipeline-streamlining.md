@@ -5,7 +5,7 @@ description: Reviewed target order for the image pipeline (decode once, scene ro
 resource: docs/planning/pipeline-streamlining.md
 tags: [planning, pipeline, localization, scoring, culling, detection]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

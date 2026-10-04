@@ -5,7 +5,7 @@ description: A run from HTTP submit through planning, dispatch, execution, stage
 resource: architecture/pipeline/run-lifecycle.md
 tags: [pipeline, runs, jobs, dispatcher, lifecycle, api]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Run lifecycle
