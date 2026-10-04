@@ -5,7 +5,7 @@ description: Functional requirements (inputs, outputs, failure behaviour) for th
 resource: docs/planning/models/subject-evidence-model-roles.md
 tags: [planning, models, localization, keypoints, saliency, clean-room]
 timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

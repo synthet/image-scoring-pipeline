@@ -5,7 +5,7 @@ description: Two-arm plan to test whether crop-conditioned or paired-comparison 
 resource: docs/planning/within-burst-evidence-plan.md
 tags: [docs, planning, culling, evidence, iqa, depictqa, typesafe, bird_bbox]
 timestamp: 2026-09-21T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Within-burst evidence: no-LLM arm + DepictQA-Wild arm

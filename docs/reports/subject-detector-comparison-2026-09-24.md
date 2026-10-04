@@ -5,7 +5,7 @@ description: On the owner-labelled #377 cohort, an open COCO detector (RTMDet-ti
 resource: docs/reports/subject-detector-comparison-2026-09-24.md
 tags: [research, localization, detector, bird-detection, benchmark, clean-room]
 timestamp: 2026-09-24T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Subject detector comparison (2026-09-24)

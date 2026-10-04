@@ -66,7 +66,7 @@ def render_frontmatter(
         f"resource: {resource}",
         f"tags: [{tag_list}]",
         f"timestamp: {utc_timestamp()}",
-        "okf_version: 0.1",
+        "okf_version: 0.2",
         "---",
         "",
     ]

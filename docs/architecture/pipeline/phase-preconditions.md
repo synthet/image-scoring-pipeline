@@ -5,7 +5,7 @@ description: Every gate that decides whether phase work happens — submit-time 
 resource: architecture/pipeline/phase-preconditions.md
 tags: [pipeline, phases, preconditions, policy, gating]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phase preconditions and run decisions

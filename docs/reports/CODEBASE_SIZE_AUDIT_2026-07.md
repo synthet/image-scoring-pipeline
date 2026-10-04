@@ -5,7 +5,7 @@ description: Point-in-time LoC audit (files ≥1000, functions ≥150) for backe
 resource: docs/reports/CODEBASE_SIZE_AUDIT_2026-07.md
 tags: [docs, reports, refactoring, audit, codebase-size]
 timestamp: 2026-07-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Codebase size audit — July 2026

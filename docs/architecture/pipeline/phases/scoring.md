@@ -5,7 +5,7 @@ description: Quality Analysis internals — the three-stage worker pipeline, mod
 resource: architecture/pipeline/phases/scoring.md
 tags: [pipeline, phases, scoring, models, musiq, liqe, topiq, arniqa]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phase: `scoring`

@@ -5,7 +5,7 @@ description: A behavioural reimplementation of a reference wildlife-culling desi
 resource: docs/reports/reference-culling-shadow-scores-2026-09-25.md
 tags: [research, culling, shadow-models, score-analytics, evidence, clean-room]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Reference culling scores as shadow models (2026-09-25)

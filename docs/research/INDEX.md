@@ -5,7 +5,7 @@ description: Index of active research programs under docs/research/ — study de
 resource: docs/research/INDEX.md
 tags: [docs, research, index, student-scorer]
 timestamp: 2026-08-05T21:50:00-05:00
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Research — Index

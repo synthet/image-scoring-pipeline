@@ -5,7 +5,7 @@ description: "Can one multi-head student model replace the teacher ensemble at f
 resource: docs/research/STUDENT_SCORER_STUDY.md
 tags: [research, student-scorer, distillation, planning]
 timestamp: 2026-07-29T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Vexlum Student Scorer Study

@@ -5,7 +5,7 @@ description: "Routes setup guides: Docker and gpu-shell, host topology, GPU, Pos
 resource: guides/setup/INDEX.md
 tags: [setup, docker, wsl, gpu, index]
 timestamp: 2026-08-09T16:10:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Setup & Deployment — Index

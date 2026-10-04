@@ -5,7 +5,7 @@ description: Components, trust boundaries, data flow, image identity and failure
 resource: docs/specs/human-labeling-sync/01-architecture.md
 tags: [specs, labeling, mobile, architecture, security]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

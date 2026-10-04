@@ -5,7 +5,7 @@ description: Components, trust boundaries and data flow for a LAN GPU worker tha
 resource: docs/specs/remote-gpu-worker/01-architecture.md
 tags: [specs, remote-worker, architecture, postgres, security]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

@@ -5,7 +5,7 @@ description: A shadow localization provider that combines the bird YOLO with an 
 resource: docs/specs/pipeline-streamlining/03-detector-cascade.md
 tags: [specs, localization, detection, bird-detection, rtmdet, onnx]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

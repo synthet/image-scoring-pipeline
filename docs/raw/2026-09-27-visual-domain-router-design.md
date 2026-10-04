@@ -5,7 +5,7 @@ description: "Immutable user-provided design proposal for a multi-label visual d
 resource: docs/raw/2026-09-27-visual-domain-router-design.md
 tags: [raw, design, routing, scene, localization, evidence, macro]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Visual Domain Router and Specialist Image Analysis

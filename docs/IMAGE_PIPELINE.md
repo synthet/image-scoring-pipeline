@@ -5,7 +5,7 @@ description: Hub for ingestion, metadata, scoring, culling, keywords, embeddings
 resource: IMAGE_PIPELINE.md
 tags: [pipeline, hub, scoring, culling, keywords, raw]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Image pipeline

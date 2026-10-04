@@ -5,7 +5,7 @@ description: Live library metrics, threshold sweep, and config changes (2026-06)
 resource: docs/reports/SUBSTACK_SPLIT_AUDIT_2026-06.md
 tags: [docs, reports, culling, substacks]
 timestamp: 2026-06-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Sub-stack split + agent-cull batching audit (2026-06)

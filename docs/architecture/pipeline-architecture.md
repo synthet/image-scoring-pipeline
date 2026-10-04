@@ -5,7 +5,7 @@ description: Short summary of the backend image pipeline — phases, run model, 
 resource: architecture/pipeline-architecture.md
 tags: [pipeline, architecture, phases, runs]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Pipeline Architecture

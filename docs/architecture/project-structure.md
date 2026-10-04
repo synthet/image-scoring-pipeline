@@ -5,7 +5,7 @@ description: Repository layout for image-scoring-pipeline — entry points, modu
 resource: architecture/project-structure.md
 tags: [docs, architecture, layout, scripts, okf]
 timestamp: 2026-06-21T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Project Structure

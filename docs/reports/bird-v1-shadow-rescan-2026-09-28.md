@@ -5,7 +5,7 @@ description: Complete 35,209-image shadow rescan with bird_detect_v1, owner pres
 resource: docs/reports/bird-v1-shadow-rescan-2026-09-28.md
 tags: [report, localization, bird-detection, shadow, quality]
 timestamp: 2026-09-28T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Bird detector v1 shadow rescan (2026-09-28)

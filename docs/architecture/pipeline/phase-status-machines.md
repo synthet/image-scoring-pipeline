@@ -5,7 +5,7 @@ description: The three status vocabularies — per-image, per-run-stage, and the
 resource: architecture/pipeline/phase-status-machines.md
 tags: [pipeline, phases, state-machine, status, transitions]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phase status state machines

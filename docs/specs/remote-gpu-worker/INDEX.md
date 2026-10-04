@@ -5,7 +5,7 @@ description: Specs, milestones and decision register for running every GPU pipel
 resource: docs/specs/remote-gpu-worker/INDEX.md
 tags: [specs, remote-worker, gpu, postgres, xmp, architecture]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

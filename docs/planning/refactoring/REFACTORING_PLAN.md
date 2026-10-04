@@ -5,7 +5,7 @@ description: Modular component-based split plan for the legacy Gradio webui.py m
 resource: docs/planning/refactoring/REFACTORING_PLAN.md
 tags: [docs, planning, refactoring, webui]
 timestamp: 2026-07-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Refactoring Plan for webui.py

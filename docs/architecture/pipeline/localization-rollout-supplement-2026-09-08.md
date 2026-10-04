@@ -5,7 +5,7 @@ description: Evidence, implementation snapshot, and resolved design details supp
 resource: architecture/pipeline/localization-rollout-supplement-2026-09-08.md
 tags: [pipeline, architecture, localization, bird-detection, rollout, review]
 timestamp: 2026-09-08T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

@@ -5,7 +5,7 @@ description: Tagging phase internals — CLIP keyword scoring, BLIP captioning, 
 resource: architecture/pipeline/phases/keywords.md
 tags: [pipeline, phases, keywords, tagging, clip, blip]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phase: `keywords`
