@@ -5,7 +5,7 @@ description: "Protocol for the ~300-group human culling label set (#415): strati
 resource: docs/planning/human-culling-labels.md
 tags: [planning, culling, labels, evaluation, bursts, stacks, clean-room]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: in-progress
 ---
 

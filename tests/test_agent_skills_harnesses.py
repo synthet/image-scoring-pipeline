@@ -79,7 +79,7 @@ def test_frontmatter_contains_okf_fields(wiki_scaffold):
     )
     assert text.startswith("---\n")
     assert "type: Report" in text
-    assert "okf_version: 0.1" in text
+    assert "okf_version: 0.2" in text
     assert "resource: reports/EXAMPLE.md" in text
     assert "tags: [docs, audit]" in text
 

@@ -5,7 +5,7 @@ description: "Human review gate before any E2 ConvNeXt GPU train: P0 render cach
 resource: docs/research/STUDENT_SCORER_E2_CHECKPOINT.md
 tags: [research, student-scorer, checkpoint, training]
 timestamp: 2026-08-03T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Student scorer E2 — activity checkpoint (2026-08-03)

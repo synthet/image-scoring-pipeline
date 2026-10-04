@@ -5,7 +5,7 @@ description: Discovery phase internals — file walk, identity hashing, content 
 resource: architecture/pipeline/phases/indexing.md
 tags: [pipeline, phases, indexing, discovery, hashing]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phase: `indexing`

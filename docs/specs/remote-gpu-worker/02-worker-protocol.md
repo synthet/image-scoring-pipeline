@@ -5,7 +5,7 @@ description: Lease and fencing SQL on image_phase_work_claims, the worker gatewa
 resource: docs/specs/remote-gpu-worker/02-worker-protocol.md
 tags: [specs, remote-worker, protocol, postgres, api]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

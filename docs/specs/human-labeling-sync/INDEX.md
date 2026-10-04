@@ -5,7 +5,7 @@ description: Backend side of the Vexlum mobile labeler loop — build blind labe
 resource: docs/specs/human-labeling-sync/INDEX.md
 tags: [specs, labeling, mobile, human-labels, culling, sync, hub]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

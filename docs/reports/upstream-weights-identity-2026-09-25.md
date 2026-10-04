@@ -5,7 +5,7 @@ description: Tensor-level check that the ONNX weights used in the 2026-09-24 res
 resource: docs/reports/upstream-weights-identity-2026-09-25.md
 tags: [research, localization, detector, provenance, licence, onnx]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Upstream weight identity (2026-09-25)

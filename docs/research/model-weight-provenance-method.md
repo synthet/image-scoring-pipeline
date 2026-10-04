@@ -5,7 +5,7 @@ description: Reusable method for proving an ONNX model's weights are (or are not
 resource: docs/research/model-weight-provenance-method.md
 tags: [research, method, provenance, licence, onnx, pytorch, detector]
 timestamp: 2026-09-25T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Verifying model weight provenance

@@ -5,7 +5,7 @@ description: Compact search and dispatch workflow for is-be-mcp and is-ui-mcp, i
 resource: docs/technical/MCP_SEARCH_DISPATCH.md
 tags: [mcp, agents, api]
 timestamp: 2026-09-26T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # MCP search + dispatch contract

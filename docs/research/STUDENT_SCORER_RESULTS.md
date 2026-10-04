@@ -5,7 +5,7 @@ description: "Append-only results log keyed by run ID. Records failures and aban
 resource: docs/research/STUDENT_SCORER_RESULTS.md
 tags: [research, student-scorer, results, evaluation]
 timestamp: 2026-07-30T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Student Scorer Results

@@ -5,7 +5,7 @@ description: Where the shadow localization phase slice stands when work paused. 
 resource: docs/planning/localization-stage4-slice1-status.md
 tags: [planning, localization, bird-detection, pipeline, status]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Localization stage 4, slice 1: work status (#387)

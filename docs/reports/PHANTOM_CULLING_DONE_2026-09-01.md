@@ -5,7 +5,7 @@ description: The gallery showed no stacks for recent shoots. The auto-drive pref
 resource: docs/reports/PHANTOM_CULLING_DONE_2026-09-01.md
 tags: [culling, clustering, auto-drive, phase-status, stacks, incident, postmortem]
 timestamp: 2026-09-01T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Phantom culling `done` — folders that were never clustered

@@ -5,7 +5,7 @@ description: Where every agent asset lives (rules, commands, skills, agents, mem
 resource: ai-workflow/README.md
 tags: [docs, agents, workflow]
 timestamp: 2026-07-21T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # AI workflow & asset map

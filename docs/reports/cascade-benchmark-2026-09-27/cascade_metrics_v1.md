@@ -5,7 +5,7 @@ description: Generated tables from scripts/research/detector_benchmark/cascade_b
 resource: docs/reports/cascade-benchmark-2026-09-27/cascade_metrics_v1.md
 tags: [report, localization, detector, cascade, generated]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Cascade benchmark (#408, spec 03 AC-16)

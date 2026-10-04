@@ -4,7 +4,7 @@ title: Wiki Schema
 description: Documentation structure, naming, link, metadata, and maintenance conventions.
 resource: WIKI_SCHEMA.md
 tags: [docs, schema, okf, maintenance]
-timestamp: 2026-06-16T00:00:00Z
+timestamp: 2026-10-04T00:00:00Z
 okf_version: 0.2
 ---
 

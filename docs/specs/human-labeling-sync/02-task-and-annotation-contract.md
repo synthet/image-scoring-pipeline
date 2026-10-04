@@ -5,7 +5,7 @@ description: LabelTask and AnnotationEvent v1 as owned by the backend, per-mode 
 resource: docs/specs/human-labeling-sync/02-task-and-annotation-contract.md
 tags: [specs, labeling, mobile, contract, culling, pairwise]
 timestamp: 2026-09-27T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: proposed
 ---
 

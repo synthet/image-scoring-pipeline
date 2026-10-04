@@ -5,7 +5,7 @@ description: Zero-shot scene classification from the stored CLIP image vector, b
 resource: docs/specs/pipeline-streamlining/05-scene-route.md
 tags: [specs, pipeline, clip, scene, routing, localization]
 timestamp: 2026-10-02T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 status: in-progress
 ---
 
