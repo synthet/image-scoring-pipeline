@@ -161,6 +161,8 @@ POSTGRES_APP_TABLES = (
     "image_region_keypoints",
     # Production localization selections (#484).
     "image_localization_selections",
+    # Localization enablement boundary (#527).
+    "localization_enablement",
     # Scene route classifications (#412).
     "image_scene_labels",
 )

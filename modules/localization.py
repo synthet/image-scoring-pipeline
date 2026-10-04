@@ -109,6 +109,16 @@ def bird_detector_enabled(cfg: dict[str, Any]) -> bool:
     return bool(bird.get("enabled", True))
 
 
+def new_images_only(cfg: dict[str, Any]) -> bool:
+    """``localization.new_images_only``: planned work skips unchanged legacy images (#527)."""
+    return bool(cfg.get("new_images_only", True))
+
+
+def repair_enabled(cfg: dict[str, Any]) -> bool:
+    """``localization.repair.enabled``: bounded retry and the auto repair lane (#527)."""
+    return bool((cfg.get("repair") or {}).get("enabled", False))
+
+
 # ---------------------------------------------------------------------------
 # Detector identity (AC-13)
 # ---------------------------------------------------------------------------

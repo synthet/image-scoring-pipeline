@@ -247,8 +247,10 @@ Use flags with explicit defaults so each stage is independently deployable:
 | `typesafe.culling_shadow.enabled` | `false` | Proposed stack-scoped Jev culling experiment; no production effect. |
 
 `config.example.json` (2026-10-02) turns `localization.enabled`, `localization.detectors.bird.enabled`,
-and `scene_route.enabled` **on**. `bird_species.use_regions` stays off. `localization.repair.enabled`
-and `localization.new_images_only` are not read anywhere in code yet.
+and `scene_route.enabled` **on**. `bird_species.use_regions` stays off. `localization.new_images_only`
+is enforced on folder-scoped localization work against the `localization_enablement` boundary
+(migration 0039, #527). `localization.repair.enabled` has a reader but no effect until the
+repair slice of #527 lands.
 
 Flags are configuration controls, not provenance. Detector/model/config and crop-policy versions
 must still be persisted with artifacts. Calibration-sensitive Jev experiments pin a versioned model
@@ -623,7 +625,7 @@ unconditionally successful.
 
 Set `localization.enabled=false`. Existing normalized artifacts remain readable but no new phase
 work is planned. Disable `localization.repair.enabled` to stop queued retry admission without
-invalidating artifacts. That repair flag is design-only as of 2026-10-04; it is not read by code.
+invalidating artifacts. That repair flag has no effect until the repair slice of #527 lands.
 
 ### Status — slice 1 and M0 done; exit gate not met
 
