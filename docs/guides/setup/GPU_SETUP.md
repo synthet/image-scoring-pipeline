@@ -1,3 +1,13 @@
+---
+type: Guide
+title: GPU Setup Guide
+description: CUDA, cuDNN, and TensorFlow GPU setup for Vexlum Scoring; links to install_cuda.md for RTX 4060 steps.
+resource: guides/setup/GPU_SETUP.md
+tags: [setup, gpu, cuda, tensorflow, wsl]
+timestamp: 2026-10-04T00:00:00Z
+okf_version: 0.2
+---
+
 # GPU Setup Guide
 
 GPU-accelerated scoring for the Vexlum Scoring project using TensorFlow with CUDA support.
