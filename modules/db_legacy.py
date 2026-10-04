@@ -4970,8 +4970,8 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
     # next backlog row before it entered running (dispatcher timing). Allow terminal completion from
     # pending/queued so multi-phase bulk sync does not deadlock.
     allowed = {
-        "pending": {"queued", "running", "skipped", "canceled", "failed", "completed"},
-        "queued": {"running", "paused", "cancel_requested", "canceled", "failed", "completed"},
+        "pending": {"queued", "running", "skipped", "canceled", "cancelled", "failed", "completed"},
+        "queued": {"running", "paused", "cancel_requested", "canceled", "cancelled", "failed", "completed"},
         "running": {
             "paused",
             "completed",
@@ -4980,15 +4980,18 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
             "cancel_requested",
             "restarting",
             "canceled",
+            "cancelled",
         },
-        "paused": {"running", "restarting", "cancel_requested", "canceled"},
-        "cancel_requested": {"canceled", "failed"},
+        "paused": {"running", "restarting", "cancel_requested", "canceled", "cancelled"},
+        "cancel_requested": {"canceled", "cancelled", "failed"},
         "restarting": {"queued", "running", "failed"},
         "completed": set(),
         "failed": {"skipped", "pending", "completed"},
         "interrupted": {"running", "failed", "skipped", "pending", "queued"},
         "skipped": set(),
+        # ``cancelled`` is canonical (STATUS_VOCABULARY.md); ``canceled`` is the legacy spelling.
         "canceled": set(),
+        "cancelled": set(),
     }
     now = datetime.datetime.now()
 
