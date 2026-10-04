@@ -6,6 +6,14 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-04] edit | Localization status records the 4,401 promotions
+
+Corrects the same-day status note: #472 step 6 did finish. 4,401 large and medium boxes under `v1_regate_rule/3` are active selections and project `bird_bbox`. The small stratum stays shadow. Follow-ups are #492 and #493. Stage 4's unmet exit gate is #527.
+
+## [2026-10-04] edit | Localization rollout status brought to 2026-10-04
+
+[localization-rollout.md](architecture/pipeline/localization-rollout.md) replaces the 2026-09-25 status table. Stages 2 and 5 are no longer "import not run" / "not started": the legacy import and `use_regions` (default off) landed, and stage 4's exit gate is explicitly unmet (no repair lane, no new-image boundary). The v1 promotion gate (#469) stays failed; #472/#484/#488 are recorded as an unlogged apply. [07-blockers-and-decisions.md](specs/pipeline-streamlining/07-blockers-and-decisions.md) keeps the September snapshot and adds a delta.
+
 ## [2026-10-04] updated | GPU runner request and model boundaries
 
 Updated guides/REMOTE_GPU_RUNNER.md with streamed upload caps, admission and upload deadlines, cached-config restart requirements, scoring response validation, and remote accessibility ranking. Updated guides/INDEX.md and added tests/test_remote_gpu_hardening.py.
