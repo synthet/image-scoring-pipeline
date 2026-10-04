@@ -12,7 +12,7 @@ Compare approaches for giving coding agents repository awareness.
 
 ## Purpose
 
-Choose the lightest effective layer: CLI tools first, compact domain MCP second, graph/embedding indexes last.
+Choose the lightest effective layer: CLI tools first, compact domain MCP second, graph/embedding indexes last. When two tiers both fit, ask Jev which one to use instead of climbing to the heavier tier. Protocol: [jev-mcp](../jev-mcp/SKILL.md).
 
 ## When to use
 

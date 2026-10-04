@@ -9,7 +9,7 @@ Read-only triage for **image-scoring-pipeline** using MCP. **Do not** mutate DB/
 
 ## Preferred entry
 
-**`is-be-mcp`**: **`search(query)`** → **`dispatch(action_id, arguments)`**. Contract: [MCP_SEARCH_DISPATCH.md](../../../docs/technical/MCP_SEARCH_DISPATCH.md).
+**`is-be-mcp`**: **`search(query)`** → **`dispatch(action_id, arguments)`**. Contract: [MCP_SEARCH_DISPATCH.md](../../../docs/technical/MCP_SEARCH_DISPATCH.md). When `search` returns several plausible actions, ask **`jev-rw-systemone`** to pick one before `dispatch`. Protocol: [jev-mcp](../jev-mcp/SKILL.md).
 
 ## Server keys
 

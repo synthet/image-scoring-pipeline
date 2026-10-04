@@ -16,5 +16,6 @@ description: Vexlum Scoring MCP — compact search+dispatch on is-be-mcp / is-be
 3. Use **`action_id`** from search results (`category.tool`). Legacy bare names (e.g. `execute_sql`) resolve when registered.
 4. On **`unknown_action`**, use `details.suggestions` — do not invent ids from AGENTS.md.
 5. Maintenance / `execute_code` → **`is-be-live`** + `MCP_SSE_PROFILE=full`.
+6. When `search` returns several plausible `action_id`s, ask Jev to pick one (include a `none` option) before `dispatch`. Protocol: [`.cursor/skills/jev-mcp/SKILL.md`](../../.cursor/skills/jev-mcp/SKILL.md).
 
 See canonical skill for the full compact action table and workflows.

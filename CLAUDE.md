@@ -81,13 +81,15 @@ Compact **search + dispatch** on Cursor keys **`is-be-mcp`** (stdio) and optiona
 
 ## Agent harness (Jev)
 
-Jev (TypeSafe) makes the per-turn decisions; deterministic policy runs first and Jev only tightens it. Hooks in `.claude/settings.json` call `scripts/agent_harness/hook.py`:
+Jev (TypeSafe System One) is the decision layer. It does not write code. When a written rule does not already settle the choice, ask MCP **`jev-rw-systemone`** (`jev_system_one`) for: chunk visibility (hide / short / long / full), which tool fits, whether a subtask may leave this model, whether a command may run (allow / ask / deny), file sensitivity, and subgoal duplicates. Deterministic policy runs first and Jev only tightens it. Omit secrets from `state`. If the server is down, follow the written policy and do not invent a probability. Protocol: [`.cursor/skills/jev-mcp/SKILL.md`](.cursor/skills/jev-mcp/SKILL.md).
+
+Claude Code hooks in `.claude/settings.json` call `scripts/agent_harness/hook.py` for the same questions (Python client, not MCP). Do not ask again when a hook already answered this turn. Cursor and other agents call MCP themselves.
 
 - **`UserPromptSubmit`** — picks intent-scoped rule packs from `.cursor/rules/` (hide / short / full) and injects only new ones; **`SessionStart(compact)`** re-pins them after compaction.
 - **`PreToolUse(Bash)`** — denies secret reads, `.git/config` writes, force-push to master; asks on destructive DB/file ops; reads scripts before they run.
 - **`PreToolUse(run_subagent)`** — blocks restricted files or secret-looking text going to external reviewers.
 
-CLI: `python scripts/agent_harness/cli.py budget | check | packs | route | subgoal | bundle`. Modes per decision in `.agent/jev_harness.json`; `JEV_HARNESS_MODE=off` disables Jev calls. Doc: [`docs/technical/JEV_AGENT_HARNESS.md`](docs/technical/JEV_AGENT_HARNESS.md).
+CLI: `python scripts/agent_harness/cli.py budget | check | packs | route | subgoal | bundle`. Modes per decision in `.agent/jev_harness.json`; `JEV_HARNESS_MODE=off` disables hook calls. Doc: [`docs/technical/JEV_AGENT_HARNESS.md`](docs/technical/JEV_AGENT_HARNESS.md).
 
 ## Cross-repo (gallery)
 
