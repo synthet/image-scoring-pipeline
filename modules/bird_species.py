@@ -379,6 +379,18 @@ class BioCLIPClassifier:
             return []
 
 
+def new_bioclip_classifier():
+    """``BioCLIPClassifier``, or its GPU-runner proxy when ``gpu_runner.phases.bird_species`` is remote."""
+    from modules.remote_gpu.client import phase_is_remote
+
+    if phase_is_remote("bird_species"):
+        from modules.remote_gpu.client import ready_client
+        from modules.remote_gpu.proxies import RemoteBioCLIPClassifier
+
+        return RemoteBioCLIPClassifier(ready_client("bird_species"))
+    return BioCLIPClassifier()
+
+
 class BirdSpeciesRunner:
     """
     Runs bird species classification in a background thread.
@@ -647,8 +659,11 @@ class BirdSpeciesRunner:
 
         # Borrow the classifier's cached detector without loading BioCLIP: it is
         # resolved lazily and independently of ``load_model``.
+        from modules.remote_gpu.client import current_mode_or_none
+
+        self.classifier = current_mode_or_none(self.classifier, "bird_species", BioCLIPClassifier)
         if not self.classifier:
-            self.classifier = BioCLIPClassifier()
+            self.classifier = new_bioclip_classifier()
         detector = self.classifier._ensure_detector()
         if detector is None:
             log(
@@ -741,11 +756,14 @@ class BirdSpeciesRunner:
             Deferred until after the work partition so a batch that only needs a bird-box
             rescan never pays for the BioCLIP model load.
             """
+            from modules.remote_gpu.client import current_mode_or_none
+
+            self.classifier = current_mode_or_none(self.classifier, "bird_species", BioCLIPClassifier)
             if self.classifier:
                 return True
             try:
                 log("Loading BioCLIP 2 model (first run may take a while)...")
-                self.classifier = BioCLIPClassifier()
+                self.classifier = new_bioclip_classifier()
                 self.classifier.load_model()
                 log("Model loaded.")
                 return True

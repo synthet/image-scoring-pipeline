@@ -65,6 +65,14 @@ class ScoringRunner:
 
     def _init_shared_scorer(self, log) -> bool:
         """Lazy-load ``MultiModelHost`` (registry-driven). Returns False on fatal load failure."""
+        from modules.engines.host import MultiModelHost
+        from modules.remote_gpu.client import current_mode_or_none
+
+        if self.shared_scorer is not None and current_mode_or_none(
+            self.shared_scorer, PhaseCode.SCORING, MultiModelHost,
+        ) is None:
+            log("gpu_runner mode for scoring changed; rebuilding the scoring host.")
+            self.shared_scorer = None
         if self.shared_scorer is not None:
             log("Using injected scoring engine (no lazy model load).")
             return True
@@ -84,9 +92,17 @@ class ScoringRunner:
                 create_production_scoring_host,
                 load_production_models,
             )
+            from modules.remote_gpu.client import phase_is_remote
 
-            host = create_production_scoring_host(liqe_scorer=self.liqe_scorer)
-            ok, msg = load_production_models(host, log=log)
+            if phase_is_remote(PhaseCode.SCORING):
+                from modules.remote_gpu.proxies import create_remote_scoring_host
+
+                host = create_remote_scoring_host()
+                ok, msg = True, ""
+                log("Scoring models run on the GPU runner (gpu_runner.phases.scoring = remote).")
+            else:
+                host = create_production_scoring_host(liqe_scorer=self.liqe_scorer)
+                ok, msg = load_production_models(host, log=log)
             if not ok:
                 self._model_load_failures += 1
                 log(msg, "ERROR")
