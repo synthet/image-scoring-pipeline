@@ -54,7 +54,7 @@ Reload MCP in Cursor after every build (toggle servers off/on or restart Cursor)
 ```text
 Cursor  →  node mcp-server/dist/compactIndex.js  (stdio)
               ├─ search / dispatch / sse_status
-              ├─ Backend: Python worker (WSL + ~/.venvs/tf on Windows)
+              ├─ Backend: Python worker (image-scoring-gpu-shell on Windows; WSL ~/.venvs/tf if IS_BE_MCP_USE_WSL=1)
               ├─ Browser: Playwright MCP child (lazy spawn via npx @playwright/mcp)
               └─ Gallery: TypeScript handlers + optional SSE proxy to is-ui-live
 ```
@@ -68,9 +68,9 @@ Add SSE entries **only while** WebUI or Electron dev is running. Stdio servers p
 
 ### Backend Python bridge
 
-Node registers MCP tools; a persistent **`scripts/mcp/compact_worker.py`** child (via WSL + `~/.venvs/tf` on Windows) runs search/dispatch/sse_status using [`modules/mcp/compact_tools.py`](../../../modules/mcp/compact_tools.py). Legacy pure-Python stdio: `scripts/batch/run_mcp_proxy_wsl.bat`.
+Node registers MCP tools; a persistent **`scripts/mcp/compact_worker.py`** child runs search/dispatch/sse_status using [`modules/mcp/compact_tools.py`](../../../modules/mcp/compact_tools.py). On Windows the worker runs in **`image-scoring-gpu-shell`** (`docker compose --profile gpu-shell up -d db gpu-shell`). Ubuntu `~/.venvs/tf` is optional: set `IS_BE_MCP_USE_WSL=1`. Legacy pure-Python stdio: `scripts/batch/run_mcp_proxy_wsl.bat`.
 
-Env overrides: `IS_BE_MCP_USE_WSL`, `IS_BE_MCP_VENV_ACTIVATE`, `IS_BE_MCP_WORKER_SHELL`. Proxy allowlists: `MCP_WEBUI_PROXY_ACTION_IDS`, `MCP_WEBUI_PROXY_PREFIXES`. Playwright: `MCP_PLAYWRIGHT_ENABLED=0` to disable; `MCP_PLAYWRIGHT_PACKAGE` (default `@playwright/mcp@latest`).
+Env overrides: `IS_BE_MCP_USE_WSL`, `IS_BE_MCP_GPU_SHELL`, `IS_BE_MCP_VENV_ACTIVATE`, `IS_BE_MCP_WORKER_SHELL`. Proxy allowlists: `MCP_WEBUI_PROXY_ACTION_IDS`, `MCP_WEBUI_PROXY_PREFIXES`. Playwright: `MCP_PLAYWRIGHT_ENABLED=0` to disable; `MCP_PLAYWRIGHT_PACKAGE` (default `@playwright/mcp@latest`).
 
 ### Playwright browser actions (is-be-mcp)
 

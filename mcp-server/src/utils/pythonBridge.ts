@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,14 @@ export const PROJECT_ROOT = path.resolve(__dirname, "..", "..", "..");
 
 const WORKER_SCRIPT = path.join(PROJECT_ROOT, "scripts", "mcp", "compact_worker.py");
 const DEFAULT_VENV = "~/.venvs/tf/bin/activate";
+const DEFAULT_GPU_SHELL = "image-scoring-gpu-shell";
+
+export interface WorkerLaunch {
+    command: string;
+    args: string[];
+    mode: "custom" | "wsl" | "bash" | "gpu-shell";
+    container?: string;
+}
 
 interface PendingRequest {
     tool: string;
@@ -30,31 +38,66 @@ function windowsPathToWsl(winPath: string): string {
     return `/mnt/${drive}/${match[2]}`;
 }
 
-function shouldUseWsl(): boolean {
-    const flag = process.env.IS_BE_MCP_USE_WSL?.trim();
-    if (flag === "1") return true;
-    if (flag === "0") return false;
-    return process.platform === "win32";
-}
-
-function workerShellCommand(): { command: string; args: string[] } {
-    const custom = process.env.IS_BE_MCP_WORKER_SHELL?.trim();
+/** How the Node MCP process starts the Python compact worker. */
+export function resolveWorkerLaunch(
+    env: NodeJS.ProcessEnv = process.env,
+    platform: NodeJS.Platform = process.platform,
+): WorkerLaunch {
+    const custom = env.IS_BE_MCP_WORKER_SHELL?.trim();
     if (custom) {
-        return { command: "bash", args: ["-lc", custom] };
+        return { command: "bash", args: ["-lc", custom], mode: "custom" };
     }
 
-    const venvActivate = process.env.IS_BE_MCP_VENV_ACTIVATE?.trim() || DEFAULT_VENV;
-    const wslRoot = shouldUseWsl() ? windowsPathToWsl(PROJECT_ROOT) : PROJECT_ROOT;
-    const workerPath = shouldUseWsl()
-        ? `${wslRoot}/scripts/mcp/compact_worker.py`
-        : WORKER_SCRIPT;
+    if (platform === "win32" && env.IS_BE_MCP_USE_WSL?.trim() !== "1") {
+        const container = env.IS_BE_MCP_GPU_SHELL?.trim() || DEFAULT_GPU_SHELL;
+        return {
+            command: "docker",
+            container,
+            args: [
+                "exec",
+                "-i",
+                "-w",
+                "/app",
+                "-e",
+                "PYTHONPATH=/app",
+                "-e",
+                "ENABLE_MCP_SERVER=1",
+                "-e",
+                "MCP_TOOL_PROFILE=compact",
+                container,
+                "python",
+                "/app/scripts/mcp/compact_worker.py",
+            ],
+            mode: "gpu-shell",
+        };
+    }
 
+    const useWsl = platform === "win32" && env.IS_BE_MCP_USE_WSL?.trim() === "1";
+    const venvActivate = env.IS_BE_MCP_VENV_ACTIVATE?.trim() || DEFAULT_VENV;
+    const wslRoot = useWsl ? windowsPathToWsl(PROJECT_ROOT) : PROJECT_ROOT;
+    const workerPath = useWsl ? `${wslRoot}/scripts/mcp/compact_worker.py` : WORKER_SCRIPT;
     const inner = `cd '${wslRoot.replace(/'/g, `'\\''`)}' && export ENABLE_MCP_SERVER=1 && export MCP_TOOL_PROFILE=compact && source ${venvActivate} && python '${workerPath.replace(/'/g, `'\\''`)}'`;
 
-    if (shouldUseWsl()) {
-        return { command: "wsl", args: ["bash", "-lc", inner] };
+    if (useWsl) {
+        return { command: "wsl", args: ["bash", "-lc", inner], mode: "wsl" };
     }
-    return { command: "bash", args: ["-lc", inner] };
+    return { command: "bash", args: ["-lc", inner], mode: "bash" };
+}
+
+function workerShellCommand(): WorkerLaunch {
+    return resolveWorkerLaunch();
+}
+
+function ensureGpuShell(container: string): void {
+    const started = spawnSync("docker", ["start", container], {
+        windowsHide: true,
+        stdio: "ignore",
+    });
+    if (started.status !== 0) {
+        throw new Error(
+            `could not start ${container} for the MCP Python worker. Run: docker compose --profile gpu-shell up -d db gpu-shell`,
+        );
+    }
 }
 
 function stripRequestId(payload: Record<string, unknown>): Record<string, unknown> {
@@ -150,7 +193,11 @@ function ensureWorker(): ChildProcessWithoutNullStreams {
     buffer = "";
     writeChain = Promise.resolve();
 
-    const { command, args } = workerShellCommand();
+    const launch = workerShellCommand();
+    if (launch.mode === "gpu-shell") {
+        ensureGpuShell(launch.container || DEFAULT_GPU_SHELL);
+    }
+    const { command, args } = launch;
     worker = spawn(command, args, {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,

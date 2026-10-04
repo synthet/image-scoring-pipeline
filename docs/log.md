@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-04] updated | Compact MCP worker uses gpu-shell
+
+Windows `is-be-mcp` now starts `scripts/mcp/compact_worker.py` in `image-scoring-gpu-shell` instead of requiring Ubuntu `~/.venvs/tf`. `IS_BE_MCP_USE_WSL=1` keeps the old venv path. Guide: [guides/setup/mcp-compact-servers.md](guides/setup/mcp-compact-servers.md).
+
 ## [2026-10-04] updated | GPU runner availability fallback
 
 Added ordered remote, same-machine HTTP, and embedded inference fallback with cooldown/recovery, bounded exponential retries, explicit timeouts, and shared model-method execution. Configured fallback options and documented no-replay boundaries, detector identity checks, and host restart requirements. Paths: modules/remote_gpu/, tests/test_remote_gpu_fallback.py, tests/test_remote_gpu_resilience.py, config.example.json, docs/guides/REMOTE_GPU_RUNNER.md, docs/technical/CONFIG.md.
