@@ -224,7 +224,7 @@ Shadow localization phase ([rollout](../architecture/pipeline/localization-rollo
 |-----|---------|--------|
 | `enabled` | `false` | Registers and schedules the `localization` phase. |
 | `new_images_only` | `true` | Folder-scoped localization work keeps only images indexed at or after the `localization_enablement` boundary and images whose source changed since their current run. Unchanged legacy images need an explicit image selection (selector submit) or the legacy import. The boundary is written the first time the app starts with the phase enabled. |
-| `repair.enabled` | `false` | Bounded retry and the auto repair lane. Has a reader (`localization.repair_enabled`) but no effect until the repair slice of #527 lands. |
+| `repair.enabled` | `false` | Bounded retry and the auto repair lane. Jobs the lane submits (`localization_lane: "auto"` in the payload) are limited to 3 `retryable_error` attempts per artifact identity (detector config hash + source hash), waiting 1 min after the first and 5 min after the second; `detector_unavailable` runs never count. Explicit submits are not limited. The lane that sets the payload lands in the last #527 slice; until then this flag has no effect. |
 | `max_regions_per_class` | `10` | Regions persisted per class, ranked deterministically. |
 | `detectors.bird.enabled` | `true` | When false, every image records a `disabled` run. |
 
