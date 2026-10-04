@@ -393,6 +393,23 @@ class KeywordScorer:
             return _result([])
 
 
+#: BLIP decoding (#546). Greedy decoding with no repetition control loops on some images
+#: ("a man with dread dread dread ..."); beam search with an n-gram block stops the runaway.
+CAPTION_GENERATE_KWARGS = {"num_beams": 3, "repetition_penalty": 1.5, "no_repeat_ngram_size": 2}
+
+
+def collapse_repeated_words(caption: str) -> str:
+    """Drop immediate word repeats ("dread dread hair" -> "dread hair").
+
+    ``no_repeat_ngram_size`` still allows one adjacent repeat of a single token.
+    """
+    out: list[str] = []
+    for word in caption.split():
+        if not out or word.lower() != out[-1].lower():
+            out.append(word)
+    return " ".join(out)
+
+
 class CaptionGenerator:
     """
     Uses BLIP for image captioning.
@@ -440,8 +457,8 @@ class CaptionGenerator:
             from modules import config
             tagging_config = config.get_config_section('tagging')
             max_tokens = tagging_config.get('max_new_tokens', 50)
-            context_tokens = self.model.generate(**inputs, max_new_tokens=max_tokens)
-            caption = self.processor.decode(context_tokens[0], skip_special_tokens=True)
+            context_tokens = self.model.generate(**inputs, max_new_tokens=max_tokens, **CAPTION_GENERATE_KWARGS)
+            caption = collapse_repeated_words(self.processor.decode(context_tokens[0], skip_special_tokens=True))
 
             if extract_embedding:
                 try:
