@@ -150,6 +150,8 @@ services:
       - IMAGE_SCORING_HOST_PROJECT_WIN=${IMAGE_SCORING_HOST_PROJECT_WIN:-}
       # Optional: INSTALL_STUDENT_SCORER=1 with scripts/docker_gpu_shell_bootstrap.sh
       - INSTALL_STUDENT_SCORER=${INSTALL_STUDENT_SCORER:-0}
+      # MCP stdio workers run here; reach the WebUI's in-process MCP (is-be-live) over the compose network.
+      - IMGSCORE_WEBUI_MCP_SSE_URL=http://webui:7860/mcp/sse
     volumes:
       - .:/app
       - ${PHOTOS_BIND_SOURCE:-/mnt/d/Photos}:/mnt/d/Photos:rw
