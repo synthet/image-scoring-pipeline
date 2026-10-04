@@ -83,7 +83,7 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 | [RUNS_WALKTHROUGH.md](RUNS_WALKTHROUGH.md) | End-to-end walkthrough: submit → dispatcher → runners, pause/resume/retry/force, UI tabs |
 | [RUN_OPTIONS_MODE_MATRIX.md](RUN_OPTIONS_MODE_MATRIX.md) | New Run four options vs `run_mode`, dispatcher wiring, audit findings (2026-05-07), known gaps |
 | [MCP_DEBUGGING_TOOLS.md](MCP_DEBUGGING_TOOLS.md) | MCP server tools for Cursor |
-| [JEV_AGENT_HARNESS.md](JEV_AGENT_HARNESS.md) | Jev-driven agent harness: conditional rule packs, programmable permissions, review sensitivity, routing, subgoal dedup, shared review bundle, MCP search rerank |
+| [JEV_AGENT_HARNESS.md](JEV_AGENT_HARNESS.md) | Jev-driven agent harness: conditional rule packs, programmable permissions, review sensitivity, routing, subgoal dedup, shared review bundle, MCP search rerank; session agents ask `jev-rw-systemone` |
 
 ## Cross-project (image-scoring-gallery)
 

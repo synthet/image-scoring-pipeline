@@ -325,7 +325,12 @@ reports/gallery-visual-review/
 
 # Operator-local docs tree (gitignored; public wiki must not link here).
 docs/private/
+# Agent session transcripts. These capture pasted session content, including
+# credentials. Dated Claude exports (YYYY-MM-DD-HHMMSS-slug.txt/.md) and Codex
+# dumps stay local. The dated .md rule is root-only so docs/raw/YYYY-MM-DD-*.md
+# stays tracked.
 codex-session-*.md
-2026-??-??-*.txt
+20??-??-??-*.txt
+/20??-??-??-*.md
 models/*.onnx
 models/*.manifest.json

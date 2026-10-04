@@ -64,6 +64,7 @@ See [references/install-blocks.md](references/install-blocks.md) — Windows win
 3. Prefer documented commands from [AGENTS.md](../../../AGENTS.md) and [`.agent/COMMANDS.md`](../../../.agent/COMMANDS.md).
 4. Do not assume repo language before inspecting `requirements.txt`, `pyproject.toml`, etc.
 5. Never auto-run destructive commands — see [references/commands-requiring-confirmation.md](references/commands-requiring-confirmation.md).
+6. When that list does not already classify a command, ask Jev allow / ask / deny before running it. A written deny or ask stands; Jev may only tighten. Protocol: [jev-mcp](../jev-mcp/SKILL.md).
 
 ## Commands requiring confirmation
 

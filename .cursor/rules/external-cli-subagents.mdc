@@ -26,7 +26,7 @@ External CLI agents (Codex, Gemini, Claude) are **review and tie-breaker** tools
 
 1. `detect_subagents` before the first live run in a session.
 2. Prefer `dryRun: true` when validating setup.
-3. `run_subagent` with `mode: "review"`, `allowWrites: false`, workspace-relative `files`.
+3. `run_subagent` with `mode: "review"`, `allowWrites: false`, workspace-relative `files`. When the harness hook did not already deny the call, ask **`jev-rw-systemone`** how sensitive those files are. Restricted files stay out. Protocol: `.cursor/skills/jev-mcp/SKILL.md`. Share one `python scripts/agent_harness/cli.py bundle` across reviewers.
 4. Read `outputFile` under `.agent-runs/`; summarize with severity (blocker | high | medium | low | nit).
 
 ## Claude

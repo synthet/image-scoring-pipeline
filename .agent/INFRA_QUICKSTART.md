@@ -18,6 +18,10 @@ AI image scoring, tagging, clustering, and gallery APIs — Python backend (Fast
 - Run the **narrowest pytest** that covers your change; for broad regressions see [docs/TESTING.md](../docs/TESTING.md).
 - Prefer **WSL + `~/.venvs/tf`** for anything importing `modules.*` or touching the DB (see `.cursor/rules/python-wsl-webapp-env.mdc`).
 
+## Agent decisions
+
+Semantic choices a written rule does not settle — tool, route, permission, chunk visibility, file sensitivity — go to Jev MCP `jev-rw-systemone`. Protocol: [`.cursor/skills/jev-mcp/SKILL.md`](../.cursor/skills/jev-mcp/SKILL.md). Claude Code hooks ask the same questions via `scripts/agent_harness`; other agents call MCP.
+
 ## Architecture notes
 
 - **Postgres** is the primary DB; **Firebird** is legacy.

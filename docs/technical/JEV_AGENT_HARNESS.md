@@ -4,7 +4,7 @@ title: Jev agent harness
 description: How Claude Code / Cursor agents in both repos use Jev (TypeSafe System One) for per-turn decisions — conditional instructions, permissions, review sensitivity, routing, subgoal dedup, shared retrieval, MCP tool rerank.
 resource: docs/technical/JEV_AGENT_HARNESS.md
 tags: [agents, jev, typesafe, harness, hooks, mcp]
-timestamp: 2026-09-26T00:00:00Z
+timestamp: 2026-10-03T00:00:00Z
 okf_version: 0.2
 ---
 
@@ -64,6 +64,20 @@ free. Examples: the same script run twice, or the same review bundle.
 
 The harness is a developer tool with its own modes. It does **not** read `typesafe.enabled`, which
 gates only the pipeline and MCP-server consumers.
+
+## Session agents (Jev MCP)
+
+Claude Code hooks call Jev through `modules/typesafe` inside `scripts/agent_harness`. Cursor, Codex,
+and Antigravity do not run those hooks. Those agents ask the same questions on **`jev-rw-systemone`**
+(`jev_system_one` when several questions share a state) using
+[`.cursor/skills/jev-mcp/SKILL.md`](../../.cursor/skills/jev-mcp/SKILL.md).
+
+- One batched call per decision moment. `state` is compact and contains no secrets, tokens, or `.env` bodies.
+- Deterministic policy first. Jev may escalate allow → ask → deny, or public → restricted. It must not relax a deny or an ask.
+- A missing server, missing credential, or noul near 0.5 falls back to the written policy. Do not invent a probability.
+- Do not ask MCP again for a decision the hook already returned this turn.
+- A worker that leaves the main model gets a purpose-built brief, not the parent transcript. Restricted files stay on the main model.
+- Prefer `cli.py subgoal` and `cli.py bundle` when that CLI is available. Otherwise ask the matching noul or visibility choice over MCP before spawning or re-reading.
 
 ## Conditional instructions (visibility ladder)
 

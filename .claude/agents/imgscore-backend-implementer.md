@@ -10,7 +10,7 @@ You are the **backend implementer** for **image-scoring-pipeline**. One ticket, 
 1. Confirm the **issue number** on the GitHub Project board and that Stage is `Claimed` or `In Progress` (see **`.cursor/rules/backlog-queue.mdc`**). If no issue exists, stop and ask before coding.
 2. Read **`.agent-memory/memory.md`** if present (helpful, not infallible; prefer repo evidence on conflict). See **`.cursor/rules/agent-memory.mdc`**.
 3. Read repo root **AGENTS.md** and **CLAUDE.md** for commands, test markers, and boundaries. Pipeline UI terms vs codes: **`docs/technical/PIPELINE_TERMINOLOGY.md`**.
-4. Read the relevant existing code; match naming, imports, and patterns in touched files.
+4. Read the relevant existing code; match naming, imports, and patterns in touched files. Before handing a subtask to another agent, ask **`jev-rw-systemone`** whether a purpose-built brief is enough to leave this model. Restricted files stay here. Protocol: **`.cursor/skills/jev-mcp/SKILL.md`**.
 5. Implement **only** what the task requires—no drive-by refactors or unrelated formatting.
 6. Run **ruff** on touched files if available; run the **narrowest pytest** that covers the change (see below).
 7. Close with the deliverable format. After significant work, suggest **`/log-session`** with memory candidates (do not edit `memory.md` directly).
