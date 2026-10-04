@@ -338,6 +338,16 @@ def initialize_review_schema(cur, *, conn) -> None:
         "ON image_localization_selections (selected_by, selected_at);"
     )
 
+    # Localization enablement boundary (#527). Mirrors
+    # migrations/versions/0039_localization_enablement.py: images indexed at or after
+    # enabled_at are "new"; the row is written on first enabled use, never seeded here.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS localization_enablement (
+        detector_key  TEXT PRIMARY KEY,
+        enabled_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
     # Scene route classifications (#412). Mirrors migrations/versions/0037_image_scene_labels.py.
     cur.execute("""
     CREATE TABLE IF NOT EXISTS image_scene_labels (

@@ -216,6 +216,18 @@ Scene route ahead of localization ([spec 05](../specs/pipeline-streamlining/05-s
 | `backend` | `hf_clip_b32` | Zero-shot classifier: `hf_clip_b32`, `openclip_b32_laion`, `openclip_l14` or `siglip2_base`. The backend is part of the stored `scene_version`. |
 | `run_thresholds` | `{}` | Per-label probability at or above which the routed detector runs, e.g. `{"wildlife_bird": 0.05}`, frozen from the benchmark. A routed label without a threshold always runs its detector (fail open). |
 
+### `localization`
+
+Shadow localization phase ([rollout](../architecture/pipeline/localization-rollout.md), stage 4). Read by `modules/localization.py`; the flags below by `modules/job_dispatcher.py` and `modules/localization_policy.py` (#527).
+
+| Key | Default | Notes |
+|-----|---------|--------|
+| `enabled` | `false` | Registers and schedules the `localization` phase. |
+| `new_images_only` | `true` | Folder-scoped localization work keeps only images indexed at or after the `localization_enablement` boundary and images whose source changed since their current run. Unchanged legacy images need an explicit image selection (selector submit) or the legacy import. The boundary is written the first time the app starts with the phase enabled. |
+| `repair.enabled` | `false` | Bounded retry and the auto repair lane. Has a reader (`localization.repair_enabled`) but no effect until the repair slice of #527 lands. |
+| `max_regions_per_class` | `10` | Regions persisted per class, ranked deterministically. |
+| `detectors.bird.enabled` | `true` | When false, every image records a `disabled` run. |
+
 ### `gpu_runner`
 
 Offloads a phase's model inference to the GPU runner container on another machine ([runbook](../guides/REMOTE_GPU_RUNNER.md)). Off unless `enabled` is true; phases configured as local keep their existing behavior. Remote phases use an ordered fallback chain: configured runner, same-machine HTTP runner, then embedded inference. Availability failures can advance to the next backend; config, authentication, API contract, and ambiguous submitted-request failures remain errors.
