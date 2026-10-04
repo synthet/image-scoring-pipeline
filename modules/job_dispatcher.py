@@ -306,6 +306,8 @@ class JobDispatcher:
         scope_paths = [str(p) for p in scope_paths if p]
 
         planned = plan_phase(scope_paths, queue_key, job_id=job_id, dry_run=False)
+        if queue_key == "localization":
+            planned = self._localization_auto_scope(planned)
         claim_result = claim_image_phases(job_id, queue_key, planned)
         scoped = list(claim_result.get("claimed") or [])
         if scoped:
@@ -313,6 +315,27 @@ class JobDispatcher:
         payload = self._persist_stage_queue(job_id, payload, queue_key, scoped)
         skip_phase = len(scoped) == 0
         return payload, scoped, skip_phase
+
+    @staticmethod
+    def _localization_auto_scope(planned: list[int]) -> list[int]:
+        """Apply ``localization.new_images_only`` to planned (folder-scoped) work (#527)."""
+        from modules.localization import localization_config, new_images_only
+
+        if not new_images_only(localization_config()):
+            return planned
+        from modules.localization_policy import filter_auto_eligible
+
+        return filter_auto_eligible(planned)
+
+    @staticmethod
+    def _claim_explicit_ids(job_id: int, queue_key: str, image_ids: list[int]) -> list[int]:
+        """Claim selector-submitted IDs so duplicate submissions share one open claim (#527)."""
+        from modules.phase_work_claims import claim_image_phases, mark_claims_running
+
+        claimed = list(claim_image_phases(job_id, queue_key, image_ids).get("claimed") or [])
+        if claimed:
+            mark_claims_running(job_id, queue_key, claimed)
+        return claimed
 
     @staticmethod
     def _skip_empty_phase(job_id: int, phase_code: str) -> str:
@@ -573,6 +596,8 @@ class JobDispatcher:
             run_mode = CANONICAL_RUN_MODE
 
         explicit_ids = self._explicit_stage_resolved_ids(payload, queue_key)
+        if explicit_ids is not None and queue_key == "localization":
+            explicit_ids = self._claim_explicit_ids(job_id, queue_key, explicit_ids)
         if explicit_ids is not None:
             scoped_resolved = explicit_ids
             payload = self._persist_stage_queue(job_id, payload, queue_key, explicit_ids)

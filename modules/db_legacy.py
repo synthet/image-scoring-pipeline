@@ -11203,6 +11203,15 @@ def seed_pipeline_phases():
         logger.info("Pipeline phases seeded successfully.")
     except Exception as e:
         logger.error("Failed to seed pipeline phases: %s", e)
+    # Start the new_images_only clock when the phase is first enabled (#527), not at the
+    # first localization job, so images indexed in between still count as new.
+    if is_phase_enabled("localization"):
+        try:
+            from modules.localization_policy import ensure_enablement_boundary
+
+            ensure_enablement_boundary()
+        except Exception as e:
+            logger.error("Failed to set the localization enablement boundary: %s", e)
     # Clear cache so it's rebuilt on next access
     _phase_id_cache.clear()
 
