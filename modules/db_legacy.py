@@ -7699,7 +7699,34 @@ def get_phase_incomplete_sql(phase_code: str, table_alias: str = "") -> str:
 # Phases whose ``get_phase_incomplete_sql`` predicate cleanly inverts to "complete"
 # (work product present == phase done). bird_species is intentionally excluded — its
 # scope is bird-tagged images only and is reconciled by bird_species_eligibility tooling.
-_PHANTOM_RECONCILABLE_PHASES = ("indexing", "metadata", "scoring", "keywords", "culling")
+# localization has no incomplete predicate (a missing run is not backlog); it is reconciled
+# from its current run instead, see ``_phantom_localization_rows``.
+_PHANTOM_RECONCILABLE_PHASES = ("indexing", "metadata", "scoring", "keywords", "culling", "localization")
+
+
+def _phantom_localization_rows(scope_clause: str, scope_params: tuple, limit: int) -> list[dict]:
+    """Images whose current localization run is a terminal attempt but whose IPS lags (#527).
+
+    Only ``detected`` / ``no_detection`` / ``terminal_error`` prove the work finished. A
+    ``retryable_error`` is an attempt, not completeness, and ``disabled`` is invalidated when
+    the detector is re-enabled. Legacy-import runs (``legacy_payload`` set) were never an
+    attempt by this phase and are left alone.
+    """
+    sql = f"""
+        SELECT i.id, r.status
+        FROM images i
+        JOIN folders f ON f.id = i.folder_id
+        JOIN image_localization_runs r
+            ON r.image_id = i.id AND r.detector_key = 'bird' AND r.is_current
+        JOIN pipeline_phases pp ON LOWER(TRIM(pp.code)) = 'localization'
+        LEFT JOIN image_phase_status ips
+            ON ips.image_id = i.id AND ips.phase_id = pp.id
+        WHERE (ips.status IS NULL OR LOWER(TRIM(ips.status)) NOT IN ('done', 'skipped'))
+          AND r.status IN ('detected', 'no_detection', 'terminal_error')
+          AND r.legacy_payload IS NULL{scope_clause}
+        FETCH FIRST ? ROWS ONLY
+    """
+    return get_connector().query(sql, scope_params + (limit,)) or []
 
 
 def reconcile_phantom_complete_image_phases(
@@ -7745,6 +7772,9 @@ def reconcile_phantom_complete_image_phases(
                 "reconcile_phantom_complete_image_phases: skipping unsupported phase '%s'", code
             )
             result[code] = 0
+            continue
+        if code == "localization":
+            result[code] = _reconcile_phantom_localization(scope_clause, scope_params, lim, dry_run)
             continue
         incomplete_sql = get_phase_incomplete_sql(code, "i")
         sql = f"""
@@ -7793,6 +7823,35 @@ def reconcile_phantom_complete_image_phases(
             )
         result[code] = len(ids)
     return result
+
+
+def _reconcile_phantom_localization(scope_clause: str, scope_params: tuple, limit: int, dry_run: bool) -> int:
+    from modules.localization import LOCALIZATION_RUNNER_VERSION, PHASE_STATUS_FOR_RUN
+
+    try:
+        rows = _phantom_localization_rows(scope_clause, scope_params, limit)
+    except Exception:
+        logger.exception("reconcile_phantom_complete_image_phases: scan failed for phase 'localization'")
+        return 0
+    if not dry_run:
+        for row in rows:
+            ips = PHASE_STATUS_FOR_RUN[row["status"]]
+            kwargs: dict = {"executor_version": LOCALIZATION_RUNNER_VERSION}
+            if ips == "skipped":
+                kwargs.update(skip_reason=row["status"], skipped_by="phantom_reconcile")
+            try:
+                set_image_phase_status(row["id"], "localization", ips, **kwargs)
+            except Exception:
+                logger.debug(
+                    "reconcile_phantom_complete_image_phases: set %s failed image=%s phase=localization",
+                    ips, row["id"], exc_info=True,
+                )
+    if rows:
+        logger.info(
+            "reconcile_phantom_complete_image_phases: %s %d phantom-complete image(s) for phase 'localization'",
+            "would reconcile" if dry_run else "reconciled", len(rows),
+        )
+    return len(rows)
 
 
 def scope_has_unattempted_phase_work(scope_path: str, phase_code: str) -> bool:

@@ -140,9 +140,15 @@ def _reconcile_stale_ips_for_drive() -> None:
     # proves clustering actually ran. Including it marked 672 never-clustered images ``done``
     # in one 23-second sweep, which hid whole folders from the drive permanently — the
     # folder rollup read culling complete and the bucketer advanced past it forever.
+    #
+    # ``localization`` joins only while the phase is enabled, and only from a current
+    # terminal run (#527): a retryable error is an attempt, never proof of completion.
     try:
+        from modules.phases import is_phase_enabled
+
         db.reconcile_phantom_complete_image_phases(
-            ("indexing", "metadata", "scoring", "keywords"),
+            ("indexing", "metadata", "scoring", "keywords")
+            + (("localization",) if is_phase_enabled("localization") else ()),
             limit=5000,
         )
     except Exception:
