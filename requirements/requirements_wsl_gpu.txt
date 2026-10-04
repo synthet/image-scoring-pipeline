@@ -109,6 +109,7 @@ firebird-driver==2.0.2
 firebird-base==2.0.2
 psycopg2-binary
 pgvector
+alembic>=1.13.0,<2.0
 
 # MCP server
 mcp==1.26.0
