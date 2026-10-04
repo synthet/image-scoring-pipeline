@@ -208,9 +208,10 @@ def test_embedded_model_config_change_requires_restart():
 
 def test_fallback_logs_do_not_contain_url_credentials(caplog):
     events = []
-    route = chain([Backend("http://user:SECRET@remote:7870?token=SECRET", events, unavailable()), Backend("embedded", events)])
+    route = chain([Backend("http://user:FAKE-SECRET@remote:7870?token=FAKE-SECRET", events, unavailable()),
+                   Backend("embedded", events)])
     route.call(KEYWORDS, {}, b"image")
-    assert "SECRET" not in caplog.text
+    assert "FAKE-SECRET" not in caplog.text
     assert "user:" not in caplog.text
 
 
