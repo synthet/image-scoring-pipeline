@@ -9,6 +9,7 @@ Construction is the only branch point; see the ``new_*`` factories in each runne
 from __future__ import annotations
 
 import logging
+import math
 import os
 from typing import Any
 
@@ -17,6 +18,7 @@ from modules.bird_species import BioCLIPClassifier
 from modules.engines.host import MultiModelHost
 from modules.remote_gpu.client import GpuRunnerClient, ready_client
 from modules.remote_gpu.contract import (
+    ACCESSIBILITY,
     BIOCLIP,
     CAPTION,
     DETECT,
@@ -33,6 +35,31 @@ from modules.scene_route import PROMPT_SET_VERSION, SceneClassifier, score
 from modules.tagging import CaptionGenerator, KeywordScorer
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_scoring_result(result: dict[str, Any]) -> None:
+    """Reject corrupt output before it can be persisted as completed scoring."""
+    models, summary = result.get("models"), result.get("summary")
+    if not isinstance(models, dict) or not models or not isinstance(summary, dict):
+        raise RemoteGpuError("GPU runner returned an invalid scoring result")
+    total = summary.get("total_models")
+    if type(total) is not int or total <= 0 or total != len(models):
+        raise RemoteGpuError("GPU runner scoring result contains no models")
+    for counter in ("successful_predictions", "failed_predictions"):
+        value = summary.get(counter)
+        if type(value) is not int or not 0 <= value <= total:
+            raise RemoteGpuError(f"GPU runner scoring result has an invalid {counter}")
+    successful = 0
+    for name, payload in models.items():
+        if not isinstance(payload, dict):
+            raise RemoteGpuError(f"GPU runner scoring result has invalid model {name}")
+        if payload.get("status") == "success":
+            score_value = payload.get("normalized_score")
+            if type(score_value) not in (int, float) or not math.isfinite(score_value):
+                raise RemoteGpuError(f"GPU runner scoring result has invalid score for {name}")
+            successful += 1
+    if summary["successful_predictions"] != successful or summary["failed_predictions"] != total - successful:
+        raise RemoteGpuError("GPU runner scoring result has inconsistent prediction counts")
 
 
 def _read(path: str) -> tuple[bytes, str]:
@@ -74,6 +101,7 @@ class RemoteScoringHost(MultiModelHost):
         results = self._client.call(
             SCORING, {"external_scores": external_scores or {}}, data, filename=filename,
         )
+        _validate_scoring_result(results)
         # The runner scored a temp copy; report the host's paths, as a local run would.
         identity = self._init_result(image_path, is_raw, processing_path, [])
         results.pop("raw_conversion", None)
@@ -124,6 +152,17 @@ class RemoteKeywordScorer(KeywordScorer):
 
     def load_model(self):
         """Models live on the runner; readiness was checked when the client was built."""
+
+    def rank_accessibility(self, image_path, prompts, image_embedding=None):
+        """Run both CLIP towers remotely, including the stored-embedding path."""
+        data, filename = (None, "input.bin") if image_embedding is not None else _read(image_path)
+        out = self._client.call(
+            ACCESSIBILITY, {"prompts": list(prompts), "image_embedding": image_embedding},
+            data, filename=filename,
+        )
+        embedding = as_vector(out.get("image_embedding"))
+        ranked = [(str(prompt), float(value)) for prompt, value in out.get("ranked") or []]
+        return embedding, ranked
 
     def predict(
         self,

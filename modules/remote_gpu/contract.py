@@ -20,6 +20,7 @@ HEALTH = "/v1/health"
 DETECTOR_INFO = "/v1/detector/info"
 SCORING = "/v1/scoring/run_all_models"
 KEYWORDS = "/v1/keywords/predict"
+ACCESSIBILITY = "/v1/keywords/accessibility"
 CAPTION = "/v1/keywords/caption"
 EMBEDDING = "/v1/culling/embed"
 DETECT = "/v1/detector/raw_boxes"
@@ -40,11 +41,13 @@ PHASE_CONFIG_SECTIONS: dict[str, tuple[str, ...]] = {
 ENDPOINT_PHASE = {
     SCORING: "scoring",
     KEYWORDS: "keywords",
+    ACCESSIBILITY: "keywords",
     CAPTION: "keywords",
     EMBEDDING: "culling",
     DETECT: "localization",
     SCENE: "localization",
     BIOCLIP: "bird_species",
+    DETECTOR_INFO: "localization",
 }
 
 FINGERPRINT_HEADER = "X-Config-Fingerprint"

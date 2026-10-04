@@ -5,7 +5,7 @@ description: Run a phase's model inference in a Docker container on another PC. 
 resource: guides/REMOTE_GPU_RUNNER.md
 tags: [docs, guides, gpu, remote, docker, runner, okf]
 timestamp: 2026-10-03T00:00:00Z
-okf_version: 0.1
+okf_version: 0.2
 ---
 
 # Remote GPU runner
@@ -34,7 +34,7 @@ Each proxy in `modules/remote_gpu/proxies.py` subclasses the local model and ove
 | Phase | Local class | Remote call | Input sent |
 |---|---|---|---|
 | `scoring` | `MultiModelHost.run_all_models` | `/v1/scoring/run_all_models` | The prepared file, after host RAW conversion and `scoring.model_preprocessing` |
-| `keywords` | `KeywordScorer.predict`, `CaptionGenerator.generate` | `/v1/keywords/predict`, `/v1/keywords/caption` | The file the phase already reads (a thumbnail for RAW) |
+| `keywords` | `KeywordScorer.predict`, `CaptionGenerator.generate`, accessibility CLIP ranking | `/v1/keywords/predict`, `/v1/keywords/caption`, `/v1/keywords/accessibility` | The file the phase already reads (a thumbnail for RAW); accessibility sends the prompt bank and optionally a stored image embedding |
 | `culling` | MobileNetV2 `predict` in `ClusteringEngine` | `/v1/culling/embed` | The preprocessed float32 batch |
 | `localization` | `BirdDetector._predict_raw_boxes`; `SceneClassifier` towers when `scene_route.enabled` | `/v1/detector/raw_boxes`, `/v1/localization/scene` | The decoded rendition, as lossless PNG |
 | `bird_species` | `BioCLIPClassifier.classify` (and the bird-box rescan detector) | `/v1/bird_species/classify` | The upright decoded image, as lossless PNG |
@@ -55,7 +55,9 @@ The construction point is the only branch: `new_keyword_scorer()`, `new_caption_
 
 5. Allow TCP `7870` from the host only (Windows firewall or LAN ACL). The token travels in a header; for TLS set `GPU_RUNNER_SSL_CERTFILE` / `GPU_RUNNER_SSL_KEYFILE` in the container and use `https://` on the host.
 
-Runner environment: `GPU_RUNNER_TOKEN` (required unless bound to loopback), `GPU_RUNNER_HOST`, `GPU_RUNNER_PORT`, `GPU_RUNNER_MAX_BODY_MB` (default 256), `GPU_RUNNER_MAX_CONCURRENCY` (default 16; beyond it the runner answers 503 and the host backs off). Inference itself runs one request at a time.
+Runner environment: `GPU_RUNNER_TOKEN` (required unless bound to loopback), `GPU_RUNNER_HOST`, `GPU_RUNNER_PORT`, `GPU_RUNNER_MAX_BODY_MB` (default 256), `GPU_RUNNER_MAX_CONCURRENCY` (default 4 admitted requests; beyond it the runner answers 503 and the host backs off), and `GPU_RUNNER_UPLOAD_TIMEOUT_SECONDS` (default 60 seconds to receive the whole upload). Inference itself runs one request at a time. Authentication, declared size, config fingerprint, and admission are checked before parsing an upload; streamed bytes are also capped. `/healthz` remains available without an inference admission slot.
+
+To change these limits in Docker Compose, export the corresponding variable before starting the container. The concurrency limit includes requests waiting for inference and uploads still being received; choose it with the maximum body size and available RAM in mind.
 
 ## Configure the host
 
@@ -81,8 +83,10 @@ Phases left at `local` keep using this machine's GPU.
 ## Failure behaviour
 
 - **Runner down or config drift at batch start:** the phase fails at model load with a message naming the unreachable URL or the differing config sections. Localization records `retryable_error` / `detector_unavailable` for the batch, the same as a local weights failure.
+- **Worker model config edited after startup:** health reports the affected phases under `restart_required`; requests for those phases return HTTP 409 until the worker restarts. This prevents cached models from being advertised with newer settings. The host also rejects incompatible API versions before starting a phase.
 - **Connect error mid-batch:** retried once, since nothing reached the runner. **Read timeout:** not retried, because the runner may still be computing; that image fails.
 - **503 busy:** retried after 1, 2 and 4 seconds.
+- **Invalid upload:** malformed lengths return 400, missing lengths 411, excessive bodies 413, and upload deadlines 408. Malformed metadata returns 422. Invalid, empty, or nonfinite scoring results fail before host persistence.
 - Nothing ever falls back to the local GPU.
 
 ## Limits
@@ -93,7 +97,7 @@ Phases left at `local` keep using this machine's GPU.
 ## Verify
 
 ```powershell
-python -m pytest tests/test_remote_gpu_runner.py -q
+docker exec image-scoring-gpu-shell python -m pytest tests/test_remote_gpu_runner.py tests/test_remote_gpu_hardening.py tests/test_clip_accessibility.py -q
 ```
 
 Live check: route one folder's `scoring` to the runner and compare `image_model_scores` against a local run of the same images (they should match within float tolerance). Then run localization twice; the second run should report every image unchanged and write no new `is_current` rows.

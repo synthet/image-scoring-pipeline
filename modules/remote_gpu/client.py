@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 from modules.remote_gpu.contract import (
+    API_VERSION,
     DETECTOR_INFO,
     ENDPOINT_PHASE,
     FINGERPRINT_HEADER,
@@ -110,7 +111,10 @@ class GpuRunnerClient:
 
     def detector_info(self) -> dict[str, Any]:
         """Weights identity of the runner's bird detector (loads it on first call)."""
-        return self._send("GET", DETECTOR_INFO, timeout=DEFAULT_REQUEST_TIMEOUT_SECONDS)
+        return self._send(
+            "GET", DETECTOR_INFO, timeout=DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            headers={FINGERPRINT_HEADER: phase_fingerprint(self._config_loader(), "localization")},
+        )
 
     def call(
         self,
@@ -132,6 +136,10 @@ class GpuRunnerClient:
         Raises RemoteGpuError naming the config sections that differ.
         """
         status = self.health()
+        if status.get("api_version") != API_VERSION:
+            raise RemoteGpuError(f"GPU runner API version {status.get('api_version')!r} differs from host version {API_VERSION}")
+        if phase in (status.get("restart_required") or []):
+            raise RemoteGpuError(f"GPU runner config changed for {phase}; restart the runner")
         theirs = (status.get("phase_sections") or {}).get(phase)
         if theirs is None:
             raise RemoteGpuError(f"GPU runner at {self.base_url} does not serve phase {phase}")
@@ -188,7 +196,7 @@ def _decode(response, path: str) -> dict[str, Any]:
         body = None
     if response.status_code == 200 and isinstance(body, dict):
         return body
-    detail = body.get("error") if isinstance(body, dict) else (response.text or "")[:300]
+    detail = (body.get("error") or body.get("detail")) if isinstance(body, dict) else (response.text or "")[:300]
     raise RemoteGpuError(f"GPU runner {path} returned HTTP {response.status_code}: {detail}")
 
 
