@@ -249,8 +249,9 @@ Use flags with explicit defaults so each stage is independently deployable:
 `config.example.json` (2026-10-02) turns `localization.enabled`, `localization.detectors.bird.enabled`,
 and `scene_route.enabled` **on**. `bird_species.use_regions` stays off. `localization.new_images_only`
 is enforced on folder-scoped localization work against the `localization_enablement` boundary
-(migration 0039, #527). `localization.repair.enabled` has a reader but no effect until the
-repair slice of #527 lands.
+(migration 0039, #527). The bounded-repair limit is in the runner and is derived from run
+history (no attempt column); it applies to jobs submitted by the auto repair lane.
+`localization.repair.enabled` has no effect until that lane lands (last #527 slice).
 
 Flags are configuration controls, not provenance. Detector/model/config and crop-policy versions
 must still be persisted with artifacts. Calibration-sensitive Jev experiments pin a versioned model
@@ -625,7 +626,7 @@ unconditionally successful.
 
 Set `localization.enabled=false`. Existing normalized artifacts remain readable but no new phase
 work is planned. Disable `localization.repair.enabled` to stop queued retry admission without
-invalidating artifacts. That repair flag has no effect until the repair slice of #527 lands.
+invalidating artifacts. That repair flag has no effect until the auto repair lane (last #527 slice) lands.
 
 ### Status — slice 1 and M0 done; exit gate not met
 
