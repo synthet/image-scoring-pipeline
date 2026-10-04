@@ -274,6 +274,10 @@
   },
   "localization": {
     "enabled": true,
+    "new_images_only": true,
+    "repair": {
+      "enabled": false
+    },
     "max_regions_per_class": 10,
     "detectors": {
       "bird": {
