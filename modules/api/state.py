@@ -49,6 +49,9 @@ def _stop_runner_for_phase(phase: str) -> bool:
     if phase_norm == "localization" and _localization_runner is not None:
         _localization_runner.stop()
         return True
+    if phase_norm == "maintenance" and _maintenance_runner is not None:
+        _maintenance_runner.stop()
+        return True
     return False
 
 
@@ -125,6 +128,7 @@ def _stop_runner_for_job_row(job: dict[str, Any]) -> bool:
         "selection",
         "culling",
         "bird_species",
+        "maintenance",
     ):
         if _stop_runner_for_phase(ph):
             return True
@@ -142,6 +146,7 @@ def _join_runner_threads(per_thread_timeout: float = 2.0) -> None:
         _clustering_runner,
         _selection_runner,
         _bird_species_runner,
+        _maintenance_runner,
     ]
     for r in runners:
         if r is None:

@@ -16,6 +16,10 @@ from modules.run_log import runner_emit
 logger = logging.getLogger(__name__)
 
 
+class _MaintenanceStopped(Exception):
+    """Runner was asked to stop before the action finished."""
+
+
 class MaintenanceRunner:
     """
     Runner for 'maintenance' job type.
@@ -29,6 +33,19 @@ class MaintenanceRunner:
         self._thread = None
         self._cancel_requested = False
         self.log_history: list[str] = []
+
+    def stop(self) -> None:
+        """Ask the in-flight maintenance thread to exit. Safe to call when idle."""
+        self._cancel_requested = True
+
+    def _should_stop(self, job_id: int) -> bool:
+        if self._cancel_requested:
+            return True
+        try:
+            return bool(db.job_should_stop_processing(job_id))
+        except Exception:
+            logger.debug("Maintenance stop check failed for job %s", job_id, exc_info=True)
+            return False
 
     def _persist_job_log(self, job_id: int) -> None:
         text = "\n".join(self.log_history).strip()
@@ -185,6 +202,9 @@ class MaintenanceRunner:
                 self._persist_job_log(job_id)
                 return
 
+            if self._should_stop(job_id):
+                raise _MaintenanceStopped()
+
             runner_emit(self.log_history, job_id, f"Maintenance action {action} completed.", phase="maintenance")
             terminal_log = "\n".join(self.log_history).strip()
             db.update_job_status(job_id, "completed", log=terminal_log)
@@ -197,6 +217,11 @@ class MaintenanceRunner:
                 input_path,
             )
 
+        except _MaintenanceStopped:
+            logger.info("Maintenance job %s stopped before completion", job_id)
+            runner_emit(self.log_history, job_id, "Maintenance stopped before completion.", phase="maintenance")
+            self._mark_cancelled_if_still_running(job_id)
+            self._persist_job_log(job_id)
         except Exception as e:
             logger.exception("MaintenanceRunner failed (job_id=%s, label=%r)", job_id, job.get("input_path"))
             runner_emit(self.log_history, job_id, f"Maintenance failed: {e}", "ERROR", phase="maintenance")
@@ -207,6 +232,20 @@ class MaintenanceRunner:
             self._persist_job_log(job_id)
         finally:
             self.is_running = False
+
+    def _mark_cancelled_if_still_running(self, job_id: int) -> None:
+        """Leave a status the cancel API already set. Only close a row still marked running."""
+        try:
+            row = db.get_job(job_id) or {}
+            status = (row.get("status") or "").strip().lower()
+        except Exception:
+            logger.debug("Maintenance cancel status read failed for job %s", job_id, exc_info=True)
+            return
+        if status != "running":
+            return
+        terminal_log = "\n".join(self.log_history).strip() or "Maintenance canceled"
+        db.update_job_status(job_id, "cancelled", log=terminal_log)
+        db.set_job_phase_state(job_id, "maintenance", "cancelled")
 
     def _action_reconcile(self, job_id: int, payload: dict[str, Any]):
         limit = payload.get("limit", 5000)
@@ -257,12 +296,17 @@ class MaintenanceRunner:
         repair_stats = thumbnail_maintenance.repair_thumbnail_paths_batch(limit=repair_limit, repair_all_pairs=repair_all)
         runner_emit(self.log_history, job_id, f"Repair results: {repair_stats['repaired']} updated, {repair_stats['scanned']} scanned.", phase="maintenance")
         db.update_job_progress(job_id, 50)
-        
-        if self._cancel_requested:
-            return
+
+        if self._should_stop(job_id):
+            raise _MaintenanceStopped()
 
         runner_emit(self.log_history, job_id, f"Regenerating missing rasters (limit={regen_limit})...", phase="maintenance")
-        regen_stats = thumbnail_maintenance.regenerate_missing_thumbnails_batch(limit=regen_limit)
+        regen_stats = thumbnail_maintenance.regenerate_missing_thumbnails_batch(
+            limit=regen_limit,
+            should_stop=lambda: self._should_stop(job_id),
+        )
+        if self._should_stop(job_id):
+            raise _MaintenanceStopped()
         runner_emit(self.log_history, job_id, f"Regenerate results: {regen_stats['regenerated']} OK, {regen_stats['failed']} failed.", phase="maintenance")
         db.update_job_progress(job_id, 100)
 
