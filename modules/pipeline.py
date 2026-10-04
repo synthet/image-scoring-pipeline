@@ -552,8 +552,9 @@ class ScoringWorker(PipelineWorker):
         except Exception as e:
             logger.warning("Preprocess failed, using original path: %s", e)
         
-        # Check/Run LIQE if missing (host runs LIQE via LiqeModelWrapper when active)
-        if "liqe" not in external and not self._host_runs_liqe():
+        # Registry hosts own model selection, including a deliberately disabled LIQE.
+        # The legacy fallback would load a local GPU model even for a remote host.
+        if "liqe" not in external and not self._scorer_is_registry_host():
             try:
                 path = external.get("_liqe_preprocess_path") or job.process_path
                 liqe_result = self._get_liqe_scorer().predict(path)

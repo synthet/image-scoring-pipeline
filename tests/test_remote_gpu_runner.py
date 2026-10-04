@@ -116,13 +116,15 @@ class FakeScoringHost:
     def run_all_models(self, image_path, external_scores=None, logger=print, write_metadata=True):
         self.seen.append({"external_scores": external_scores, "write_metadata": write_metadata,
                           "bytes": open(image_path, "rb").read()})
+        # MultiModelHost merges model dictionaries, never transport/preprocessing scalars.
+        models = {"spaq": {"status": "success", "normalized_score": 0.61, "score": 61.0},
+                  **{name: value for name, value in (external_scores or {}).items() if isinstance(value, dict)}}
         return {
             "version": "fake-1",
             "image_path": image_path,
             "image_name": os.path.basename(image_path),
-            "models": {"spaq": {"status": "success", "normalized_score": 0.61, "score": 61.0},
-                       **(external_scores or {})},
-            "summary": {"total_models": 1, "successful_predictions": 1, "failed_predictions": 0,
+            "models": models,
+            "summary": {"total_models": len(models), "successful_predictions": len(models), "failed_predictions": 0,
                         "weighted_scores": {"general": 0.61}, "average_normalized_score": 0.61},
         }
 
