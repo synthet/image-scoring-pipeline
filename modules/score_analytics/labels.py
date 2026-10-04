@@ -12,6 +12,7 @@ Verified against the current schema / writers (see docs/technical/DB_SCHEMA.md):
 * ``image_xmp.pick_status`` / ``image_xmp.rating`` — sidecar values; may be
   user-set, but the app also writes rating / label / pick into XMP
   (``modules/xmp.py``). **Unverified**; flagged when they mirror score-derived values.
+  Pick flags on images the auto-cull classified are excluded — it writes them to XMP.
 * ``images.rating`` — derived from the general composite
   (``score_normalization.score_to_rating``). **Never ground truth.**
 
@@ -160,12 +161,19 @@ def assemble(
         if r is not None and decision in DECISION_GRADE:
             manual[r] = DECISION_GRADE[decision]
             manual_times.append(created)
-    policy_flags, unverified_flags = {}, {}
+    policy_flags, unverified_flags, policy_ids = {}, {}, set()
     for iid, ps, policy_version in rows.get("pick_status", []):
+        if policy_version:
+            policy_ids.add(int(iid))
         if ps is None or int(ps) == 0:
             continue
         (policy_flags if policy_version else unverified_flags)[int(iid)] = int(ps)
+    # The auto-cull writes XMP pick/reject for every image it classifies
+    # (selection.write_selection_metadata), so a sidecar flag on such an image is
+    # score-derived — often from an older fusion — not an independent label.
     xmp_flags = {int(r[0]): int(r[2]) for r in rows.get("xmp", []) if r[2] not in (None, 0)}
+    xmp_app_written = {iid for iid in xmp_flags if iid in policy_ids}
+    xmp_flags = {iid: ps for iid, ps in xmp_flags.items() if iid not in xmp_app_written}
     unverified = _grades_from_flags(m, {**xmp_flags, **unverified_flags})
     policy = _grades_from_flags(m, policy_flags)
 
@@ -174,7 +182,8 @@ def assemble(
         "pick_status_unverified": (
             unverified,
             False,
-            "images.pick_status without cull_policy_version, plus image_xmp.pick_status (origin unknown)",
+            "images.pick_status without cull_policy_version, plus image_xmp.pick_status on images the "
+            "auto-cull never classified (origin unknown)",
         ),
         "pick_status_auto_policy": (
             policy,
@@ -191,6 +200,11 @@ def assemble(
             "rejects": int((g == 0).sum()),
             "decisive_clusters": _labelled_clusters(m, g),
         }
+    audit["sources"]["xmp_flags_app_written"] = {
+        "description": "image_xmp.pick_status on images classified by the auto-cull — excluded (score-derived)",
+        "independent": False,
+        "images": len(xmp_app_written),
+    }
     if manual_times:
         audit["sources"]["culling_manual"]["first"] = str(min(manual_times))
         audit["sources"]["culling_manual"]["last"] = str(max(manual_times))
