@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-05] updated | Windows-native ONNX model conversion feasibility
+
+Expanded the ONNX feasibility matrix across production and roadmap models, distinguished exportability from runtime and score parity, documented CUDA/DirectML/WinML choices, and recommended a staged conversion order backed by current primary sources.
+
 ## [2026-10-04] edit | Localization stage 4 remainder in review (#527)
 
 [localization-rollout.md](architecture/pipeline/localization-rollout.md) stage 4 status and the consolidated table now point at the four #527 PRs: `new_images_only` + `localization_enablement` boundary (migration 0039), bounded repair from run history, phantom reconciliation from the current terminal run, and the dispatcher-idle repair lane (`modules/localization_lane.py`). [technical/CONFIG.md](technical/CONFIG.md) gains a `localization` section; [technical/DB_SCHEMA.md](technical/DB_SCHEMA.md) a `localization_enablement` row. The exit gate is recorded as met only after merge and one live lane cycle.
