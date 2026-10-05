@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-05] edit | Windows-native plan refreshed; ONNX matrix corrections
+
+[planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md](planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md) is rewritten for the Postgres era. It records the current state: the launcher and setup script still assume Firebird, `launch.py` probes Firebird regardless of `database.engine`, the Windows `.venv` lacks `open_clip`/`timm`/`transformers`, and TF 2.15 needs Python 3.10–3.11. It adds per-model native-Windows GPU status (only MUSIQ and MobileNetV2 are TF/CPU-only) and options A–D, recommending a native host + GPU runner. ONNX verdicts, runtime choice and conversion order are deferred to [ONNX_CONVERSION_FEASIBILITY.md](planning/models/ONNX_CONVERSION_FEASIBILITY.md). That matrix is corrected: MobileNetV2 is TF Keras in `modules/clustering.py`; the OpenCLIP L/14, DINOv2 and SigLIP2 culling spaces are implemented and opt-in, not roadmap; an eye-pose YOLO row is added.
+
 ## [2026-10-05] updated | Windows-native ONNX model conversion feasibility
 
 Expanded the ONNX feasibility matrix across production and roadmap models, distinguished exportability from runtime and score parity, documented CUDA/DirectML/WinML choices, and recommended a staged conversion order backed by current primary sources.
