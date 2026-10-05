@@ -86,7 +86,7 @@ Related research (reports): [CLIP_MODELS_CULLING_SCORING_2026-05-23.md](../repor
 
 | Document | Description |
 |----------|-------------|
-| [WINDOWS_NATIVE_WEBUI_PLAN.md](setup/WINDOWS_NATIVE_WEBUI_PLAN.md) | Plan: Run Gradio WebUI natively on Windows (no WSL) |
+| [WINDOWS_NATIVE_WEBUI_PLAN.md](setup/WINDOWS_NATIVE_WEBUI_PLAN.md) | Plan: Windows-native host (Postgres-era), per-model native GPU / ONNX status, GPU runner option |
 
 ## Documentation (wiki)
 
