@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-05] corrected | Localization live config and lane gate (#527)
+
+The live `config.json` already has `localization.enabled: true` and `localization.repair.enabled: true`, correcting the entry below. The WebUI and dispatcher are running, but the live library has no images after the enablement boundary and no current retryable runs. The stage 4 gate still waits for one lane cycle with eligible images; see [localization-rollout.md](architecture/pipeline/localization-rollout.md).
+
 ## [2026-10-05] edit | Localization stage 4 exit-gate code merged; S4-4 kept (#527)
 
 [localization-rollout.md](architecture/pipeline/localization-rollout.md) now records #558–#561 as merged (slices #538–#541). The stage 4 exit gate waits only on one live lane cycle, which is an operator step because the live `config.json` has no `localization` section. Decision S4-4 was revisited now that the repair lane exists and is kept: a job with retryable per-image failures stays `completed`. The same note is added to the S4-4 row of the [decision register](specs/pipeline-streamlining/07-blockers-and-decisions.md).

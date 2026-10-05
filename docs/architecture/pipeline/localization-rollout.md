@@ -46,7 +46,7 @@ than this table, this table wins.
 | 1. Control plane | **Done** (#346 and follow-ups). `localization` is a real phase after `metadata`. | **#368** delegated parent/child lifecycle. **#407** attempt-before edge and burst/picks split, not started. | Spec 02 adds **attempt-before** for `localization` → `scoring`. |
 | 2. Normalized persistence | **Done.** Legacy import 2026-09-27: 76,475 current runs. Reader exists; `localization.read_normalized_first` stays off, so `bird_bbox` is still the production read. | Mask artifacts and a second keypoint pass (#426). | Region-linked keypoints landed in shadow (migration 0036, eye-pose backfill, [spot check](../../reports/eye-keypoint-spot-check-2026-09-27.md)). |
 | 3. Rendition and crops | **Code complete** (#375). Detector benchmark done (#377). Default weights are `bird_detect_v1.pt` (#462), still `imgsz=640`. | Shared decode-once for every phase (#406). Slice 1 cache/pruner landed (#446). Portrait RAW thumbnails still reach CLIP/BLIP/MobileNet unrotated (#418). | One ~2048 px inference rendition for every phase (spec 01), not only localization. |
-| 4. Shadow localization | **Slice 1 + M0 done** (#395, #414). Decisions S4-1..S4-5 accepted. Example config turns the phase and the bird detector **on**. **Exit-gate code merged** (#527, slices #538–#541): new-images-only boundary (#558), bounded repair (#559), phantom reconciliation (#560), repair lane (#561). | Turn `localization.repair.enabled` on in the live config and watch one lane cycle before calling the exit gate met. Cascade is code (#451) but not the production detector (#408 still open). | YOLO → COCO-animal → small-box refine is a shadow provider. Primary-region choice is still a proposal on #408. Scene route can skip detection (#412, closed). |
+| 4. Shadow localization | **Slice 1 + M0 done** (#395, #414). Decisions S4-1..S4-5 accepted. Example config turns the phase and the bird detector **on**. **Exit-gate code merged** (#527, slices #538–#541): new-images-only boundary (#558), bounded repair (#559), phantom reconciliation (#560), repair lane (#561). | The live config has `localization.repair.enabled: true`; watch one lane cycle with eligible images before calling the exit gate met. Cascade is code (#451) but not the production detector (#408 still open). | YOLO → COCO-animal → small-box refine is a shadow provider. Primary-region choice is still a proposal on #408. Scene route can skip detection (#412, closed). |
 | 5. BioCLIP on regions | **Slice 1 in code, off** (#444). `bird_species.use_regions` defaults false. One folder: 283/283 top-1 matched the legacy path, about 33% faster. | Do not flip the flag on this one folder. Abstention and list gaps (#422). Taxa beyond birds (#413). Multi-region classification flag is still design-only. | Legacy boxes are imported, not recomputed, before any species refresh. |
 | 6. Crop / fusion | **Not started.** | #409 (crop score storage + fusion), #423 (evidence JSONL), #415 (~300 labelled bursts). | Region IQA is scoring design, gated on those bursts, not a global crop switch. Captions, accessibility, and Jev stay shadow. |
 | 7. Repair and backfill | **Split.** Legacy import is done (stage 2). v1 rescan of 35,209 legacy misses is done and stays shadow unless a selection says otherwise. Bounded repair and the dispatcher-idle repair lane are merged as stage 4 work (#559, #561). | Live lane cycle (stage 4). Crop-score backfill waits on #409. `scripts/backfill_bird_bbox.py` still writes the JSON column and must be retired or rerouted before normalized authority. | No unbenchmarked full-library rescan. The v1 rescan was an explicit, resumable job, not an automatic scan of every new image. |
@@ -94,10 +94,12 @@ In order. Do not start a later row while an earlier blocker is open.
    a persisted enablement boundary for new or source-changed images;
    auto-drive must not use localization as the earliest blocking bucket;
    phantom reconciliation only when a current terminal attempt exists.
-   Code for all four is merged (#558–#561). What remains is an operator step: set
-   `localization.repair.enabled` (and the `localization` section, which the live `config.json`
-   does not have yet) and watch one lane cycle: one lane job admitted while the dispatcher is
-   idle, the backlog logged, and retryable failures re-attempted on the 1 min / 5 min schedule.
+   Code for all four is merged (#558–#561). The live `config.json` already has
+   `localization.enabled: true` and `localization.repair.enabled: true`. What remains is one
+   lane cycle with eligible images: one lane job admitted while the dispatcher is idle, the
+   backlog logged, and retryable failures re-attempted on the 1 min / 5 min schedule.
+   On 2026-10-05, the live library had no images after the enablement boundary and no current
+   retryable runs, so the lane had no candidates; this did not meet the exit gate.
    S4-4 was revisited and is kept (see Open questions).
 3. **#368** before any restart/recovery work that assumes parent/child outcomes propagate.
 4. **#418** before trusting scene, keyword, or embedding vectors on portrait RAWs.
