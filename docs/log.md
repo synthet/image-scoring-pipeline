@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-05] added | Scoring loop ordering report
+
+[reports/scoring-loop-ordering-2026-10-05.md](reports/scoring-loop-ordering-2026-10-05.md) answers image-major vs model-major for the scoring phase. Scoring is image-major at bs=1 with all models resident. A NEF decode (507 ms p50) costs about 3× the five-model ensemble (179.5 ms). Model-major frees no VRAM (TF keeps MUSIQ's memory) and breaks the any-model resume check and XMP fusion. The recommendation is decode-once with parallel prep, then micro-batched image-major (`run_all_models_batch`) and phase-boundary unloading. The report also reconciles an external generic analysis and lists six measurements (#416).
+
 ## [2026-10-05] edit | Windows-native plan refreshed; ONNX matrix corrections
 
 [planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md](planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md) is rewritten for the Postgres era. It records the current state: the launcher and setup script still assume Firebird, `launch.py` probes Firebird regardless of `database.engine`, the Windows `.venv` lacks `open_clip`/`timm`/`transformers`, and TF 2.15 needs Python 3.10–3.11. It adds per-model native-Windows GPU status (only MUSIQ and MobileNetV2 are TF/CPU-only) and options A–D, recommending a native host + GPU runner. ONNX verdicts, runtime choice and conversion order are deferred to [ONNX_CONVERSION_FEASIBILITY.md](planning/models/ONNX_CONVERSION_FEASIBILITY.md). That matrix is corrected: MobileNetV2 is TF Keras in `modules/clustering.py`; the OpenCLIP L/14, DINOv2 and SigLIP2 culling spaces are implemented and opt-in, not roadmap; an eye-pose YOLO row is added.
