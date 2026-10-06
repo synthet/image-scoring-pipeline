@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 _HOST_THUMB_WARN_EMITTED = False
@@ -766,6 +766,10 @@ def generate_thumbnail(image_path, source_path=None):
 
         # Process and save thumbnail
         with img:
+            # Raster sources can store landscape pixels with a portrait EXIF tag.
+            # Bake the rotation before saving, since Pillow does not copy EXIF on save.
+            if not is_raw:
+                img = ImageOps.exif_transpose(img)
             # Convert to RGB if needed
             if img.mode in ('RGBA', 'P'):
                 img = img.convert('RGB')
