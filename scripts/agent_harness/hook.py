@@ -3,7 +3,7 @@
 
 Usage (from .claude/settings.json)::
 
-    python "$CLAUDE_PROJECT_DIR/scripts/agent_harness/hook.py" <event> [--repo PATH]
+    python "scripts/agent_harness/hook.py" <event> [--repo PATH]
 
 Events:
   user-prompt     UserPromptSubmit — inject conditional instruction packs
