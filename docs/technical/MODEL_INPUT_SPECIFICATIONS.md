@@ -1,191 +1,76 @@
-# Model Input Specifications
-
-This document describes the input format, score ranges, and constraints for the neural network models used in the Vexlum Scoring project.
-
-## Overview
-
-| Model Family | Models | Framework | Input Type |
-|-------------|--------|-----------|------------|
-| MUSIQ | SPAQ, AVA, KonIQ, PaQ2PiQ | TensorFlow | JPEG bytes |
-| LIQE | LIQE | PyTorch (PyIQA) | PIL Image tensor |
-
 ---
-
-## 1. MUSIQ Models (SPAQ, AVA, KonIQ, PaQ2PiQ)
-
-**Reference:** [MUSIQ: Multi-scale Image Quality Transformer (arxiv.org/abs/2108.05997)](https://arxiv.org/abs/2108.05997)
-
-### Input Format
-
-- **Type:** Raw JPEG bytes (TensorFlow Hub `image_bytes_tensor`)
-- **Parameter name:** `image_bytes_tensor` (MUSIQ)
-- **Preprocessing:** None required. The model handles variable sizes and aspect ratios internally.
-
-### Documentation
-
-- MUSIQ is designed to process **native resolution images with varying sizes and aspect ratios**
-- No fixed-shape constraint; avoids CNN-style resize/crop that degrades quality
-- Multi-scale patch-based Transformer with hash-based 2D spatial embedding
-
-### Model Score Ranges (Raw Output)
-
-| Model | Raw Range | Source | Notes |
-|-------|-----------|--------|-------|
-| SPAQ | 0–100 | SPAQ dataset | |
-| AVA | 1–10 | AVA dataset | |
-| KonIQ | 0–100 | KONIQ-10k | |
-| PaQ2PiQ | 0–100 | PAQ2PIQ | |
-
-**Normalization:** `(score - min) / (max - min)` → 0–1 for weighted scoring.
-
-### Source Variability
-
-Different sources (TensorFlow Hub, Kaggle Hub, local .npz) may produce slightly different raw ranges. Normalization must be applied per-source. The project uses `model_ranges` in `run_all_musiq_models.py` for consistent 0–1 mapping.
-
+type: Technical Reference
+title: Model input specifications
+description: Orientation, per-model input routing, wrapper transforms and scoring provenance.
+resource: technical/MODEL_INPUT_SPECIFICATIONS.md
+tags: [scoring, models, orientation]
+timestamp: 2026-10-06T23:18:11Z
+okf_version: 0.2
 ---
+# Model input specifications
 
-## 2. LIQE Model
+This describes the locally implemented scoring contract as of executor **5.2.0**. The changes are uncommitted and not deployed. Source code and configuration remain authoritative; [verification](../planning/scoring-inputs/VERIFICATION.md) records evidence and rollout limits. Related issues: [#320](https://github.com/synthet/image-scoring-pipeline/issues/320), [#568](https://github.com/synthet/image-scoring-pipeline/issues/568), [#569](https://github.com/synthet/image-scoring-pipeline/issues/569), [#570](https://github.com/synthet/image-scoring-pipeline/issues/570).
 
-**Reference:** [LIQE: Blind Image Quality Assessment via Vision-Language Correspondence (CVPR 2023)](https://github.com/zwx8981/LIQE)
+## Source and orientation
 
-### Input Format
+Original files supply model inputs. `PrepWorker` converts RAW sources to a full available preview JPEG; raster sources enter the scoring preprocessor directly. The conversion and direct RAW-preprocessing routes are distinct: pipeline conversion tries its existing decoder sequence, while direct preprocessing honors `raw_conversion.method`. The routing fix does not change either decoder preference.
 
-- **Type:** Tensor from PIL Image (via PyIQA)
-- **PIL mode:** RGB
-- **Resize rule:** If `max(img.size) > 518`, resize to 518px on longest edge (BICUBIC). High-resolution images left unscaled can produce incorrect "noise" scores (~1.0).
+Before resize, pad or an intermediate JPEG save, apply EXIF rotation/reflection once. Raster EXIF 1–8 is handled by Pillow. For an embedded RAW preview, a valid non-normal preview tag wins; a missing, normal or invalid preview tag falls back to numeric source orientation. Missing/invalid source orientation defaults to 1. rawpy postprocessed pixels are already upright and are not transformed again. Temporary JPEGs have upright pixels and absent/normal orientation.
 
-### Score Range
+Keep three dimensions distinct: stored source width/height, upright rendition width/height and final padded model canvas. EXIF 5–8 interchange upright width/height. A portrait whose pixels are already vertical can correctly have EXIF 1. Scene classification and subject head pose do not decide EXIF transforms. Original photos and sidecars are not modified by preprocessing.
 
-- **Raw range:** 1.0–5.0
-- **Normalization:** `(score - 1) / 4` → 0–1
+## Outer preprocessing and selection
 
-### Implementation
+`MultiModelMUSIQ.preprocess_image()` uses bicubic inside resize without upscaling, then black padding to a square and JPEG encoding. This preserves subject proportions while changing the canvas. Removing padding or adopting the shared localization cache requires the [evaluation gates](../planning/scoring-inputs/RESEARCH-REVIEW.md).
 
-See `modules/liqe.py` for the current implementation, including the 518px downscale logic.
+| Configuration | Default | Contract |
+|---|---|---|
+| `raw_conversion.method` | `rawpy_half` | Direct RAW-preprocessing decoder preference, with existing fallback |
+| `raw_conversion.max_resolution` | 512 | Default canvas edge, bounded 224–2048 |
+| `raw_conversion.jpeg_quality` | 85 | Prepared JPEG quality, bounded 50–100 |
+| `scoring.model_preprocessing.<model>` | no override | Positive integer or object with `resolution`; decimal strings accepted; booleans, floats and invalid values fail |
 
----
+Enabled registry models, including shadows, each receive their own resolution selection. Positive resolutions are clamped to 224–2048. SPAQ, AVA, LIQE, TOPIQ and ARNIQA overrides are independent. Every variant derives from the same unresized upright source. Identical resolutions share a variant because orientation, resize, padding and encoding policy are common. Injected external scores skip image inference; disabled models do not create variants. Preprocessing failure stops scoring rather than using an unnormalized original.
 
-## 2.1 Canonical Normalization Reference
+For example, this selects three different JPEG canvases; it is an example, not a recommended default change:
 
-**Single source of truth: `modules/score_normalization.py`**
+```json
+{"scoring": {"model_preprocessing": {"spaq": 512, "ava": {"resolution": 224}, "liqe": 1024}}}
+```
 
-### Step 1: Theoretical Normalization (model output → DB storage)
+The legacy non-registry engine still has its prior combined MUSIQ/LIQE override behavior. Independent model selection is the worker-to-`MultiModelHost`/`RemoteScoringHost` contract. Direct callers without a mapping retain the single-input interface, with original raster/RAW preparation required before inference. Validated mapped inputs bypass redundant preparation.
 
-| Model | Raw Range | Normalization Formula | Stored in DB |
-|-------|-----------|----------------------|--------------|
-| LIQE | 1–5 | `(score - 1) / 4` → 0–1 | `score_liqe` (0–1) |
-| AVA | 1–10 | `(score - 1) / 9` → 0–1 | `score_ava` (0–1) |
-| SPAQ | 0–100 | `score / 100` → 0–1 | `score_spaq` (0–1) |
+## Model-specific downstream preprocessing
 
-### Step 2: Percentile Rescaling (DB score → composite input) — v5.0.0
+The selected JPEG canvas is separate from the final tensor or patches.
 
-Individual model scores have vastly different effective ranges on real data.
-Before computing composites, each model score is rescaled using empirical p2/p98 anchors:
+| Model | Project adapter | Input and downstream transform | Raw score range |
+|---|---|---|---|
+| MUSIQ SPAQ / AVA / KonIQ / PaQ2PiQ | `modules/engines/musiq_model.py` and `scripts/python/run_all_musiq_models.py` | Encoded JPEG bytes to cached TF Hub signature; internal multiscale processing | SPAQ/KonIQ/PaQ2PiQ 0–100; AVA 1–10 |
+| LIQE | `modules/liqe.py` | RGB tensor; longest edge capped at `scoring.liqe_max_dimension`, default 518; pyiqa patch processing | 1–5 |
+| TOPIQ-NR | `modules/topiq.py` | RGB tensor; longest edge capped at `scoring.topiq_max_dimension`, default 1024; pyiqa metric `topiq_nr` | approximately 0–1 |
+| ARNIQA | `modules/arniqa.py` | RGB tensor; longest edge capped at `scoring.arniqa.max_dimension`, default 1024; configurable `scoring.arniqa.metric`, default `arniqa` | approximately 0–1 |
 
-`rescaled = clamp((score - p02) / (p98 - p02), 0, 1)`
+Wrapper caps can shrink a configured outer input again. A LIQE 1024 px selection does not bypass its 518 px default cap. Verify installed checkpoint transforms and the ARNIQA regression head before choosing a changed policy. Enabled/shadow state comes from current `scoring.models` configuration, not historical wrapper comments.
 
-| Model | p02 | p98 | Effective Range |
-|-------|-----|-----|-----------------|
-| LIQE | 0.360 | 0.998 | Skewed high (median 0.78) |
-| AVA | 0.303 | 0.506 | Very narrow |
-| SPAQ | 0.267 | 0.745 | Moderate |
+MUSIQ's architecture supports variable sizes and aspect ratios; this is not a project instruction to feed originals without our chosen preparation policy. [Official MUSIQ source](https://github.com/google-research/google-research/blob/master/musiq/README.md). LIQE uses patch-based processing. [Official LIQE source](https://github.com/zwx8981/LIQE/blob/main/LIQE.py).
 
-Anchors are stored in `config.json` under `percentile_anchors` and can be updated
-as the corpus grows.
+## Local, HTTP and fallback contract
 
-### Step 3: Composite Formulas (v5.0.0)
+The worker supplies `model_inputs[model_name] = {path, metadata}` separately from external scores. The local host validates every required selected file before inference. The HTTP proxy transfers JPEG bytes as base64 plus metadata, with `scoring_inputs_version = 1`; client filesystem paths are excluded. The HTTP schema retains this bundle, and the runner validates hashes, dimensions and orientation before model loading. Missing inputs, unsupported versions or mismatched returned input attestations fail explicitly. Embedded fallback uses the same runtime.
 
-Applied to percentile-rescaled scores:
+Transport API version is **2**. Upgrade client and GPU runner together before submitting work. An old peer is rejected by version/fingerprint checks; it cannot silently ignore the bundle. `/v1/...` endpoint names and default single-input request fields remain available within API 2. Existing fallback/replay protections are retained.
 
-- **Technical** = 1.0 × LIQE
-- **Aesthetic** = 0.55 × AVA + 0.45 × SPAQ
-- **General** = 0.45 × LIQE + 0.30 × AVA + 0.25 × SPAQ
+## Cache and persisted provenance
 
-### Rating Thresholds (v5.0.0)
+Prepared cache filenames carry `upright-v1`; identity includes absolute source path, nanosecond mtime, size, resolution, padding, resize policy, JPEG quality and decoder preference. Old unversioned cache entries are not eligible under this policy. No bulk cache deletion is required.
 
-| Rating | General Score Threshold |
-|--------|------------------------|
-| 5 Stars | ≥ 0.90 (~2% of corpus) |
-| 4 Stars | ≥ 0.72 (~17%) |
-| 3 Stars | ≥ 0.50 (~45%) |
-| 2 Stars | ≥ 0.30 (~28%) |
-| 1 Star | < 0.30 (~8%) |
+Mapped model results include `input` metadata: source identity, actual decode route (or explicit unknown), upright source dimensions, selected canvas dimensions, resolution, JPEG quality, resize/padding policy and SHA-256 of selected JPEG bytes. Run-managed scoring persists these metadata under `job_image_actions.after_snapshot.scoring_inputs`; local paths are omitted. Direct mapped calls return the metadata to their caller; legacy single-input calls retain their prior result shape and version identifier. The normalized `image_model_scores` schema is unchanged and does not store this mapping.
 
-**Important:** When passing DB scores as external_scores (e.g. backfill), always include `normalized_score` since DB stores 0–1. Passing only `score` causes run_all_models to treat values as raw and incorrectly re-normalize.
+Per-model raw and normalized scores live in `image_model_scores`, with shadow status and model version; typed `images.score_spaq`/`score_ava`/`score_liqe` columns and `images.scores_json` are retired in the current PostgreSQL schema. Aggregates remain on `images`. Canonical normalization and fusion: [score_normalization.py](../../modules/score_normalization.py), [DB schema](DB_SCHEMA.md). Injected existing normalized values must retain `normalized_score` to avoid treating them as raw model outputs.
 
----
+## Rollout and evaluation
 
-## 3. Database Storage
+Executor 5.2.0 distinguishes corrected runs. It does not automatically enqueue or rescore the library. Select a bounded affected set, export prior scores/run versions, upgrade paired runner/client, verify canaries, then submit explicitly; [verification](../planning/scoring-inputs/VERIFICATION.md) gives the procedure and rollback.
 
-From `DB_SCHEMA.md`:
-
-| Column | Stored Value | Note |
-|--------|--------------|------|
-| `score_general` | 0–1 | Normalized weighted score |
-| `score_technical` | 0–1 | Normalized weighted score |
-| `score_aesthetic` | 0–1 | Normalized weighted score |
-| `score_spaq` | Normalized 0–1 | From `get_ind_score` → `normalized_score` |
-| `score_ava` | Normalized 0–1 | Same |
-| `score_koniq` | Normalized 0–1 | Same |
-| `score_paq2piq` | Normalized 0–1 | Same |
-| `score_liqe` | Normalized 0–1 | Same |
-
----
-
-## 4. NEF Conversion to Model Input
-
-For RAW files (NEF, etc.), the pipeline converts to JPEG before feeding to models. See [RAW_PROCESSING_GUIDE.md](RAW_PROCESSING_GUIDE.md) for conversion methods and [scripts/research_models.py](../../scripts/research_models.py) for the assessment of optimal input parameters.
-
-### Pipeline preprocessing (v5.0.0+)
-
-Preprocessing is **config-driven** via `config.json` → `raw_conversion`:
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `method` | `"rawpy_half"` | Preferred RAW conversion: `"exiftool_jpgfromraw"` or `"rawpy_half"`. Fallback is tried if preferred fails. |
-| `max_resolution` | `512` | Resize to fit then pad to this size (224–2048). Same for all models. |
-| `jpeg_quality` | `85` | JPEG quality for preprocessed file (50–100). |
-
-- **RAW:** Convert using `raw_conversion.method` order, then resize + pad to `max_resolution`, save at `jpeg_quality`.
-- **Resize:** Bicubic to fit within `max_resolution`, pad with black to square.
-- **Cache:** Preprocessed JPEGs cached in `.cache/preprocessed_512/` when `preprocessing.cache_enabled` is true.
-- **Where:** `MultiModelMUSIQ.preprocess_image()`; `ScoringWorker` runs it once and uses the same path for LIQE and MUSIQ. LIQE applies its 518px-longest-edge rule only when input is larger than 518 (so 512 is passed through).
-
----
-
-## 5. What Was Missed, Next Steps, Per-Model Settings
-
-### What was missed (before config wiring)
-
-- **`raw_conversion` in config was not used:** Preprocessing used a hardcoded 512 and fixed conversion order (exiftool → rawpy). This is now fixed: `preprocess_image()` reads `raw_conversion.method`, `max_resolution`, and `jpeg_quality` from `config.json`.
-- **Single resolution for all models:** The pipeline still produces **one** preprocessed image per file and feeds it to SPAQ, AVA, and LIQE. There is no per-model resolution or conversion yet.
-- **Research vs pipeline:** `scripts/research_models.py` recommends resolution/conversion from variance analysis; that recommendation is not applied automatically—you set `raw_conversion` in config after reviewing `research_summary.md`.
-
-### Next steps
-
-1. **Run research with real scores** (no `--dry-run`) on a representative set of NEFs; use `research_summary.md` recommended `max_resolution` and `method`.
-2. **Set config** from that recommendation, e.g. `raw_conversion: { "method": "rawpy_half", "max_resolution": 384 }` (or 512).
-3. **Optional: per-model preprocessing** — To use different resolution/conversion per model, add config (e.g. `scoring.model_preprocessing`) and change the pipeline to preprocess once per model; not implemented yet.
-
-### How to use best conversion and resolution for SPAQ, AVA, LIQE
-
-**Current (single shared input):**
-
-- Set **one** best-fit in `config.json` → `raw_conversion`:
-  - **Conversion:** `"method": "rawpy_half"` for best quality where rawpy works, or `"exiftool_jpgfromraw"` for Nikon Z8/Z9 HE*.
-  - **Resolution:** `"max_resolution": 512` (default) or the value from `research_summary.md` (e.g. 384). SPAQ, AVA, and LIQE all receive the same preprocessed image.
-- LIQE’s 518px rule in `modules/liqe.py` only shrinks images **larger** than 518; 512×512 input is passed through.
-
-**Optional future: per-model settings**
-
-To use different resolution per model (e.g. 384 for SPAQ/AVA, 518 for LIQE), the pipeline would need config such as `scoring.model_preprocessing` with per-model `resolution` (and optionally `conversion`), and `ScoringWorker` would preprocess once per model and pass the corresponding path to each. Not implemented yet; use one global `raw_conversion` for all three models.
-
-### Research findings (from scripts/research_models.py + analyze_research.py)
-
-| Model | Recommended resolution | Rationale |
-|-------|------------------------|-----------|
-| SPAQ | 224 or 512 | Lowest variance across variants in small run; 512 aligns with pipeline default and MUSIQ native-resolution design. |
-| AVA | original or 384–512 | High Spearman vs original (1.0 at 384/512/518); lowest std at "original" in small run. |
-| LIQE | 512 or 518 | 518px is LIQE’s internal max dimension; 512 passes through unchanged. No LIQE data in Windows run (DLL). |
-
-**Validation:** Run `python scripts/validate_research_config.py --count 15` after setting `raw_conversion` to verify Spearman rank correlation (old vs new scores) ≥ 0.95. Requires DB and resolved NEF paths.
+The current resize/padding/encoding defaults remain unchanged. An initial three-source pilot was followed by a [completed five-model labeled comparison](../planning/scoring-inputs/BENCHMARK-RESULTS.md) of 121 NEFs in 32 reviewed groups across square, inside-fit and shared-cache inputs. Model-specific results were mixed, with only two portrait/test groups. Production adoption is HOLD until checkpoint-specific, representative labeled quality/resource gates pass. Legacy score agreement alone is not a quality criterion.

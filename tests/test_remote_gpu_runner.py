@@ -409,6 +409,11 @@ class _CpuBackend:
     def is_raw_file(self, path):
         return False
 
+    def preprocess_image(self, path, **_kwargs):
+        # Identity stub: these tests cover transport/result ownership. Real
+        # normalization is covered by test_scoring_orientation/model_inputs.
+        return path
+
     def is_nef_file(self, path):
         return self.nef
 
@@ -444,7 +449,7 @@ def test_scoring_through_runner_keeps_host_identity(runner, tmp_path, nef):
 
     sent = provider.scoring.seen[0]
     assert sent["bytes"] == open(path, "rb").read()
-    assert sent["external_scores"] == external
+    assert sent["external_scores"] == {"liqe": external["liqe"]}
     assert sent["write_metadata"] is False  # the runner never writes XMP
     assert result["image_path"] == path and result["image_name"] == "s.jpg"
     assert result["models"]["liqe"]["normalized_score"] == 0.7

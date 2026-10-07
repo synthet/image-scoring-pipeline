@@ -59,7 +59,8 @@ class MultiModelMUSIQ:
     """Run multiple MUSIQ and VILA models on a single image."""
     
     # Version identifier for this implementation
-    VERSION = "5.0.0"  # Percentile normalization, JPEG caching, rebalanced weights
+    VERSION = "5.2.0"  # Upright inputs and model routing; weights/resize policy unchanged.
+    PREPROCESSING_POLICY = "upright-v1"
     
     # RAW file extensions to detect (case insensitive)
     RAW_EXTENSIONS = {'.nef', '.NEF', '.nrw', '.NRW', '.cr2', '.CR2', '.cr3', '.CR3', 
@@ -91,7 +92,7 @@ class MultiModelMUSIQ:
     
     def _get_cache_path(self, file_path: str, resolution_override: Optional[int] = None) -> Optional[str]:
         """Return path to cached preprocessed JPEG, or None if caching disabled.
-        Cache key includes max_resolution so changing config invalidates cache."""
+        Cache key includes source identity, orientation policy and encoding settings."""
         try:
             cfg = _merged_app_config()
 
@@ -109,12 +110,21 @@ class MultiModelMUSIQ:
             if not os.path.isabs(cache_dir):
                 cache_dir = os.path.join(self.project_root, cache_dir)
 
+            cache_dir = cache_dir.format(resolution=max_res)
             os.makedirs(cache_dir, exist_ok=True)
 
             import hashlib
-            path_hash = hashlib.sha256(file_path.encode("utf-8")).hexdigest()[:16]
-            mtime = str(int(os.path.getmtime(file_path)))
-            cache_name = f"{path_hash}_{mtime}.jpg"
+            source = os.stat(file_path)
+            identity = {
+                "path": os.path.abspath(file_path), "mtime_ns": source.st_mtime_ns,
+                "size": source.st_size, "policy": self.PREPROCESSING_POLICY,
+                "resolution": max_res, "padding": "black-square",
+                "resize": "bicubic-inside-no-upscale",
+                "jpeg_quality": max(50, min(100, int(raw_cfg.get("jpeg_quality", 85)))),
+                "decoder_preference": raw_cfg.get("method", "rawpy_half"),
+            }
+            path_hash = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:24]
+            cache_name = f"{self.PREPROCESSING_POLICY}_{path_hash}.jpg"
             return os.path.join(cache_dir, cache_name)
         except Exception:
             return None
@@ -150,7 +160,7 @@ class MultiModelMUSIQ:
         Preprocess image for optimal model input:
         1. Check preprocessed cache (if enabled, and no resolution_override)
         2. (RAW only) Convert using config raw_conversion.method order (exiftool_jpgfromraw or rawpy_half)
-        3. Resize: Bicubic to fit within config max_resolution (or resolution_override)
+        3. Apply EXIF orientation once, then resize to fit within max_resolution
         4. Pad: Add black borders to make exactly target_size x target_size
 
         Args:
@@ -185,6 +195,8 @@ class MultiModelMUSIQ:
         
         try:
             pil_image = None
+            source_orientation = 1
+            reusable_jpeg = False
             
             # RAW: use config conversion order (preferred method first)
             decode_method: Optional[str] = None
@@ -207,7 +219,10 @@ class MultiModelMUSIQ:
                         "preprocess_image: method=%s path=%s", decode_method, file_path
                     )
             else:
-                pil_image = Image.open(file_path).convert("RGB")
+                with Image.open(file_path) as image:
+                    source_orientation = image.getexif().get(274, 1)
+                    reusable_jpeg = image.format == "JPEG" and image.mode == "RGB"
+                    pil_image = self._orient_raster(image).convert("RGB")
                 logging.getLogger(__name__).info(
                     "preprocess_image: method=pil_open path=%s", file_path
                 )
@@ -223,7 +238,10 @@ class MultiModelMUSIQ:
                 if output_dir is not None:
                     pil_image.save(output_path, "JPEG", quality=jpeg_quality)
                     return output_path
-                return file_path
+                # A square canvas alone is insufficient: mirrored/rotated square
+                # originals and RAW sources must still be written as upright JPEGs.
+                if reusable_jpeg and source_orientation in (None, 1):
+                    return file_path
                 
             pil_image.thumbnail((target_size, target_size), Image.BICUBIC)
             delta_w = target_size - pil_image.size[0]
@@ -237,7 +255,7 @@ class MultiModelMUSIQ:
             padded_image.save(output_path, "JPEG", quality=jpeg_quality)
             if output_dir is None:
                 self.temp_files.append(output_path)
-                cache_path = self._get_cache_path(file_path)
+                cache_path = self._get_cache_path(file_path, resolution_override)
                 if cache_path and not os.path.exists(cache_path):
                     try:
                         import shutil as _shutil
@@ -249,6 +267,38 @@ class MultiModelMUSIQ:
         except Exception as e:
             logging.getLogger(__name__).error(f"Preprocessing failed: {e}")
             return None
+
+    @staticmethod
+    def _orient_raster(image: Image.Image) -> Image.Image:
+        """Bake valid EXIF rotation/reflection; invalid/missing tags mean identity."""
+        orientation = image.getexif().get(274)
+        if orientation is not None and orientation not in range(1, 9):
+            image.getexif()[274] = 1
+        return ImageOps.exif_transpose(image)
+
+    def _open_embedded_preview(self, data: bytes, source_path: str) -> Tuple[Image.Image, int]:
+        """Embedded previews may omit the RAW's tag; decoded RAW pixels do not."""
+        from modules.thumbnails import read_orientation
+
+        with Image.open(io.BytesIO(data)) as image:
+            orientation = image.getexif().get(274)
+            if orientation not in range(2, 9):
+                orientation = read_orientation(source_path) or 1
+            if orientation not in range(1, 9):
+                orientation = 1
+            image.getexif()[274] = orientation
+            return self._orient_raster(image).convert("RGB"), orientation
+
+    def _save_embedded_preview(self, data: bytes, source_path: str, output_path: str) -> None:
+        image, orientation = self._open_embedded_preview(data, source_path)
+        # Retain original JPEG encoding when no pixel transform is necessary.
+        with Image.open(io.BytesIO(data)) as original:
+            original_orientation = original.getexif().get(274)
+        if data.startswith(b"\xff\xd8") and orientation == 1 and original_orientation in (None, 1):
+            with open(output_path, "wb") as output:
+                output.write(data)
+        else:
+            image.save(output_path, "JPEG", quality=85, optimize=True)
 
     def _exiftool_extract_preview_bytes(self, raw_path: str) -> Optional[Tuple[str, bytes]]:
         """
@@ -309,9 +359,8 @@ class MultiModelMUSIQ:
             if not pair:
                 return None, None
             tag, data = pair
-            img = Image.open(io.BytesIO(data))
-            img.load()
-            return img.convert("RGB"), f"exiftool:{tag}"
+            img, _ = self._open_embedded_preview(data, file_path)
+            return img, f"exiftool:{tag}"
         except Exception as e:
             logging.getLogger(__name__).debug(f"ExifTool extraction failed: {e}")
         return None, None
@@ -584,18 +633,14 @@ class MultiModelMUSIQ:
             if not pair:
                 return False, None
             tag, data = pair
-            if data.startswith(b"\xff\xd8"):
-                with open(output_path, "wb") as f:
-                    f.write(data)
-            else:
-                img = Image.open(io.BytesIO(data)).convert("RGB")
-                img.save(output_path, "JPEG", quality=85, optimize=True)
+            self._save_embedded_preview(data, raw_path, output_path)
             return True, f"exiftool:{tag}"
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
             return False, None
 
     def convert_raw_to_jpeg(self, raw_path: str) -> Optional[str]:
         """Convert RAW file to temporary JPEG for processing."""
+        self.last_raw_conversion_route = None
         logging.getLogger(__name__).info(f"Converting RAW file: {raw_path}")
         
         # Setup temp directory
@@ -630,6 +675,7 @@ class MultiModelMUSIQ:
                 if ok:
                     self.temp_files.append(temp_jpeg)
                     label = used or method.__name__.replace("_convert_with_", "")
+                    self.last_raw_conversion_route = label
                     logging.getLogger(__name__).info(
                         "✓ RAW conversion successful path=%s method=%s", temp_jpeg, label
                     )
@@ -694,8 +740,7 @@ class MultiModelMUSIQ:
                 # Check for JPEG header (FF D8)
                 if res_extract.stdout.startswith(b'\xff\xd8'):
                     try:
-                        with open(output_path, 'wb') as f:
-                            f.write(res_extract.stdout)
+                        self._save_embedded_preview(res_extract.stdout, raw_path, output_path)
                         return True, "dcraw:embedded_jpeg"
                     except Exception as e:
                         logging.getLogger(__name__).warning(f"Failed to write extracted JPEG: {e}")
@@ -736,6 +781,7 @@ class MultiModelMUSIQ:
             cmd = [
                 'magick',
                 raw_path,
+                '-auto-orient',
                 '-resize', '50%',  # Half size for speed
                 '-quality', '85',
                 output_path
@@ -753,7 +799,7 @@ class MultiModelMUSIQ:
         """Convert RAW using Pillow (limited RAW support)."""
         try:
             # Pillow has limited RAW support, mainly for DNG
-            img = Image.open(raw_path)
+            img = self._orient_raster(Image.open(raw_path))
             if img.mode != 'RGB':
                 img = img.convert('RGB')
             
@@ -1112,12 +1158,11 @@ class MultiModelMUSIQ:
         
         if is_raw:
             logger(f"RAW file detected: {image_path}")
-            # Use new preprocessing pipeline
-            processed_path = self.preprocess_image(image_path)
-            
-            if processed_path is None:
-                # Failed
-                return {
+        # preprocess_image itself reuses upright, correctly sized JPEGs. Do not
+        # infer that a square original is normalized, or score it after failure.
+        processed_path = self.preprocess_image(image_path)
+        if processed_path is None:
+            failure = {
                     "version": self.VERSION,
                     "image_path": self.wsl_to_windows_path(image_path),
                     "image_name": os.path.basename(image_path),
@@ -1130,35 +1175,15 @@ class MultiModelMUSIQ:
                         "failed_predictions": 0,
                         "average_normalized_score": None,
                         "error": "RAW/Image preprocessing failed"
-                    },
-                    "raw_conversion": {
-                        "original_raw": image_path,
-                        "temp_jpeg": None,
-                        "conversion_success": False
                     }
                 }
-            processing_path = processed_path
-        else:
-             # Skip preprocessing if already at target size (e.g. pipeline preprocessed)
-             raw_cfg = self._get_raw_conversion_config()
-             target_size = max(224, min(2048, raw_cfg["max_resolution"]))
-             try:
-                 with Image.open(image_path) as img:
-                     w, h = img.size
-                 if w == target_size and h == target_size:
-                     processing_path = image_path
-                 else:
-                     processed_path = self.preprocess_image(image_path)
-                     if processed_path:
-                         processing_path = processed_path
-                     else:
-                         logger("Warning: Preprocessing failed for standard image, using original.")
-             except Exception:
-                 processed_path = self.preprocess_image(image_path)
-                 if processed_path:
-                     processing_path = processed_path
-                 else:
-                     logger("Warning: Preprocessing failed for standard image, using original.")
+            if is_raw:
+                failure["raw_conversion"] = {
+                    "original_raw": image_path, "temp_jpeg": None,
+                    "conversion_success": False,
+                }
+            return failure
+        processing_path = processed_path
         
         # Convert WSL path to Windows path for browser compatibility
         browser_path = self.wsl_to_windows_path(image_path)

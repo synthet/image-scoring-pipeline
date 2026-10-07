@@ -172,7 +172,7 @@ def phase_for_job_type(job_type: "PhaseCode | str | None", default: str = "scori
     return JOB_TYPE_TO_PHASE.get(code, default)
 
 
-SCORING_EXECUTOR_VERSION = "5.0.0"
+SCORING_EXECUTOR_VERSION = "5.2.0"  # upright-v1 plus independent model-input routing
 
 
 def missing_prerequisites(

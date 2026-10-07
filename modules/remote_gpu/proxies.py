@@ -9,6 +9,7 @@ Construction is the only branch point; see the ``new_*`` factories in each runne
 from __future__ import annotations
 
 import logging
+import base64
 import math
 import os
 from typing import Any
@@ -26,12 +27,14 @@ from modules.remote_gpu.contract import (
     KEYWORDS,
     SCENE,
     SCORING,
+    SCORING_INPUTS_VERSION,
     RemoteGpuError,
     as_vector,
     encode_array,
     encode_png,
 )
 from modules.scene_route import PROMPT_SET_VERSION, SceneClassifier, score
+from modules.scoring_inputs import validate_input
 from modules.tagging import CaptionGenerator, KeywordScorer
 
 logger = logging.getLogger(__name__)
@@ -91,17 +94,39 @@ class RemoteScoringHost(MultiModelHost):
         external_scores: dict[str, Any] | None = None,
         logger=print,
         write_metadata: bool = True,
+        model_inputs: dict[str, dict] | None = None,
     ) -> dict[str, Any]:
         is_raw = self.is_raw_file(image_path)
-        processing_path = self._resolve_processing_path(image_path, is_raw, logger)
+        processing_path = self._resolve_processing_path(image_path, is_raw, logger,
+                                                       prepared=model_inputs is not None)
         if processing_path is None:
-            return self._raw_failure_result(image_path)
+            return self._raw_failure_result(image_path, is_raw=is_raw)
 
         data, filename = _read(processing_path)
-        results = self._client.call(
-            SCORING, {"external_scores": external_scores or {}}, data, filename=filename,
-        )
+        # Private host paths are transport metadata, never model scores.
+        params = {"external_scores": {key: value for key, value in (external_scores or {}).items()
+                                      if not key.startswith("_")}}
+        if model_inputs is not None:
+            for model in self.registry.all_active():
+                if model.name not in params["external_scores"] and model.name not in model_inputs:
+                    raise ValueError(f"Missing prepared input for {model.name}")
+            params["scoring_inputs_version"] = SCORING_INPUTS_VERSION
+            params["model_inputs"] = {}
+            for name, spec in model_inputs.items():
+                validate_input(spec)
+                contents, _ = _read(spec["path"])
+                params["model_inputs"][name] = {
+                    "data": base64.b64encode(contents).decode("ascii"),
+                    "metadata": spec["metadata"],
+                }
+        results = self._client.call(SCORING, params, data, filename=filename)
         _validate_scoring_result(results)
+        if model_inputs is not None:
+            for name, spec in model_inputs.items():
+                if name in params["external_scores"]:
+                    continue
+                if (results["models"].get(name) or {}).get("input") != spec["metadata"]:
+                    raise RemoteGpuError(f"GPU runner did not attest selected input for {name}")
         # The runner scored a temp copy; report the host's paths, as a local run would.
         identity = self._init_result(image_path, is_raw, processing_path, [])
         results.pop("raw_conversion", None)

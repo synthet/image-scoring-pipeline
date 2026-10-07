@@ -21,7 +21,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, FiniteFloat, ValidationError
+from pydantic import BaseModel, Field, FiniteFloat, ValidationError, model_validator
 
 from modules.remote_gpu.contract import (
     ACCESSIBILITY,
@@ -39,6 +39,7 @@ from modules.remote_gpu.contract import (
     PHASE_CONFIG_SECTIONS,
     SCENE,
     SCORING,
+    SCORING_INPUTS_VERSION,
     json_default,
     phase_fingerprint,
     section_hashes,
@@ -178,8 +179,24 @@ class _UploadRejected(Exception):
         self.message = message
 
 
+class ScoringInputParams(BaseModel):
+    data: str
+    metadata: dict[str, Any]
+
+
 class ScoringParams(BaseModel):
     external_scores: dict[str, Any] = Field(default_factory=dict)
+    scoring_inputs_version: int | None = Field(default=None, strict=True)
+    model_inputs: dict[str, ScoringInputParams] | None = None
+
+    @model_validator(mode="after")
+    def validate_input_bundle(self):
+        if self.model_inputs is None:
+            if self.scoring_inputs_version is not None:
+                raise ValueError("Scoring input version requires a model input bundle")
+        elif self.scoring_inputs_version != SCORING_INPUTS_VERSION:
+            raise ValueError("Unsupported scoring input bundle version")
+        return self
 
 
 class KeywordParams(BaseModel):
