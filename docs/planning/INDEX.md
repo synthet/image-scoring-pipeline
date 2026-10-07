@@ -4,7 +4,7 @@ title: Planning and migrations index
 description: Index of database migrations, schema phases, refactors, and model roadmaps under docs/planning/.
 resource: docs/planning/INDEX.md
 tags: [docs, planning, index]
-timestamp: 2026-09-25T18:00:00Z
+timestamp: 2026-10-06T04:48:00Z
 okf_version: 0.2
 ---
 
@@ -59,6 +59,7 @@ Aligned with root [`TODO.md`](../../TODO.md) **Highest-Impact Next Steps**. Tier
 | Document | Description |
 |----------|-------------|
 | [NEW_MODELS_SUMMARY.md](../NEW_MODELS_SUMMARY.md) | **Overview** — consolidated summary of new/roadmap models and #220 phases |
+| [scoring-inputs](scoring-inputs/INDEX.md) | Tasks #568-#570: scoring orientation, per-model input routing, policy evaluation and gallery #176 verification. |
 | [MODEL_RECOMMENDATIONS_PIPELINES.md](../MODEL_RECOMMENDATIONS_PIPELINES.md) | **Canonical** pipeline model roadmap (ARNIQA, DINOv2, SigLIP2; CLIP/OpenCLIP alternate) |
 | [IQA_MODEL_STACK_UPDATE_PROPOSAL.md](models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md) | Proposal: Modernize model stack (QPT V2, TOPIQ-NR) |
 | [QPT_V2_VALIDATION_GATES.md](models/QPT_V2_VALIDATION_GATES.md) | **QPT V2 shadow validation plan** — Gates 1–3, 5; upstream status; promotion criteria (#185) |

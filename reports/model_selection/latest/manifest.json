@@ -1,0 +1,95 @@
+{
+  "generated_at": "2026-10-02T01:20:03.070432+00:00",
+  "snapshot_fingerprint": "1f1f407b32b372f0",
+  "matrix_generated_at": "2026-10-02T01:19:48.058748+00:00",
+  "scope": {
+    "kind": "library"
+  },
+  "query_hash": "fe78991ebcffa86baf973fae6070ad7a6e4dbd00",
+  "code_hash": "c9d3fbccde3a695afdaeee0205e64aa09161c108",
+  "git_sha": "75b53e8e5e80d0b1791bfaa2ae032051d697665a",
+  "grouping": "stacks = images.stack_id with \u2265 2 images",
+  "options": {
+    "min_size": 2,
+    "bootstrap": 20,
+    "seed": 0,
+    "keyword": null,
+    "weights": {
+      "general": {
+        "liqe": 0.35,
+        "spaq": 0.3,
+        "topiq": 0.13,
+        "arniqa": 0.1,
+        "ava": 0.12
+      },
+      "technical": {
+        "topiq": 0.3,
+        "arniqa": 0.25,
+        "spaq": 0.25,
+        "liqe": 0.2
+      },
+      "aesthetic": {
+        "ava": 0.4,
+        "spaq": 0.5,
+        "liqe": 0.1
+      }
+    },
+    "anchors": {
+      "liqe": {
+        "p02": 0.311,
+        "p98": 0.998
+      },
+      "ava": {
+        "p02": 0.301,
+        "p98": 0.524
+      },
+      "spaq": {
+        "p02": 0.257,
+        "p98": 0.76
+      },
+      "topiq": {
+        "p02": 0.39,
+        "p98": 0.709
+      },
+      "arniqa": {
+        "p02": 0.467,
+        "p98": 0.746
+      }
+    },
+    "rating_thresholds": {
+      "5": 0.9,
+      "4": 0.72,
+      "3": 0.5,
+      "2": 0.3
+    },
+    "label_thresholds": {
+      "red_tech_max": 0.3,
+      "purple_tech_max": 0.5,
+      "purple_aes_min": 0.65,
+      "blue_aes_min": 0.65,
+      "blue_tech_min": 0.65,
+      "green_tech_min": 0.55
+    },
+    "thresholds": {
+      "omit_min_spearman": 0.98,
+      "omit_max_rating_change": 0.02,
+      "omit_max_label_change": 0.02,
+      "keep_min_output_change": 0.05,
+      "keep_min_pca_loading": 0.4,
+      "keep_min_pca_explained": 0.1,
+      "cull_keep_max_tie_rate": 0.2,
+      "cull_omit_min_tie_rate": 0.5,
+      "cull_omit_min_within_rho": 0.8,
+      "redundancy_rho": 0.8,
+      "forward_min_gain": 0.01,
+      "forward_max_models": 3,
+      "top_frac": 0.1
+    }
+  },
+  "versions": {
+    "python": "3.11.9",
+    "numpy": "2.2.6",
+    "scipy": "1.16.2"
+  },
+  "read_only": true
+}

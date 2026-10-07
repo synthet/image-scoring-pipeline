@@ -85,6 +85,10 @@ logs/
 
 # Generated score quality reports (local analysis output)
 reports/model-score-quality/
+# Private library evidence and owner labels; aggregate study reports are tracked.
+reports/model-selection-2026-10-01/snapshot.json.gz
+reports/model-selection-2026-10-01/sample.json
+reports/model-selection-2026-10-01/reviews.jsonl
 # Everypixel UGC correlation study — canonical artifacts in private image-scoring-skills repo
 reports/everypixel-correlation/
 reports/clip-culling/rollout_recluster.checkpoint.json

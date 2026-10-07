@@ -1,0 +1,19 @@
+scenario,model,verdict,weight_share,spearman,rating_change,label_change,best_frame_change,caveat,reasons,within_share,tie_rate,consensus_tau_b,top1_agreement,best_match_rate
+general,arniqa,keep,0.1,0.995832,0.0677219,0,0.103812,Statistical only; not validated against human judgments.,dropping it changes 6.8% of star ratings,,,,,
+general,ava,keep,0.12,0.989245,0.143461,0,0.109361,Statistical only; not validated against human judgments.,"dropping it changes 14.3% of star ratings; carries its own principal component (PC2, loading -0.85, 17% of variance); carries its own principal component (PC3, loading +0.41, 12% of variance)",,,,,
+general,liqe,keep,0.35,0.896392,0.28991,0,0.244854,Statistical only; not validated against human judgments.,dropping it changes 29.0% of star ratings,,,,,
+general,spaq,keep,0.3,0.914077,0.275439,0,0.277967,Statistical only; not validated against human judgments.,"dropping it changes 27.5% of star ratings; carries its own principal component (PC3, loading -0.85, 12% of variance)",,,,,
+general,topiq,keep,0.13,0.994418,0.0757135,0,0.0967424,Statistical only; not validated against human judgments.,dropping it changes 7.6% of star ratings,,,,,
+technical,arniqa,keep,0.25,0.973169,0,0.0905588,0.233936,Statistical only; not validated against human judgments.,dropping it changes 9.1% of colour labels,,,,,
+technical,liqe,keep,0.2,0.97026,0,0.0821533,0.135404,Statistical only; not validated against human judgments.,dropping it changes 8.2% of colour labels,,,,,
+technical,spaq,keep,0.25,0.935818,0,0.144677,0.228029,Statistical only; not validated against human judgments.,"dropping it changes 14.5% of colour labels; carries its own principal component (PC3, loading -0.85, 12% of variance)",,,,,
+technical,topiq,keep,0.3,0.968514,0,0.0991194,0.195096,Statistical only; not validated against human judgments.,dropping it changes 9.9% of colour labels,,,,,
+aesthetic,ava,keep,0.4,0.895504,0,0.125551,0.293181,Statistical only; not validated against human judgments.,"dropping it changes 12.6% of colour labels; carries its own principal component (PC2, loading -0.85, 17% of variance); carries its own principal component (PC3, loading +0.41, 12% of variance)",,,,,
+aesthetic,liqe,optional,0.1,0.992331,0,0.0253715,0.0655092,Statistical only; not validated against human judgments.,"without it Spearman 0.992; ratings change 0.0%, labels 2.5%",,,,,
+aesthetic,spaq,keep,0.5,0.763737,0,0.182049,0.380437,Statistical only; not validated against human judgments.,"dropping it changes 18.2% of colour labels; carries its own principal component (PC3, loading -0.85, 12% of variance)",,,,,
+culling,liqe,optional,,,,,,Statistical only; not validated against human judgments.,within-stack share below median,0.065231,0.00417733,0.225745,0.462413,0.618169
+culling,spaq,optional,,,,,,Statistical only; not validated against human judgments.,within-stack share below median,0.080993,0.0131456,0.136906,0.414981,0.602132
+culling,topiq,keep,,,,,,Statistical only; not validated against human judgments.,within-stack share 0.09 and consensus τ-b 0.23 in the top half; ties 0.5%,0.0866988,0.0053218,0.233012,0.46823,0.502598
+culling,arniqa,optional,,,,,,Statistical only; not validated against human judgments.,consensus τ-b below median,0.0993179,0.00574462,0.136443,0.412654,0.450457
+culling,ava,optional,,,,,,Statistical only; not validated against human judgments.,within-stack share below median; consensus τ-b below median,0.0836583,0.0210647,0.100476,0.396546,0.457624
+culling,clip_quality_v0,optional,,,,,,Statistical only; not validated against human judgments.,consensus τ-b below median,0.103968,1.43059e-05,0.132772,0.408538,0.393657
