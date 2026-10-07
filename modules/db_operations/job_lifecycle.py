@@ -227,6 +227,8 @@ def get_running_job_for_phase_continuation(*, services: JobLifecycleServices):
         INNER JOIN job_phases jp ON jp.job_id = j.id AND jp.state IN ('running', 'queued')
         WHERE j.status = 'running'
           AND j.job_type != 'ui_pipeline'
+          AND COALESCE(j.runner_state, '') != 'waiting_child'
+          AND jp.delegated_job_id IS NULL
         ORDER BY
           CASE jp.state WHEN 'running' THEN 0 ELSE 1 END,
           j.id ASC,
@@ -641,10 +643,32 @@ def update_job_status(
     *,
     services: JobLifecycleServices,
 ):
+    from modules.db_operations import job_delegation
+
     # Normalize spelling for writes
     effect_status = (status or "").strip().lower()
     if effect_status == "canceled":
         effect_status = "cancelled"
+
+    # Controls of an aggregate waiting run target its delegated work, never an executor.
+    job = services.get_connector().query_one(
+        "SELECT j.runner_state, j.status, (SELECT delegated_job_id FROM job_phases p "
+        "WHERE p.job_id = j.id AND p.delegated_job_id IS NOT NULL "
+        "ORDER BY p.phase_order FETCH FIRST 1 ROWS ONLY) AS delegated_job_id FROM jobs j WHERE j.id = ?",
+        (job_id,),
+    )
+    if (job or {}).get("delegated_job_id") is not None or (job or {}).get("runner_state") == job_delegation.WAITING_CHILD:
+        if effect_status == "completed":
+            raise ValueError("Invalid completion of delegated work before its child finishes")
+        if effect_status in ("queued", "restarting"):
+            if effect_status == "restarting" and job.get("status") not in ("failed", "interrupted", "paused"):
+                raise ValueError("Invalid restart while delegated work is active")
+            effect_status = "running"
+        result = job_delegation.control(job_id, effect_status, log)
+        if result is not None:
+            if not result["success"]:
+                raise ValueError(f"Delegated run #{job_id}: {result['reason']} ({result['status']})")
+            return result
 
     effect_log = log
     if effect_status == "completed":
@@ -653,8 +677,13 @@ def update_job_status(
             effect_status = "failed"
             effect_log = strict_fail if log is None else f"{log}\n{strict_fail}"
 
+    changes = []
+
     def _tx(tx):
-        return _update_status_transaction(
+        job_delegation.lock_chain(tx, job_id)
+        if job_delegation.child_for_parent(tx, job_id) is not None:
+            raise ValueError("Invalid direct transition of delegated work; retry the child control")
+        result = _update_status_transaction(
             tx,
             job_id,
             effect_status,
@@ -664,7 +693,14 @@ def update_job_status(
             runner_state,
             services,
         )
+        changes.extend(job_delegation.propagate(
+            tx, job_id, new_completion=result[0] != "completed" and result[1] == "completed",
+        ))
+        return result
 
     result = services.get_connector().run_transaction(_tx)
-    _record_status_change(job_id, *result, services)
-    _cleanup_terminal_job(job_id, result[1], services)
+    try:
+        _record_status_change(job_id, *result, services)
+        _cleanup_terminal_job(job_id, result[1], services)
+    finally:
+        job_delegation.publish(changes)

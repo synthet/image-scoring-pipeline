@@ -4,7 +4,7 @@ title: API Contract Summary
 description: "REST contract for the Vexlum Scoring FastAPI backend: endpoints, request/response models and error codes."
 resource: docs/technical/API_CONTRACT.md
 tags: [api, rest, contract]
-timestamp: 2026-10-02T00:00:00Z
+timestamp: 2026-10-07T00:00:00Z
 okf_version: 0.2
 ---
 
@@ -28,6 +28,19 @@ REST API for the Vexlum Scoring Scoring WebUI. Base path: `/api`.
 | **Utilities** | raw-preview, similar, duplicates/find |
 
 **Runs queue & restart:** [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) describes how `GET /api/queue` and `JobDispatcher` relate to `jobs` rows and recovery on WebUI startup.
+
+**Delegated culling runs (#368):** Job list/detail responses expose nullable
+`parent_job_id`; phase detail and `/api/runs/{id}/stages` expose nullable
+`delegated_job_id`. Existing fields and status vocabulary remain compatible.
+A waiting parent reads `status: running`, `runner_state: waiting_child`, with no
+completion timestamp until its child finishes. Completed child stages stay completed
+when a later stage fails. Parent pause/resume/cancel forwards to linked child work;
+force-start and manual skip/retry of delegated parent stages return **409**. A fresh
+run-level retry is independent of the failed chain; an in-place child retry reopens
+its parent. Historical payload-only `parent_job_id` values are audit metadata.
+If the child has already finished, conflicting parent cancel/resume requests return
+**409**. A parent failed by its own post-run audit retains that outcome through
+reconciliation and duplicate completion callbacks; use a fresh Retry for that run.
 
 **Runs submit mode:** [RUN_OPTIONS_MODE_MATRIX.md](RUN_OPTIONS_MODE_MATRIX.md) documents the single canonical `run_mode` (`process_stale_or_missing`) for `POST /api/runs/submit`, JIT planner behavior, and removed legacy options.
 

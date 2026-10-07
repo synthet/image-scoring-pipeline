@@ -18,6 +18,10 @@ class FixedDatetime(datetime.datetime):
 
 @pytest.fixture
 def queue(monkeypatch):
+    # Delegation is covered against PostgreSQL; isolate the ordinary queue contract here.
+    monkeypatch.setattr("modules.db_operations.job_delegation.control", lambda *a, **k: None)
+    monkeypatch.setattr("modules.db_operations.job_delegation.lock_chain", lambda *a: None)
+    monkeypatch.setattr("modules.db_operations.job_delegation.propagate", lambda *a: [])
     conn = Mock()
     conn.query.return_value = []
     conn.query_one.return_value = None
@@ -192,7 +196,7 @@ def test_cancel_eligible_job_sets_terminal_timestamps_and_clears_queue_key(
         "reason": "cancelled",
         "status": status,
     }
-    sql, params = queue.conn.execute.call_args.args
+    sql, params = queue.conn.execute.call_args_list[0].args
     assert "status = 'cancelled', cancel_requested = 1, queue_position = NULL" in sql
     assert "WHERE id = ? AND status IN ('queued', 'paused')" in sql
     assert params == (FixedDatetime.now(), FixedDatetime.now(), 37)

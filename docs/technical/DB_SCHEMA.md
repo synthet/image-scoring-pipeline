@@ -4,7 +4,7 @@ title: Database Schema
 description: Routing catalog for the PostgreSQL + pgvector schema — table inventory by area, pgvector notes, and where the authoritative DDL lives.
 resource: technical/DB_SCHEMA.md
 tags: [database, postgres, pgvector, schema, migrations]
-timestamp: 2026-10-02T00:00:00Z
+timestamp: 2026-10-07T00:00:00Z
 okf_version: 0.2
 ---
 
@@ -41,6 +41,29 @@ The current PostgreSQL initializer creates or maintains these application tables
 | Localization selections | `image_localization_selections` (migration 0038, #484): the revocable decision that one `image_regions` row is the production answer for an image and detector — `selected_by` (rule version and hash), `evidence` (JSONB), `selected_at` / `revoked_at`. At most one active selection per (image, detector). For a selected image `images.bird_bbox` is a projection written only by `modules/localization_selection.py`; the row keeps `projected_bird_bbox` and the `previous_bird_bbox` it replaced so revocation restores it exactly |
 | Localization enablement | `localization_enablement` (migration 0039, #527): one row per `detector_key` with `enabled_at`, the boundary for `localization.new_images_only`. Images with `images.created_at >= enabled_at` are new and auto-selected; older images are selected only when their source identity changed since their current run, or by an explicit image selection. Not seeded by the migration; `modules/localization_policy.py` inserts it on first enabled use |
 | Scene route | `image_scene_labels` (migration 0037, #412): one row per image and `scene_version` (prompt set + backend + prompt hash) with the resolved `top_label`, `top_prob`, every label's `probs` / `cosines` (JSONB) and the localization `rendition_hash`. Written by the scene-route benchmark and, when `scene_route.enabled`, by the `localization` runner |
+
+## Delegated culling runs (#368, revision 0040)
+
+`jobs.parent_job_id` and `job_phases.delegated_job_id` are nullable, indexed foreign
+keys to `jobs.id`. Parent IDs must precede child IDs, preventing cycles. Referenced
+jobs cannot be deleted while these links exist. Migration 0040 follows 0039 and
+does not infer links from historical queue payloads or rewrite historical statuses.
+The same additive DDL lives in `modules/db_schema/core.py` for runtime initialization.
+
+Culling creates the child's complete phase plan and its durable links in the same
+transaction that completes the parent's culling stage. Delegated stages mirror the
+child's states and timestamps. The parent remains `status='running'`,
+`runner_state='waiting_child'`, without a completion timestamp while its child is
+queued or running. It occupies no executor slot. Completed child stages remain
+completed if a later stage fails; unfinished stages and the parent reflect failure,
+cancellation, or interruption, with the child ID in diagnostics.
+
+Startup and idle dispatcher ticks reconcile persisted links. Parent pause/resume
+and cancellation control the linked subtree; manual parent-stage changes are
+rejected. In-place child retries reopen the parent and preserve completed stages.
+Fresh Runs UI retries form independent chains. See
+[RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md#delegated-culling-runs) for
+recovery and deployment instructions. Downgrade refuses unfinished linked chains.
 
 ## PostgreSQL / pgvector Notes
 

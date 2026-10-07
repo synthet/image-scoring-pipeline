@@ -203,6 +203,18 @@ def initialize_core_schema(cur) -> None:
     )
     cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS description TEXT;")
     cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS report_json JSONB;")
+    cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS parent_job_id INTEGER REFERENCES jobs(id);")
+    cur.execute("ALTER TABLE job_phases ADD COLUMN IF NOT EXISTS delegated_job_id INTEGER REFERENCES jobs(id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_parent_job_id ON jobs(parent_job_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_job_phases_delegated_job_id ON job_phases(delegated_job_id);")
+    cur.execute("""DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_jobs_parent_older' AND conrelid = 'jobs'::regclass) THEN
+            ALTER TABLE jobs ADD CONSTRAINT ck_jobs_parent_older CHECK (parent_job_id < id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_job_phases_child_newer' AND conrelid = 'job_phases'::regclass) THEN
+            ALTER TABLE job_phases ADD CONSTRAINT ck_job_phases_child_newer CHECK (delegated_job_id > job_id);
+        END IF;
+    END $$""")
 
     # job_phases counter columns
     cur.execute(
