@@ -1,7 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import fs from 'node:fs'
 import path from 'path'
+
+// Cursor opens this repo through a junction (image-scoring-pipeline ->
+// image-scoring-backend). Rolldown realpaths index.html; Vite's default root
+// stays on the junction. path.relative then yields a ".." fileName, which
+// Rolldown rejects. Pin root to the real directory.
+const root = fs.realpathSync.native(path.resolve(__dirname))
 
 /** Match an exact npm package path, not every package whose name contains a substring. */
 function inNodeModule(id: string, packageName: string): boolean {
@@ -9,6 +16,7 @@ function inNodeModule(id: string, packageName: string): boolean {
 }
 
 export default defineConfig({
+  root,
   plugins: [
     react(),
     tailwindcss(),
@@ -16,8 +24,8 @@ export default defineConfig({
   base: '/ui/',
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      'gl-bench': path.resolve(__dirname, './src/mocks/gl-bench.ts'),
+      '@': path.resolve(root, 'src'),
+      'gl-bench': path.resolve(root, 'src/mocks/gl-bench.ts'),
     },
     // @synthet/image-scoring-design links with its own react@18 devDependency — dedupe to app React 19.
     dedupe: ['react', 'react-dom', 'react/jsx-runtime'],

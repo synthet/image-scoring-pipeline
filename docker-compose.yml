@@ -171,9 +171,16 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
+# Volume names default to image-scoring-pipeline. Set IMAGE_SCORING_VOLUME_PREFIX in
+# the git-ignored .env to keep data volumes created under an older folder name (e.g. image-scoring-backend).
 volumes:
   postgres_data:
+    name: ${IMAGE_SCORING_VOLUME_PREFIX:-image-scoring-pipeline}_postgres_data
   postgres_e2e_data:
+    name: ${IMAGE_SCORING_VOLUME_PREFIX:-image-scoring-pipeline}_postgres_e2e_data
   gpu_shell_home:
+    name: ${IMAGE_SCORING_VOLUME_PREFIX:-image-scoring-pipeline}_gpu_shell_home
   hf_cache:
+    name: ${IMAGE_SCORING_VOLUME_PREFIX:-image-scoring-pipeline}_hf_cache
   torch_cache:
+    name: ${IMAGE_SCORING_VOLUME_PREFIX:-image-scoring-pipeline}_torch_cache

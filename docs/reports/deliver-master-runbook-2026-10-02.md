@@ -27,7 +27,7 @@ status: active
 If your machine still shows `master` at `97f2a57`, you are **behind** — only run sync:
 
 ```powershell
-cd D:\Projects\image-scoring-backend
+cd <path-to>\image-scoring-pipeline   # repo root
 git fetch origin
 git checkout master
 git pull --ff-only origin master   # expect e93d7f3 or later

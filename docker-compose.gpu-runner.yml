@@ -50,7 +50,11 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
+# See docker-compose.yml: IMAGE_SCORING_VOLUME_PREFIX (git-ignored .env) keeps legacy volume names.
 volumes:
   hf_cache:
+    name: ${IMAGE_SCORING_VOLUME_PREFIX:-image-scoring-pipeline}_hf_cache
   torch_cache:
+    name: ${IMAGE_SCORING_VOLUME_PREFIX:-image-scoring-pipeline}_torch_cache
   keras_cache:
+    name: ${IMAGE_SCORING_VOLUME_PREFIX:-image-scoring-pipeline}_keras_cache
