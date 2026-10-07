@@ -18,7 +18,7 @@ class _FakeTx:
         self.updates: list[tuple[str, list]] = []
 
     def query_one(self, sql, params):
-        if sql.lstrip().startswith("SELECT id, state FROM job_phases"):
+        if sql.lstrip().startswith("SELECT id, state, delegated_job_id FROM job_phases"):
             return {"id": 7, "state": self.state}
         return None
 
