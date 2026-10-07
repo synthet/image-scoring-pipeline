@@ -12,7 +12,8 @@
 #   CONFIG_PATH           — alternate config.json
 #   BACKUP_DIR            — primary dump folder (default: <repo>/backups/postgres)
 #   RETENTION_DAYS        — prune primary dumps older than N days (default: 30, 0=skip)
-#   MIRROR_DIR            — mirror folder (default: Windows D:\Dropbox\Photos\Scoring)
+#   MIRROR_DIR            — Dropbox mirror (default: D:\Dropbox\Photos\Scoring; empty skips it)
+#   GOOGLE_MIRROR         — Google Drive mirror (default: D:\Goolge Drive\Scoring; empty skips it)
 #   MIRROR_RETENTION_DAYS — prune mirror dumps older than N days (default: 7, 0=no prune)
 
 set -euo pipefail
@@ -22,7 +23,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PS_SCRIPT="$REPO_ROOT/scripts/powershell/Backup-Postgres.ps1"
 
 DEFAULT_MIRROR_WINDOWS='D:\Dropbox\Photos\Scoring'
-MIRROR_DIR="${MIRROR_DIR:-$DEFAULT_MIRROR_WINDOWS}"
+DEFAULT_GOOGLE_MIRROR='D:\Goolge Drive\Scoring'
+# ${VAR-default} keeps an explicit empty value, so MIRROR_DIR= skips that copy.
+MIRROR_DIR="${MIRROR_DIR-$DEFAULT_MIRROR_WINDOWS}"
+GOOGLE_MIRROR="${GOOGLE_MIRROR-$DEFAULT_GOOGLE_MIRROR}"
 MIRROR_RETENTION_DAYS="${MIRROR_RETENTION_DAYS:-7}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
 BACKUP_DIR="${BACKUP_DIR:-}"
@@ -98,12 +102,21 @@ else
   exit 1
 fi
 
-MIRROR_ARG="$MIRROR_DIR"
-if [[ "$USE_WIN_PATHS" == 1 ]]; then
-  if [[ "$MIRROR_DIR" == /* ]] || [[ "$MIRROR_DIR" == /mnt/* ]]; then
-    MIRROR_ARG="$(to_windows_path_if_needed "$MIRROR_DIR")"
+mirror_arg_for() {
+  local path="$1"
+  if [[ -z "$path" ]]; then
+    printf '%s' ""
+    return
   fi
-fi
+  if [[ "$USE_WIN_PATHS" == 1 ]] && { [[ "$path" == /* ]] || [[ "$path" == /mnt/* ]]; }; then
+    to_windows_path_if_needed "$path"
+    return
+  fi
+  printf '%s' "$path"
+}
+
+MIRROR_ARG="$(mirror_arg_for "$MIRROR_DIR")"
+GOOGLE_MIRROR_ARG="$(mirror_arg_for "$GOOGLE_MIRROR")"
 
 path_for_param() {
   local p="$1"
@@ -122,7 +135,13 @@ if [[ -n "${BACKUP_DIR}" ]]; then
 fi
 
 ARGS+=("-RetentionDays" "$RETENTION_DAYS")
-ARGS+=("-MirrorDir" "$MIRROR_ARG")
+MIRROR_ARGS=()
+[[ -n "$MIRROR_ARG" ]] && MIRROR_ARGS+=("$MIRROR_ARG")
+[[ -n "$GOOGLE_MIRROR_ARG" ]] && MIRROR_ARGS+=("$GOOGLE_MIRROR_ARG")
+if [[ ${#MIRROR_ARGS[@]} -gt 0 ]]; then
+  MIRROR_CSV="$(IFS=,; printf '%s' "${MIRROR_ARGS[*]}")"
+  ARGS+=("-MirrorDir" "$MIRROR_CSV")
+fi
 ARGS+=("-MirrorRetentionDays" "$MIRROR_RETENTION_DAYS")
 
 if [[ ${#EXTRA_PS_ARGS[@]} -gt 0 ]]; then

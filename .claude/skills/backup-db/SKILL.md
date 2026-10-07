@@ -1,7 +1,7 @@
 ---
 name: backup-db
 description: >-
-  PostgreSQL custom-format backup for image-scoring-pipeline via Backup-Postgres.ps1. Use when the user runs /backup-db, asks for a local pg_dump, database backup, or Postgres dump. Default workflow keeps at most 3 dumps in backups/postgres and mirrors the latest copy to D:\Dropbox\Photos\Scoring (also capped at 3 files).
+  PostgreSQL custom-format backup for image-scoring-pipeline via Backup-Postgres.ps1. Use when the user runs /backup-db, asks for a local pg_dump, database backup, or Postgres dump. Default workflow keeps at most 3 dumps in backups/postgres and mirrors the latest copy to D:\Dropbox\Photos\Scoring and D:\Goolge Drive\Scoring (each capped at 3 files).
 disable-model-invocation: true
 ---
 
@@ -13,24 +13,24 @@ Run **`scripts/powershell/Backup-Postgres.ps1`** from **repo root** so the dump 
 
 ## Canonical invocation (this operator)
 
-Always pass **mirror** arguments and **count-based retention** so both locations keep at most **3** newest `image_scoring_*.dump` files:
+Always pass **mirror** arguments and **count-based retention** so all three locations keep at most **3** newest `image_scoring_*.dump` files:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\Backup-Postgres.ps1 `
   -MaxBackups 3 `
-  -MirrorDir "D:\Dropbox\Photos\Scoring" `
+  -MirrorDir "D:\Dropbox\Photos\Scoring,D:\Goolge Drive\Scoring" `
   -MirrorMaxBackups 3 `
   -RetentionDays 0 `
   -MirrorRetentionDays 0
 ```
 
 - **Primary directory:** `backups\postgres` under repo root (default).
-- **Mirror directory:** `D:\Dropbox\Photos\Scoring` — created if missing.
+- **Mirror directories:** `D:\Dropbox\Photos\Scoring` and `D:\Goolge Drive\Scoring` — created if missing. Real folders only; a junction is refused.
 - **Rotation:** after each successful dump, oldest files beyond the third newest are deleted in each folder (newest kept by `LastWriteTime`).
 
 ## Without mirror
 
-If the user explicitly wants **no** Dropbox copy:
+If the user explicitly wants **no** mirror copies:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\Backup-Postgres.ps1 `

@@ -23,7 +23,8 @@
     Keep at most this many newest dumps in -BackupDir. Set to 0 to skip count cleanup.
 
 .PARAMETER MirrorDir
-    If set, copy the finished .dump here (e.g. Dropbox). Empty skips mirror.
+    If set, copy the finished .dump to each of these folders (Dropbox, Google
+    Drive). A junction or other reparse point is refused. Empty skips mirror.
 
 .PARAMETER MirrorRetentionDays
     When -MirrorDir is set, delete mirror copies of ${dbname}_*.dump older than this many days.
@@ -36,8 +37,8 @@
     .\Backup-Postgres.ps1
     .\Backup-Postgres.ps1 -RetentionDays 7
     .\Backup-Postgres.ps1 -BackupDir D:\Backups\postgres -RetentionDays 0
-    .\Backup-Postgres.ps1 -MirrorDir "D:\Dropbox\Photos\Scoring" -MirrorRetentionDays 7
-    .\Backup-Postgres.ps1 -MaxBackups 3 -MirrorDir "D:\Dropbox\Photos\Scoring" -MirrorMaxBackups 3 -RetentionDays 0 -MirrorRetentionDays 0
+    .\Backup-Postgres.ps1 -MirrorDir "D:\Dropbox\Photos\Scoring","D:\Goolge Drive\Scoring" -MirrorRetentionDays 7
+    .\Backup-Postgres.ps1 -MaxBackups 3 -MirrorDir "D:\Dropbox\Photos\Scoring","D:\Goolge Drive\Scoring" -MirrorMaxBackups 3 -RetentionDays 0 -MirrorRetentionDays 0
 #>
 [CmdletBinding()]
 param(
@@ -45,7 +46,7 @@ param(
     [string]$BackupDir    = $null,
     [int]   $RetentionDays = 30,
     [int]   $MaxBackups = 0,
-    [string]$MirrorDir    = $null,
+    [string[]]$MirrorDir = @(),
     [int]   $MirrorRetentionDays = 7,
     [int]   $MirrorMaxBackups = 0
 )
@@ -89,16 +90,38 @@ function Invoke-PruneDumpBackupsByCount {
     if ($MaxBackups -le 0) {
         return 0
     }
-    $files = @(Get-ChildItem -Path $Dir -Filter $Filter -File | Sort-Object LastWriteTime -Descending)
+    $files = @(Get-ChildItem -LiteralPath $Dir -Filter $Filter -File | Sort-Object LastWriteTime -Descending)
     $pruned = 0
     if ($files.Count -gt $MaxBackups) {
         $files | Select-Object -Skip $MaxBackups | ForEach-Object {
             Write-Host "    Removing ($Label): $($_.Name)"
-            Remove-Item $_.FullName -Force
+            Remove-Item -LiteralPath $_.FullName -Force
             $pruned++
         }
     }
     return $pruned
+}
+
+# Task Scheduler and shell wrappers may pass several mirrors as one
+# comma-joined token. A path may therefore not contain a comma.
+$MirrorDir = @($MirrorDir | ForEach-Object { $_ -split ',' } |
+    ForEach-Object { $_.Trim().Trim('"', "'").Trim() } | Where-Object { $_ })
+
+function Assert-RealDirectory([string]$Path) {
+    # A new child directory can still resolve through a linked ancestor.
+    $candidate = [System.IO.Path]::GetFullPath($Path)
+    while ($candidate) {
+        if (Test-Path -LiteralPath $candidate) {
+            $item = Get-Item -LiteralPath $candidate -Force
+            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                throw "refusing to write through a reparse point: $candidate"
+            }
+            if (-not $item.PSIsContainer) {
+                throw "mirror path is not a directory: $candidate"
+            }
+        }
+        $candidate = [System.IO.Path]::GetDirectoryName($candidate)
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -229,7 +252,7 @@ try {
             "--no-password",
             "--file=$containerTmp"
         )
-        Write-Host "    docker $($dumpArgs -join ' ')"
+        Write-Host "    docker exec image-scoring-postgres pg_dump --dbname=$PgDb --format=custom --file=$containerTmp (password omitted)"
         & docker @dumpArgs
         if ($LASTEXITCODE -ne 0) {
             throw "docker exec pg_dump exited with code $LASTEXITCODE"
@@ -270,42 +293,43 @@ $sizeMB = [math]::Round((Get-Item $DumpFile).Length / 1MB, 2)
 Write-OK ('Dump complete: {0} ({1} MB)' -f $DumpFile, $sizeMB)
 
 # ---------------------------------------------------------------------------
-# Optional mirror copy (e.g. Dropbox) + mirror retention
+# Optional mirror copies (Dropbox, Google Drive) + per-folder retention
 # ---------------------------------------------------------------------------
 
-if (-not [string]::IsNullOrWhiteSpace($MirrorDir)) {
-    $MirrorDir = [System.IO.Path]::GetFullPath($MirrorDir.Trim())
-    if (-not (Test-Path $MirrorDir)) {
-        Write-Step "Creating mirror directory: $MirrorDir"
-        New-Item -ItemType Directory -Path $MirrorDir -Force | Out-Null
+foreach ($oneMirror in $MirrorDir) {
+    $oneMirror = [System.IO.Path]::GetFullPath($oneMirror.Trim())
+    Assert-RealDirectory $oneMirror
+    if (-not (Test-Path -LiteralPath $oneMirror)) {
+        Write-Step "Creating mirror directory: $oneMirror"
+        New-Item -ItemType Directory -Path $oneMirror -Force | Out-Null
     }
-    $mirrorFile = Join-Path $MirrorDir ([System.IO.Path]::GetFileName($DumpFile))
+    $mirrorFile = Join-Path $oneMirror ([System.IO.Path]::GetFileName($DumpFile))
     Write-Step "Copying dump to mirror: $mirrorFile"
     Copy-Item -LiteralPath $DumpFile -Destination $mirrorFile -Force
-    if (-not (Test-Path $mirrorFile) -or (Get-Item $mirrorFile).Length -eq 0) {
+    if (-not (Test-Path -LiteralPath $mirrorFile) -or (Get-Item -LiteralPath $mirrorFile).Length -eq 0) {
         Write-Fail "Mirror copy missing or empty: $mirrorFile"
         exit 1
     }
-    $mMB = [math]::Round((Get-Item $mirrorFile).Length / 1MB, 2)
+    $mMB = [math]::Round((Get-Item -LiteralPath $mirrorFile).Length / 1MB, 2)
     Write-OK ('Mirror copy complete: {0} ({1} MB)' -f $mirrorFile, $mMB)
 
     if ($MirrorMaxBackups -gt 0) {
-        Write-Step "Pruning mirror dumps (keep newest $MirrorMaxBackups)..."
-        $mPruned = Invoke-PruneDumpBackupsByCount -Dir $MirrorDir -Filter "${PgDb}_*.dump" -MaxBackups $MirrorMaxBackups -Label "mirror"
+        Write-Step "Pruning mirror dumps in $oneMirror (keep newest $MirrorMaxBackups)..."
+        $mPruned = Invoke-PruneDumpBackupsByCount -Dir $oneMirror -Filter "${PgDb}_*.dump" -MaxBackups $MirrorMaxBackups -Label "mirror"
         if ($mPruned -eq 0) {
             Write-Host "    Nothing to prune in mirror."
         } else {
             Write-OK "Pruned $mPruned old dump(s) from mirror."
         }
     } elseif ($MirrorRetentionDays -gt 0) {
-        Write-Step "Pruning mirror dumps older than $MirrorRetentionDays days..."
+        Write-Step "Pruning mirror dumps in $oneMirror older than $MirrorRetentionDays days..."
         $mCutoff = (Get-Date).AddDays(-$MirrorRetentionDays)
         $mPruned = 0
-        Get-ChildItem -Path $MirrorDir -Filter "${PgDb}_*.dump" -File |
+        Get-ChildItem -LiteralPath $oneMirror -Filter "${PgDb}_*.dump" -File |
             Where-Object { $_.LastWriteTime -lt $mCutoff } |
             ForEach-Object {
                 Write-Host "    Removing (mirror): $($_.Name)"
-                Remove-Item $_.FullName -Force
+                Remove-Item -LiteralPath $_.FullName -Force
                 $mPruned++
             }
         if ($mPruned -eq 0) {
@@ -334,11 +358,11 @@ if ($MaxBackups -gt 0) {
     Write-Step "Pruning dumps older than $RetentionDays days..."
     $cutoff = (Get-Date).AddDays(-$RetentionDays)
     $pruned = 0
-    Get-ChildItem -Path $BackupDir -Filter "${PgDb}_*.dump" |
+    Get-ChildItem -LiteralPath $BackupDir -Filter "${PgDb}_*.dump" -File |
         Where-Object { $_.LastWriteTime -lt $cutoff } |
         ForEach-Object {
             Write-Host "    Removing: $($_.Name)"
-            Remove-Item $_.FullName -Force
+            Remove-Item -LiteralPath $_.FullName -Force
             $pruned++
         }
     if ($pruned -eq 0) {

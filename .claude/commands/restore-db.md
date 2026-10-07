@@ -63,7 +63,7 @@ mistake recoverable and visible.
 Newest-by-content, not newest-by-filename. Compare candidate dumps' `images` count /
 `max(id)` (the wrapper prints BEFORE; restore into the **e2e** container first to inspect
 a candidate without risking live). The good rotating dumps live in `backups\postgres\`
-(mirrored to `D:\Dropbox\Photos\Scoring`). Quarantined months-old dumps are under
+(mirrored to `D:\Dropbox\Photos\Scoring` and `D:\Goolge Drive\Scoring`). Quarantined months-old dumps are under
 `backups\archive\` and should not be restored unless explicitly intended.
 
 ## Recover from a bad restore
