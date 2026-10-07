@@ -16,6 +16,7 @@ echo   (no docker compose down -v).
 echo.
 echo   Prerequisites: Docker Desktop, Node/npm on PATH.
 echo   DB: compose Postgres service (pgvector). Legacy Firebird: run_firebird.bat if needed.
+echo   Renamed repo folder? Set in .env: IMAGE_SCORING_VOLUME_PREFIX and COMPOSE_PROJECT_NAME=image-scoring-backend
 echo.
 echo   Optional environment variables:
 echo     SKIP_FRONTEND_BUILD=1   skip npm (Python/static unchanged)
