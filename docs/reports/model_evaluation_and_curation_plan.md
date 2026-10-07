@@ -13,7 +13,7 @@ status: active
 
 ## Goal Description
 
-The goal of this initiative is to evaluate all AI quality assessment models in the **Vexlum Scoring** pipeline (`image-scoring-backend`), determine each model's statistical signal and marginal utility, rate them across operational scenarios, decide which models can be omitted or deprecated, and establish minimal, reliable model subsets for production deployment.
+The goal of this initiative is to evaluate all AI quality assessment models in the **Vexlum Scoring** pipeline (`image-scoring-pipeline`), determine each model's statistical signal and marginal utility, rate them across operational scenarios, decide which models can be omitted or deprecated, and establish minimal, reliable model subsets for production deployment.
 
 This plan synthesizes:
 1. **Live Production Corpus Analytics**: Empirical evaluation across **77,331 images** and **11,174 burst stacks (66,308 stacked images)** from the active PostgreSQL database (`image_scoring`), referencing [`Score Analytics UI`](http://127.0.0.1:7860/ui/scores).
@@ -259,7 +259,7 @@ timeline
 > [!IMPORTANT]
 > **Key Decisions for Approval**:
 > 1. **Immediate Deprecation of `koniq`, `paq2piq`, and `refcull_*`**: Approve removing them from default analytics views and stopping shadow pipeline calculations.
-> 2. **Adoption of Dedicated Culling Score in [`modules/selection.py`](file:///D:/Projects/image-scoring-backend/modules/selection.py)**: Replace generic `score_general` sorting in burst culling with the dedicated formula:
+> 2. **Adoption of Dedicated Culling Score in [`modules/selection.py`](../../modules/selection.py)**: Replace generic `score_general` sorting in burst culling with the dedicated formula:
 >    $$\text{culling\_rank} = 0.55 \cdot \text{liqe} + 0.30 \cdot \text{spaq} + 0.15 \cdot \text{topiq}$$
 > 3. **`arniqa` Profiling**: Approve adding the `high_throughput` scoring profile toggle to `config.json` allowing users to bypass `arniqa` (measured ~16% less model time, #494) when desired.
 > 4. **Human Label Review Initiation**: Confirm readiness to utilize the frozen study at `reports/model-selection-2026-10-01/` for ground-truth labeling.

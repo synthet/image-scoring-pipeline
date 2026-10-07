@@ -1,0 +1,57 @@
+{
+  "threshold": 0.8,
+  "library": [
+    {
+      "members": [
+        "general",
+        "technical",
+        "aesthetic",
+        "liqe",
+        "spaq",
+        "topiq"
+      ],
+      "links": [
+        {
+          "a": "general",
+          "b": "technical",
+          "r": 0.9610295667114399
+        },
+        {
+          "a": "general",
+          "b": "aesthetic",
+          "r": 0.8335228062199109
+        },
+        {
+          "a": "general",
+          "b": "liqe",
+          "r": 0.8361262996626099
+        },
+        {
+          "a": "technical",
+          "b": "topiq",
+          "r": 0.8425543176124081
+        },
+        {
+          "a": "aesthetic",
+          "b": "spaq",
+          "r": 0.8717769890731205
+        }
+      ]
+    }
+  ],
+  "within": [
+    {
+      "members": [
+        "general",
+        "technical"
+      ],
+      "links": [
+        {
+          "a": "general",
+          "b": "technical",
+          "r": 0.8268937610097457
+        }
+      ]
+    }
+  ]
+}

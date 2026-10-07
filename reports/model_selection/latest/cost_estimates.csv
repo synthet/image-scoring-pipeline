@@ -1,0 +1,7 @@
+model,runtime,architecture,params_approx,input,shared_backbone,relative_cost
+liqe,PyTorch (pyiqa),CLIP ViT-B/32 image tower + cached text prompts,~88M (image tower),224 px crops,none in production,medium
+topiq,PyTorch (pyiqa),"TOPIQ-NR, ResNet-50 multi-scale features",~45M,full image (resized),none,medium
+arniqa,PyTorch (pyiqa),"ARNIQA, ResNet-50 encoder + linear regressor at 2 scales",~24M,full + half resolution,none,medium
+spaq,TensorFlow (MUSIQ),"MUSIQ multi-scale transformer, SPAQ checkpoint",~27M,multi-scale patches of the full image,TF session shared with ava,high
+ava,TensorFlow (MUSIQ),"MUSIQ multi-scale transformer, AVA checkpoint",~27M,multi-scale patches of the full image,TF session shared with spaq,high
+clip_quality_v0,PyTorch (CLIP text tower),prompt similarity on stored clip_vit_b32_image embeddings,text tower only,existing 512-d embedding,keywords-phase CLIP embedding,near zero when the embedding exists

@@ -117,5 +117,7 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 |----------|-------------|
 | [RELEASE_HANDOFF_2026-04-10_2026-04-11.md](RELEASE_HANDOFF_2026-04-10_2026-04-11.md) | Cross-repo release handoff (dated snapshot) |
 | [SESSION TRANSCRIPT DIGESTS](SESSION_TRANSCRIPT_DIGESTS.md) | Router for wiki digests distilled from gitignored session exports (public fact layer) |
+| [REPORT](../../reports/model-selection-2026-10-01/REPORT.md) | Frozen aggregate study evidence; private snapshot and owner labels remain local. |
+| [REPORT](../../reports/model_selection/latest/REPORT.md) | Aggregate model-selection ablations, culling statistics, cost estimates and provisional verdicts. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)

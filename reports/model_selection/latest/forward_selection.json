@@ -1,0 +1,190 @@
+{
+  "general": {
+    "selected": [
+      "liqe",
+      "spaq"
+    ],
+    "steps": [
+      {
+        "added": "liqe",
+        "models": [
+          "liqe"
+        ],
+        "score": 0.8360775361062421,
+        "gain": null,
+        "alternatives": {
+          "liqe": 0.8360775361062421,
+          "spaq": 0.7360039657075577,
+          "topiq": 0.7435507357755323,
+          "arniqa": 0.6494964791302076,
+          "ava": 0.46384584100898474
+        }
+      },
+      {
+        "added": "spaq",
+        "models": [
+          "liqe",
+          "spaq"
+        ],
+        "score": 0.9780754707001788,
+        "gain": 0.14199793459393661,
+        "alternatives": {
+          "spaq": 0.9780754707001788,
+          "topiq": 0.8676444203829762,
+          "arniqa": 0.8579416950823383,
+          "ava": 0.8762735575774111
+        }
+      }
+    ],
+    "stop_reason": "next best (ava) adds gain 0.0085 < 0.01",
+    "target": "Spearman with the full general composite"
+  },
+  "technical": {
+    "selected": [
+      "topiq",
+      "arniqa",
+      "spaq"
+    ],
+    "steps": [
+      {
+        "added": "topiq",
+        "models": [
+          "topiq"
+        ],
+        "score": 0.842517625536282,
+        "gain": null,
+        "alternatives": {
+          "topiq": 0.842517625536282,
+          "arniqa": 0.7599154345711842,
+          "spaq": 0.6978875924066987,
+          "liqe": 0.7950765328914372
+        }
+      },
+      {
+        "added": "arniqa",
+        "models": [
+          "topiq",
+          "arniqa"
+        ],
+        "score": 0.9087141925111419,
+        "gain": 0.06619656697485998,
+        "alternatives": {
+          "arniqa": 0.9087141925111419,
+          "spaq": 0.9051587873545399,
+          "liqe": 0.8997857399955407
+        }
+      },
+      {
+        "added": "spaq",
+        "models": [
+          "topiq",
+          "arniqa",
+          "spaq"
+        ],
+        "score": 0.9702597336243645,
+        "gain": 0.061545541113222524,
+        "alternatives": {
+          "spaq": 0.9702597336243645,
+          "liqe": 0.9358177365274102
+        }
+      }
+    ],
+    "stop_reason": "reached 3 models",
+    "target": "Spearman with the full technical composite"
+  },
+  "aesthetic": {
+    "selected": [
+      "spaq",
+      "ava"
+    ],
+    "steps": [
+      {
+        "added": "spaq",
+        "models": [
+          "spaq"
+        ],
+        "score": 0.8717140705157684,
+        "gain": null,
+        "alternatives": {
+          "ava": 0.7139253694701027,
+          "spaq": 0.8717140705157684,
+          "liqe": 0.46736143357771026
+        }
+      },
+      {
+        "added": "ava",
+        "models": [
+          "spaq",
+          "ava"
+        ],
+        "score": 0.9923307090791303,
+        "gain": 0.12061663856336191,
+        "alternatives": {
+          "ava": 0.9923307090791303,
+          "liqe": 0.8955040149187076
+        }
+      }
+    ],
+    "stop_reason": "next best (liqe) adds gain 0.0077 < 0.01",
+    "target": "Spearman with the full aesthetic composite"
+  },
+  "culling": {
+    "selected": [
+      "topiq",
+      "liqe",
+      "ava"
+    ],
+    "steps": [
+      {
+        "added": "topiq",
+        "models": [
+          "topiq"
+        ],
+        "score": 0.5241178056423098,
+        "gain": null,
+        "alternatives": {
+          "liqe": 0.5122413825805092,
+          "spaq": 0.417538822006837,
+          "topiq": 0.5241178056423098,
+          "arniqa": 0.41502304213545205,
+          "ava": 0.37675665444240813,
+          "clip_quality_v0": 0.41283910094305715
+        }
+      },
+      {
+        "added": "liqe",
+        "models": [
+          "topiq",
+          "liqe"
+        ],
+        "score": 0.6772600852444556,
+        "gain": 0.15314227960214577,
+        "alternatives": {
+          "liqe": 0.6772600852444556,
+          "spaq": 0.6462458819669548,
+          "arniqa": 0.6446847376679721,
+          "ava": 0.6376485669181722,
+          "clip_quality_v0": 0.6602465130326007
+        }
+      },
+      {
+        "added": "ava",
+        "models": [
+          "topiq",
+          "liqe",
+          "ava"
+        ],
+        "score": 0.7142610174719198,
+        "gain": 0.037000932227464256,
+        "alternatives": {
+          "spaq": 0.706908482649141,
+          "arniqa": 0.7092463916105022,
+          "ava": 0.7142610174719198,
+          "clip_quality_v0": 0.70675905198758
+        }
+      }
+    ],
+    "stop_reason": "reached 3 models",
+    "target": "mean within-stack \u03c4-b with the all-candidate consensus rank"
+  }
+}
