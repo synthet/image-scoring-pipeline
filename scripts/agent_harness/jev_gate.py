@@ -102,10 +102,15 @@ def contains_secret(text: str) -> bool:
 
 
 def resolve_repo(explicit: str | os.PathLike[str] | None = None, cwd: str | None = None) -> Path:
-    """Target repo: ``--repo``, then ``CLAUDE_PROJECT_DIR``, then event ``cwd``."""
-    for candidate in (explicit, os.environ.get("CLAUDE_PROJECT_DIR"), cwd, os.getcwd()):
+    """Choose a repo root, ignoring malformed project-dir environment values."""
+    if explicit:
+        return Path(explicit).resolve()
+    for candidate in (os.environ.get("CLAUDE_PROJECT_DIR"), cwd, os.getcwd()):
         if candidate:
-            return Path(candidate).resolve()
+            path = Path(candidate).resolve()
+            for parent in (path, *path.parents):
+                if (parent / CONFIG_REL).is_file():
+                    return parent
     return BACKEND_ROOT
 
 
