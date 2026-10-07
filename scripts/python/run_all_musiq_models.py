@@ -643,6 +643,8 @@ class MultiModelMUSIQ:
                 continue
         
         logging.getLogger(__name__).error(f"✗ All RAW conversion methods failed for: {raw_path}")
+        from modules.raw_diagnostics import log_raw_failure
+        log_raw_failure(raw_path, "scoring_conversion")
         return None
     
     def _convert_with_rawpy(self, raw_path: str, output_path: str) -> Tuple[bool, Optional[str]]:
