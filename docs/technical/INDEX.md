@@ -67,6 +67,7 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 | [BIRD_SPECIES_WALKTHROUGH.md](BIRD_SPECIES_WALKTHROUGH.md) | Bird species classification via BioCLIP 2 — end-to-end walkthrough |
 | [KEYWORD_EXTRACTION_GUIDE.md](KEYWORD_EXTRACTION_GUIDE.md) | BLIP + CLIP keyword extraction tool |
 | [RAW_PROCESSING_GUIDE.md](RAW_PROCESSING_GUIDE.md) | RAW file processing pipeline |
+| [RAW_DIAGNOSTICS.md](RAW_DIAGNOSTICS.md) | Optional RAW failure probes and isolated CPU decode comparisons. |
 | [NEF_FORMAT_REFERENCE.md](NEF_FORMAT_REFERENCE.md) | Nikon NEF container, MakerNote, previews (reference notes) |
 | [NEF_IMPLEMENTATION_REVIEW.md](NEF_IMPLEMENTATION_REVIEW.md) | NEF handling code review: backend + image-scoring-gallery |
 | [INBROWSER_RAW_PREVIEW.md](INBROWSER_RAW_PREVIEW.md) | In-browser NEF preview (LibRaw/JS) |

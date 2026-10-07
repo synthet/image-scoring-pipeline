@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **JPEG thumbnail orientation:** Apply EXIF transpose before saving raster thumbnails so portrait sources keep upright pixels when Pillow drops the EXIF tag. RAW thumbnail handling is unchanged; existing affected JPEG thumbnails require regeneration. See the companion gallery's [orientation solution and verification](https://github.com/synthet/image-scoring-gallery/blob/main/docs/features/implemented/05-jpeg-export-exif-orientation.md), including preserved image 240203.
+
 ## [8.18.0] - 2026-10-03
 
 ### Added
