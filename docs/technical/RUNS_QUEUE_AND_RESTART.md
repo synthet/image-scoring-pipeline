@@ -1,10 +1,20 @@
+---
+type: Technical Reference
+title: Runs queue and application restart
+description: Durable job queue, delegated culling lifecycle, and restart recovery.
+resource: technical/RUNS_QUEUE_AND_RESTART.md
+tags: [runs, queue, recovery, database]
+timestamp: 2026-10-07T19:53:16Z
+okf_version: 0.2
+---
+
 # Runs queue and application restart
 
 How batch **runs** (rows in the `jobs` table) behave when the WebUI process stops and starts again.
 
 ## Where the queue lives
 
-Queued work is **not** held only in memory. It is stored in Firebird in the **`jobs`** table (`queue_position`, `enqueued_at`, `status`, `queue_payload`, priority, etc.).
+Queued work is stored in PostgreSQL in the **`jobs`** table (`queue_position`, `enqueued_at`, `status`, `queue_payload`, priority, etc.).
 
 - **[`GET /api/queue`](../../modules/api.py)** (see `get_run_queue`) lists queued jobs via [`db.get_queued_jobs`](../../modules/db.py). With the default `include_related=False`, that path returns rows with **`status = 'queued'`** only.
 - **[`JobDispatcher`](../../modules/job_dispatcher.py)** polls [`db.dequeue_next_job()`](../../modules/db.py), which atomically picks the next row with `status = 'queued'` and `cancel_requested = 0`, ordered by priority, `queue_position`, `enqueued_at`, and `id`, then sets it to `running`.
@@ -21,10 +31,61 @@ Inside `create_ui`, [`_init_webui_engines`](../../modules/ui/app.py) runs `db.in
 |----------------------|------------|
 | **`queued`** | Unchanged. Still eligible for `dequeue_next_job` in sort order. |
 | **`paused`** | Unchanged. **Not** dequeued (`dequeue_next_job` only selects `queued`). Resume explicitly if needed. |
-| **`running`** | **All** such rows are updated by [`db.recover_running_jobs`](../../modules/db.py) to **`interrupted`** (with `runner_state` / `completed_at` set). They are **not** automatically re-queued. |
+| **`running`** executor | Updated by [`db.recover_running_jobs`](../../modules/db.py) to **`interrupted`** (with `runner_state` / `completed_at` set). It is **not** automatically re-queued. |
+| **`running`, `runner_state='waiting_child'`** | Reconciled from its child. A queued child leaves the parent waiting; an interrupted executor child interrupts the parent. |
 | **`failed`**, **`completed`**, **`cancelled`** | Unchanged. Not part of the dequeue queue. |
 
-Recovery is invoked from [`modules/ui/app.py`](../../modules/ui/app.py); it calls `recover_running_jobs(mark_as="interrupted")` for **every** job still marked `running`, not only pipeline jobs.
+Recovery is invoked from [`modules/ui/app.py`](../../modules/ui/app.py); it calls `recover_running_jobs(mark_as="interrupted")` for running executors, excluding waiting parents.
+
+## Delegated culling runs
+
+Revision 0040 adds durable `jobs.parent_job_id` and `job_phases.delegated_job_id`
+links. Culling hands all unfinished downstream stages to one child atomically.
+The parent remains running with `runner_state='waiting_child'` and contributes
+zero to dispatcher executor capacity. Its culling stage is completed; delegated
+stages mirror the child's queued/running/terminal states and actual timestamps.
+Keywords completed before a bird-species failure stay completed; only unfinished
+stages and the aggregate parent fail. Cancellation and interruption propagate
+through every ancestor. Startup and idle dispatcher ticks repair missed projections
+without enqueueing duplicate children. Repeated handoff reuses the persisted child.
+
+Pause, resume, and cancel on a parent forward to its linked subtree. Stop requests
+target only the runner whose dispatch job ID belongs to that child. Manual parent
+stage edits and force-start are rejected. Resume queues the leaf, never the waiting
+parent. In-place child restart preserves successful stages and reopens failed or
+interrupted parents. Runs UI run-level Retry creates a new independent chain; it
+does not replace the old child's links or change the old parent outcome.
+
+If the parent's own post-run audit fails after the child completed successfully,
+reconciliation and duplicate child callbacks retain that failure. A finished child
+cannot resume its parent as an executor; use a fresh run-level Retry. Cancel/resume
+requests that lose a race with child completion return 409 rather than a server error.
+
+Historical payload-only parent IDs remain audit metadata. There is no automatic
+backfill of old links or statuses. Foreign keys preserve linked records against
+deletion. After an enqueue transaction fails, culling's successful result is retained
+but the parent visibly fails with a message identifying the unstarted stages.
+
+### Deployment and rollback (0040)
+
+1. Stop auto-drive submissions and drain current executor work before deploying.
+   Stop the backend dispatcher so no old process writes during the upgrade.
+2. Create and verify a PostgreSQL backup using
+   `scripts/powershell/Backup-Postgres.ps1` (or `scripts/run_postgres_backup.sh`).
+3. In the configured backend runtime, inspect `python -m alembic current`, then
+   apply `python -m alembic upgrade 0040`. Runtime initialization is also additive;
+   the Alembic revision records the deployed schema version explicitly.
+4. Start the new backend, run one culling → keywords → bird_species plan, and
+   verify the waiting parent, linked child, preserved stage outcomes, and restart
+   recovery before re-enabling auto-drive. Historical rows should retain NULL links.
+5. For rollback, drain or explicitly cancel every unfinished linked chain first.
+   Stop the backend, then run `python -m alembic downgrade 0039` before starting
+   the older code. Downgrade rejects active, paused, and interrupted parent chains;
+   it removes linkage columns but retains jobs and phase outcomes. It is not a
+   recovery mechanism for unfinished work.
+
+These steps describe the production procedure; the implementation tests use only
+the isolated `image_scoring_test` database.
 
 ## Pipeline auto-resume
 
@@ -52,8 +113,8 @@ After restart, only `jobs` was set to `interrupted`. **`job_phases` could stay `
 
 Same crash state; on restart `recover_running_jobs('interrupted')`:
 
-1. `SELECT id FROM jobs WHERE status = 'running'` → e.g. `[305]`
-2. `UPDATE jobs SET status = ?, completed_at = ?, runner_state = ? WHERE status = 'running'`
+1. Select running executors, excluding `runner_state='waiting_child'` → e.g. `[305]`.
+2. Mark those executors interrupted, with `completed_at` and `runner_state` updated.
 3. `UPDATE job_phases SET state = ?, completed_at = ? WHERE job_id IN (…) AND state = 'running'`
 
 Only phases that were **`running`** for those job IDs are updated. Completed/pending/failed phases on the same run (and all rows on other jobs) are unchanged.
@@ -72,7 +133,10 @@ Only phases that were **`running`** for those job IDs are updated. Completed/pen
 
 ## Per-image phase status (`image_phase_status`)
 
-`recover_running_jobs` still does **not** infer per-image progress from `jobs` alone, but after it marks runs interrupted it calls **`reconcile_stale_running_phases_for_jobs`** so rows still **`running`** for those job ids are flipped to **`failed`** with `last_error` `stale_running_reconciled:job_interrupted`. That prevents folder phase rollups from staying stuck on “running” after a crash.
+After marking executor runs interrupted, `recover_running_jobs` calls
+`reconcile_stale_running_phases_for_jobs` with `in_flight_to='not_started'` so their
+unfinished per-image rows remain resumable. Their `last_error` records
+`stale_running_reconciled:job_interrupted`.
 
 On WebUI init, **`reconcile_stale_running_phases_for_terminal_jobs`** (see [`modules/db.py`](../../modules/db.py)) also fixes **`running`** rows whose **`jobs`** row is already terminal (completed/failed/canceled/interrupted). Count is surfaced under `job_recovery.reconciled_terminal_job_phase_rows` in config loaded from [`modules/ui/app.py`](../../modules/ui/app.py).
 

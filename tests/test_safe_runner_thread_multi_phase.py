@@ -126,6 +126,15 @@ def test_single_phase_job_unchanged(fake_db):
     assert stub.update_calls == ["completed"]
 
 
+def test_waiting_parent_is_not_completed_by_runner_fallback(fake_db, monkeypatch):
+    stub = fake_db(["culling", "keywords"])
+    monkeypatch.setattr(stub, "get_job", lambda jid: {"id": jid, "status": "running", "runner_state": "waiting_child"})
+    runner = FakeRunner()
+    safe_runner_thread(runner, 77, lambda: None)
+    assert stub.update_calls == []
+    assert runner.is_running is False
+
+
 def test_runner_that_already_marked_job_terminal_is_not_recompleted(fake_db):
     """Single-phase runner wrote its own terminal status — no second write."""
     stub = fake_db(["scoring"])

@@ -111,6 +111,8 @@ class JobDispatcher:
             if self._any_runner_busy():
                 return
 
+            db.reconcile_delegated_jobs()
+
             busy_runner_keys: list[str] = []
             active_runner = self._get_active_runner()
             if active_runner:
@@ -554,6 +556,7 @@ class JobDispatcher:
         runner_name, runner = entry
         if not runner:
             return False, f"No runner available for '{phase}' (runner '{runner_name}' is not initialized)"
+        runner._dispatch_job_id = job_id
 
         logger.info(f"[DISPATCHER] Starting job {job_id} on {runner_name} (phase: {phase}, path: {input_path})")
         

@@ -4,7 +4,7 @@ title: Technical — Index
 description: Index of stable technical reference and deep-dive feature documentation for image-scoring-pipeline.
 resource: technical/INDEX.md
 tags: [technical, index, reference, okf]
-timestamp: 2026-09-01T00:00:00Z
+timestamp: 2026-10-07T00:00:00Z
 okf_version: 0.2
 ---
 
@@ -31,7 +31,7 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 
 | Document | Description |
 |----------|-------------|
-| [DB_SCHEMA.md](DB_SCHEMA.md) | Firebird database schema (tables, columns, relationships) |
+| [DB_SCHEMA.md](DB_SCHEMA.md) | PostgreSQL schema catalog, durable delegated job links, and migrations |
 | [EMBEDDINGS.md](EMBEDDINGS.md) | MobileNetV2 `image_embedding`, pgvector, backfill scripts, multi-model notes |
 | [DB_RECOVERY_FROM_CORRUPTION.md](DB_RECOVERY_FROM_CORRUPTION.md) | Recovery procedures for database corruption |
 | [FIREBIRD_WINDOWS_TEMPDIR.md](FIREBIRD_WINDOWS_TEMPDIR.md) | Windows `TempDirectories` / `fb_sort_*` sort errors (335544675) |
@@ -80,7 +80,7 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 | Document | Description |
 |----------|-------------|
 | [API_CONTRACT.md](API_CONTRACT.md) | API contract summary (endpoints, response models) |
-| [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) | `jobs` queue persistence, `JobDispatcher`, and behavior on WebUI restart |
+| [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) | Durable queue, delegated culling controls, restart recovery, and revision 0040 deployment |
 | [RUNS_WALKTHROUGH.md](RUNS_WALKTHROUGH.md) | End-to-end walkthrough: submit → dispatcher → runners, pause/resume/retry/force, UI tabs |
 | [RUN_OPTIONS_MODE_MATRIX.md](RUN_OPTIONS_MODE_MATRIX.md) | New Run four options vs `run_mode`, dispatcher wiring, audit findings (2026-05-07), known gaps |
 | [MCP_DEBUGGING_TOOLS.md](MCP_DEBUGGING_TOOLS.md) | MCP server tools for Cursor |

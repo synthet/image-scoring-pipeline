@@ -125,6 +125,8 @@ def safe_runner_thread(runner_obj, job_id, run_func, *args, phase_code=None, **k
                     return
                 row = db.get_job(job_id)
                 current = (row or {}).get("status", "").strip().lower()
+                if (row or {}).get("runner_state") == "waiting_child":
+                    return
                 if current in db.JOB_TERMINAL_STATES:
                     return
                 # A multi-phase job stays ``running`` after its stage completes (later
