@@ -17,6 +17,7 @@ from modules import score_normalization as snorm
 from modules.phases import SCORING_EXECUTOR_VERSION, PhaseCode, PhaseStatus
 from modules.pipeline_diagnostics import get_stall_detector, phase_timer
 from modules.run_log import attach_image_log_suffix, emit_run_log
+from modules.scoring_inputs import describe_input, input_resolution, source_identity, upright_dimensions
 from modules.version import APP_VERSION
 
 # Lazy imports — TensorFlow/PyTorch live behind ScoringWorker._get_liqe_scorer()
@@ -45,6 +46,8 @@ class ImageJob:
     is_raw: bool = False
     process_path: str = "" # Path to actual image to score (original or temp jpeg)
     external_scores: dict[str, Any] = field(default_factory=dict)
+    model_inputs: dict[str, dict] | None = None
+    source_decode_route: str | None = None
     thumbnail_path: str | None = None
     image_id: int | None = None  # DB id, set when image is found/created
     target_phases: list[PhaseCode] = field(default_factory=list) # List of phases to execute in this job
@@ -307,6 +310,7 @@ class PrepWorker(PipelineWorker):
             jpg = self._raw_converter.convert_raw_to_jpeg(job.image_path)
             if jpg:
                 job.process_path = jpg
+                job.source_decode_route = getattr(self._raw_converter, "last_raw_conversion_route", None)
                 job.temp_files.append(jpg)
                 if job.job_id:
                     emit_run_log(
@@ -331,6 +335,7 @@ class PrepWorker(PipelineWorker):
                 return False
         else:
             job.process_path = job.image_path
+            job.source_decode_route = "pillow:raster"
         return True
         
     def process(self, job: ImageJob):
@@ -411,6 +416,37 @@ class ScoringWorker(PipelineWorker):
         except Exception:
             return False
 
+    def _prepare_registry_inputs(self, job: ImageJob, cfg: dict, temp_dir: str, external: dict) -> None:
+        """Derive every active model's input from the common, unresized source."""
+        raw_cfg = cfg.get("raw_conversion") or {}
+        default = input_resolution(raw_cfg.get("max_resolution", 512))
+        overrides = (cfg.get("scoring") or {}).get("model_preprocessing") or {}
+        source_path = job.process_path
+        source_size = upright_dimensions(source_path)
+        source_id = source_identity(job.image_path)
+        policy = getattr(self.scorer.backend, "PREPROCESSING_POLICY", "upright-v1")
+        quality = max(50, min(100, int(raw_cfg.get("jpeg_quality", 85))))
+        variants = {}
+        job.model_inputs = {}
+        active = [m for m in self.scorer.registry.all_active() if m.name not in external]
+        for model in active:
+            override = overrides.get(model.name)
+            if isinstance(override, dict):
+                override = override.get("resolution")
+            resolution = input_resolution(override, default)
+            if resolution not in variants:
+                path = self.scorer.preprocess_image(source_path, output_dir=temp_dir,
+                                                    resolution_override=resolution)
+                if not path:
+                    raise ValueError(f"Missing prepared input for {model.name}")
+                variants[resolution] = describe_input(
+                    path, source_id=source_id, source_size=source_size, resolution=resolution,
+                    jpeg_quality=quality, policy=policy,
+                    decode_route=job.source_decode_route or "unknown")
+            job.model_inputs[model.name] = variants[resolution]
+        # All-external runs need no image inference, but retain a valid path.
+        if variants:
+            job.process_path = next(iter(variants.values()))["path"]
     def _run_registry_models(self, external: dict, image_path: str, log) -> None:
         """Run registry `IScoringModel`s the legacy backend doesn't produce.
 
@@ -510,7 +546,7 @@ class ScoringWorker(PipelineWorker):
             return
 
         # Prepare external scores container
-        external = job.external_scores if job.external_scores else {}
+        external = job.external_scores
         
         # Preprocess using config (raw_conversion or scoring.model_preprocessing)
         try:
@@ -526,10 +562,13 @@ class ScoringWorker(PipelineWorker):
             liqe_res = get_res("liqe")
             musiq_res = get_res("spaq") or get_res("ava")
             # Single path: no per-model preprocessing or same resolution
-            if not liqe_res and not musiq_res:
+            if self._scorer_is_registry_host():
+                self._prepare_registry_inputs(job, cfg, temp_dir, external)
+            elif not liqe_res and not musiq_res:
                 path_512 = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir)
-                if path_512:
-                    job.process_path = path_512
+                if not path_512:
+                    raise ValueError("no prepared model input")
+                job.process_path = path_512
             else:
                 # Per-model: preprocess at LIQE resolution and at MUSIQ resolution
                 res_liqe = int(liqe_res) if liqe_res is not None else None
@@ -537,20 +576,29 @@ class ScoringWorker(PipelineWorker):
                 if res_liqe is not None and res_musiq is not None and res_liqe != res_musiq:
                     path_liqe = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir, resolution_override=res_liqe)
                     path_musiq = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir, resolution_override=res_musiq)
-                    if path_liqe and path_musiq:
-                        job.process_path = path_musiq
-                        job.external_scores["_liqe_preprocess_path"] = path_liqe
+                    if not path_liqe or not path_musiq:
+                        raise ValueError("missing per-model input")
+                    job.process_path = path_musiq
+                    job.external_scores["_liqe_preprocess_path"] = path_liqe
                 elif res_liqe is not None:
                     path_liqe = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir, resolution_override=res_liqe)
-                    if path_liqe:
-                        job.process_path = path_liqe
-                        job.external_scores["_liqe_preprocess_path"] = path_liqe
+                    if not path_liqe:
+                        raise ValueError("missing LIQE input")
+                    job.process_path = path_liqe
+                    job.external_scores["_liqe_preprocess_path"] = path_liqe
                 else:
                     path_512 = self.scorer.preprocess_image(job.process_path, output_dir=temp_dir, resolution_override=res_musiq)
-                    if path_512:
-                        job.process_path = path_512
+                    if not path_512:
+                        raise ValueError("missing MUSIQ input")
+                    job.process_path = path_512
         except Exception as e:
-            logger.warning("Preprocess failed, using original path: %s", e)
+            # Scoring an unnormalized original would silently reintroduce the
+            # orientation bug and falsely stamp it with the corrected version.
+            job.status = "failed"
+            job.error = f"Scoring preprocessing failed: {e}"
+            logger.error("%s: %s", job.image_path, job.error)
+            self.output_queue.put(job)
+            return
         
         # Registry hosts own model selection, including a deliberately disabled LIQE.
         # The legacy fallback would load a local GPU model even for a remote host.
@@ -595,6 +643,7 @@ class ScoringWorker(PipelineWorker):
                 external_scores=external,
                 logger=_inference_log,
                 write_metadata=False,  # Handled in ResultWorker to avoid I/O blocking GPU
+                **({"model_inputs": job.model_inputs} if self._scorer_is_registry_host() else {}),
             )
 
             tf_cfg = (cfg.get("technical_failures") or {})
@@ -778,6 +827,10 @@ class ResultWorker(PipelineWorker):
                     for m_name in ("spaq", "ava", "koniq", "paq2piq", "liqe"):
                         m_data = models.get(m_name, {})
                         after[f"score_{m_name}"] = m_data.get("normalized_score")
+                    after["scoring_inputs"] = {
+                        name: data["input"] for name, data in models.items()
+                        if isinstance(data, dict) and isinstance(data.get("input"), dict)
+                    }
                     collector.record_after(job.image_id, after)
                 except Exception:
                     logger.debug(
