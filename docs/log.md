@@ -6,9 +6,21 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-06] edit | Completed labeled scoring-input benchmark with HOLD decisions
+
+Five cached checkpoints completed 1,815 measured inferences on 121 owner-provided NEFs in 32 labeled groups. Saved frozen hashes, human-pick/rejection/ranking metrics, resource limits and per-model HOLD decisions in docs/planning/scoring-inputs/BENCHMARK-RESULTS.md; updated NEXT-STEPS.md and #570 tracking. Production defaults and original photos unchanged; representative and GPU gates remain open.
+
+## [2026-10-06] edit | Resumed scoring orientation and per-model input fixes
+
+Local upright-v1 / executor 5.2.0 implementation, 241 focused tests, real local/HTTP evidence, updated input specification and research gates. See docs/planning/scoring-inputs/VERIFICATION.md. Defaults and original photos unchanged; labeled evaluation in progress.
+
 ## [2026-10-06] created | RAW diagnostics and decode comparison
 
 Added optional RAW failure probes, a JSON diagnostic CLI, and an isolated CPU decode comparison. Reference: [RAW diagnostics](technical/RAW_DIAGNOSTICS.md); evidence: [2026-10-06 comparison](reports/raw-decode-comparison-2026-10-06.md).
+
+## [2026-10-05] created | Scoring orientation and model-input task handoffs
+
+[Task index](planning/scoring-inputs/INDEX.md): backend #568-#570 and the existing gallery #176 compatibility slice, with acceptance criteria, test tasks, dependencies and rollout gates. All three new backend issues were added to Project 1 and verified at Stage=Backlog.
 
 ## [2026-10-05] corrected | Localization live config and lane gate (#527)
 

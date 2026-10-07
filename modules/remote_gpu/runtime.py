@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import logging
+import base64
 import os
 import tempfile
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 
 from modules.remote_gpu.contract import (
     ACCESSIBILITY, BIOCLIP, CAPTION, DETECT, DETECTOR_INFO, EMBEDDING, KEYWORDS,
-    SCENE, SCORING, RemoteGpuError, as_vector, decode_array, decode_png,
+    SCENE, SCORING, SCORING_INPUTS_VERSION, RemoteGpuError, as_vector, decode_array, decode_png,
 )
+from modules.scoring_inputs import validate_input
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +71,28 @@ class InferenceRuntime:
                         "label_feats": classifier._label_feats, "logit_scale": classifier._logit_scale}
             with _input_file(data, filename) as path:
                 if endpoint == SCORING:
-                    return self.provider.scoring_host().run_all_models(
-                        path, external_scores=params.get("external_scores") or None,
-                        logger=lambda msg: logger.debug("gpu_runner scoring: %s", msg), write_metadata=False,
-                    )
+                    with ExitStack() as stack:
+                        options = {}
+                        if params.get("model_inputs") is not None:
+                            if params.get("scoring_inputs_version") != SCORING_INPUTS_VERSION:
+                                raise RemoteGpuError("Unsupported scoring input bundle version")
+                            bundle = params["model_inputs"]
+                            if not isinstance(bundle, dict):
+                                raise RemoteGpuError("Invalid scoring input bundle")
+                            inputs = {}
+                            # Decode and validate the whole bundle before loading models.
+                            for name, wire in bundle.items():
+                                contents = base64.b64decode(wire["data"], validate=True)
+                                input_path = stack.enter_context(_input_file(contents, "prepared.jpg"))
+                                spec = {"path": input_path, "metadata": wire["metadata"]}
+                                validate_input(spec)
+                                inputs[name] = spec
+                            options["model_inputs"] = inputs
+                        return self.provider.scoring_host().run_all_models(
+                            path, external_scores=params.get("external_scores") or None,
+                            logger=lambda msg: logger.debug("gpu_runner scoring: %s", msg),
+                            write_metadata=False, **options,
+                        )
                 if endpoint == KEYWORDS:
                     scorer = self.provider.keyword_scorer()
                     tags, confidence, relevance = scorer.predict(

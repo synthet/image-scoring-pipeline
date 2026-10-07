@@ -68,6 +68,7 @@ class IScoringEngine(ABC):
         external_scores: dict[str, Any] | None = None,
         logger: Callable[..., Any] = print,
         write_metadata: bool = True,
+        model_inputs: dict[str, dict] | None = None,
     ) -> dict[str, Any]:
         ...
 
