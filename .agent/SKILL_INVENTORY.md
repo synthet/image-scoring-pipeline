@@ -22,7 +22,7 @@ Central list of **first-party** `SKILL.md` files in this repository for governan
 | backlog-housekeeping | `.cursor/skills/backlog-housekeeping/SKILL.md` | GitHub Project board hygiene | L2 | Yes | 2026-06-16 |
 | backlog-triage | `.cursor/skills/backlog-triage/SKILL.md` | Priority triage of open issues: snapshot + findings, rubric, apply plan; harness `scripts/agent_skills/backlog_triage.py` | L2 | Yes | 2026-09-23 |
 | image-scoring-mcp | `.cursor/skills/image-scoring-mcp/SKILL.md` | Compact MCP search/dispatch | L2 | — (Cursor only) | 2026-05-31 |
-| backup-db | `.cursor/skills/backup-db/SKILL.md` | Postgres backup workflow | L2 | — (Cursor only) | 2026-04-25 |
+| backup-db | `.cursor/skills/backup-db/SKILL.md` | Postgres backup with multiple mirrors and per-folder retention | L2 | Yes | 2026-10-06 |
 | commit-conventions | `.cursor/skills/commit-conventions/SKILL.md` | Conventional Commits / PR titles | L1 | Yes | 2026-04-25 |
 | critical-commit-audit | `.cursor/skills/critical-commit-audit/SKILL.md` | High-severity post-commit review; trace paths, PR bar | L2 | Yes | 2026-04-26 |
 | imgscore-backend-implementer | `.cursor/skills/imgscore-backend-implementer/SKILL.md` | Scoped backend implementation | L1 | Yes | 2026-04-25 |
