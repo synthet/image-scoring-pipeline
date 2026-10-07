@@ -319,12 +319,6 @@ class SelectionRunner:
 
     def _complete_phase_and_advance(self, job_id: int, input_path: str, log):
         """Mark culling phase done and advance to next phase or complete the job."""
-        try:
-            # Mark our own phase as completed
-            db.set_job_phase_state(job_id, PhaseCode.CULLING.value, "completed")
-        except Exception as e:
-            logger.warning("Failed to set culling phase completed for job %s: %s", job_id, e)
-
         # Check for remaining pending/queued phases
         remaining = []
         try:
@@ -336,6 +330,9 @@ class SelectionRunner:
             ]
         except Exception as e:
             logger.warning("Failed to check remaining phases for job %s: %s", job_id, e)
+            db.set_job_phase_state(job_id, PhaseCode.CULLING.value, "completed")
+            db.update_job_status(job_id, "failed", f"Culling finished but its remaining phase plan could not be read ({e}); downstream stages did not run.")
+            return
 
         logger.debug(
             "[culling] job_id=%s complete_phase_and_advance remaining_phases=%s input_path=%r",
@@ -376,15 +373,20 @@ class SelectionRunner:
                     elif isinstance(raw, dict):
                         parent_payload = raw
                 except Exception as _pe:
-                    logger.debug("follow-up payload propagation: parent read failed: %s", _pe)
+                    raise RuntimeError(f"Could not read parent follow-up options: {_pe}") from _pe
 
                 followup_body: dict = {
+                    **parent_payload,
                     "input_path": input_path,
                     "parent_job_id": job_id,
+                    "phases": list(remaining_codes),
+                    "target_phases": list(remaining_codes),
                 }
-                for _k in ("generate_captions", "custom_keywords", "overwrite"):
-                    if _k in parent_payload:
-                        followup_body[_k] = parent_payload[_k]
+                next_ids = (parent_payload.get("resolved_image_ids_by_stage") or {}).get(next_code)
+                if isinstance(next_ids, list):
+                    followup_body["resolved_image_ids"] = next_ids
+                else:
+                    followup_body.pop("resolved_image_ids", None)
 
                 fq_payload = attach_run_reason(
                     augment_queue_payload_for_audit(
@@ -402,56 +404,34 @@ class SelectionRunner:
                         "input_path": input_path,
                     },
                 )
-                follow_job_id, _ = db.enqueue_job(
-                    input_path,
-                    phase_code=next_code,
-                    job_type=next_code,
+                follow_job_id, _ = db.enqueue_delegated_followup(
+                    job_id, input_path, remaining_codes,
                     queue_payload=fq_payload,
                     description=f"Follow-up stage {next_code!r} after parent job #{job_id} (orchestrator advance).",
                 )
                 if follow_job_id:
-                    db.create_job_phases(follow_job_id, remaining_codes, first_phase_state="queued")
                     logger.info(
                         "Enqueued follow-up %s job %s for parent job %s (phases=%s)",
                         next_code, follow_job_id, job_id, remaining_codes,
                     )
-                    # The parent did not run these phases -- the child will.  Mark them
-                    # terminal so the run stops showing as unfinished, but as `skipped`
-                    # with a delegation note rather than `completed`, which claimed work
-                    # had happened while the child job was still queued.
-                    for code in remaining_codes:
-                        db.set_job_phase_state(
-                            job_id,
-                            code,
-                            "skipped",
-                            error_message=f"delegated to job #{follow_job_id}",
-                        )
+                    return  # Parent completion belongs to the child's durable lifecycle.
                 else:
-                    handoff_error = "enqueue_job returned no job id"
+                    handoff_error = "enqueue_delegated_followup returned no job id"
             except Exception as e:
                 logger.error("Failed to enqueue follow-up %s job for job %s: %s", next_code, job_id, e)
                 handoff_error = str(e) or e.__class__.__name__
 
         if handoff_error:
+            db.set_job_phase_state(job_id, PhaseCode.CULLING.value, "completed")
             # Culling itself succeeded, but the delegated stages are not cleanly handed
             # off: either there is no child job, or the child's phase plan / the parent's
             # delegation markers were never written.  Completing here would make the run
             # read as finished and re-trigger auto-drive post-audit follow-ups for work
             # that never ran -- the same trap as the missing-prerequisites abort.
-            if follow_job_id:
-                # enqueue_job succeeded and the follow-up work is queued; what failed was
-                # create_job_phases or the delegation markers.  Saying "did not run" here
-                # would send the operator looking for a job that exists.
-                message = (
-                    f"Culling finished but the hand-off of stages {remaining_codes} to "
-                    f"job #{follow_job_id} did not complete ({handoff_error}); that job is "
-                    "queued but its phase plan may be incomplete."
-                )
-            else:
-                message = (
-                    f"Culling finished but stages {remaining_codes} were not handed off "
-                    f"({handoff_error}); they did not run."
-                )
+            message = (
+                f"Culling finished but stages {remaining_codes} were not handed off "
+                f"({handoff_error}); they did not run."
+            )
             log(message, "ERROR")
             db.update_job_status(job_id, "failed", message)
             event_manager.broadcast_threadsafe("job_completed", {
@@ -461,6 +441,7 @@ class SelectionRunner:
             return
 
         # Now complete the parent job
+        db.set_job_phase_state(job_id, PhaseCode.CULLING.value, "completed")
         db.update_job_status(job_id, "completed")
         event_manager.broadcast_threadsafe("job_completed", {
             "job_id": job_id,

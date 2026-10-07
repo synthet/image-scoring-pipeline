@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-10-05T00:00:00Z
+timestamp: 2026-10-07T00:00:00Z
 okf_version: 0.2
 status: proposed
 ---
@@ -37,6 +37,17 @@ are folded into the table, not into a second rollout:
 
 **Update 2026-10-05:** #558–#561 are merged. Stage 4's exit-gate code is on `master`; the gate
 itself waits on one live lane cycle (an operator step). S4-4 was revisited and kept.
+
+**Implementation update 2026-10-07:** #368 now has a local implementation and
+PostgreSQL regression coverage. Migration **0040**, following 0039, persists the
+parent/child links; culling leaves its parent waiting and mirrors each child stage.
+Earlier successful stages remain completed on later failure. Parent cancellation
+cancels the subtree; in-place child retry reopens the parent, while a fresh Runs UI
+retry forms an independent chain. Atomic rollback, restart/reconciliation,
+concurrent handoffs and cancellation, and dispatch capacity of one are covered.
+This is pending merge and production migration, so #368 remains open. See the
+[deployment and rollback procedure](../../technical/RUNS_QUEUE_AND_RESTART.md#deployment-and-rollback-0040).
+The Stage 4 live lane exit gate is still outstanding.
 
 Stage sections below stay the original design. Where a section's own status heading is older
 than this table, this table wins.
