@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-06] created | RAW diagnostics and decode comparison
+
+Added optional RAW failure probes, a JSON diagnostic CLI, and an isolated CPU decode comparison. Reference: [RAW diagnostics](technical/RAW_DIAGNOSTICS.md); evidence: [2026-10-06 comparison](reports/raw-decode-comparison-2026-10-06.md).
+
 ## [2026-10-05] corrected | Localization live config and lane gate (#527)
 
 The live `config.json` already has `localization.enabled: true` and `localization.repair.enabled: true`, correcting the entry below. The WebUI and dispatcher are running, but the live library has no images after the enablement boundary and no current retryable runs. The stage 4 gate still waits for one lane cycle with eligible images; see [localization-rollout.md](architecture/pipeline/localization-rollout.md).
