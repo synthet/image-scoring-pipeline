@@ -6,6 +6,14 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-07] edit | Clarify delegated parent audit failures and terminal-child controls (#368)
+
+Documented that duplicate completion and reconciliation retain parent audit failure, finished child work requires a fresh retry, and conflicting cancel/resume requests return 409. Added regression coverage for post-commit notification lookup failure, audit idempotence, terminal-child retry guards, and genuine repaired child success.
+
+## [2026-10-07] edit | Document delegated culling lifecycle (#368)
+
+Updated the schema, API contract, queue/recovery procedure, and localization rollout status for revision 0040. Parent stages mirror child outcomes; in-place retries reopen the chain and fresh retries remain independent. Production migration and live rollout verification remain pending.
+
 ## [2026-10-06] edit | Completed labeled scoring-input benchmark with HOLD decisions
 
 Five cached checkpoints completed 1,815 measured inferences on 121 owner-provided NEFs in 32 labeled groups. Saved frozen hashes, human-pick/rejection/ranking metrics, resource limits and per-model HOLD decisions in docs/planning/scoring-inputs/BENCHMARK-RESULTS.md; updated NEXT-STEPS.md and #570 tracking. Production defaults and original photos unchanged; representative and GPU gates remain open.

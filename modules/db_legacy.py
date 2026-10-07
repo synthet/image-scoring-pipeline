@@ -3972,7 +3972,7 @@ def enqueue_job(input_path, phase_code=None, job_type=None, queue_payload=None, 
     )
 
 
-def enqueue_job_with_phases(input_path, phase_code=None, job_type=None, queue_payload=None, description=None, phase_codes=None, first_phase_state="queued"):
+def enqueue_job_with_phases(input_path, phase_code=None, job_type=None, queue_payload=None, description=None, phase_codes=None, first_phase_state="queued", *, tx=None):
     """Atomically create a queued job and its phase plan in a single transaction."""
     if not phase_codes:
         return None, 0
@@ -4052,10 +4052,24 @@ def enqueue_job_with_phases(input_path, phase_code=None, job_type=None, queue_pa
         return job_id, display_position
 
     try:
-        return get_connector().run_transaction(_tx)
+        return _tx(tx) if tx is not None else get_connector().run_transaction(_tx)
     except Exception:
+        if tx is not None:
+            raise
         logger.exception("enqueue_job_with_phases failed")
         return None, 0
+
+
+def enqueue_delegated_followup(parent_job_id, input_path, phase_codes, queue_payload=None, description=None):
+    from modules.db_operations.job_delegation import enqueue
+
+    return enqueue(parent_job_id, input_path, phase_codes, queue_payload, description)
+
+
+def reconcile_delegated_jobs():
+    from modules.db_operations.job_delegation import reconcile
+
+    return reconcile()
 
 
 def get_next_pending_job_phase(job_id, tx=None):
@@ -4268,13 +4282,19 @@ def get_recent_jobs(limit=50, offset=0):
 
 def force_reset_job_phase_to_queued(job_id: int, phase_code: str):
     """Admin reset: unconditionally set a phase back to queued."""
+    from modules.db_operations import job_delegation
+
     def _tx(tx):
+        job_delegation.lock_chain(tx, job_id)
+        if job_delegation.child_for_parent(tx, job_id) is not None:
+            raise ValueError("Invalid manual reset of delegated work; control the child run")
         tx.execute(
             "UPDATE job_phases SET state='queued', started_at=NULL, completed_at=NULL, error_message=NULL "
             "WHERE job_id=? AND phase_code=?",
             (job_id, phase_code),
         )
-    get_connector().run_transaction(_tx)
+        return job_delegation.propagate(tx, job_id)
+    job_delegation.publish(get_connector().run_transaction(_tx))
 
 
 PHASE_CODE_TO_RUNNER_KEY = {
@@ -4323,6 +4343,8 @@ def list_phantom_running_job_phases(
         FROM job_phases jp
         INNER JOIN jobs j ON j.id = jp.job_id
         WHERE j.status = 'running' AND jp.state = 'running'
+          AND jp.delegated_job_id IS NULL
+          AND COALESCE(j.runner_state, '') != 'waiting_child'
         ORDER BY jp.job_id ASC, jp.phase_order ASC
         """
     )
@@ -4399,17 +4421,27 @@ def adjust_job_priority(job_id, delta):
     )
 
 
-def requeue_job(job_id):
+def requeue_job(job_id, *, tx=None):
     """Reset an existing job row to queued status (in-place resume).
 
     Resets started_at, finished_at, completed_at and bumps enqueued_at.
     Updates queue_position so it sorts after any already-queued jobs.
     Returns (job_id, display_position).
     """
+    from modules.db_operations import job_delegation
+
+    if tx is None:
+        controlled = job_delegation.control(job_id, "running")
+        if controlled is not None:
+            if not controlled["success"]:
+                raise ValueError(f"Cannot resume delegated run #{job_id}: {controlled['reason']} ({controlled['status']}); use a fresh retry")
+            return job_id, 0
     return _db_job_queue.requeue_job(
         job_id,
         get_connector=get_connector,
         allowed_transitions=JOB_ALLOWED_TRANSITIONS,
+        tx=tx,
+        resume_job_phases=resume_job_phases,
     )
 
 
@@ -4552,15 +4584,24 @@ def _maybe_fail_job_on_post_audit_issues(job_id: int, post_run_audit: dict) -> N
         "\npost_run_audit_fail_job_on_issues: residual data-quality issues — "
         "see queue_payload.post_run_audit"
     )
-    conn = get_connector()
-    row = conn.query_one("SELECT status FROM jobs WHERE id = ?", (job_id,))
-    if not row or (row.get("status") or "").strip().lower() != "completed":
+    from modules.db_operations import job_delegation
+
+    changes = []
+
+    def fail_audit(tx):
+        job_delegation.lock_chain(tx, job_id)
+        changed = tx.execute(
+            "UPDATE jobs SET status = 'failed', runner_state = 'failed', log = COALESCE(log, '') || ? "
+            "WHERE id = ? AND status = 'completed'",
+            (msg, job_id),
+        )
+        if changed:
+            changes.extend(job_delegation.propagate(tx, job_id))
+        return changed
+
+    if not get_connector().run_transaction(fail_audit):
         return
-    conn.execute(
-        "UPDATE jobs SET status = 'failed', runner_state = 'failed', log = COALESCE(log, '') || ? "
-        "WHERE id = ? AND status = 'completed'",
-        (msg, job_id),
-    )
+    job_delegation.publish(changes)
     try:
         record_pipeline_event(
             "error",
@@ -4870,6 +4911,25 @@ def restart_failed_job(job_id):
     multi-phase run can retry phases that were ``failed`` / ``pending`` instead of
     staying stuck with no ``running`` phase row after dequeue.
     """
+    from modules.db_operations import job_delegation
+
+    row = get_connector().query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    if row and row.get("status") == "failed":
+        controlled = job_delegation.control(job_id, "running")
+        if controlled is not None:
+            return controlled
+        if row.get("parent_job_id") is not None:
+            changes = []
+
+            def restart(tx):
+                job_delegation.lock_chain(tx, job_id)
+                requeue_job(job_id, tx=tx)
+                resume_job_phases(job_id, tx=tx)
+                tx.execute("UPDATE jobs SET retry_count = COALESCE(retry_count, 0) + 1 WHERE id = ?", (job_id,))
+                changes.extend(job_delegation.propagate(tx, job_id))
+            get_connector().run_transaction(restart)
+            job_delegation.publish(changes)
+            return {"success": True}
     return _db_job_queue.restart_failed_job(
         job_id,
         get_connector=get_connector,
@@ -4878,6 +4938,11 @@ def restart_failed_job(job_id):
 
 
 def request_cancel_job(job_id):
+    from modules.db_operations.job_delegation import control
+
+    controlled = control(job_id, "cancelled")
+    if controlled is not None:
+        return controlled
     return _db_job_queue.request_cancel_job(
         job_id,
         get_connector=get_connector,
@@ -4923,45 +4988,43 @@ def create_job_phases(job_id, phase_codes, first_phase_state=None):
     ]
 
 
-def resume_job_phases(job_id):
+def resume_job_phases(job_id, *, tx=None):
     """Reset incomplete phases for resume. Completed/skipped stay; others → pending.
 
     The first incomplete phase is set to 'queued' so the dispatcher picks it up.
     Returns the updated phase list.
     """
-    rows = get_connector().query(
-        "SELECT phase_order, phase_code, state FROM job_phases WHERE job_id = ? ORDER BY phase_order",
-        (job_id,),
-    )
-    if not rows:
-        return []
+    from modules.db_operations import job_delegation
 
-    keep_states = {"completed", "skipped"}
-    first_incomplete_set = False
-    updates = []
-    for r in rows:
-        state = (r["state"] or "").strip().lower()
-        if state in keep_states:
-            continue
-        new_state = "queued" if not first_incomplete_set else "pending"
-        first_incomplete_set = True
-        updates.append((new_state, job_id, r["phase_code"]))
+    changes = []
 
-    if updates:
-        def _tx(tx):
-            for params in updates:
-                tx.execute(
-                    "UPDATE job_phases SET state = ?, started_at = NULL, completed_at = NULL, error_message = NULL "
-                    "WHERE job_id = ? AND phase_code = ?",
-                    params,
-                )
-        get_connector().run_transaction(_tx)
+    def resume(transaction):
+        job_delegation.lock_chain(transaction, job_id)
+        if job_delegation.child_for_parent(transaction, job_id) is not None:
+            return get_job_phases(job_id, tx=transaction)
+        job = transaction.query_one("SELECT status, parent_job_id FROM jobs WHERE id = ?", (job_id,))
+        # The API may call resume again after dequeue. Never reset a live child.
+        if (job or {}).get("parent_job_id") is not None and job.get("status") == "running":
+            return get_job_phases(job_id, tx=transaction)
+        rows = get_job_phases(job_id, tx=transaction)
+        first_incomplete = True
+        for row in rows:
+            if (row.get("state") or "").strip().lower() in {"completed", "skipped"}:
+                continue
+            transaction.execute(
+                "UPDATE job_phases SET state = ?, started_at = NULL, completed_at = NULL, error_message = NULL "
+                "WHERE job_id = ? AND phase_code = ?",
+                ("queued" if first_incomplete else "pending", job_id, row["phase_code"]),
+            )
+            first_incomplete = False
+        if tx is None:
+            changes.extend(job_delegation.propagate(transaction, job_id))
+        return get_job_phases(job_id, tx=transaction)
 
-    return [dict(r) for r in get_connector().query(
-        "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
-        "FROM job_phases WHERE job_id = ? ORDER BY phase_order",
-        (job_id,),
-    )]
+    result = resume(tx) if tx is not None else get_connector().run_transaction(resume)
+    if tx is None:
+        job_delegation.publish(changes)
+    return result
 
 
 def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
@@ -4994,14 +5057,20 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
         "cancelled": set(),
     }
     now = datetime.datetime.now()
+    from modules.db_operations import job_delegation
+
+    changes = []
 
     def _tx(tx):
+        job_delegation.lock_chain(tx, job_id)
         row = tx.query_one(
-            "SELECT id, state FROM job_phases WHERE job_id = ? AND phase_code = ?",
+            "SELECT id, state, delegated_job_id FROM job_phases WHERE job_id = ? AND phase_code = ?",
             (job_id, phase_code),
         )
         if not row:
             return None
+        if row.get("delegated_job_id") is not None or job_delegation.child_for_parent(tx, job_id) is not None:
+            raise ValueError("Invalid manual transition of delegated work; control the child run")
 
         phase_id = row["id"]
         old_state = str(row["state"] or "pending").strip().lower()
@@ -5022,7 +5091,7 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
             # Backfill implicit start when bulk-completing a backlog phase (see allowed transition).
             fields.append("started_at = COALESCE(started_at, ?)")
             params.append(now)
-        if state in {"completed", "failed", "skipped", "interrupted"}:
+        if state in {"completed", "failed", "skipped", "interrupted", "canceled", "cancelled"}:
             fields.append("completed_at = ?")
             params.append(now)
         if error_message is not None:
@@ -5048,7 +5117,12 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
 
     if tx:
         return _tx(tx)
-    result = get_connector().run_transaction(_tx)
+    def update(transaction):
+        result = _tx(transaction)
+        changes.extend(job_delegation.propagate(transaction, job_id))
+        return result
+    result = get_connector().run_transaction(update)
+    job_delegation.publish(changes)
     if result is None:
         return None
     try:
@@ -5072,7 +5146,7 @@ def get_job_phases(job_id, tx=None):
     """Get ordered phase plan/status rows for a job."""
     conn = tx if tx else get_connector()
     return [dict(r) for r in conn.query(
-        "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
+        "SELECT phase_order, phase_code, state, started_at, completed_at, error_message, delegated_job_id "
         "FROM job_phases WHERE job_id = ? ORDER BY phase_order",
         (job_id,),
     )]
@@ -5294,13 +5368,14 @@ def get_next_running_job_phase(job_id, tx=None):
 
 def recover_running_jobs(mark_as="interrupted"):
     """Mark stale running jobs (and their in-flight job_phases) as interrupted."""
-    rows = get_connector().query("SELECT id FROM jobs WHERE status = 'running'")
+    reconcile_delegated_jobs()
+    rows = get_connector().query("SELECT id FROM jobs WHERE status = 'running' AND COALESCE(runner_state, '') != 'waiting_child'")
     recovered = [r["id"] for r in rows]
     if recovered:
         now = datetime.datetime.now()
         def _tx(tx):
             tx.execute(
-                "UPDATE jobs SET status = ?, completed_at = ?, runner_state = ? WHERE status = 'running'",
+                "UPDATE jobs SET status = ?, completed_at = ?, runner_state = ? WHERE status = 'running' AND COALESCE(runner_state, '') != 'waiting_child'",
                 (mark_as, now, mark_as),
             )
             placeholders = ",".join("?" * len(recovered))
@@ -5334,6 +5409,7 @@ def recover_running_jobs(mark_as="interrupted"):
                 )
         except Exception:
             logger.exception("recover_running_jobs: release work claims failed")
+    reconcile_delegated_jobs()
     return recovered
 
 
