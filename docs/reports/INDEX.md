@@ -17,6 +17,7 @@ Historical reports, research, reviews, and debugging sessions.
 | Document | Description |
 |----------|-------------|
 | [WORK_SUMMARY_2026-03-08.md](WORK_SUMMARY_2026-03-08.md) | Work summary |
+| [raw-decode-comparison-2026-10-06](raw-decode-comparison-2026-10-06.md) | Six Nikon fixtures: embedded previews versus rawpy and LibRaw CLI, with failure and pixel evidence. |
 | [WORK_SUMMARY_2026-05-26.md](WORK_SUMMARY_2026-05-26.md) | Auto-drive run 3245 investigation + empty composite scores dry-run |
 | [bird-species-keywords-2026-08-31/summary.md](bird-species-keywords-2026-08-31/summary.md) | Preserve `birds` on species writes; IPS-only no-match state (replaces `birds:species-exhausted` keyword) |
 | [DEEP_RESEARCH_REPORT.md](DEEP_RESEARCH_REPORT.md) | Deep research report |
@@ -38,6 +39,7 @@ Historical reports, research, reviews, and debugging sessions.
 | [scene-route-benchmark-2026-10-02](scene-route-benchmark-2026-10-02.md) | Owner-labelled scene benchmark: SigLIP2 zero-shot best (macro F1 0.75); bird route frozen at p >= 0.065, skipping 5/77 incidental-bird images and 75% of non-bird detector runs; filters 114/182 v1 false detections |
 | [model-selection-session-2026-10-01](model-selection-session-2026-10-01.md) | Cursor session: label-free `model_selection_report` implementation; links to live `reports/model_selection/latest/` and Codex study bundle |
 | [model-selection-codex-handoff-2026-10-02](model-selection-codex-handoff-2026-10-02.md) | Codex `_2` handoff — frozen snapshot/sample hashes, 900-unit blind review design, 300-stack exploratory audit, CLI commands |
+| [scoring-loop-ordering-2026-10-05](scoring-loop-ordering-2026-10-05.md) | Image-major vs model-major scoring: model-major frees no VRAM and breaks resume/XMP; recommend micro-batched image-major with resident models, decode-once first (NEF decode ≈ 3× the 5-model ensemble); reconciles an external generic analysis |
 | [model-selection-findings-2026-10-02](model-selection-findings-2026-10-02.md) | Wiki snapshot of label-free verdicts and deprecation hypotheses (statistical only) |
 | [model_evaluation_and_curation_plan](model_evaluation_and_curation_plan.md) | Phase 1–3 curation roadmap — canonical evidence-source table, promotion gates, proposed config/culling changes |
 | [deliver-master-runbook-2026-10-02](deliver-master-runbook-2026-10-02.md) | Finish PR #471 + consolidate model-selection commits; PowerShell `Consolidate-DeliverToMaster.ps1` |

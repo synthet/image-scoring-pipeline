@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 _HOST_THUMB_WARN_EMITTED = False
@@ -543,6 +543,9 @@ def open_rendition_for_ml(read_path: str):
     if img is None:
         from PIL import UnidentifiedImageError
 
+        from modules.raw_diagnostics import log_raw_failure
+
+        log_raw_failure(read_path, "ml_decode")
         raise UnidentifiedImageError(f"cannot identify or decode RAW image file {read_path!r}")
     return img, route
 
@@ -759,6 +762,8 @@ def generate_thumbnail(image_path, source_path=None):
                         return thumb_path
 
                 # All methods failed
+                from modules.raw_diagnostics import log_raw_failure
+                log_raw_failure(read_path, "thumbnail_decode")
                 raise Exception("All RAW conversion methods failed for thumbnail generation")
         else:
             # Standard image handling (non-RAW)
@@ -766,6 +771,10 @@ def generate_thumbnail(image_path, source_path=None):
 
         # Process and save thumbnail
         with img:
+            # Raster sources can store landscape pixels with a portrait EXIF tag.
+            # Bake the rotation before saving, since Pillow does not copy EXIF on save.
+            if not is_raw:
+                img = ImageOps.exif_transpose(img)
             # Convert to RGB if needed
             if img.mode in ('RGBA', 'P'):
                 img = img.convert('RGB')
@@ -864,4 +873,7 @@ def generate_preview(image_path):
         except Exception as e:
             print(f"rawpy decode failed: {e}")
         
+    if img is None:
+        from modules.raw_diagnostics import log_raw_failure
+        log_raw_failure(image_path, "preview_decode")
     return None

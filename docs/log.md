@@ -14,9 +14,33 @@ Five cached checkpoints completed 1,815 measured inferences on 121 owner-provide
 
 Local upright-v1 / executor 5.2.0 implementation, 241 focused tests, real local/HTTP evidence, updated input specification and research gates. See docs/planning/scoring-inputs/VERIFICATION.md. Defaults and original photos unchanged; labeled evaluation in progress.
 
+## [2026-10-06] created | RAW diagnostics and decode comparison
+
+Added optional RAW failure probes, a JSON diagnostic CLI, and an isolated CPU decode comparison. Reference: [RAW diagnostics](technical/RAW_DIAGNOSTICS.md); evidence: [2026-10-06 comparison](reports/raw-decode-comparison-2026-10-06.md).
+
 ## [2026-10-05] created | Scoring orientation and model-input task handoffs
 
 [Task index](planning/scoring-inputs/INDEX.md): backend #568-#570 and the existing gallery #176 compatibility slice, with acceptance criteria, test tasks, dependencies and rollout gates. All three new backend issues were added to Project 1 and verified at Stage=Backlog.
+
+## [2026-10-05] corrected | Localization live config and lane gate (#527)
+
+The live `config.json` already has `localization.enabled: true` and `localization.repair.enabled: true`, correcting the entry below. The WebUI and dispatcher are running, but the live library has no images after the enablement boundary and no current retryable runs. The stage 4 gate still waits for one lane cycle with eligible images; see [localization-rollout.md](architecture/pipeline/localization-rollout.md).
+
+## [2026-10-05] edit | Localization stage 4 exit-gate code merged; S4-4 kept (#527)
+
+[localization-rollout.md](architecture/pipeline/localization-rollout.md) now records #558–#561 as merged (slices #538–#541). The stage 4 exit gate waits only on one live lane cycle, which is an operator step because the live `config.json` has no `localization` section. Decision S4-4 was revisited now that the repair lane exists and is kept: a job with retryable per-image failures stays `completed`. The same note is added to the S4-4 row of the [decision register](specs/pipeline-streamlining/07-blockers-and-decisions.md).
+
+## [2026-10-05] added | Scoring loop ordering report
+
+[reports/scoring-loop-ordering-2026-10-05.md](reports/scoring-loop-ordering-2026-10-05.md) answers image-major vs model-major for the scoring phase. Scoring is image-major at bs=1 with all models resident. A NEF decode (507 ms p50) costs about 3× the five-model ensemble (179.5 ms). Model-major frees no VRAM (TF keeps MUSIQ's memory) and breaks the any-model resume check and XMP fusion. The recommendation is decode-once with parallel prep, then micro-batched image-major (`run_all_models_batch`) and phase-boundary unloading. The report also reconciles an external generic analysis and lists six measurements (#416).
+
+## [2026-10-05] edit | Windows-native plan refreshed; ONNX matrix corrections
+
+[planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md](planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md) is rewritten for the Postgres era. It records the current state: the launcher and setup script still assume Firebird, `launch.py` probes Firebird regardless of `database.engine`, the Windows `.venv` lacks `open_clip`/`timm`/`transformers`, and TF 2.15 needs Python 3.10–3.11. It adds per-model native-Windows GPU status (only MUSIQ and MobileNetV2 are TF/CPU-only) and options A–D, recommending a native host + GPU runner. ONNX verdicts, runtime choice and conversion order are deferred to [ONNX_CONVERSION_FEASIBILITY.md](planning/models/ONNX_CONVERSION_FEASIBILITY.md). That matrix is corrected: MobileNetV2 is TF Keras in `modules/clustering.py`; the OpenCLIP L/14, DINOv2 and SigLIP2 culling spaces are implemented and opt-in, not roadmap; an eye-pose YOLO row is added.
+
+## [2026-10-05] updated | Windows-native ONNX model conversion feasibility
+
+Expanded the ONNX feasibility matrix across production and roadmap models, distinguished exportability from runtime and score parity, documented CUDA/DirectML/WinML choices, and recommended a staged conversion order backed by current primary sources.
 
 ## [2026-10-04] edit | Localization stage 4 remainder in review (#527)
 
