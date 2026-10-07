@@ -1,3 +1,13 @@
+---
+type: Diagnostic Guide
+title: Diagnostics
+description: Inspect backend configuration, runners, logs and RAW conversion failures.
+resource: DIAGNOSTICS.md
+tags: [docs, diagnostics]
+timestamp: 2026-10-06T23:04:47Z
+okf_version: 0.2
+---
+
 # Diagnostics
 
 Use this page to inspect a local backend without guessing at config, database state, logs, or runner health.
@@ -67,6 +77,10 @@ python scripts/export_debug_bundle.py --output /tmp/my-bundle.zip
 The bundle uses redaction helpers in [modules/redact_sensitive.py](../modules/redact_sensitive.py) and [modules/doctor_cli.py](../modules/doctor_cli.py). `secrets.json` is excluded. Review the zip before sharing; do not commit debug bundles without explicit review.
 
 ## Logs
+
+For RAW conversion failures, use the optional [LibRaw diagnostic probe and decode
+comparison](technical/RAW_DIAGNOSTICS.md). `RAW_DIAGNOSTICS=1` adds selected
+geometry/decoder fields to failure logs; it does not change the decoder or job status.
 
 Typical local files:
 

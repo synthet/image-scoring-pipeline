@@ -1,0 +1,386 @@
+{
+  "schema_version": 1,
+  "environment": {
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "python": "3.11.17 (main, Oct  1 2026, 15:41:06) [GCC 11.4.0]",
+    "omp_threads": "1",
+    "dcraw_emu": {
+      "path": "/tmp/vexlum-libraw-0.22/LibRaw-0.22.0/bin/dcraw_emu",
+      "sha256": "39f6f2ebbcb99d1f3cad1f1e1dff8a03b384b2322ebf91818ad0a4a7fb93a6fe"
+    },
+    "raw_identify": {
+      "path": "/tmp/vexlum-libraw-0.22/LibRaw-0.22.0/bin/raw-identify",
+      "sha256": "be75b64a284f88c8bc4d2cd2b6e75a88353779b964a2e5509c8ad5b5f668c39a"
+    }
+  },
+  "policy": {
+    "camera_wb": true,
+    "color_space": "sRGB",
+    "bits": 8,
+    "demosaic": "AHD",
+    "auto_bright": true,
+    "gamma": [
+      2.222,
+      4.5
+    ],
+    "decoder_rotation": false,
+    "orientation": "source EXIF applied once",
+    "embedded_preview": "camera-rendered pixels"
+  },
+  "repeats": 1,
+  "limitations": [
+    "Small warmed-cache CPU sample; no quality labels or model inference.",
+    "Decode time includes route setup; process wall includes Python startup and PNG output.",
+    "Pixel differences are whole-frame resized; crop offsets are not registered.",
+    "CPU affinity and other host workloads were not controlled.",
+    "Python and decoder child peak RSS are separate, not combined concurrent memory."
+  ],
+  "images": [
+    {
+      "file": "/app/tests/fixtures/testing_samples/public/Z8/Z8_14bit_lossless_compression.NEF",
+      "sha256": "b4639d05ed25f3bec39c6f0af233f5953089c0a8d6a14cb0b4a623061795d12a",
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "ok",
+        "tool": "raw-identify",
+        "decode_support": "not_tested",
+        "camera": "Nikon Z 8",
+        "preview_size": [
+          8256,
+          5504
+        ],
+        "raw_size": [
+          8280,
+          5520
+        ],
+        "image_size": [
+          8280,
+          5520
+        ],
+        "output_size": [
+          8280,
+          5520
+        ],
+        "raw_inset": {
+          "width": 8256,
+          "height": 5504,
+          "left": 12,
+          "top": 8
+        },
+        "flip": 0,
+        "camera_white_balance": [
+          1.9082,
+          1.0,
+          1.53711,
+          1.0
+        ],
+        "decoder": "nikon_load_raw()",
+        "exit_codes": [
+          0,
+          0
+        ]
+      },
+      "routes": [
+        {
+          "route": "embedded_preview",
+          "successes": 1,
+          "attempts": 1,
+          "median_decode_s": 0.624251,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.624251,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "279cabf15e6ad15482453bf5d25117ba9a7b0c3fd85988939d429e12409f471a",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 641.93,
+              "python_peak_rss_source": "proc_self_VmHWM",
+              "decoder_child_peak_rss_mib": 39.36,
+              "process_wall_s": 7.662862
+            }
+          ]
+        },
+        {
+          "route": "rawpy_half",
+          "successes": 1,
+          "attempts": 1,
+          "median_decode_s": 15.509193,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 15.509193,
+              "dimensions": [
+                4140,
+                2760
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "3d314b327cddd68c89d881cd20e07189fdd3363bb4da32e4948efe7a4384f334",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 243.98,
+              "python_peak_rss_source": "proc_self_VmHWM",
+              "decoder_child_peak_rss_mib": 35.02,
+              "process_wall_s": 18.162337
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_half",
+          "successes": 1,
+          "attempts": 1,
+          "median_decode_s": 15.583967,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 15.583967,
+              "dimensions": [
+                4140,
+                2760
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "9389e74e4f03262f4df58f81c0265f2da783d26b608a45c5d5dc5cfb3a5b9f78",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 34279217
+              },
+              "python_peak_rss_mib": 187.04,
+              "python_peak_rss_source": "proc_self_VmHWM",
+              "decoder_child_peak_rss_mib": 178.12,
+              "process_wall_s": 18.119193
+            }
+          ]
+        },
+        {
+          "route": "rawpy_full",
+          "successes": 1,
+          "attempts": 1,
+          "median_decode_s": 17.504326,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 17.504326,
+              "dimensions": [
+                8280,
+                5520
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "7bf7f50a3bca0f1292547480cbb0add66c3876988dab5c4baa9c3c2eea631d71",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 646.05,
+              "python_peak_rss_source": "proc_self_VmHWM",
+              "decoder_child_peak_rss_mib": 35.02,
+              "process_wall_s": 28.182764
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_full",
+          "successes": 1,
+          "attempts": 1,
+          "median_decode_s": 21.449445,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 21.449445,
+              "dimensions": [
+                8280,
+                5520
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bd55fbf98b6aacc341a7d822ea05b240c89beec78b32dc624ecf274e572caa98",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 137116817
+              },
+              "python_peak_rss_mib": 645.16,
+              "python_peak_rss_source": "proc_self_VmHWM",
+              "decoder_child_peak_rss_mib": 446.38,
+              "process_wall_s": 32.212271
+            }
+          ]
+        }
+      ],
+      "pairs": [
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 30.8032,
+          "rmse_8bit": 43.0928
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 30.8022,
+          "rmse_8bit": 43.0914
+        },
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 30.7584,
+          "rmse_8bit": 43.0663
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 30.7573,
+          "rmse_8bit": 43.0649
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.0027,
+          "rmse_8bit": 0.0519
+        },
+        {
+          "a": "rawpy_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.5793,
+          "rmse_8bit": 1.079
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.579,
+          "rmse_8bit": 1.0791
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.5796,
+          "rmse_8bit": 1.0791
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.5794,
+          "rmse_8bit": 1.0792
+        },
+        {
+          "a": "rawpy_full",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.0026,
+          "rmse_8bit": 0.0511
+        }
+      ]
+    }
+  ]
+}
