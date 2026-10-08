@@ -397,3 +397,14 @@ Chimney Swift
 Vaux's Swift
 White-throated Swift
 Black Swift
+
+# Gaps found by the species judge panel (#422): frames whose species was missing from this list
+Bewick's Wren
+Lesser Goldfinch
+Black-bellied Whistling-Duck
+Black-crested Titmouse
+Zone-tailed Hawk
+Mississippi Kite
+Great-tailed Grackle
+Egyptian Goose
+Domestic Goose

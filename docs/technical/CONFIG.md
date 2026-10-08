@@ -228,6 +228,15 @@ Shadow localization phase ([rollout](../architecture/pipeline/localization-rollo
 | `max_regions_per_class` | `10` | Regions persisted per class, ranked deterministically. |
 | `detectors.bird.enabled` | `true` | When false, every image records a `disabled` run. |
 
+### `bird_species`
+
+BioCLIP 2 species phase. Read by `modules/bird_species.py`.
+
+| Key | Default | Notes |
+|-----|---------|--------|
+| `use_regions` | `false` | Classify the localization region crop instead of running the embedded detector (stage 5, #444). |
+| `min_confidence` | `0.5` | Abstention floor (#422) for jobs that do not pass `threshold`. Below it no `species:*` keyword is written and the image is recorded as `skipped` / `no_species_match`. Calibration: [report](../reports/bird-species-abstention-2026-10-08.md). |
+
 ### `gpu_runner`
 
 Offloads a phase's model inference to the GPU runner container on another machine ([runbook](../guides/REMOTE_GPU_RUNNER.md)). Off unless `enabled` is true; phases configured as local keep their existing behavior. Remote phases use an ordered fallback chain: configured runner, same-machine HTTP runner, then embedded inference. Availability failures can advance to the next backend; config, authentication, API contract, and ambiguous submitted-request failures remain errors.

@@ -44,7 +44,7 @@ in a **Known gaps** section.
 | [control-plane.md](control-plane.md) | `JobDispatcher`, `PipelineOrchestrator`, the JIT run planner, auto-drive, and the heal/reconcile catalog. |
 | [persistence.md](persistence.md) | Tables, columns, constraints, and the folder aggregate cache. |
 | [terminology-map.md](terminology-map.md) | The one-row-per-phase traversal table across every naming system. |
-| [localization-rollout.md](localization-rollout.md) | Eight-stage design and status: revision 0040 deployed, strict-retry fix merged and cloud-verified; production loading and the automatic-lane exit gate remain unverified. |
+| [localization-rollout.md](localization-rollout.md) | Eight-stage design and status: revision 0040 deployed; strict-retry fix merged, cloud-verified and loaded; 4,401 selected regions have keypoint outcomes; automatic-lane exit gate remains pending. |
 | [localization-rollout-supplement-2026-09-08.md](localization-rollout-supplement-2026-09-08.md) | Review evidence, implementation snapshot, and fixed defaults supporting the localization rollout. |
 
 ## Per-phase pages
