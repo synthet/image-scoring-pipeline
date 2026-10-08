@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-10-08T00:00:00Z
+timestamp: 2026-10-08T02:32:36Z
 okf_version: 0.2
 status: proposed
 ---
@@ -53,8 +53,11 @@ indexed after the enablement boundary and no current retryable localization
 runs, so this batch does **not** meet the Stage 4 automatic-lane exit gate.
 An isolated real-clock exercise verified automatic admission, bounded retries,
 recovery and exhaustion. It exposed a strict phase-transition retry bug; the
-minimal runner fix and PostgreSQL regression were local and not deployed at
-the end of that session. Both findings are recorded in the operations report.
+minimal runner fix and PostgreSQL regression are now merged in
+[PR #577](https://github.com/synthet/image-scoring-pipeline/pull/577).
+Cloud continuation verified 103 focused unit/PostgreSQL tests with zero skips.
+The operations report includes the evidence and a
+[read-only preflight](../../reports/localization-rollout-operations-2026-10-07.md#read-only-preflight-for-the-next-production-cycle).
 
 **Continuation 2026-10-08:** the strict retry fix merged in
 [PR #577](https://github.com/synthet/image-scoring-pipeline/pull/577) with eight

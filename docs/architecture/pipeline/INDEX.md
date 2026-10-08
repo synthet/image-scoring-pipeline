@@ -4,7 +4,7 @@ title: Pipeline Architecture — Index
 description: Entry point for the comprehensive backend pipeline documentation set — phases, sub-steps, transitions, preconditions, control plane, and persistence.
 resource: architecture/pipeline/INDEX.md
 tags: [pipeline, architecture, phases, index, okf]
-timestamp: 2026-09-08T00:00:00Z
+timestamp: 2026-10-08T02:32:36Z
 okf_version: 0.2
 ---
 
@@ -44,7 +44,7 @@ in a **Known gaps** section.
 | [control-plane.md](control-plane.md) | `JobDispatcher`, `PipelineOrchestrator`, the JIT run planner, auto-drive, and the heal/reconcile catalog. |
 | [persistence.md](persistence.md) | Tables, columns, constraints, and the folder aggregate cache. |
 | [terminology-map.md](terminology-map.md) | The one-row-per-phase traversal table across every naming system. |
-| [localization-rollout.md](localization-rollout.md) | Eight-stage design and status: revision 0040 and strict retry fix loaded; 4,401 selected regions have keypoint outcomes; automatic-lane exit gate remains pending. |
+| [localization-rollout.md](localization-rollout.md) | Eight-stage design and status: revision 0040 deployed; strict-retry fix merged, cloud-verified and loaded; 4,401 selected regions have keypoint outcomes; automatic-lane exit gate remains pending. |
 | [localization-rollout-supplement-2026-09-08.md](localization-rollout-supplement-2026-09-08.md) | Review evidence, implementation snapshot, and fixed defaults supporting the localization rollout. |
 
 ## Per-phase pages
