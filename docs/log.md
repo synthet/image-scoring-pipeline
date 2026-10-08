@@ -10,6 +10,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 Loaded merged PR #577 and verified three isolated strict-repair regressions. Completed the four missing shadow keypoint outcomes, giving 4,401 final selected-region results. The canonical species comparison classified all 4,401 images with zero skips under the 360-species/0.1 snapshot; later #422 workspace policy changes need separate validation. Updated docs/reports/localization-rollout-continuation-2026-10-08.md and the rollout status/indexes. Production automatic-lane gate remains pending genuine eligible images; no species keyword or flag promotion.
 
+## [2026-10-07] edit | Continue localization rollout validation after PR #577
+
+Recorded the merged strict-retry fix, 84 unit and 19 isolated PostgreSQL checks with zero skips, and read-only production preflight in docs/reports/localization-rollout-operations-2026-10-07.md. Updated the rollout status and both indexes. The empty cloud development database does not establish production deployment or the eligible automatic-lane cycle; those gates remain unverified.
+
 ## [2026-10-07] edit | Record deployed localization control plane and bounded live validation
 
 PR #575 and revision 0040 are deployed; the three-folder, 34-image production batch completed with verified delegated states and timestamps. Added docs/reports/localization-rollout-operations-2026-10-07.md and corrected docs/architecture/pipeline/localization-rollout.md. An isolated real-clock exercise verified three automatic jobs, recovery and exhaustion; its strict-transition warning led to a local running-state fix with a PostgreSQL RED/GREEN regression. The automatic-lane production exit gate remains pending eligible work, and the fix is not deployed.

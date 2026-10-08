@@ -86,16 +86,22 @@ def postgres_test_session(request):
     prev_db = os.environ.get("POSTGRES_DB")
     os.environ["POSTGRES_DB"] = POSTGRES_TEST_DB
     db_postgres.reset_pool()
+    pg = db_postgres.get_pg_config()
+    # Name the target so a skip on the 5433 default is not mistaken for a pass (#379).
+    target = f"{pg['host']}:{pg['port']}/{POSTGRES_TEST_DB}"
     try:
         try:
             db_postgres.ensure_database_exists(POSTGRES_TEST_DB)
         except Exception as e:
-            pytest.skip(f"PostgreSQL unavailable (create DB): {e}")
+            pytest.skip(
+                f"PostgreSQL unavailable at {target} (create DB): {e}. "
+                "Set POSTGRES_PORT=5432 to use the stock `docker compose up -d db` service."
+            )
         db_postgres.reset_pool()
         try:
             db_postgres.init_db()
         except Exception as e:
-            pytest.skip(f"PostgreSQL schema init failed: {e}")
+            pytest.skip(f"PostgreSQL schema init failed at {target}: {e}")
         yield POSTGRES_TEST_DB
     finally:
         db_postgres.reset_pool()

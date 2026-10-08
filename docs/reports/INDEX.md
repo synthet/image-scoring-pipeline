@@ -4,7 +4,7 @@ title: Reports index
 description: Index of historical reports, research, reviews, and debugging sessions under docs/reports/.
 resource: docs/reports/INDEX.md
 tags: [docs, reports, index]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-10-08T02:32:36Z
 okf_version: 0.2
 ---
 
@@ -18,7 +18,7 @@ Historical reports, research, reviews, and debugging sessions.
 |----------|-------------|
 | [WORK_SUMMARY_2026-03-08.md](WORK_SUMMARY_2026-03-08.md) | Work summary |
 | [raw-decode-comparison-2026-10-06](raw-decode-comparison-2026-10-06.md) | Six Nikon fixtures: embedded previews versus rawpy and LibRaw CLI, with failure and pixel evidence. |
-| [localization-rollout-operations-2026-10-07](localization-rollout-operations-2026-10-07.md) | Revision 0040 deployment, a verified 34-image live batch, isolated lane validation and the remaining production gate. |
+| [localization-rollout-operations-2026-10-07](localization-rollout-operations-2026-10-07.md) | Revision 0040 deployment, a 34-image live batch, merged strict-retry fix with 103 cloud checks, and read-only preflight for the remaining production gate. |
 | [localization-rollout-continuation-2026-10-08](localization-rollout-continuation-2026-10-08.md) | Merged strict retry fix loaded, full selected-region keypoint coverage, species comparison, and pending production lane gate. |
 | [bird-species-abstention-2026-10-08](bird-species-abstention-2026-10-08.md) | BioCLIP 2 on the 213 panel crops: a 0.5 floor keeps 92% at 93.5% precision; nine list additions help in-sample but add confident look-alike errors; ships `bird_species.min_confidence` (#422). |
 | [WORK_SUMMARY_2026-05-26.md](WORK_SUMMARY_2026-05-26.md) | Auto-drive run 3245 investigation + empty composite scores dry-run |
