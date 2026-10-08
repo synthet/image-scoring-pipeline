@@ -98,6 +98,44 @@ def test_runner_start_batch_spawns_thread(monkeypatch):
     assert threads_started == [True]
 
 
+def test_min_confidence_default_and_config(monkeypatch):
+    """Abstention floor (#422): 0.5 unless config sets bird_species.min_confidence."""
+    import modules.bird_species as bs
+    from modules import config
+
+    monkeypatch.setattr(config, "get_config_value", lambda key, default=None: default)
+    assert bs.min_confidence() == 0.5
+    monkeypatch.setattr(config, "get_config_value", lambda key, default=None: 0.7)
+    assert bs.min_confidence() == 0.7
+
+
+@pytest.mark.parametrize("passed, expected", [(None, 0.65), (0.2, 0.2)])
+def test_start_batch_threshold_falls_back_to_min_confidence(monkeypatch, passed, expected):
+    """An explicit job threshold wins; None uses the configured floor (#422)."""
+    import modules.bird_species as bs
+    import modules.pipeline as pipeline
+
+    runner = BirdSpeciesRunner()
+    seen = {}
+
+    class _InlineThread:
+        def __init__(self, target, name, daemon):
+            self._target = target
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(threading, "Thread", _InlineThread)
+    monkeypatch.setattr(pipeline, "safe_runner_thread", lambda r, job_id, fn: fn())
+    monkeypatch.setattr(bs, "min_confidence", lambda: 0.65)
+    monkeypatch.setattr(
+        runner, "_run_batch_internal",
+        lambda input_path, species, threshold, *a, **kw: seen.setdefault("threshold", threshold),
+    )
+
+    runner.start_batch(None, job_id=1, threshold=passed)
+    assert seen["threshold"] == expected
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # _resolve_inference_path — full RAW preview, not the 512px thumbnail
 # ──────────────────────────────────────────────────────────────────────────────

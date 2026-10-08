@@ -841,3 +841,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-03] updated | Jev MCP for session decisions
 
 - 2026-10-03: updated — [Jev agent harness](technical/JEV_AGENT_HARNESS.md) now tells Cursor, Codex, and Antigravity to ask `jev-rw-systemone` for visibility, tool pick, routing, permissions, and file sensitivity when the Claude Code hooks did not run. Protocol: `.cursor/skills/jev-mcp/SKILL.md`. `AGENTS.md`, `CLAUDE.md`, and the decision-bearing skills point at it.
+
+## [2026-10-08] created | Bird species abstention floor (#422)
+
+- 2026-10-08: created — [bird species abstention report](reports/bird-species-abstention-2026-10-08.md). BioCLIP 2 was rerun on the 213 panel crops, scored against a 3-of-4 judge consensus (199 frames). A 0.5 top-1 floor keeps 184 at 93.5% precision. Nine missing species were added to `data/bird_species_list.txt`; they raise accuracy from 83.4% to 87.9% in-sample but add confident look-alike errors. A Jev re-check on blind descriptions overturned no panel verdict. Ships `bird_species.min_confidence` (0.5) in [CONFIG](technical/CONFIG.md); 22% of bird-tagged images in the live library have a stored top-1 below it.

@@ -26,6 +26,12 @@ SOURCE_BIOCLIP_REGION = "bioclip_region"
 
 USE_REGIONS_KEY = "bird_species.use_regions"
 
+#: Abstention floor (#422): below this top-1 probability no species is stored and the image
+#: takes the ``no_species_match`` path. 0.5 is calibrated on the 199 judge-panel frames in
+#: ``docs/reports/bird-species-abstention-2026-10-08.md``. A job's explicit ``threshold`` wins.
+MIN_CONFIDENCE_KEY = "bird_species.min_confidence"
+DEFAULT_MIN_CONFIDENCE = 0.5
+
 _PRIMARY_REGION_SQL = """
     SELECT r.id AS run_id, r.status, r.error_code, g.id AS region_id, g.x1, g.y1, g.x2, g.y2
     FROM image_localization_runs r
@@ -39,6 +45,13 @@ def use_regions_enabled() -> bool:
     from modules import config
 
     return bool(config.get_config_value(USE_REGIONS_KEY, default=False))
+
+
+def min_confidence() -> float:
+    """``bird_species.min_confidence``; the threshold for jobs that do not pass one (#422)."""
+    from modules import config
+
+    return float(config.get_config_value(MIN_CONFIDENCE_KEY, default=DEFAULT_MIN_CONFIDENCE))
 
 
 def species_input_for_image(image_id: int) -> dict:
@@ -459,14 +472,19 @@ class BirdSpeciesRunner:
         input_path: str,
         job_id: int = None,
         candidate_species: list[str] = None,
-        threshold: float = 0.1,
+        threshold: float | None = None,
         top_k: int = 1,
         overwrite: bool = False,
         resolved_image_ids: list[int] = None,
     ) -> str:
-        """Start classification in a background thread. Returns 'Started' or error string."""
+        """Start classification in a background thread. Returns 'Started' or error string.
+
+        ``threshold=None`` uses ``bird_species.min_confidence`` (#422).
+        """
         if self.is_running:
             return "Error: Already running."
+        if threshold is None:
+            threshold = min_confidence()
 
         self.is_running = True
         self.log_history = []
