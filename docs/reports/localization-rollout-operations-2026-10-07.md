@@ -14,6 +14,11 @@ bounded production batch. The Stage 4 automatic repair-lane exit gate remains
 pending because production has no eligible new images or current retryable runs.
 This report updates the [rollout status](../architecture/pipeline/localization-rollout.md).
 
+The [October 8 continuation](localization-rollout-continuation-2026-10-08.md)
+records the subsequently merged and loaded strict retry fix, completed
+selected-region keypoint coverage, and species comparison. The statements
+below that the fix was local and undeployed describe the October 7 session.
+
 ## Deployment and recovery evidence
 
 [PR #575](https://github.com/synthet/image-scoring-pipeline/pull/575) merged #368
