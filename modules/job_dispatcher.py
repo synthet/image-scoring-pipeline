@@ -833,7 +833,7 @@ class JobDispatcher:
                 payload.get("input_path", input_path),
                 job_id=job_id,
                 candidate_species=payload.get("candidate_species"),
-                threshold=float(payload.get("threshold", 0.1)),
+                threshold=None if payload.get("threshold") is None else float(payload["threshold"]),
                 top_k=int(payload.get("top_k", 1)),
                 overwrite=overwrite,
                 resolved_image_ids=scoped_resolved,

@@ -201,6 +201,8 @@ def test_dispatcher_bird_species_explicit_selector_ids_bypass_empty_jit(monkeypa
     _, kwargs = bird_runner.calls[0]
     assert kwargs["job_id"] == 88
     assert kwargs["resolved_image_ids"] == [101, 102]
+    # No threshold in the payload: the runner applies bird_species.min_confidence (#422).
+    assert kwargs["threshold"] is None
 
 
 def test_dispatcher_maintenance_bypasses_empty_jit(monkeypatch):
