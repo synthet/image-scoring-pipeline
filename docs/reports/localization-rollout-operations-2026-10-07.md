@@ -1,10 +1,10 @@
 ---
 type: Report
 title: Localization rollout deployment and bounded validation
-description: Verified revision 0040 deployment, a 34-image production batch, and the remaining automatic-lane gate.
+description: Revision 0040 deployment, a 34-image production batch, merged strict-retry regression evidence, and the remaining automatic-lane gate.
 resource: reports/localization-rollout-operations-2026-10-07.md
 tags: [localization, rollout, operations, verification]
-timestamp: 2026-10-07T23:39:35Z
+timestamp: 2026-10-08T02:32:36Z
 okf_version: 0.2
 ---
 # Localization rollout deployment and bounded validation
@@ -118,8 +118,10 @@ before the fix and passed afterward.
 The local runner fix marks each selected, non-deferred image `running` before
 processing. Recovery now follows `failed` to `running` to `done`; existing phase
 rules remain enforced. Cooling-down and exhausted images are still deferred
-before any phase-status write. This change has not been merged or loaded into
-the production process.
+before any phase-status write. The fix subsequently merged in
+[PR #577](https://github.com/synthet/image-scoring-pipeline/pull/577)
+(merge commit `474cdea6`, fix commit `30644ad0`). Loading that revision into
+the production process has not been verified.
 
 The focused unit and PostgreSQL suite passed **103 tests with zero skips**.
 After strengthening the deferral assertions, all **three repair integration
@@ -160,3 +162,82 @@ failures on the 1-minute/5-minute schedule. Global localization enablement,
 new-images-only policy, enablement boundary, repair settings and production
 auto-drive state were unchanged by this continuation. Later rollout promotions
 remain subject to the existing [ordered gates](../architecture/pipeline/localization-rollout.md#what-is-left).
+
+## Cloud continuation after PR #577
+
+On 2026-10-07 (America/Chicago), the merged source passed **103 tests with zero
+skips** in the cloud CPU environment: 84 focused unit tests and 19 PostgreSQL
+integration tests. These include strict retry recovery, cooling-down/exhausted
+deferral, automatic admission, shadow isolation, phantom reconciliation and
+enablement-boundary coverage. Ruff passed on the runner and the three regression
+test files listed below. The unit run emitted 52 existing Pydantic deprecation
+warnings.
+
+The PostgreSQL tests used the repository's isolated `image_scoring_test`
+database. Read-only checks of the separate cloud application database found
+zero images, no bird-enablement boundary and no localization lane jobs. That
+database also has no `alembic_version` table; its setup-created schema is not
+evidence of a deployed migration revision. No production connection is attached
+to this cloud environment. These checks establish regression coverage for the
+merged fix, not production deployment or completion of the Stage 4 exit gate.
+
+Commands ran from the repository root with the cloud's prepared Python environment:
+
+```sh
+python -m pytest tests/test_localization_phase.py tests/test_scene_route_localization.py tests/test_localization_policy.py tests/test_localization_lane.py -q -o addopts= --timeout=60
+POSTGRES_PORT=5432 RUN_POSTGRES_TESTS=1 python -m pytest tests/integration/test_localization_repair_e2e.py tests/integration/test_localization_lane_e2e.py tests/integration/test_localization_shadow_e2e.py tests/integration/test_localization_phantom_reconcile_e2e.py tests/integration/test_localization_enablement_e2e.py -q -o addopts= --disable-warnings -rs --timeout=60
+python -m ruff check modules/localization_runner.py tests/test_localization_phase.py tests/integration/test_localization_repair_e2e.py tests/integration/test_localization_shadow_e2e.py
+```
+
+### Read-only preflight for the next production cycle
+
+First confirm the selected-region keypoint coverage and shadow species comparison
+for #492/#493, as required by the ordered gates. Then verify that the production
+runtime has loaded PR #577, and capture its existing configuration, persisted
+boundary, backlog and queue state before watching admission. Do not call
+`select_candidates()` as a read-only probe: it calls
+`ensure_enablement_boundary()`, which can create the boundary.
+
+The following SQL reads the persisted bird boundary and the lane's new-image
+eligibility predicate without initializing anything:
+
+```sql
+SELECT detector_key, enabled_at
+FROM localization_enablement WHERE detector_key = 'bird';
+
+SELECT COUNT(*) AS eligible_new
+FROM images i
+JOIN localization_enablement le ON le.detector_key = 'bird'
+WHERE i.created_at >= le.enabled_at
+  AND EXISTS (
+    SELECT 1 FROM image_phase_status ms
+    JOIN pipeline_phases pm ON pm.id = ms.phase_id
+    WHERE ms.image_id = i.id AND LOWER(TRIM(pm.code)) = 'metadata'
+      AND LOWER(TRIM(ms.status)) IN ('done', 'skipped')
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM image_localization_runs r
+    WHERE r.image_id = i.id AND r.detector_key = 'bird' AND r.is_current
+  );
+
+SELECT COUNT(*) AS current_retryable
+FROM image_localization_runs
+WHERE detector_key = 'bird' AND is_current AND status = 'retryable_error';
+
+SELECT id, status, created_at, started_at, completed_at
+FROM jobs
+WHERE input_path = 'SELECTOR_LOCALIZATION_LANE' AND job_type = 'localization'
+ORDER BY id DESC LIMIT 20;
+```
+
+A missing boundary needs separate operator review; zero counts cannot establish
+eligibility in its absence. The retryable count includes cooling-down, exhausted
+and metadata-incomplete images, so it is not a ready-to-admit count. Capture the
+live dispatcher's backlog log for that split and any detector-outage hold.
+
+For genuinely eligible production work, retain the automatic lane job IDs,
+the idle-core/queue observation at admission, per-image attempt times and the
+resulting backlog. Where retryable failures occur, verify the 60/300-second
+minimum backoff and three-attempt limit, allowing for lane polling. An explicit
+legacy submit, an empty development library or injected test failures cannot
+supply this production evidence.
