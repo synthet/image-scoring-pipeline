@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-10-07T00:00:00Z
+timestamp: 2026-10-08T00:00:00Z
 okf_version: 0.2
 status: proposed
 ---
@@ -22,7 +22,7 @@ current graph and its implementation are documented in [phase-graph.md](phase-gr
 
 ## Consolidated status (2026-10-04)
 
-This page is the status of record, with operational updates through 2026-10-07.
+This page is the status of record, with operational updates through 2026-10-08.
 Epic #345's issue body still describes September 2026
 (the live import "not yet run", stage 4 "open questions pending"). Replacing that body
 needs a token that can edit issues; this page and #527 are the update.
@@ -53,13 +53,27 @@ indexed after the enablement boundary and no current retryable localization
 runs, so this batch does **not** meet the Stage 4 automatic-lane exit gate.
 An isolated real-clock exercise verified automatic admission, bounded retries,
 recovery and exhaustion. It exposed a strict phase-transition retry bug; the
-minimal runner fix and PostgreSQL regression are local and not deployed. Both
-findings are recorded in the operations report.
+minimal runner fix and PostgreSQL regression were local and not deployed at
+the end of that session. Both findings are recorded in the operations report.
+
+**Continuation 2026-10-08:** the strict retry fix merged in
+[PR #577](https://github.com/synthet/image-scoring-pipeline/pull/577) with eight
+successful checks and is loaded into the restarted backend. Three isolated
+PostgreSQL repair regressions passed with zero skips. The four remaining
+selected-region keypoint gaps were filled: all 4,401 active selected regions now
+have final outcomes (4,370 detected, 31 no_keypoints). The canonical selected-region
+species shadow comparison classified all 4,401 images with zero skips, finding
+977 changed labels and 272 newly labelled images under its 360-species / 0.1
+snapshot. The later workspace #422 policy (369 species / 0.5) needs its own
+comparison before promotion. Production still has zero new images
+after the enablement boundary and zero current retryable bird-localization runs;
+the automatic-lane gate remains pending. See the
+[continuation report](../../reports/localization-rollout-continuation-2026-10-08.md).
 
 Stage sections below stay the original design. Where a section's own status heading is older
 than this table, this table wins.
 
-| Stage | Status through 2026-10-07 | Still open | What changed from the original design |
+| Stage | Status through 2026-10-08 | Still open | What changed from the original design |
 |---|---|---|---|
 | 1. Control plane | **Done** (#346 and follow-ups). `localization` is a real phase after `metadata`. **#368 deployed and live-verified on 2026-10-07** (PR #575, revision 0040). | **#407** attempt-before edge and burst/picks split, not started. | Spec 02 adds **attempt-before** for `localization` → `scoring`. |
 | 2. Normalized persistence | **Done.** Legacy import 2026-09-27: 76,475 current runs. Reader exists; `localization.read_normalized_first` stays off, so `bird_bbox` is still the production read. | Mask artifacts and a second keypoint pass (#426). | Region-linked keypoints landed in shadow (migration 0036, eye-pose backfill, [spot check](../../reports/eye-keypoint-spot-check-2026-09-27.md)). |
@@ -105,9 +119,13 @@ shadow species re-run on those 4,401 images (#493).
 In order. Do not start a later row while an earlier blocker is open.
 
 1. **#492 and #493** after the 4,401 promotions: both implementation issues closed
-   on 2026-10-04. Confirm the selected-region keypoint coverage and shadow species
-   comparison before any keyword rewrite; issue closure alone does not prove that
-   the full-cohort operational runs finished. The small stratum stays in shadow.
+   on 2026-10-04. Selected-region keypoint coverage was verified and completed
+   on 2026-10-08 (4,401 final outcomes); the full-cohort species comparison
+   classified all 4,401 images with zero skips. Its retained snapshot used
+   360 species and threshold 0.1; repeat under the later #422 list/floor before
+   using these results for a keyword rewrite. See the
+   [continuation report](../../reports/localization-rollout-continuation-2026-10-08.md).
+   The small stratum stays in shadow.
 2. **#527 stage 4 remainder** (repair lane, new-image boundary, auto-drive bucket, phantom
    reconciliation). The exit-gate text is:
    bounded repair (3 attempts, 1 min / 5 min, one repair job while core work is idle);
