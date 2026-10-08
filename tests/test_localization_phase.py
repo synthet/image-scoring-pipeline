@@ -556,7 +556,11 @@ def test_ac15_ac16_runner_writes_only_localization_state(jpeg, writes, monkeypat
     assert {name for name, _a, _k in fake_db.calls} <= allowed
     ips = [a for name, a, _k in fake_db.calls if name == "set_image_phase_status"]
     assert {a[1] for a in ips} == {"localization"}
-    assert [a[2] for a in ips] == ["done", "done", "skipped"]
+    assert [(a[0], a[2]) for a in ips] == [
+        (1, "running"), (1, "done"),
+        (2, "running"), (2, "done"),
+        (3, "running"), (3, "skipped"),
+    ]
 
     # AC-16: summary merged into the existing report, not replacing it.
     summary = fake_db.report["phases"]["localization"]

@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-07] edit | Record deployed localization control plane and bounded live validation
+
+PR #575 and revision 0040 are deployed; the three-folder, 34-image production batch completed with verified delegated states and timestamps. Added docs/reports/localization-rollout-operations-2026-10-07.md and corrected docs/architecture/pipeline/localization-rollout.md. An isolated real-clock exercise verified three automatic jobs, recovery and exhaustion; its strict-transition warning led to a local running-state fix with a PostgreSQL RED/GREEN regression. The automatic-lane production exit gate remains pending eligible work, and the fix is not deployed.
+
 ## [2026-10-07] edit | Clarify delegated parent audit failures and terminal-child controls (#368)
 
 Documented that duplicate completion and reconciliation retain parent audit failure, finished child work requires a fresh retry, and conflicting cancel/resume requests return 409. Added regression coverage for post-commit notification lookup failure, audit idempotence, terminal-child retry guards, and genuine repaired child success.

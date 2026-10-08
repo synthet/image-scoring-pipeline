@@ -18,6 +18,7 @@ Historical reports, research, reviews, and debugging sessions.
 |----------|-------------|
 | [WORK_SUMMARY_2026-03-08.md](WORK_SUMMARY_2026-03-08.md) | Work summary |
 | [raw-decode-comparison-2026-10-06](raw-decode-comparison-2026-10-06.md) | Six Nikon fixtures: embedded previews versus rawpy and LibRaw CLI, with failure and pixel evidence. |
+| [localization-rollout-operations-2026-10-07](localization-rollout-operations-2026-10-07.md) | Revision 0040 deployment, a verified 34-image live batch, isolated lane validation and the remaining production gate. |
 | [WORK_SUMMARY_2026-05-26.md](WORK_SUMMARY_2026-05-26.md) | Auto-drive run 3245 investigation + empty composite scores dry-run |
 | [bird-species-keywords-2026-08-31/summary.md](bird-species-keywords-2026-08-31/summary.md) | Preserve `birds` on species writes; IPS-only no-match state (replaces `birds:species-exhausted` keyword) |
 | [DEEP_RESEARCH_REPORT.md](DEEP_RESEARCH_REPORT.md) | Deep research report |
