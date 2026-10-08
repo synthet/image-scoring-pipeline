@@ -225,6 +225,7 @@ def test_ac11_ac15_ac16_runner_batch(image, tmp_path, monkeypatch):
     detector.detect_boxes = _detect
     monkeypatch.setattr(lr, "load_detector_context", lambda _cfg: _ctx(detector))
     monkeypatch.setattr(lr, "localization_config", lambda: {})
+    monkeypatch.setattr(lr, "scene_route_settings", lambda: {"enabled": False})
 
     other_ips_sql = (
         "SELECT ips.image_id, pp.code, ips.status, ips.updated_at FROM image_phase_status ips "
