@@ -299,6 +299,13 @@ class LocalizationRunner:
                     self.current_count += 1
                     continue
             try:
+                # Retries must re-enter running before their terminal outcome;
+                # failed/skipped -> done is rejected by strict phase transitions.
+                # Deferred repair rows above are left untouched.
+                db.set_image_phase_status(
+                    image_id, PHASE_CODE, "running", job_id=job_id,
+                    executor_version=LOCALIZATION_RUNNER_VERSION,
+                )
                 if router is not None:
                     outcome = router.localize(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id)
                 else:

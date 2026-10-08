@@ -22,7 +22,8 @@ current graph and its implementation are documented in [phase-graph.md](phase-gr
 
 ## Consolidated status (2026-10-04)
 
-This page is the status of record. Epic #345's issue body still describes September 2026
+This page is the status of record, with operational updates through 2026-10-07.
+Epic #345's issue body still describes September 2026
 (the live import "not yet run", stage 4 "open questions pending"). Replacing that body
 needs a token that can edit issues; this page and #527 are the update.
 
@@ -38,23 +39,29 @@ are folded into the table, not into a second rollout:
 **Update 2026-10-05:** #558–#561 are merged. Stage 4's exit-gate code is on `master`; the gate
 itself waits on one live lane cycle (an operator step). S4-4 was revisited and kept.
 
-**Implementation update 2026-10-07:** #368 now has a local implementation and
-PostgreSQL regression coverage. Migration **0040**, following 0039, persists the
-parent/child links; culling leaves its parent waiting and mirrors each child stage.
-Earlier successful stages remain completed on later failure. Parent cancellation
-cancels the subtree; in-place child retry reopens the parent, while a fresh Runs UI
-retry forms an independent chain. Atomic rollback, restart/reconciliation,
-concurrent handoffs and cancellation, and dispatch capacity of one are covered.
-This is pending merge and production migration, so #368 remains open. See the
-[deployment and rollback procedure](../../technical/RUNS_QUEUE_AND_RESTART.md#deployment-and-rollback-0040).
-The Stage 4 live lane exit gate is still outstanding.
+**Operational update 2026-10-07:** #368 is merged in
+[PR #575](https://github.com/synthet/image-scoring-pipeline/pull/575) and closed.
+Production is on migration **0040**. A verified database backup and a successful
+full restore preceded a bounded live batch: three existing folders, 34 images,
+15 completed jobs. All three culling parents waited for their linked children;
+the six delegated stage projections matched child outcomes and timestamps.
+Aggregate quality scores were preserved. See the
+[operations report](../../reports/localization-rollout-operations-2026-10-07.md)
+and [deployment and rollback procedure](../../technical/RUNS_QUEUE_AND_RESTART.md#deployment-and-rollback-0040).
+These were explicit legacy-image submissions. Production still has no images
+indexed after the enablement boundary and no current retryable localization
+runs, so this batch does **not** meet the Stage 4 automatic-lane exit gate.
+An isolated real-clock exercise verified automatic admission, bounded retries,
+recovery and exhaustion. It exposed a strict phase-transition retry bug; the
+minimal runner fix and PostgreSQL regression are local and not deployed. Both
+findings are recorded in the operations report.
 
 Stage sections below stay the original design. Where a section's own status heading is older
 than this table, this table wins.
 
-| Stage | Status on 2026-10-04 | Still open | What changed from the original design |
+| Stage | Status through 2026-10-07 | Still open | What changed from the original design |
 |---|---|---|---|
-| 1. Control plane | **Done** (#346 and follow-ups). `localization` is a real phase after `metadata`. | **#368** delegated parent/child lifecycle. **#407** attempt-before edge and burst/picks split, not started. | Spec 02 adds **attempt-before** for `localization` → `scoring`. |
+| 1. Control plane | **Done** (#346 and follow-ups). `localization` is a real phase after `metadata`. **#368 deployed and live-verified on 2026-10-07** (PR #575, revision 0040). | **#407** attempt-before edge and burst/picks split, not started. | Spec 02 adds **attempt-before** for `localization` → `scoring`. |
 | 2. Normalized persistence | **Done.** Legacy import 2026-09-27: 76,475 current runs. Reader exists; `localization.read_normalized_first` stays off, so `bird_bbox` is still the production read. | Mask artifacts and a second keypoint pass (#426). | Region-linked keypoints landed in shadow (migration 0036, eye-pose backfill, [spot check](../../reports/eye-keypoint-spot-check-2026-09-27.md)). |
 | 3. Rendition and crops | **Code complete** (#375). Detector benchmark done (#377). Default weights are `bird_detect_v1.pt` (#462), still `imgsz=640`. | Shared decode-once for every phase (#406). Slice 1 cache/pruner landed (#446). Portrait RAW thumbnails still reach CLIP/BLIP/MobileNet unrotated (#418). | One ~2048 px inference rendition for every phase (spec 01), not only localization. |
 | 4. Shadow localization | **Slice 1 + M0 done** (#395, #414). Decisions S4-1..S4-5 accepted. Example config turns the phase and the bird detector **on**. **Exit-gate code merged** (#527, slices #538–#541): new-images-only boundary (#558), bounded repair (#559), phantom reconciliation (#560), repair lane (#561). | The live config has `localization.repair.enabled: true`; watch one lane cycle with eligible images before calling the exit gate met. Cascade is code (#451) but not the production detector (#408 still open). | YOLO → COCO-animal → small-box refine is a shadow provider. Primary-region choice is still a proposal on #408. Scene route can skip detection (#412, closed). |
@@ -97,8 +104,10 @@ shadow species re-run on those 4,401 images (#493).
 
 In order. Do not start a later row while an earlier blocker is open.
 
-1. **#492 and #493** after the 4,401 promotions: keypoints on the selected region, and a
-   shadow species comparison before any keyword rewrite. The small stratum stays in shadow.
+1. **#492 and #493** after the 4,401 promotions: both implementation issues closed
+   on 2026-10-04. Confirm the selected-region keypoint coverage and shadow species
+   comparison before any keyword rewrite; issue closure alone does not prove that
+   the full-cohort operational runs finished. The small stratum stays in shadow.
 2. **#527 stage 4 remainder** (repair lane, new-image boundary, auto-drive bucket, phantom
    reconciliation). The exit-gate text is:
    bounded repair (3 attempts, 1 min / 5 min, one repair job while core work is idle);
@@ -111,16 +120,18 @@ In order. Do not start a later row while an earlier blocker is open.
    backlog logged, and retryable failures re-attempted on the 1 min / 5 min schedule.
    On 2026-10-05, the live library had no images after the enablement boundary and no current
    retryable runs, so the lane had no candidates; this did not meet the exit gate.
+   The same conditions were rechecked on 2026-10-07 after the successful explicit
+   34-image batch. Isolated fault-injection validation is separate evidence and
+   cannot substitute for an eligible production lane cycle.
    S4-4 was revisited and is kept (see Open questions).
-3. **#368** before any restart/recovery work that assumes parent/child outcomes propagate.
-4. **#418** before trusting scene, keyword, or embedding vectors on portrait RAWs.
-5. **#408** adopt-or-drop the cascade. Slice 1 is in tree; production detection is still
+3. **#418** before trusting scene, keyword, or embedding vectors on portrait RAWs.
+4. **#408** adopt-or-drop the cascade. Slice 1 is in tree; production detection is still
    YOLO `bird_detect_v1` at 640. Do not change `imgsz` on the failed #377/#469 evidence.
-6. **Stage 5 flag** stays off until a second folder (or a labelled species sample) matches
+5. **Stage 5 flag** stays off until a second folder (or a labelled species sample) matches
    the legacy path and #422's abstention rule is decided.
-7. **Stage 6** waits on #415 labels, then #409 storage (prefer a sibling score table over
+6. **Stage 6** waits on #415 labels, then #409 storage (prefer a sibling score table over
    changing the `image_model_scores` primary key; see the decision register) and #423.
-8. **Stage 8** waits on a release where selections, region reads, and rollback of
+7. **Stage 8** waits on a release where selections, region reads, and rollback of
    `read_normalized_first` have all been exercised. Physical drop of `bird_bbox` stays out
    of this rollout.
 
@@ -148,7 +159,6 @@ In order. Do not start a later row while an earlier blocker is open.
 | No timing baseline on the 8 GB card | Crop-backfill cost and the 2048 px decision | #416 |
 | Gallery must filter `input_mode` before a score-table migration | #409 | gallery #176 |
 | Postgres suite can skip when the port or Alembic is wrong | Trusting `-m postgres` on a host Python | #379 |
-| Delegated culling parent completes without the child outcome | Recovery tests for later phases | #368 |
 
 **Design ideas from the reference-design analysis, and where they are tracked:**
 
