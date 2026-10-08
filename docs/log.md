@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-08] edit | Complete selected-region localization follow-up evidence
+
+Loaded merged PR #577 and verified three isolated strict-repair regressions. Completed the four missing shadow keypoint outcomes, giving 4,401 final selected-region results. The canonical species comparison classified all 4,401 images with zero skips under the 360-species/0.1 snapshot; later #422 workspace policy changes need separate validation. Updated docs/reports/localization-rollout-continuation-2026-10-08.md and the rollout status/indexes. Production automatic-lane gate remains pending genuine eligible images; no species keyword or flag promotion.
+
 ## [2026-10-07] edit | Continue localization rollout validation after PR #577
 
 Recorded the merged strict-retry fix, 84 unit and 19 isolated PostgreSQL checks with zero skips, and read-only production preflight in docs/reports/localization-rollout-operations-2026-10-07.md. Updated the rollout status and both indexes. The empty cloud development database does not establish production deployment or the eligible automatic-lane cycle; those gates remain unverified.
@@ -845,3 +849,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-03] updated | Jev MCP for session decisions
 
 - 2026-10-03: updated — [Jev agent harness](technical/JEV_AGENT_HARNESS.md) now tells Cursor, Codex, and Antigravity to ask `jev-rw-systemone` for visibility, tool pick, routing, permissions, and file sensitivity when the Claude Code hooks did not run. Protocol: `.cursor/skills/jev-mcp/SKILL.md`. `AGENTS.md`, `CLAUDE.md`, and the decision-bearing skills point at it.
+
+## [2026-10-08] created | Bird species abstention floor (#422)
+
+- 2026-10-08: created — [bird species abstention report](reports/bird-species-abstention-2026-10-08.md). BioCLIP 2 was rerun on the 213 panel crops, scored against a 3-of-4 judge consensus (199 frames). A 0.5 top-1 floor keeps 184 at 93.5% precision. Nine missing species were added to `data/bird_species_list.txt`; they raise accuracy from 83.4% to 87.9% in-sample but add confident look-alike errors. A Jev re-check on blind descriptions overturned no panel verdict. Ships `bird_species.min_confidence` (0.5) in [CONFIG](technical/CONFIG.md); 22% of bird-tagged images in the live library have a stored top-1 below it.

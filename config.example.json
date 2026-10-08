@@ -263,7 +263,8 @@
     "fail_open": true
   },
   "bird_species": {
-    "use_regions": false
+    "use_regions": false,
+    "min_confidence": 0.5
   },
   "scene_route": {
     "enabled": true,
