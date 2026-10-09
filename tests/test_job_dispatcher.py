@@ -542,6 +542,25 @@ def test_dispatcher_logs_resolved_count_at_entry(monkeypatch, caplog):
     assert "job_id=4242" in line
 
 
+@pytest.mark.parametrize("payload_overwrite, expected", [(True, True), (False, False), (None, False)])
+def test_dispatcher_tagging_honours_payload_overwrite(monkeypatch, payload_overwrite, expected):
+    """POST /api/tagging/start stores overwrite on the payload, not in run_mode."""
+    tagging_runner = DummyRunner()
+    dispatcher = JobDispatcher(tagging_runner=tagging_runner)
+    payload = {"input_path": "/mnt/d/foo", "resolved_image_ids": [1, 2]}
+    if payload_overwrite is not None:
+        payload["overwrite"] = payload_overwrite
+    queued_job = {"id": 4243, "job_type": "tagging", "input_path": "/mnt/d/foo",
+                  "queue_payload": json.dumps(payload)}
+    monkeypatch.setattr("modules.job_dispatcher.db.dequeue_next_job", lambda: queued_job)
+    monkeypatch.setattr("modules.job_dispatcher.db.update_job_status", lambda *a, **k: None)
+
+    dispatcher._tick()
+
+    _, kwargs = tagging_runner.calls[0]
+    assert kwargs["overwrite"] is expected
+
+
 # ── Issue #159 Stage A: seed job_phases denominator for tag/cluster/selection ──
 
 
