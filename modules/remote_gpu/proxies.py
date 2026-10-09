@@ -152,13 +152,18 @@ class RemoteScoringHost(MultiModelHost):
 def create_remote_scoring_host() -> RemoteScoringHost:
     """Scoring host for ``gpu_runner.phases.scoring = remote``. Raises RemoteGpuError when not ready."""
     from modules.engines.factory import ensure_production_registry
-    from modules.engines.registry import ModelRegistry
+    from modules.engines.registry import ModelRegistry, get_registry
     from scripts.python.run_all_musiq_models import MultiModelMUSIQ
 
     client = ready_client("scoring")
     backend = MultiModelMUSIQ(skip_gpu=True)
     # A private registry: the process-wide one keeps the GPU-backed wrappers a local run registers.
     registry = ensure_production_registry(backend, registry=ModelRegistry())
+    # The runner's host also scores the models registered at import time (topiq, arniqa, ...),
+    # so this host must prepare inputs for them too (#588). They are never run here.
+    for model in get_registry().all_registered():
+        if registry.get(model.name) is None:
+            registry.register(model)
     return RemoteScoringHost(client, backend, registry)
 
 
