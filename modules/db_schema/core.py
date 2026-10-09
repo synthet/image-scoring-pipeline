@@ -141,10 +141,17 @@ def initialize_core_schema(cur) -> None:
         image_uuid          VARCHAR(36),
         bird_bbox           JSONB,
         created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at          TIMESTAMP
+        updated_at          TIMESTAMP,
+        registered_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
     cur.execute("ALTER TABLE images ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;")
+    # Registration time for the localization new-image boundary (#584). Mirrors
+    # migrations/versions/0041_images_registered_at.py: backfill before the default, or
+    # every existing row would be stamped "now" and count as new.
+    cur.execute("ALTER TABLE images ADD COLUMN IF NOT EXISTS registered_at TIMESTAMP;")
+    cur.execute("UPDATE images SET registered_at = created_at WHERE registered_at IS NULL;")
+    cur.execute("ALTER TABLE images ALTER COLUMN registered_at SET DEFAULT CURRENT_TIMESTAMP;")
     cur.execute(
         "ALTER TABLE images ADD COLUMN IF NOT EXISTS hash_version INTEGER NOT NULL DEFAULT 1;"
     )
