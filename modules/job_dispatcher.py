@@ -789,7 +789,8 @@ class JobDispatcher:
                 payload.get("input_path", input_path),
                 job_id=job_id,
                 custom_keywords=payload.get("custom_keywords"),
-                overwrite=bool(mode_flags["overwrite"]),
+                # /api/tagging/start puts overwrite on the payload; run_mode never sets it.
+                overwrite=bool(mode_flags["overwrite"]) or bool(payload.get("overwrite")),
                 generate_captions=bool(payload.get("generate_captions", False)),
                 generate_accessibility=bool(payload.get("generate_accessibility", False)),
                 resolved_image_ids=scoped_resolved,
