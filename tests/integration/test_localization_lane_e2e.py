@@ -38,11 +38,13 @@ class _Failing:
         raise RuntimeError("cuda error")
 
 
-def _image(tmp_path, name, created_at, *, metadata="done"):
+def _image(tmp_path, name, registered_at, *, metadata="done", captured_at=None):
+    """``captured_at`` goes to ``created_at``, which indexing fills with the capture time."""
     path = tmp_path / f"{name}.jpg"
     Image.new("RGB", (64, 48), (10, 20, 30)).save(path)
     image_id = int(db.get_connector().execute_returning(
-        "INSERT INTO images (file_path, created_at) VALUES (?, ?) RETURNING id", (str(path), created_at),
+        "INSERT INTO images (file_path, created_at, registered_at) VALUES (?, ?, ?) RETURNING id",
+        (str(path), captured_at or registered_at, registered_at),
     )[0]["id"])
     if metadata:
         db.set_image_phase_status(image_id, "metadata", metadata)
@@ -74,6 +76,16 @@ def test_candidates_and_backlog(tmp_path):
 
     assert ids == [new_id, ready_id]
     assert backlog == {"new": 1, "retryable": 3, "cooling_down": 1, "exhausted": 1, "pending": 2}
+
+
+def test_lane_admits_old_capture_registered_after_boundary(tmp_path):
+    """A 2019 photo imported after the boundary is new to the lane (#584)."""
+    old_capture_id, _ = _image(tmp_path, "old_capture", "2026-02-01 00:00:00", captured_at="2019-07-17 11:00:24")
+
+    ids, backlog = lane.select_candidates()
+
+    assert ids == [old_capture_id]
+    assert backlog["new"] == 1
 
 
 def test_lane_enqueues_one_auto_selector_job(tmp_path, monkeypatch):
