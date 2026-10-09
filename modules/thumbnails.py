@@ -488,15 +488,18 @@ _RAW_EXT_ML = frozenset({".nef", ".nrw", ".cr2", ".dng", ".arw", ".orf", ".cr3",
 
 def open_image_for_ml(read_path: str) -> Image.Image:
     """
-    Open a file as PIL for ML inference (CLIP, BLIP, BioCLIP, etc.).
+    Open a file as upright RGB PIL for ML inference (CLIP, BLIP, MobileNet, etc.).
 
     Raster formats use :func:`PIL.Image.open` directly. RAW files use the same decode
     chain as thumbnail generation (embedded JPEG → rawpy → ImageMagick) so tagging
     and similar jobs work when no thumbnail row/path exists yet.
 
-    Use :func:`open_rendition_for_ml` when you also need to know which route ran.
+    Orientation is applied (:func:`open_oriented_for_ml`): RAW-derived thumbnails keep
+    sensor-orientation pixels plus an EXIF tag, so a plain open fed portrait RAWs to the
+    models sideways (#418). Use :func:`open_rendition_for_ml` for the unoriented decode
+    and the route that ran.
     """
-    return open_rendition_for_ml(read_path)[0]
+    return open_oriented_for_ml(read_path)
 
 
 def open_rendition_for_ml(read_path: str):
@@ -734,6 +737,8 @@ def generate_thumbnail(image_path, source_path=None):
         # Check if RAW file
         is_raw = Path(read_path).suffix.lower() in ['.nef', '.cr2', '.dng', '.arw', '.orf', '.nrw', '.cr3', '.rw2']
 
+        # rawpy's postprocess already rotates; tagging its output too would rotate it twice.
+        pixels_upright = False
         if is_raw:
             img = None
 
@@ -747,6 +752,7 @@ def generate_thumbnail(image_path, source_path=None):
                     with rawpy.imread(str(read_path)) as raw:
                         rgb = raw.postprocess(use_camera_wb=True, bright=1.0, user_sat=None)
                         img = Image.fromarray(rgb)
+                        pixels_upright = True
                 except ImportError:
                     pass  # rawpy not available
                 except Exception:
@@ -783,7 +789,7 @@ def generate_thumbnail(image_path, source_path=None):
             img.save(thumb_path, "JPEG", quality=85)
 
             # Copy EXIF orientation from original
-            if is_raw and shutil.which("exiftool"):
+            if is_raw and not pixels_upright and shutil.which("exiftool"):
                 cmd = ["exiftool", "-TagsFromFile", str(read_path), "-Orientation", "-overwrite_original", thumb_path]
                 subprocess.run(cmd, capture_output=True, timeout=10)
 

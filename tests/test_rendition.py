@@ -429,9 +429,50 @@ def test_open_image_for_ml_is_unchanged_for_callers(tmp_path, no_decoders, monke
     """Eleven callers across seven modules depend on the bare-Image return type."""
     preview = Image.new("RGB", (1200, 800))
     monkeypatch.setattr(no_decoders, "extract_embedded_jpeg", lambda *a, **k: preview)
+    monkeypatch.setattr(no_decoders, "read_orientation", lambda p: 1)
     out = no_decoders.open_image_for_ml(_raw_path(tmp_path))
-    assert out is preview
-    assert not isinstance(out, tuple)
+    assert isinstance(out, Image.Image)
+    assert out.size == (1200, 800)
+
+
+@pytest.mark.parametrize("orientation", [6, 8])
+def test_open_image_for_ml_uprights_a_raw_derived_thumbnail(tmp_path, orientation):
+    """A RAW thumbnail keeps sensor-orientation pixels plus a copied EXIF tag; CLIP, BLIP
+    and MobileNet read it through open_image_for_ml and must see it upright (#418)."""
+    from modules import thumbnails
+
+    path, upright = _oriented_source(tmp_path, orientation)
+    out = thumbnails.open_image_for_ml(str(path))
+    assert out.size == upright.size
+    r, g, b = out.getpixel((0, 0))  # the red top-left marker (JPEG-lossy)
+    assert r > 200 and g < 60 and b < 60
+    assert out.mode == "RGB"
+
+
+def test_rawpy_thumbnail_gets_no_orientation_tag(tmp_path, monkeypatch):
+    """rawpy already rotates; copying the RAW's tag would rotate the thumbnail again (#418)."""
+    import numpy as np
+    import rawpy
+
+    from modules import thumbnails
+
+    class _Raw:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def postprocess(self, **kw):
+            return np.zeros((40, 30, 3), dtype=np.uint8)  # already portrait
+
+    calls = []
+    monkeypatch.setattr(thumbnails, "extract_embedded_jpeg", lambda *a, **k: None)
+    monkeypatch.setattr(rawpy, "imread", lambda p: _Raw())
+    monkeypatch.setattr(thumbnails.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(thumbnails.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(thumbnails, "get_thumb_path", lambda p: str(tmp_path / "thumb.jpg"))
+
+    assert thumbnails.generate_thumbnail(_raw_path(tmp_path)) == str(tmp_path / "thumb.jpg")
+    assert not any("-Orientation" in c for c in calls)
 
 
 def test_open_oriented_for_ml_does_not_rotate_rawpy_output_twice(tmp_path, no_decoders, monkeypatch):
