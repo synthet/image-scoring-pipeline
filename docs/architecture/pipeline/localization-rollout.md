@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-10-08T02:32:36Z
+timestamp: 2026-10-09T14:31:20Z
 okf_version: 0.2
 status: proposed
 ---
@@ -22,7 +22,7 @@ current graph and its implementation are documented in [phase-graph.md](phase-gr
 
 ## Consolidated status (2026-10-04)
 
-This page is the status of record, with operational updates through 2026-10-08.
+This page is the status of record, with operational updates through 2026-10-09.
 Epic #345's issue body still describes September 2026
 (the live import "not yet run", stage 4 "open questions pending"). Replacing that body
 needs a token that can edit issues; this page and #527 are the update.
@@ -73,18 +73,29 @@ after the enablement boundary and zero current retryable bird-localization runs;
 the automatic-lane gate remains pending. See the
 [continuation report](../../reports/localization-rollout-continuation-2026-10-08.md).
 
+**Live observation 2026-10-09:** twelve user-supplied wildlife NEFs entered
+the live automatic lane after metadata through jobs **6939** and **6941**.
+Both completed: ten detected, one no detection, and one expected scene-route
+skip, with no retryable failures. This verifies automatic admission and
+completion while core work is idle. Normal indexing of two other new NEFs
+overwrote `images.created_at` with their older camera capture dates, leaving
+them outside the new-image boundary. The documented one-live-cycle observation
+condition is met; production retry backoff remains unobserved and the normal
+indexing boundary defect remains open. See the
+[dated live report](../../reports/localization-stage4-live-nef-2026-10-09.md).
+
 Stage sections below stay the original design. Where a section's own status heading is older
 than this table, this table wins.
 
-| Stage | Status through 2026-10-08 | Still open | What changed from the original design |
+| Stage | Status through 2026-10-09 | Still open | What changed from the original design |
 |---|---|---|---|
 | 1. Control plane | **Done** (#346 and follow-ups). `localization` is a real phase after `metadata`. **#368 deployed and live-verified on 2026-10-07** (PR #575, revision 0040). | **#407** attempt-before edge and burst/picks split, not started. | Spec 02 adds **attempt-before** for `localization` → `scoring`. |
 | 2. Normalized persistence | **Done.** Legacy import 2026-09-27: 76,475 current runs. Reader exists; `localization.read_normalized_first` stays off, so `bird_bbox` is still the production read. | Mask artifacts and a second keypoint pass (#426). | Region-linked keypoints landed in shadow (migration 0036, eye-pose backfill, [spot check](../../reports/eye-keypoint-spot-check-2026-09-27.md)). |
 | 3. Rendition and crops | **Code complete** (#375). Detector benchmark done (#377). Default weights are `bird_detect_v1.pt` (#462), still `imgsz=640`. | Shared decode-once for every phase (#406). Slice 1 cache/pruner landed (#446). Portrait RAW thumbnails still reach CLIP/BLIP/MobileNet unrotated (#418). | One ~2048 px inference rendition for every phase (spec 01), not only localization. |
-| 4. Shadow localization | **Slice 1 + M0 done** (#395, #414). Decisions S4-1..S4-5 accepted. Example config turns the phase and the bird detector **on**. **Exit-gate code merged** (#527, slices #538–#541): new-images-only boundary (#558), bounded repair (#559), phantom reconciliation (#560), repair lane (#561). | The live config has `localization.repair.enabled: true`; watch one lane cycle with eligible images before calling the exit gate met. Cascade is code (#451) but not the production detector (#408 still open). | YOLO → COCO-animal → small-box refine is a shadow provider. Primary-region choice is still a proposal on #408. Scene route can skip detection (#412, closed). |
+| 4. Shadow localization | **Slice 1 + M0 done** (#395, #414). Decisions S4-1..S4-5 accepted. Example config turns the phase and the bird detector **on**. **Exit-gate code merged** (#527, slices #538–#541): new-images-only boundary (#558), bounded repair (#559), phantom reconciliation (#560), repair lane (#561). Live automatic admission and completion observed on twelve new wildlife NEFs (2026-10-09). | Normal indexing's capture-date boundary mismatch and production retry-backoff evidence remain open. Cascade is code (#451) but not the production detector (#408 still open). | YOLO → COCO-animal → small-box refine is a shadow provider. Primary-region choice is still a proposal on #408. Scene route can skip detection (#412, closed). |
 | 5. BioCLIP on regions | **Slice 1 in code, off** (#444). `bird_species.use_regions` defaults false. One folder: 283/283 top-1 matched the legacy path, about 33% faster. | Do not flip the flag on this one folder. Abstention and list gaps (#422). Taxa beyond birds (#413). Multi-region classification flag is still design-only. | Legacy boxes are imported, not recomputed, before any species refresh. |
 | 6. Crop / fusion | **Not started.** | #409 (crop score storage + fusion), #423 (evidence JSONL), #415 (~300 labelled bursts). | Region IQA is scoring design, gated on those bursts, not a global crop switch. Captions, accessibility, and Jev stay shadow. |
-| 7. Repair and backfill | **Split.** Legacy import is done (stage 2). v1 rescan of 35,209 legacy misses is done and stays shadow unless a selection says otherwise. Bounded repair and the dispatcher-idle repair lane are merged as stage 4 work (#559, #561). | Live lane cycle (stage 4). Crop-score backfill waits on #409. `scripts/backfill_bird_bbox.py` still writes the JSON column and must be retired or rerouted before normalized authority. | No unbenchmarked full-library rescan. The v1 rescan was an explicit, resumable job, not an automatic scan of every new image. |
+| 7. Repair and backfill | **Split.** Legacy import is done (stage 2). v1 rescan of 35,209 legacy misses is done and stays shadow unless a selection says otherwise. Bounded repair and the dispatcher-idle repair lane are merged as stage 4 work (#559, #561). Live lane cycles were observed on 2026-10-09. | Production retry timing remains unobserved. Crop-score backfill waits on #409. `scripts/backfill_bird_bbox.py` still writes the JSON column and must be retired or rerouted before normalized authority. | No unbenchmarked full-library rescan. The v1 rescan was an explicit, resumable job, not an automatic scan of every new image. |
 | 8. Retire `bird_bbox` | **Groundwork only** (#484). 4,401 selections already project `bird_bbox`. | Column stays. Gallery still reads it. `read_normalized_first` stays false. No compatibility period has started. | `image_localization_selections` (migration 0038) is the revocable production decision. For a selected image, `bird_bbox` is a projection written only by `modules/localization_selection.py`. |
 
 **Beside the stages**
@@ -136,9 +147,12 @@ In order. Do not start a later row while an earlier blocker is open.
    auto-drive must not use localization as the earliest blocking bucket;
    phantom reconciliation only when a current terminal attempt exists.
    Code for all four is merged (#558–#561). The live `config.json` already has
-   `localization.enabled: true` and `localization.repair.enabled: true`. What remains is one
-   lane cycle with eligible images: one lane job admitted while the dispatcher is idle, the
-   backlog logged, and retryable failures re-attempted on the 1 min / 5 min schedule.
+   `localization.enabled: true` and `localization.repair.enabled: true`. An eligible
+   production lane cycle was observed on 2026-10-09: automatic jobs 6939 and 6941
+   were admitted while core work was idle and logged their backlogs. No retryable
+   failure occurred, so the 1 min / 5 min schedule has no production observation.
+   Normal indexing also exposed a capture-date mismatch in the new-image boundary;
+   see the [live report](../../reports/localization-stage4-live-nef-2026-10-09.md).
    On 2026-10-05, the live library had no images after the enablement boundary and no current
    retryable runs, so the lane had no candidates; this did not meet the exit gate.
    The same conditions were rechecked on 2026-10-07 after the successful explicit
@@ -174,7 +188,7 @@ In order. Do not start a later row while an earlier blocker is open.
 | Blocker | Stops | Issue |
 |---|---|---|
 | Small v1 stratum failed the owner gate | Promoting the rest of the 16,666 shadow boxes | #472 (closed; small stays shadow) |
-| Repair lane and new-image boundary merged, not yet run live | Calling stage 4's exit gate met | #527 (#558–#561) |
+| Normal indexing overwrites new-image timestamps with older camera dates | Reliably admitting newly indexed historical RAWs | #527 |
 | Portrait RAW thumbnails unrotated | Scene, keyword, and embedding quality on those files | #418 |
 | ~300 labelled bursts do not exist | Promoting subject-aware scores | #415 |
 | No timing baseline on the 8 GB card | Crop-backfill cost and the 2048 px decision | #416 |
@@ -679,7 +693,7 @@ Set `localization.enabled=false`. Existing normalized artifacts remain readable 
 work is planned. Disable `localization.repair.enabled` to stop queued retry admission without
 invalidating artifacts; a lane job already queued still runs.
 
-### Status — slice 1, M0 and exit-gate code done; one live lane cycle left
+### Status — slice 1, M0 and live automatic lane cycle observed
 
 Registry, gated runner, provenance-stamped regions, and the S4-1..S4-5 decisions are in.
 `config.example.json` enables the phase. The #527 remainder is merged:
