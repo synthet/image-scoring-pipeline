@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-09] ingest | Record live Stage 4 Nikon NEF lane observation
+
+Added docs/reports/localization-stage4-live-nef-2026-10-09.md and updated the rollout status and reports index. Twelve new wildlife NEFs entered automatic jobs 6939 and 6941 after metadata; ten were detected, one had no detection, and one was skipped by scene route. The documented one-live-cycle observation is met. Normal indexing can overwrite the new-image timestamp with an older capture date, and no production retryable failure exercised backoff.
+
 ## [2026-10-08] edit | Complete selected-region localization follow-up evidence
 
 Loaded merged PR #577 and verified three isolated strict-repair regressions. Completed the four missing shadow keypoint outcomes, giving 4,401 final selected-region results. The canonical species comparison classified all 4,401 images with zero skips under the 360-species/0.1 snapshot; later #422 workspace policy changes need separate validation. Updated docs/reports/localization-rollout-continuation-2026-10-08.md and the rollout status/indexes. Production automatic-lane gate remains pending genuine eligible images; no species keyword or flag promotion.
