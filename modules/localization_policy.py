@@ -64,8 +64,9 @@ def _source_changed(row: dict[str, Any]) -> bool:
 def filter_auto_eligible(image_ids: list[int]) -> list[int]:
     """Keep new images and images whose source changed; drop unchanged legacy images.
 
-    Order is preserved. A new image is one whose ``images.created_at`` is at or after the
-    boundary; a NULL ``created_at`` counts as legacy.
+    Order is preserved. A new image is one whose ``images.registered_at`` is at or after the
+    boundary; a NULL ``registered_at`` counts as legacy. Not ``created_at``: indexing stores
+    the capture time there (#584).
     """
     from modules import db
 
@@ -82,8 +83,8 @@ def filter_auto_eligible(image_ids: list[int]) -> list[int]:
         rows = conn.query(
             f"""
             SELECT i.id, i.file_path,
-                   (le.enabled_at IS NOT NULL AND i.created_at IS NOT NULL
-                    AND i.created_at >= le.enabled_at) AS is_new,
+                   (le.enabled_at IS NOT NULL AND i.registered_at IS NOT NULL
+                    AND i.registered_at >= le.enabled_at) AS is_new,
                    r.source_hash, r.source_hash_version
             FROM images i
             LEFT JOIN localization_enablement le ON le.detector_key = ?

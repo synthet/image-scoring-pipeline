@@ -34,12 +34,13 @@ def _set_boundary(ts=_BOUNDARY):
     )
 
 
-def _image(tmp_path, name, created_at):
+def _image(tmp_path, name, registered_at, *, captured_at=None):
+    """``captured_at`` goes to ``created_at``, which indexing fills with the capture time."""
     path = tmp_path / f"{name}.jpg"
     Image.new("RGB", (64, 48), (10, 20, 30)).save(path)
     row = db.get_connector().execute_returning(
-        "INSERT INTO images (file_path, created_at) VALUES (?, ?) RETURNING id",
-        (str(path), created_at),
+        "INSERT INTO images (file_path, created_at, registered_at) VALUES (?, ?, ?) RETURNING id",
+        (str(path), captured_at or registered_at, registered_at),
     )
     return int(row[0]["id"]), path
 
@@ -77,6 +78,24 @@ def test_new_images_only_scope(tmp_path):
     kept = policy.filter_auto_eligible([legacy_id, unchanged_id, changed_id, new_id])
 
     assert kept == [changed_id, new_id]
+
+
+def test_old_capture_registered_after_boundary_is_new(tmp_path):
+    """Indexing writes the capture date to created_at; the boundary must use registration (#584)."""
+    _set_boundary()
+    old_capture_id, _ = _image(tmp_path, "old_capture", "2026-02-01 00:00:00", captured_at="2019-07-17 11:00:24")
+    recent_capture_id, _ = _image(tmp_path, "legacy", "2025-06-01 00:00:00", captured_at="2026-03-01 00:00:00")
+
+    assert policy.filter_auto_eligible([old_capture_id, recent_capture_id]) == [old_capture_id]
+
+
+def test_inserted_image_gets_registration_time(tmp_path):
+    path = tmp_path / "plain.jpg"
+    row = db.get_connector().execute_returning(
+        "INSERT INTO images (file_path, created_at) VALUES (?, ?) RETURNING id, registered_at",
+        (str(path), "2019-07-17 11:00:24"),
+    )
+    assert str(row[0]["registered_at"]) > "2026-01-01"
 
 
 def test_two_submissions_share_one_open_claim(tmp_path):
