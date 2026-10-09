@@ -172,7 +172,10 @@ def convert_path_to_local(path):
     """
     Converts a path to the local OS format.
     Specifically handles WSL paths (/mnt/c/...) when running on Windows.
+    An empty or ``None`` path (selector-mode jobs have no input path) is returned as-is.
     """
+    if not path:
+        return path
     remapped = _remap_host_project_path(path)
     if remapped is not None:
         path = remapped
