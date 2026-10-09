@@ -132,7 +132,7 @@ def select_candidates(limit: int = LANE_BATCH) -> tuple[list[int], dict[str, int
     new_sql = f"""
         FROM images i
         JOIN localization_enablement le ON le.detector_key = ?
-        WHERE i.created_at >= le.enabled_at AND {metadata_done}
+        WHERE i.registered_at >= le.enabled_at AND {metadata_done}
           AND NOT EXISTS (SELECT 1 FROM image_localization_runs r
                           WHERE r.image_id = i.id AND r.detector_key = ? AND r.is_current)
     """

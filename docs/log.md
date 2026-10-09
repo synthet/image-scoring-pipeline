@@ -853,3 +853,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-08] created | Bird species abstention floor (#422)
 
 - 2026-10-08: created — [bird species abstention report](reports/bird-species-abstention-2026-10-08.md). BioCLIP 2 was rerun on the 213 panel crops, scored against a 3-of-4 judge consensus (199 frames). A 0.5 top-1 floor keeps 184 at 93.5% precision. Nine missing species were added to `data/bird_species_list.txt`; they raise accuracy from 83.4% to 87.9% in-sample but add confident look-alike errors. A Jev re-check on blind descriptions overturned no panel verdict. Ships `bird_species.min_confidence` (0.5) in [CONFIG](technical/CONFIG.md); 22% of bird-tagged images in the live library have a stored top-1 below it.
+
+## [2026-10-09] edit | Localization boundary uses images.registered_at (#584)
+
+- 2026-10-09: updated — [DB schema](technical/DB_SCHEMA.md): migration 0041 adds `images.registered_at`, set on insert and never updated, backfilled from `created_at`. The localization new-image boundary now uses it instead of `created_at`, which indexing fills with the capture date. A photo captured before 2026-10-04 and imported later is now new to the lane.
