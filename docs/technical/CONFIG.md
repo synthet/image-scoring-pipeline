@@ -218,7 +218,7 @@ Scene route ahead of localization ([spec 05](../specs/pipeline-streamlining/05-s
 
 ### `gpu_runner`
 
-Offloads a phase's model inference to the GPU runner container on another machine ([runbook](../guides/REMOTE_GPU_RUNNER.md)). Off unless `enabled` is true; phases configured as local keep their existing behavior. Remote phases use an ordered fallback chain: configured runner, same-machine HTTP runner, then embedded inference. Availability failures can advance to the next backend; config, authentication, API contract, and ambiguous submitted-request failures remain errors.
+Offloads a phase's model inference to the GPU runner container on another machine ([runbook](../guides/REMOTE_GPU_RUNNER.md)). Off unless `enabled` is true; phases configured as local keep their existing behavior. Remote phases use an ordered fallback chain: configured runner, same-machine HTTP runner, then embedded inference when `fallback.embedded` is enabled. Availability failures can advance to the next backend; config, authentication, API contract, and ambiguous submitted-request failures remain errors.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -234,7 +234,7 @@ Offloads a phase's model inference to the GPU runner container on another machin
 | `retry.budget_seconds` | `30` | Scheduling budget for safe retries, including waits already spent. Does not cancel admitted inference. Admission refusals honor Retry-After. |
 | `fallback.enabled` | `true` | Allow availability failover for phases configured as remote. `false` restores strict remote-only behavior. |
 | `fallback.local_url` | `http://127.0.0.1:7870` | Same-machine runner base URL. Use `host.docker.internal` from a Docker host application when the service publishes its port on the host. Empty string skips this backend; it uses the same bearer token. |
-| `fallback.embedded` | `true` | Allow lazy embedded model inference after HTTP backends are unavailable. Requires local inference dependencies and model weights. |
+| `fallback.embedded` | `false` | Allow lazy embedded model inference in the host process after HTTP backends are unavailable. Loads models into the WebUI; requires local inference dependencies and model weights. Prefer a local runner container (`fallback.local_url`). |
 | `fallback.cooldown_seconds`, `fallback.max_cooldown_seconds` | `30`, `300` | Initial and maximum exponential circuit cooldown ceilings, with jitter. One caller probes recovery; Retry-After can extend the minimum wait. |
 
 The runner must load the same values for the sections each remote phase depends on: `scoring` (scoring), `tagging` (keywords), `bird_detection` (localization, bird_species). Copy this host's `config.json` to the runner.

@@ -19,7 +19,7 @@ from modules.bird_detection import BirdDetector
 from modules.remote_gpu import client as client_mod
 from modules.remote_gpu.client import GpuRunnerClient, phase_is_remote
 from modules.remote_gpu.contract import KEYWORDS, RemoteGpuError
-from modules.remote_gpu.server import create_app, require_token
+from modules.remote_gpu.server import IdleExit, create_app, require_token
 from modules.tagging import CaptionGenerator
 
 pytestmark = pytest.mark.filterwarnings(
@@ -631,3 +631,41 @@ def test_scoring_runner_rebuilds_host_after_mode_switch(monkeypatch):
     runner.shared_scorer = injected
     assert runner._init_shared_scorer(lambda *a, **k: None) is True
     assert runner.shared_scorer is injected
+
+
+# ---------------------------------------------------------------------------
+# Idle exit
+# ---------------------------------------------------------------------------
+
+def test_idle_exit_waits_for_first_inference_and_in_flight_work():
+    now, stops = [0.0], []
+    idle = IdleExit(60, clock=lambda: now[0], stop=lambda: stops.append(now[0]))
+    now[0] = 1000.0
+    assert not idle.check()  # a fresh runner has no models to release
+    with idle.busy():
+        now[0] = 2000.0
+        assert not idle.check()  # never while inference runs
+    now[0] = 2059.0
+    assert not idle.check()
+    now[0] = 2060.0
+    assert idle.check()
+    assert stops == [2060.0]
+
+
+def test_idle_exit_counts_inference_but_not_health(tmp_path):
+    from modules.remote_gpu.proxies import RemoteKeywordScorer
+
+    now = [0.0]
+    idle = IdleExit(60, clock=lambda: now[0], stop=lambda: None)
+    app = create_app(token=TOKEN, provider=FakeProvider(), config_loader=lambda: CFG,
+                     max_body_bytes=8 * 1024 * 1024, idle_exit=idle)
+    client = GpuRunnerClient("http://testserver", TOKEN, http=TestClient(app), config_loader=lambda: CFG)
+    client.health()
+    now[0] = 500.0
+    assert not idle.due()
+    RemoteKeywordScorer(client).predict(_image(tmp_path / "k.jpg"))
+    now[0] = 559.0
+    assert not idle.due()
+    client.health()
+    now[0] = 560.0
+    assert idle.due()
