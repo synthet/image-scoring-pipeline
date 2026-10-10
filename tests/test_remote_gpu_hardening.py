@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -292,7 +293,11 @@ def test_disabled_liqe_does_not_load_local_gpu_in_remote_scoring(monkeypatch, tm
     monkeypatch.setattr(worker, "_get_liqe_scorer", local_liqe)
     monkeypatch.setattr(pipeline.app_config, "load_config", lambda: {})
     monkeypatch.setattr(pipeline.tempfile, "mkdtemp", lambda **kwargs: str(tmp_path))
+    cache_clears = []
+    fake_cuda = SimpleNamespace(is_available=lambda: True, empty_cache=lambda: cache_clears.append(1))
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=fake_cuda))
     job = ImageJob(image_path=str(path), process_path=str(path), job_id=0)
     worker.process(job)
     assert job.status == "success"
     assert local_calls == []
+    assert cache_clears == []  # a remote host never touches the local GPU

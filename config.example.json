@@ -333,7 +333,7 @@
     "fallback": {
       "enabled": true,
       "local_url": "http://127.0.0.1:7870",
-      "embedded": true,
+      "embedded": false,
       "cooldown_seconds": 30,
       "max_cooldown_seconds": 300
     }

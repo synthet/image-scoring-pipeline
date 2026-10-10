@@ -2,8 +2,6 @@ import logging
 import os
 import threading
 
-import torch
-
 from modules import db, xmp
 from modules.events import event_manager
 from modules.indexing_policy import filter_image_rows_for_nef_policy
@@ -208,6 +206,14 @@ def propagate_tags(
     )
     return result
 
+def _default_device() -> str:
+    """CUDA when available. torch is imported here, not at module load, so hosts
+    that tag on a GPU runner never load it."""
+    import torch
+
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
 class KeywordScorer:
     """
     Uses CLIP (Contrastive Language-Image Pre-Training) to tag images with keywords.
@@ -228,7 +234,7 @@ class KeywordScorer:
             tagging_config = config.get_config_section('tagging')
             model_name = tagging_config.get('clip_model', "openai/clip-vit-base-patch32")
         self.model_name = model_name
-        self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device if device else _default_device()
         self.model = None
         self.processor = None
         # Most-recent CLIP image embedding (512-d, L2-normalized) populated as a
@@ -274,6 +280,8 @@ class KeywordScorer:
             emb = emb / norm
         text_inputs = self.processor(text=prompts, return_tensors="pt", padding=True)
         text_inputs = {k: v.to(self.device) for k, v in text_inputs.items()}
+        import torch
+
         with torch.no_grad():
             text_feats = self.model.get_text_features(**text_inputs)
             text_feats = text_feats / text_feats.norm(dim=-1, keepdim=True)
@@ -351,6 +359,8 @@ class KeywordScorer:
                 inputs = self.processor(text=prompts, images=image, return_tensors="pt", padding=True)
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
+                import torch
+
                 with torch.no_grad():
                     outputs = self.model(**inputs)
 
@@ -416,7 +426,7 @@ class CaptionGenerator:
     """
     def __init__(self, model_name: str = "Salesforce/blip-image-captioning-base", device: str = None):
         self.model_name = model_name
-        self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device if device else _default_device()
         self.model = None
         self.processor = None
         # Most-recent BLIP vision-encoder pooler_output (768-d, L2-normalized);

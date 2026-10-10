@@ -106,12 +106,13 @@ def test_get_client_builds_ordered_fallback_and_rebuilds_when_settings_change(mo
     monkeypatch.setattr(clients, "_embedded_client", None)
     first = clients.get_client()
     assert isinstance(first, clients.FallbackGpuClient)
-    assert [b.base_url for b in first.backends] == ["http://remote:7870", "http://localhost:7871", "embedded"]
+    # Embedded is opt-in: by default no models load in the host process.
+    assert [b.base_url for b in first.backends] == ["http://remote:7870", "http://localhost:7871"]
     assert clients.get_client() is first
-    cfg["gpu_runner"]["fallback"]["embedded"] = False
+    cfg["gpu_runner"]["fallback"]["embedded"] = True
     second = clients.get_client()
     assert second is not first
-    assert len(second.backends) == 2
+    assert [b.base_url for b in second.backends] == ["http://remote:7870", "http://localhost:7871", "embedded"]
     cfg["gpu_runner"]["fallback"]["enabled"] = False
     assert isinstance(clients.get_client(), clients.GpuRunnerClient)
 
@@ -293,7 +294,8 @@ def test_tagging_factory_uses_real_embedded_fallback_when_http_runners_are_down(
     from modules.remote_gpu import runtime
     from tests.test_remote_gpu_runner import CFG, FakeProvider, _image
 
-    cfg = {**CFG, "gpu_runner": {"enabled": True, "url": "http://remote:7870", "phases": {"keywords": "remote"}}}
+    cfg = {**CFG, "gpu_runner": {"enabled": True, "url": "http://remote:7870", "phases": {"keywords": "remote"},
+                                 "fallback": {"embedded": True}}}
     monkeypatch.setattr(clients, "_config", lambda: cfg)
     monkeypatch.setattr(clients, "_token", lambda: "test-token")
     monkeypatch.setattr(clients, "_client", None)

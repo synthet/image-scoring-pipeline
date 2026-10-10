@@ -193,8 +193,10 @@ class BioCLIPClassifier:
     MODEL_ID = "hf-hub:imageomics/bioclip-2"
 
     def __init__(self, device: str = None):
-        import torch
         if device is None:
+            # Only a local classifier needs torch here; the GPU-runner proxy passes "cpu".
+            import torch
+
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = device
         self.model = None

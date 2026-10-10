@@ -15,8 +15,11 @@ import hmac
 import json
 import logging
 import os
+import signal
 import threading
 import time
+import contextlib
+from contextlib import contextmanager
 from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -51,6 +54,58 @@ DEFAULT_MAX_BODY_MB = 256
 DEFAULT_MAX_CONCURRENCY = 4
 DEFAULT_UPLOAD_TIMEOUT_SECONDS = 60.0
 _LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+class IdleExit:
+    """Stop the runner after ``seconds`` without inference, once a model has run.
+
+    TF and CUDA keep their memory until the process exits, so a clean exit is the
+    only reliable way to give it back. ``restart: unless-stopped`` brings the runner
+    back empty and models load again on the next request. Health, status and other
+    non-inference requests do not count as activity.
+    """
+
+    def __init__(self, seconds: float, *, clock=time.monotonic, stop=None) -> None:
+        if seconds <= 0:
+            raise ValueError("idle exit seconds must be positive")
+        self.seconds = seconds
+        self._clock = clock
+        self._stop = stop or (lambda: os.kill(os.getpid(), signal.SIGTERM))
+        self._lock = threading.Lock()
+        self._active = 0
+        self._last: float | None = None  # None until the first inference loads models
+
+    @contextmanager
+    def busy(self):
+        with self._lock:
+            self._active += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._active -= 1
+                self._last = self._clock()
+
+    def due(self) -> bool:
+        with self._lock:
+            return self._active == 0 and self._last is not None and self._clock() - self._last >= self.seconds
+
+    def check(self) -> bool:
+        """Stop the process when idle long enough; True when it did."""
+        if not self.due():
+            return False
+        logger.info("gpu_runner: idle for %.0fs with models loaded; exiting to release memory", self.seconds)
+        self._stop()
+        return True
+
+    def watch(self) -> threading.Thread:
+        def loop():
+            while not self.check():
+                time.sleep(min(30.0, max(1.0, self.seconds / 4)))
+
+        thread = threading.Thread(target=loop, name="gpu-runner-idle-exit", daemon=True)
+        thread.start()
+        return thread
 
 
 class ModelProvider:
@@ -323,6 +378,7 @@ def create_app(
     max_body_bytes: int = DEFAULT_MAX_BODY_MB * 1024 * 1024,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     upload_timeout: float = DEFAULT_UPLOAD_TIMEOUT_SECONDS,
+    idle_exit: IdleExit | None = None,
 ) -> FastAPI:
     """Build the runner app. Tests inject a fake ``provider`` and ``config_loader``."""
     if config_loader is None:
@@ -358,8 +414,9 @@ def create_app(
 
     def run(request: Request, endpoint: str, fn, *args, **kwargs):
         """Check the host's config fingerprint, then run ``fn`` under the GPU lock."""
+        activity = idle_exit.busy() if idle_exit is not None else contextlib.nullcontext()
         try:
-            with gpu_lock:
+            with activity, gpu_lock:
                 error = check_config(endpoint, request.headers.get(FINGERPRINT_HEADER, ""))
                 if error is not None:
                     return error
@@ -455,10 +512,15 @@ def main() -> None:
     mark_serving()
     max_body = int(os.environ.get("GPU_RUNNER_MAX_BODY_MB", str(DEFAULT_MAX_BODY_MB))) * 1024 * 1024
     concurrency = int(os.environ.get("GPU_RUNNER_MAX_CONCURRENCY", str(DEFAULT_MAX_CONCURRENCY)))
+    idle_seconds = float(os.environ.get("GPU_RUNNER_IDLE_EXIT_SECONDS", "0"))
+    idle_exit = IdleExit(idle_seconds) if idle_seconds > 0 else None
     app = create_app(
         token=token, max_body_bytes=max_body, max_concurrency=concurrency,
         upload_timeout=float(os.environ.get("GPU_RUNNER_UPLOAD_TIMEOUT_SECONDS", str(DEFAULT_UPLOAD_TIMEOUT_SECONDS))),
+        idle_exit=idle_exit,
     )
+    if idle_exit is not None:
+        idle_exit.watch()
     uvicorn.run(
         app,
         host=host,

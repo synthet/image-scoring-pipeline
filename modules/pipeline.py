@@ -568,13 +568,15 @@ class ScoringWorker(PipelineWorker):
             # We assume scorer.run_all_models is thread safe if called serially by this single worker
             # (TF sessions can be tricky but single thread consumption is fine)
             
-            # Clear Cache
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            except (ImportError, RuntimeError) as e:
-                logger.warning("CUDA cache clear failed: %s", e)
+            # Clear Cache. A GPU-runner host has no local models; touching CUDA here
+            # would only load torch and create a context on the host GPU.
+            if not getattr(self.scorer, "runs_remotely", False):
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except (ImportError, RuntimeError) as e:
+                    logger.warning("CUDA cache clear failed: %s", e)
 
             def _inference_log(msg):
                 if job.job_id:

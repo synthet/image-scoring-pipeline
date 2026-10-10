@@ -26,6 +26,7 @@ services:
       - GPU_RUNNER_MAX_BODY_MB=${GPU_RUNNER_MAX_BODY_MB:-256}
       - GPU_RUNNER_MAX_CONCURRENCY=${GPU_RUNNER_MAX_CONCURRENCY:-4}
       - GPU_RUNNER_UPLOAD_TIMEOUT_SECONDS=${GPU_RUNNER_UPLOAD_TIMEOUT_SECONDS:-60}
+      - GPU_RUNNER_IDLE_EXIT_SECONDS=${GPU_RUNNER_IDLE_EXIT_SECONDS:-0}
     volumes:
       # .dockerignore keeps models/ and config.json out of the image.
       - ./models:/app/models
