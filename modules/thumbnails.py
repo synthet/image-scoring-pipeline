@@ -417,6 +417,34 @@ def bake_orientation(img: Image.Image, source_path: str) -> Image.Image:
     return ImageOps.exif_transpose(img)
 
 
+#: ExifTool attempts per tag: the second, longer one absorbs intermittent slow reads on the
+#: mounted (9p) photo share, where identical local bytes extract in under a second
+#: (docs/reports/localization-session-work-log-2026-10-10.md). Same command, same pixels.
+EXIFTOOL_TIMEOUTS = (10, 60)
+
+
+def _exiftool_embedded_jpeg(image_path: str, tag: str, min_size: int) -> Image.Image | None:
+    """One embedded JPEG tag via ExifTool, retried once with a longer timeout; ``None`` on failure."""
+    for timeout in EXIFTOOL_TIMEOUTS:
+        try:
+            result = subprocess.run(["exiftool", "-b", tag, image_path], capture_output=True, text=False,
+                                    timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning("exiftool %s timed out after %ss: %s", tag, timeout, image_path)
+            continue
+        except Exception:  # noqa: BLE001 — missing binary or OS error: try the next route
+            return None
+        if result.returncode == 0 and len(result.stdout) > min_size and result.stdout.startswith(b"\xff\xd8"):
+            try:
+                img = Image.open(io.BytesIO(result.stdout))
+                img.load()  # Verify validity
+                return img
+            except Exception:  # noqa: BLE001
+                return None
+        return None
+    return None
+
+
 def extract_embedded_jpeg(image_path: str, min_size: int = 100) -> Image.Image | None:
     """
     Extract embedded JPEG preview from RAW file.
@@ -434,35 +462,13 @@ def extract_embedded_jpeg(image_path: str, min_size: int = 100) -> Image.Image |
     
     # Try ExifTool first (most robust for modern Nikon formats)
     if shutil.which("exiftool"):
-        try:
-            # Try -JpgFromRaw first (full-size embedded JPEG)
-            cmd = ['exiftool', '-b', '-JpgFromRaw', image_path_str]
-            result = subprocess.run(cmd, capture_output=True, text=False, timeout=10)
-            
-            if result.returncode == 0 and len(result.stdout) > min_size:
-                if result.stdout.startswith(b'\xff\xd8'):  # JPEG header
-                    try:
-                        img = Image.open(io.BytesIO(result.stdout))
-                        img.load()  # Verify validity
-                        return img
-                    except Exception:
-                        pass
-            
-            # Try -PreviewImage if JpgFromRaw fails or is missing
-            cmd = ['exiftool', '-b', '-PreviewImage', image_path_str]
-            result = subprocess.run(cmd, capture_output=True, text=False, timeout=10)
-            
-            if result.returncode == 0 and len(result.stdout) > min_size:
-                if result.stdout.startswith(b'\xff\xd8'):  # JPEG header
-                    try:
-                        img = Image.open(io.BytesIO(result.stdout))
-                        img.load()  # Verify validity
-                        return img
-                    except Exception:
-                        pass
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            pass
-    
+        # -JpgFromRaw (full-size embedded JPEG) first, then -PreviewImage. Each tag gets its own
+        # attempt so a timeout on one does not skip the other.
+        for tag in ("-JpgFromRaw", "-PreviewImage"):
+            img = _exiftool_embedded_jpeg(image_path_str, tag, min_size)
+            if img is not None:
+                return img
+
     # Fallback to dcraw -e (fast embedded thumbnail extraction)
     if shutil.which("dcraw"):
         try:
