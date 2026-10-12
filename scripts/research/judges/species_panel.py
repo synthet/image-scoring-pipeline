@@ -80,10 +80,10 @@ def region_hint(lat: float | None, lon: float | None) -> str:
     return f"photographed near latitude {round(lat)}, longitude {round(lon)}"
 
 
-def sample(images: list[dict], seed: int) -> list[dict]:
+def sample(images: list[dict], seed: int, strata: dict[str, int] | None = None) -> list[dict]:
     rng = random.Random(seed)
     picked = []
-    for stratum, n in STRATA.items():
+    for stratum, n in (strata or STRATA).items():
         rows = sorted((r for r in images if r["outcome"] == stratum), key=lambda r: r["image_id"])
         picked += [dict(r, stratum=stratum, stratum_size=len(rows)) for r in rng.sample(rows, min(n, len(rows)))]
     return picked
@@ -113,14 +113,15 @@ def padded_crop(img, region, pad: float = CROP_PAD, side: int = CROP_SIDE):
     return crop
 
 
-def build(full: Path, root: Path, seed: int) -> dict:
+def build(full: Path, root: Path, seed: int, strata: dict[str, int] | None = None) -> dict:
+    """Sample and cut crops. Rows carrying ``region`` (e.g. boxes not yet selected) override the selection's."""
     import tempfile
 
     from modules import db
     from modules.thumbnails import open_oriented_for_ml
 
     data = json.loads(full.read_text(encoding="utf-8"))
-    picked = sample(data["images"], seed)
+    picked = sample(data["images"], seed, strata)
     rows = {int(r["image_id"]): r for r in db.get_connector().query(_SELECTION_SQL, ())}
     blind = root / "blind"
     blind.mkdir(parents=True, exist_ok=False)
@@ -128,7 +129,12 @@ def build(full: Path, root: Path, seed: int) -> dict:
     manifest = []
     with tempfile.TemporaryDirectory(prefix="species-panel-") as tmp:
         for n, row in enumerate(picked, 1):
-            sel = rows[int(row["image_id"])]
+            sel = rows.get(int(row["image_id"])) or {}
+            if row.get("region"):
+                img_row = db.get_connector().query_one(
+                    "SELECT i.file_path, e.gps_latitude, e.gps_longitude FROM images i "
+                    "LEFT JOIN image_exif e ON e.image_id = i.id WHERE i.id = ?", (int(row["image_id"]),))
+                sel = dict(img_row, **dict(zip(("x1", "y1", "x2", "y2"), row["region"])))
             src = Path(sel["file_path"])
             staged = Path(tmp) / ("image" + src.suffix.lower())
             shutil.copyfile(src, staged)  # local bytes: avoids the 9p ExifTool timeouts
@@ -474,9 +480,10 @@ def main() -> None:
     p.add_argument("--panel-json", type=Path)
     p.add_argument("--species-list", type=Path, default=Path("data/bird_species_list.txt"))
     p.add_argument("--adjudicated", type=Path)
+    p.add_argument("--strata", help='JSON sizes per outcome stratum, e.g. {"changed": 50}')
     a = p.parse_args()
     if a.action == "build":
-        res = build(a.full, a.root, a.seed)
+        res = build(a.full, a.root, a.seed, json.loads(a.strata) if a.strata else None)
     elif a.action == "pilot":
         res = pilot(a.panel_dir, a.panel_json, a.species_list, a.root, a.seed)
     elif a.action == "run":
