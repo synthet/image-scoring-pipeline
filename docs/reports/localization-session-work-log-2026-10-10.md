@@ -4,7 +4,7 @@ title: Localization rollout session work log and summary (2026-10-10)
 description: Completed shadow comparison, mounted-source ExifTool diagnosis, verification evidence and Docker shutdown handoff.
 resource: reports/localization-session-work-log-2026-10-10.md
 tags: [localization, session, work-log]
-timestamp: 2026-10-10T23:15:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 # Localization rollout session work log and summary (2026-10-10)
@@ -78,6 +78,11 @@ research in the working tree was excluded. Small regions stayed in shadow.
 - No commit or push occurred. Existing unrelated edits remain preserved.
 
 ## Retained artifacts and next work
+
+**Superseded next actions:** the work log below preserves October 10 evidence.
+The [October 12 gate report](localization-agent-panel-gates-2026-10-12.md) and
+[current handoff](../../NEXT_STEPS.md) supersede its unfinished code/validation
+steps: #594 is merged; small-crop species failed its gate; activation remains.
 
 Per-image results and personal photo paths remain under ignored `.agent/scratch/`.
 The final `localization-policy-20261010-full.json/.md`, complete partitions,

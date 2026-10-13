@@ -4,7 +4,7 @@ title: Scoring orientation implementation and verification
 description: Corrected orientation and model input routing, measured evidence and bounded rollout.
 resource: planning/scoring-inputs/VERIFICATION.md
 tags: [scoring, orientation, verification]
-timestamp: 2026-10-06T23:03:41Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 # Scoring orientation implementation and verification
@@ -100,9 +100,18 @@ The owner-supplied frozen review set has now completed: **121 unique NEFs, 32 la
 6. Review deltas per model and within burst, keeping corrected and old runs identifiable. Do not refit normalization anchors, change decoder/padding defaults or rewrite originals as part of this correction. Existing intentional metadata-writing behavior of a production scoring run must be selected consciously; these verification scripts never call it.
 7. Roll back code and transport as a coordinated compatible pair, retaining exports, new-policy results and separate cache namespaces. Do not label old pixels/scores `upright-v1` or delete unrelated caches. Restore scores only from the preserved audited export through an explicit follow-up operation; no rollback database writes were performed here.
 
-## Remaining acceptance boundaries
+## Delivery status and remaining acceptance boundaries
 
-#568's orientation, idempotence, versioning, dimensions and rerun documentation have local evidence. Its full gallery/RAW-thumbnail compatibility acceptance remains open. #569's registry and transport correctness has local tests and real same-machine HTTP evidence; separate-machine deployment verification remains an operational rollout step. #570 retains checkpoint-specific quality, representative sampling and GPU-resource gates before default promotion.
+The implementation and this evidence merged in PR #573 (`78029b9`); the merged
+tree recorded 287 focused tests and eight passing CI checks. #569 is closed.
+The earlier local measurements above remain historical evidence.
+
+#568's orientation, idempotence, versioning, dimensions and rerun documentation
+are delivered; full gallery/RAW-thumbnail compatibility acceptance remains open.
+#569's transport/routing correctness is delivered, while actual running-peer
+verification remains a prerequisite before any new remote canary. #570 retains
+checkpoint-specific quality, representative sampling and GPU-resource gates
+before default promotion. Use [NEXT-STEPS](NEXT-STEPS.md) for the current order.
 
 ## Provenance
 

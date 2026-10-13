@@ -4,12 +4,19 @@ title: Model selection study — Codex handoff (2026-10-02)
 description: Handoff from Codex session export codex-session-01a0f9fc-13f8-7da1-938a-6c19ddbe5f60_2.md — frozen snapshot, blind review sample, exploratory REPORT, and how it relates to the label-free model_selection_report bundle.
 resource: reports/model-selection-codex-handoff-2026-10-02.md
 tags: [report, scoring, culling, analytics, model-selection, codex]
-timestamp: 2026-10-02T00:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
-status: active
+status: historical
 ---
 
 # Model selection study — Codex handoff (2026-10-02)
+
+> **Dated study handoff.** Counts, fingerprints and empty-label status below are
+> the October 2 snapshot. Reconcile the current frozen study's progress and owner
+> labels before continuing; do not recreate its snapshot or overwrite reviews.
+> [The current handoff](../../NEXT_STEPS.md) covers the separate merged #594
+> localization work. Its agent species/box labels do not satisfy this study's
+> independent human-label promotion gates.
 
 **Transcript archive:** [`codex-session-01a0f9fc-13f8-7da1-938a-6c19ddbe5f60_2.md`](../../codex-session-01a0f9fc-13f8-7da1-938a-6c19ddbe5f60_2.md) (repo root; not indexed in wiki body).
 

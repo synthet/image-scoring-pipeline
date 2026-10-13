@@ -1,6 +1,46 @@
+---
+type: Implementation Plan
+title: Database refactor next steps
+description: Current schema, keyword-preservation and storage dependencies; historical April baseline.
+resource: planning/database/NEXT_STEPS.md
+tags: [docs, planning, next-steps]
+timestamp: 2026-10-13T00:58:42Z
+okf_version: 0.2
+---
+
 # Database Refactor: Remaining Next Steps
 
-## Current Status (as of 2026-04-10)
+## Current next work (2026-10-12)
+
+PostgreSQL is the runtime database; Firebird-specific steps below are history.
+The canonical initializer is `modules/db_schema/` through `modules/db_postgres.py`,
+and deployed changes use Alembic revisions. The GitHub Project board is the
+canonical queue; this document is a dependency/verification guide.
+
+1. Reconcile the live migration revision with current DDL before choosing schema
+   work. The initializer still declares `images.keywords`; the old v7.0/July
+   removal date did not establish a completed migration. Coordinate readers,
+   fallback/dual-write removal and gallery compatibility before hard removal.
+2. Verify normalized keyword updates preserve their source/provenance and
+   hand-added keywords. PR #594 delivered species refresh behavior; it did not
+   fix every keyword overwrite path or perform a production refresh. Snapshot
+   the approved cohort and take a verified backup before any rollout write.
+3. Keep localization selections separate from storage/fusion work: 4,401
+   large/medium selections are authoritative projections, while small-crop
+   species fails its gate (0.8123 < 0.85). Region-score storage/fusion remains
+   under #409 and must preserve full-frame completeness and gallery contracts.
+4. Reconcile embedding consolidation against revisions 0004/0012/0024/0026/0029
+   and [embedding next steps](../../features/planned/embeddings/NEXT_STEPS.md).
+   Do not recreate the retired `images.image_embedding` storage or reserve
+   historical migration numbers for proposed tables.
+5. Use the [optimization roadmap](POSTGRES_SCHEMA_OPTIMIZATIONS.md) for remaining
+   proposals; choose work from the board and verify it against current code.
+
+See [the current operational handoff](../../../NEXT_STEPS.md) and
+[the final localization gates](../../reports/localization-agent-panel-gates-2026-10-12.md).
+No schema change, data cleanup or live migration was performed by this doc refresh.
+
+## April baseline (historical)
 - **Phase 1 (Integrity):** ✅ Complete.
 - **Phase 2 (Normalization):** ✅ Complete.
   - `update_image_field` now calls `_sync_image_keywords` for keyword updates.
@@ -19,7 +59,10 @@
 
 **Ongoing / optional verification:** spot-checks that sampled rows stay in parity; large-corpus keyword search latency checks; manual WebUI/API keyword edits when upgrading deployments.
 
-**Scheduled:** Phase **4d** — remove writable/legacy `IMAGES.KEYWORDS` column (v7.0). Coordinate **Electron** normalized-keyword read path with [AGENT_COORDINATION.md](../../technical/AGENT_COORDINATION.md) before hard removal.
+**Still requires a gated migration:** Phase **4d** — remove writable/legacy
+`IMAGES.KEYWORDS` only after reader/write and Electron compatibility verification.
+The original v7.0 date is historical, not a current deadline. Coordinate with
+[AGENT_COORDINATION.md](../../technical/AGENT_COORDINATION.md) before hard removal.
 
 ---
 
@@ -38,7 +81,7 @@ schema (`modules/db_postgres.py` `init_db()`).
 
 See [`FIREBIRD_POSTGRES_MIGRATION.md`](FIREBIRD_POSTGRES_MIGRATION.md) for full history. The
 Python backend is **PostgreSQL-native**; Firebird runtime and dual-write were decommissioned.
-The function `_translate_fb_to_pg()` in `modules/db.py` remains as a **SQL dialect helper**
+Legacy translation helpers behind the `modules/db/` facade remain **SQL dialect helpers**
 for legacy Firebird-style queries routed through the Postgres adapter — it is not a
 dual-write gate.
 

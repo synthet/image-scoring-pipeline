@@ -4,7 +4,7 @@ title: Reports index
 description: Index of historical reports, research, reviews, and debugging sessions under docs/reports/.
 resource: docs/reports/INDEX.md
 tags: [docs, reports, index]
-timestamp: 2026-10-10T00:08:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 
@@ -21,7 +21,7 @@ Historical reports, research, reviews, and debugging sessions.
 | [localization-rollout-operations-2026-10-07](localization-rollout-operations-2026-10-07.md) | Revision 0040 deployment, a 34-image live batch, merged strict-retry fix with 103 cloud checks, and read-only preflight for the remaining production gate. |
 | [localization-rollout-continuation-2026-10-08](localization-rollout-continuation-2026-10-08.md) | Merged strict retry fix loaded, full selected-region keypoint coverage, species comparison, and pending production lane gate. |
 | [localization-stage4-live-nef-2026-10-09](localization-stage4-live-nef-2026-10-09.md) | Twelve live wildlife NEFs: two automatic lane jobs completed, ten detections, one no-detection, one scene-route skip; normal indexing timestamp mismatch remains. |
-| [localization-rollout-next-steps-2026-10-09](localization-rollout-next-steps-2026-10-09.md) | October 9 status: fixes through PR #590 are deployed, job 6945 is paused at 2,059/2,324, and release 9.0.0 is uncommitted. |
+| [localization-rollout-next-steps-2026-10-09](localization-rollout-next-steps-2026-10-09.md) | Historical October 9 handoff; supersession link routes to the merged #594 status and current operational tasks. |
 | [bird-species-abstention-2026-10-08](bird-species-abstention-2026-10-08.md) | BioCLIP 2 on the 213 panel crops: a 0.5 floor keeps 92% at 93.5% precision; nine list additions help in-sample but add confident look-alike errors; ships `bird_species.min_confidence` (#422). |
 | [WORK_SUMMARY_2026-05-26.md](WORK_SUMMARY_2026-05-26.md) | Auto-drive run 3245 investigation + empty composite scores dry-run |
 | [bird-species-keywords-2026-08-31/summary.md](bird-species-keywords-2026-08-31/summary.md) | Preserve `birds` on species writes; IPS-only no-match state (replaces `birds:species-exhausted` keyword) |
@@ -124,6 +124,6 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | [SESSION TRANSCRIPT DIGESTS](SESSION_TRANSCRIPT_DIGESTS.md) | Router for wiki digests distilled from gitignored session exports (public fact layer) |
 | [localization-species-policy-validation-2026-10-10](localization-species-policy-validation-2026-10-10.md) | Complete frozen 369-species/0.5 comparison: 4,401 distinct expected results, zero final skips; byte-identical staging bypassed shadow-run ExifTool timeouts; frozen inputs/baseline and production state unchanged. |
 | [localization-session-work-log-2026-10-10](localization-session-work-log-2026-10-10.md) | Complete 4,401-image frozen comparison, recovery provenance, mounted-source ExifTool diagnosis and requested Docker shutdown. |
-| [localization-agent-panel-gates-2026-10-12](localization-agent-panel-gates-2026-10-12.md) | Final agent-panel gates: cascade passes; small-crop species fails the 0.85 precision lower bound; no promotion or species refresh. |
+| [localization-agent-panel-gates-2026-10-12](localization-agent-panel-gates-2026-10-12.md) | Final gates and #594 merge receipt: cascade passes; small-crop species fails; live activation/refresh and small-selection exclusion remain. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)

@@ -4,7 +4,7 @@ title: Localization rollout next steps (2026-10-09)
 description: Status after the October 1–9 localization transcripts. Production fixes through PR #590 are merged; portrait re-score job 6945 is paused and the stack is stopped; release 9.0.0 is local only.
 resource: reports/localization-rollout-next-steps-2026-10-09.md
 tags: [localization, rollout, operations, status]
-timestamp: 2026-10-10T00:08:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 sources:
   - id: transcripts
@@ -16,6 +16,12 @@ sources:
 ---
 
 # Localization rollout next steps (2026-10-09)
+
+> **Historical handoff.** Its stopped-stack and unimplemented-gate instructions
+> describe October 9. Continue from [the current handoff](../../NEXT_STEPS.md)
+> and [the October 12 gates](localization-agent-panel-gates-2026-10-12.md): #594 is
+> merged, cascade gates pass, and small-crop species fails. This page does not
+> authorize restarting WebUI or resuming 6945 as part of the localization task.
 
 Localization fixes are merged and the stack is stopped. Portrait re-score job **6945** is paused at 2,059 of 2,324 images, and release **9.0.0** exists only as uncommitted local files.
 

@@ -4,13 +4,20 @@ title: "Localization stage 4, slice 1: work status (#387)"
 description: Where the shadow localization phase slice stands when work paused. Covers what is built, the decisions taken during implementation, test evidence, open questions, blockers and next actions.
 resource: docs/planning/localization-stage4-slice1-status.md
 tags: [planning, localization, bird-detection, pipeline, status]
-timestamp: 2026-09-27T00:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 
 # Localization stage 4, slice 1: work status (#387)
 
-**State: paused, and not yet ready for review.** The code is complete on branch
+> **Historical slice-1 snapshot.** #395/#414 and the legacy import are delivered;
+> #594 additionally merged cascade persistence and gate evidence. Continue from
+> [the current rollout](../architecture/pipeline/localization-rollout.md) and
+> [handoff](../../NEXT_STEPS.md), not the old branch/PR instructions below.
+> Remaining work includes runtime activation, the failed small-species gate and
+> production retry timing; this report's tests/blockers describe the original slice.
+
+**Original state: paused, and not yet ready for review.** The code is complete on branch
 `feat/387-localization-shadow` (commit `ef5b5d5`), and the unit tests and new Postgres tests
 pass. No PR has been opened yet because the full `-m postgres` suite has not produced a
 clean, attributable result (see [Blockers](#blockers)). The board card is at **In Progress**.
