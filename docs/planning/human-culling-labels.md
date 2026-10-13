@@ -4,12 +4,19 @@ title: Human culling label set — sampling design, label semantics, storage and
 description: "Protocol for the ~300-group human culling label set (#415): stratified, weighted sample of backend stacks and 0.5 s bursts; blind per-frame pick/keep/reject plus one best frame; stored in a dedicated human_labels schema; evaluation metrics and gates. 302 groups sampled, 20 labelled as of 2026-09-25."
 resource: docs/planning/human-culling-labels.md
 tags: [planning, culling, labels, evaluation, bursts, stacks, clean-room]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 status: in-progress
 ---
 
 # Human culling label set (#415)
+
+**Current next action:** reconcile current blind owner-label progress and frozen
+splits before further collection or fitting. The 20/302 count below is the dated
+September 25 snapshot, not a new audit. Agent species/box labels in
+[the #594 gate report](../reports/localization-agent-panel-gates-2026-10-12.md)
+do not satisfy this human pick/reject gate or authorize crop-score promotion.
+See [the current handoff](../../NEXT_STEPS.md) for related rollout prerequisites.
 
 > **Provenance:** derived from competitive analysis of a commercial application's observable behaviour
 > and documentation; contains no code, identifiers, fitted constants or model artefacts from it. The

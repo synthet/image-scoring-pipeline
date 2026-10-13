@@ -1,10 +1,20 @@
 ---
-name: Phase 4 Status Summary
-description: Current status of IMAGES.KEYWORDS deprecation phases
-date: 2026-04-03
+type: Report
+title: Phase 4 historical status summary
+description: Historical April keyword cutover evidence with a pointer to current removal prerequisites.
+resource: planning/database/PHASE4_STATUS_SUMMARY.md
+tags: [docs, planning, next-steps]
+timestamp: 2026-10-13T00:58:42Z
+okf_version: 0.2
 ---
 
 # Phase 4 Status Summary
+
+> **Historical April implementation timeline.** Current remaining work is in
+> [NEXT_STEPS](NEXT_STEPS.md). The v7.0/July hard-removal schedule below is not a
+> current deadline or proof of a completed migration; current initializer DDL
+> still declares `images.keywords`. Firebird runtime is decommissioned. Verify
+> live revision, normalized readers/writes and gallery compatibility before removal.
 
 **Last Updated:** 2026-04-10  
 **Overall Status:** Phase 4a–4c COMPLETE on Python side ✅ | Phase 4d SCHEDULED (v7.0)

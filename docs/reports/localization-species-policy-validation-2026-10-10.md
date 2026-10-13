@@ -4,7 +4,7 @@ title: Localization species policy validation (2026-10-10)
 description: Complete frozen 369-species/0.5 comparison on 4,401 selected images, zero final skips, verified input provenance and unchanged production state.
 resource: reports/localization-species-policy-validation-2026-10-10.md
 tags: [localization, species, rollout, validation]
-timestamp: 2026-10-10T22:30:51Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 
@@ -18,6 +18,12 @@ classifier, canonical comparison, decoder, cropper and cached model revision.
 
 This is agreement evidence against stored species labels. Labelled accuracy,
 keyword rewrites and Stage 5 promotion remain separate gates.
+
+**Later status:** [the October 12 agent-panel gates](localization-agent-panel-gates-2026-10-12.md)
+passed on this existing cohort, with 200/200 production-path parity; the separate
+small-crop species gate failed. PR #594 merged the code and evidence, while live
+activation and keyword refresh remain pending in [the current handoff](../../NEXT_STEPS.md).
+The frozen comparison and policy described below remain historical evidence.
 
 ## Full-cohort outcomes
 

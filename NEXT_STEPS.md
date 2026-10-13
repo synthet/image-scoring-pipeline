@@ -2,9 +2,11 @@
 
 ## Current handoff — 2026-10-12
 
-The implementation branch `feat/592-stage5-agent-panel-gate` is pushed through
-`c285c20`. Thirty-eight targeted tests, scoped ruff and staged whitespace checks
-passed. The separate agent-panel gate analysis is complete:
+PR [#594](https://github.com/synthet/image-scoring-pipeline/pull/594) merged the
+implementation and gate reports into `master` at **`0e24a43`**. Local `master`
+matches that merge. Thirty-eight targeted tests, scoped ruff, seven scoped OKF
+documents and staged whitespace checks passed before delivery. The separate
+agent-panel gate analysis is complete:
 
 - Cascade AC-17/AC-18 pass: TIGHT 98/141 versus YOLO 97/140; independent recall
   65/78 versus 63/78, false positives 5/71. Twenty-three box judgments remain
@@ -30,9 +32,38 @@ promotion needs an explicit consumer exclusion for small selections before they
 can feed region species; that behavior is not implemented by this continuation.
 Alternatively gather independent reviewed evidence under a new preregistered
 evaluation. Do not lower the gate or repeat inference over completed artifacts.
-Passing large/medium species and shadow cascade changes still need scoped
-delivery, fresh state/keyword-preservation checks and a verified DB backup before
-production writes. Keep WebUI stopped and portrait job 6945 paused.
+The implementation is delivered; live enablement is a separate remaining task.
+Passing large/medium species and shadow cascade changes still need a running-code
+version check, fresh state/keyword-preservation checks and a verified DB backup
+before production writes. Keep WebUI stopped and portrait job 6945 paused.
+
+## Remaining tasks in order
+
+1. **Small selections (#593):** decide and implement a tested exclusion from
+   region species before any geometry-only promotion, or preregister new
+   independently reviewed species evidence. Retain the failed 0.8123/0.85 gate.
+2. **Large/medium species activation:** verify the deployed process uses the
+   merged selection reader, the frozen 369-name list and strict `> 0.5` floor;
+   back up PostgreSQL, snapshot keywords, and refresh only the approved cohort
+   with preservation checks. #592 closed automatically when #594 merged; that
+   issue closure does not establish live enablement or refresh completion.
+3. **Cascade shadow activation (#408):** verify merged runner wiring and its
+   0.60/no-retry operating point, back up before a flag write, and observe
+   provenance-stamped `coco`/`subject_cascade` runs in the next authorized lane.
+   A consumer-source promotion needs its own selection rule and gate.
+4. **Operational follow-ups:** retain production retry-timing and mounted-source
+   filesystem diagnosis. Resume portrait job 6945 only within the separate #418
+   task; verify scores, captions and keyword/species restoration before closure.
+5. **Later stages:** #415 human labels, #409 storage/fusion and #423 evidence
+   precede Stage 6; Stage 8 still requires exercised selection/read rollback.
+   Release 9.0.0 and the unrelated list/setup work remain separate.
+
+For other tracks, use [scoring-input next steps](docs/planning/scoring-inputs/NEXT-STEPS.md),
+[database next steps](docs/planning/database/NEXT_STEPS.md), and
+[embedding next steps](docs/features/planned/embeddings/NEXT_STEPS.md).
+The GitHub Project board remains the canonical queue. #593's Blocked update and
+#592's Review update could not be made because neither issue was found on it;
+reconcile operational follow-up tracking rather than treating closure as deployment.
 
 ## Historical October 10 handoff
 

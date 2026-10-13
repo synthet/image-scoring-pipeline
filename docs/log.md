@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-12] edit | Reconcile next-task roadmaps after merged localization delivery
+
+Updated root handoff, active pipeline plans/specs, scoring-input, database and embedding next steps, historical handoff supersession links and queue pointers. PR #594 is merged at 0e24a43; code delivery is distinct from live activation and the failed 0.8123/0.85 small-species gate. #573/#569 scoring delivery is recorded, while remaining acceptance stays open. Corrected stale removal dates, API paths and proposed migration numbering without changing runtime or original research evidence.
+
 ## [2026-10-12] edit | Record localization agent-panel gates and stop small-species promotion
 
 Preserved frozen replies and three-of-four quorum. Cascade AC-17/AC-18 pass; small-species Wilson lower bound 0.8123 fails 0.85 after blind descriptions and confidence-filtered Jev adjudication. Updated gate report, rollout status and NEXT_STEPS. Implementation c285c20 is pushed with 38 targeted tests and scoped ruff passing. Job 6945 remains paused; no promotion, flag change or species refresh.
