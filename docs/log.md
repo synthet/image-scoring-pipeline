@@ -6,6 +6,30 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-12] edit | Record localization agent-panel gates and stop small-species promotion
+
+Preserved frozen replies and three-of-four quorum. Cascade AC-17/AC-18 pass; small-species Wilson lower bound 0.8123 fails 0.85 after blind descriptions and confidence-filtered Jev adjudication. Updated gate report, rollout status and NEXT_STEPS. Implementation c285c20 is pushed with 38 targeted tests and scoped ruff passing. Job 6945 remains paused; no promotion, flag change or species refresh.
+
+## [2026-10-10] edit | Diagnose mounted-source ExifTool latency and shut down Docker
+
+Recorded CPU-only paired extraction evidence in reports/localization-session-work-log-2026-10-10.md: three mounted timeouts with p9_client_rpc waits, identical local previews, and an intermittent successful follow-up identifying input reads. Updated NEXT_STEPS.md. At user request stopped GPU-shell and PostgreSQL containers and shut down Docker Desktop; portrait job 6945 remains paused. No decoder, timeout, production data or rollout flags changed.
+
+## [2026-10-10] save | Localization rollout session work log and summary
+
+Saved [session work log and summary](reports/localization-session-work-log-2026-10-10.md) with full 4,401-image outcomes, checkpoint recovery and exact-byte staging, verification evidence, retained private artifacts and remaining gates. The aggregate validation report and root NEXT_STEPS.md remain the evidence and operational handoff. Portrait 6945 remains paused; no production promotion, commit or push.
+
+## [2026-10-10] edit | Complete frozen localization species comparison with verified input provenance
+
+Completed the frozen 369-species/0.5 shadow comparison for all 4,401 distinct expected images with zero final skips. Final merge verified unchanged source metadata, selected geometry/identities, stored baseline and inference code/model; preserved every prior success and verified 1,660 exact-byte staging bindings. Local staging reproduced two retained controls exactly and bypassed mounted-source ExifTool timeouts. Updated aggregate report, rollout status, indexes and NEXT_STEPS.md. Production flags, keywords, scores and original photos unchanged; portrait job 6945 remains paused. Labelled validation and production retry timing remain separate gates.
+
+## [2026-10-10] edit | Continue frozen localization species validation with retained partial results
+
+Recorded 2,741 distinct successful predictions from the 4,401-image frozen 369-species/0.5 cohort, with first partition complete and 540 second-partition successes retained. Final audit verified unchanged frozen inputs/baseline and crop/decode provenance. ExifTool ten-second extraction timeouts persisted after cache warming, leaving 1,660 images without final inference. Updated NEXT_STEPS.md, docs/reports/localization-species-policy-validation-2026-10-10.md, rollout status and indexes; corrected the already deployed registration boundary fix. No production keywords, scores or rollout flags changed; portrait job 6945 remains paused.
+
+## [2026-10-09] ingest | Record October 9 localization rollout next steps
+
+Added docs/reports/localization-rollout-next-steps-2026-10-09.md and indexed it under docs/reports/. Status after the October 1-9 transcripts: fixes through PR #590 are merged, job 6945 is paused at 2,059/2,324 with the stack stopped, and release 9.0.0 is uncommitted.
+
 ## [2026-10-09] ingest | Record live Stage 4 Nikon NEF lane observation
 
 Added docs/reports/localization-stage4-live-nef-2026-10-09.md and updated the rollout status and reports index. Twelve new wildlife NEFs entered automatic jobs 6939 and 6941 after metadata; ten were detected, one had no detection, and one was skipped by scene route. The documented one-live-cycle observation is met. Normal indexing can overwrite the new-image timestamp with an older capture date, and no production retryable failure exercised backoff.
