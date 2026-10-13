@@ -263,6 +263,12 @@ class LocalizationRunner:
         metrics = BatchMetrics()
         _reset_gpu_peak()
         ctx = load_detector_context(cfg) if rows else None
+        from modules.localization_cascade_runner import load_cascade_context, localize_cascade
+
+        cascade = load_cascade_context(cfg, ctx) if rows else None  # None unless cascade.enabled (AC-15)
+        if cascade is not None:
+            log("Subject cascade on (shadow): COCO fallback "
+                f"{'ready' if cascade.rtmdet.enabled else 'unavailable: ' + str(cascade.rtmdet.error_code)}.")
         scene = scene_route_settings()
         router = SceneRouter(scene) if rows and scene["enabled"] else None
         if router is not None:
@@ -319,6 +325,11 @@ class LocalizationRunner:
                 )
             else:
                 self._record_phase_status(image_id, outcome, job_id)
+                if cascade is not None:
+                    try:
+                        localize_cascade(image_id, file_path, cascade, max_regions=max_regions, job_id=job_id)
+                    except Exception:  # noqa: BLE001 — shadow: never costs the bird run or the batch
+                        logger.exception("localization: cascade failed for image %s", image_id)
             metrics.add(outcome)
             self._record_report(report_collector, image_id, outcome)
             if outcome.error_detail:
