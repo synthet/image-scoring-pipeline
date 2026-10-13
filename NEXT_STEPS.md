@@ -1,121 +1,93 @@
 # Localization rollout — next steps
 
-Paused at the user's request on 2026-10-09 (America/Chicago).
-Workspace: D:\Projects\image-scoring-backend.
-Resume by reading this file before starting work.
+## Current handoff — 2026-10-12
 
-## Current state
+The implementation branch `feat/592-stage5-agent-panel-gate` is pushed through
+`c285c20`. Thirty-eight targeted tests, scoped ruff and staged whitespace checks
+passed. The separate agent-panel gate analysis is complete:
 
-- Branch: master; HEAD: 1840726be145c023cd3a401f5e3a636d28448750 (PR #590 merge).
-- The localization comparison worker was interrupted and verified absent from the GPU shell.
-- Docker Desktop's Linux engine became unavailable again during the final handoff checks. Leave it down while paused; restore the existing services only when the user resumes.
-- No completed 369-species full-cohort report or partition checkpoint exists. The latest restart stopped during imports, before inference.
-- Do not treat the October 8 full comparison as validation of the later 369-species / 0.5 policy.
-- No keywords, scores, localization selections, phase status, rollout flags, or original photos were changed by this comparison.
-- After requesting this pause, the user authorized committing and pushing this handoff. The comparison remains paused; the broader dirty files are outside this delivery.
+- Cascade AC-17/AC-18 pass: TIGHT 98/141 versus YOLO 97/140; independent recall
+  65/78 versus 63/78, false positives 5/71. Twenty-three box judgments remain
+  unresolved after confidence-filtered Jev adjudication.
+- Rule/4 geometry passed earlier: 128/128 resolved usable boxes from 130 fresh
+  frames. The small-species gate **fails**: precision lower bound 0.8123 < 0.85.
+  The four-judge quorum stayed at three matching votes. Codex, Antigravity and
+  Cursor completed 120/120; Claude was quota-limited. Blind descriptions covered
+  all 31 splits, with zero detected leaks; Jev resolved 3, leaving 28 unresolved.
+- The passing earlier 4,401-image species gate and 200/200 production-path parity
+  check remain separate evidence. Neither overrides the small-species failure.
+- No promotions, rollout flag changes or species/keyword refresh occurred.
+  Read-only MCP confirmed job 6945 paused. PostgreSQL and GPU-shell are running;
+  WebUI is stopped. Unrelated dirty release, list-research and setup files remain.
 
-## Completed earlier and delivered
+Read [the final gate report](docs/reports/localization-agent-panel-gates-2026-10-12.md).
+All source replies and completed inference stay intact. Frozen analysis copies,
+SHA-256 receipt, consensus, baseline/final gates, blind descriptions and Jev
+responses live in ignored `.agent/scratch/rollout-20261012-resume/`.
 
-- Strict localization repair/retry fix: PR #577, merge 474cdea6b8d3608598ea5fb33473a77795ae42f6. Three isolated PostgreSQL repair regressions passed with zero skips.
-- All 4,401 promoted selected regions have final keypoint outcomes: 4,370 detected, 31 no_keypoints.
-- The canonical 360-species / 0.1 shadow comparison classified all 4,401 selected images with zero skips. Outcomes: same 3,149; changed 977; now_labelled 272; now_abstains 1; both_abstain 2. This is agreement evidence, not ground-truth accuracy.
-- Six rollout documentation files were committed and pushed as 00547329737ebc687a37f0c6725ab415c009ee0c to origin/feat/422-species-abstention following the user's earlier commit-and-push instruction. Do not assume that branch is still checked out.
-- Two live automatic localization jobs, 6939 and 6941, processed twelve staged NEFs. Their dated report satisfies the documented one-live-cycle observation condition. No retryable failure occurred, so production 60/300-second retry timing remains unobserved.
-- The normal-indexing capture-date boundary defect was fixed by PR #585 / source a055f50 / merge 5f4e2fe3b4e26fae865dbf8ce44fad9d32c5bc2c. Policy now uses images.registered_at; live schema revision 0041 was verified.
-- Another session removed the staged NEFs and corresponding DB rows afterward. The live report remains historical evidence; those rows are not expected to exist now. A later check found zero newly registered eligible images and zero active jobs.
-- For the wider portrait-job and release work, read docs/reports/localization-rollout-next-steps-2026-10-09.md. Job 6945 was separately paused; this session did not resume it. Release 9.0.0 remains uncommitted work from another session.
+**Next action:** retain the failed small-species gate. Geometry-only small-box
+promotion needs an explicit consumer exclusion for small selections before they
+can feed region species; that behavior is not implemented by this continuation.
+Alternatively gather independent reviewed evidence under a new preregistered
+evaluation. Do not lower the gate or repeat inference over completed artifacts.
+Passing large/medium species and shadow cascade changes still need scoped
+delivery, fresh state/keyword-preservation checks and a verified DB backup before
+production writes. Keep WebUI stopped and portrait job 6945 paused.
 
-## Work attempted in this continuation
+## Historical October 10 handoff
 
-Goal: complete the outstanding selected-cohort species comparison under committed #422 policy, using 369 candidate species and an explicit 0.5 threshold.
+The stopped-Docker state and code follow-ups below describe October 10; use the
+current handoff above for continuation. Its frozen inference artifacts remain valid.
 
-The committed list was frozen from 6854efcce1e5a447976738392888ccb927866c6c. The current dirty data/bird_species_list.txt is separate research and must not be consumed or overwritten.
+Updated 2026-10-10 after the frozen species comparison, timeout diagnosis and requested Docker shutdown.
+Workspace: D:\Projects\image-scoring-backend. Branch: master; HEAD remains 2269ef1.
 
-An immutable snapshot captured the exact 4,401 selected IDs, image paths, region geometry, selected run/region identities, current stored species baseline, and classifier/canonical-script hashes. The cohort matched the retained manifest.
+## Completed continuation
 
-Ten stored primary species baselines from the October 8 report are now absent; the other 4,391 were unchanged. The new comparison must use the frozen current baseline. Do not silently compare historical outcome counts as though the baselines were identical.
+- The committed 369-species / 0.5 comparison has exactly 4,401 distinct expected final results, zero skips. Both partitions passed (2,201 and 2,200).
+- Outcomes: same 2,961; changed 753; newly labelled 234; now abstains 403; both abstain 50. This is stored-label agreement evidence, not labelled accuracy or promotion approval.
+- Final read-only preflight and merge verified unchanged source metadata, selected geometry/identities, stored baseline, classifier/canonical/decoder/cropper hashes, cached model revision and identical preprocessing.
+- Mounted-source ExifTool extraction repeatedly hit its existing ten-second timeout. Byte-identical local staging reproduced two retained controls exactly and unblocked the remaining inference without changing canonical inference or original photos.
+- Final merge verified preserved prior successes, 1,660 source/staged hash bindings, decode/crop provenance for all 4,401 results, and removal of owned temporary copies. Routes: 4,399 raw_preview, 2 direct.
+- Selected-region keypoints were already complete: 4,370 detected, 31 no_keypoints. Stage 4 live lane observation remains historical evidence; registration boundary fix #585 / revision 0041 is merged and deployed. Production retry timing remains unobserved.
 
-Preflight encountered two infrastructure problems:
-1. D: filled completely; an attempted helper write left that ignored helper empty. The user freed space (about 26 GB), and the helper was restored. The frozen snapshot and prior results remained intact.
-2. Docker stopped during cleanup. Existing PostgreSQL, gpu-shell, and WebUI containers were restored for validation; Docker became unavailable again at handoff.
+## Current operational state
 
-Pilot evidence:
-- The first 20-image pilot differed from the historical 369-species pilot on one RAW (image 730); 19 matched exactly. It took about 261 seconds.
-- After Docker recovery, the repeat exactly reproduced all 20 historical top-three names and probabilities and took about 63 seconds. The earlier pilot is excluded.
-- The exact cause of the first discrepancy is unproven. The RAW decode chain has ten-second ExifTool timeouts and fallback routes. Do not claim the intervening #418 orientation fix explains this discrepancy; it did not change the classifier's direct oriented decode call.
-- Therefore do not use the retained 360-species predictions to claim an isolated candidate-list effect. Report the current policy's agreement outcomes independently.
+- At the user's request, the PostgreSQL/GPU-shell containers were stopped and Docker Desktop shut down. WebUI stayed stopped. Do not restart processing until requested.
+- Portrait job 6945 remains paused. No production job was submitted or resumed by this continuation.
+- No keywords, scores, localization selections, phase status, rollout flags or original photos changed. Region reads and crop scoring were not promoted.
+- Release 9.0.0 and unrelated research/hook changes remain uncommitted and preserved. No commit or push occurred.
 
-First full-partition attempt:
-- Part 0 hit a RAW decode failure for image 5248, then progressed to the 1,200-image marker before it was interrupted. It did not produce a final report; those intermediate results were not retained.
-- Targeted read-only diagnostics verified the 32 MB source file is readable, has a valid full-size embedded JPEG, and now decodes through the canonical raw_preview route (8256 x 5504). No source file was modified.
-- The helper was extended to record actual decode routes, crop pixel hashes, and per-200-image checkpoints. The subsequent restart was paused during imports and produced no checkpoint.
-- Final helper syntax/execution validation remains pending because Docker became unavailable. Verify it before a full run.
+## Retained evidence
 
-## Retained local artifacts
+Read [the aggregate report](docs/reports/localization-species-policy-validation-2026-10-10.md)
+and [the rollout status](docs/architecture/pipeline/localization-rollout.md).
+Private artifacts stay under ignored `.agent/scratch/`:
 
-All are under .agent/scratch and contain local/private metadata. Keep them local; publish only aggregate evidence.
+- `localization-policy-20261010-full.json/.md`: final full-cohort evidence.
+- `localization-policy-20261010-part-0-recovered.json` and `localization-policy-20261010-part-1-staged-prefetch.json`: verified complete halves.
+- `localization-policy-20261010-staging-probe.json`, `localization-policy-20261010-postflight.json` and `localization-policy-20261009-contract.md`: control, final-state and bounded-run provenance.
+- Frozen `localization-policy-20261009-*` inputs, all intermediate checkpoints, excluded/accepted pilots and the historical 2,741-result partial audit remain intact.
+- Earlier manifest, 360-species/0.1 results and strict-repair test evidence remain intact. Ten historical stored labels were missing before this snapshot; historical predictions do not isolate list effects.
+- CPU-only ExifTool diagnosis: separate `exiftool-timeout-diagnosis-20261010T225631Z/` and `exiftool-timeout-diagnosis-20261010T225806Z/` artifacts. First probe reproduced three mounted timeouts and nine successful local extractions; second probe observed input reads waiting in 9p RPC and completed without timeouts. See the session work log's diagnosis/shutdown continuation.
 
-Current policy:
-- localization-policy-20261009-contract.md — scope, budgets, amendments, failed-preflight history.
-- localization-policy-20261009.py — adapter around canonical inference, comparison and summary functions; no production writes.
-- localization-policy-20261009-species.txt — frozen committed 369-name list.
-- localization-policy-20261009-snapshot.json — immutable cohort/baseline/source hashes.
-- localization-policy-20261009-context.json — file size/mtime, cropper hash, padding 0.1, model revision.
-- localization-policy-20261009-decoder.json — frozen decoder source hash.
-- localization-policy-20261009-pilot.json/.md — excluded first pilot.
-- localization-policy-20261009-repeat.json/.md — recovered-runtime pilot.
-- localization-policy-20261009-control.json — historical 360/.5 calculation; not a validated causal list control.
-- localization-policy-20261009-decode-diagnostic.py/.json — image 5248 diagnostic.
+Do not re-run the completed partitions or merge over these artifacts. The merge refuses existing
+full-output paths. For a fresh read-only frozen-state check:
 
-Earlier evidence:
-- localization-resume-20261008-manifest.json — exact 4,401 IDs; manifest SHA-256 85024a8f121100fb55a0cc795f55d1b048249e9fdf2b37873444ad80e6e74446.
-- localization-resume-20261008-species-full.json/.md — completed 360/.1 comparison.
-- localization-resume-20261008-species-partition-pilot.json — historical 369-name pilot.
-- localization-resume-20261008-final-audit.json.
-- localization-resume-repair-final-20261008.xml — three strict repair tests, zero skips.
+```text
+docker exec -e PYTHONPATH=/app -e HF_HUB_OFFLINE=1 image-scoring-gpu-shell timeout 300 python /app/.agent/scratch/localization-policy-20261010-preflight.py --after
+```
 
-Frozen candidate-list JSON SHA-256:
-dc6984a9fa305db099f7a155d1e319fdf495c0917897c2738d2c5eee79674070.
+## Next work
 
-Model: imageomics/bioclip-2, cached revision
-2957b322090f9cb17ae72c71981c7218a28d81e0.
+1. Review full-cohort agreement and the separate labelled/second-folder gate before Stage 5 promotion. #422 strict-above-0.5, scene-routed non-birds and range-list follow-ups remain separate. No prediction equalled 0.5 in this cohort.
+2. Production Stage 4 retry timing still needs a real failure or an explicit decision to accept isolated-test evidence. The manual shadow extraction failures do not supply production retry evidence.
+3. Mounted-source/ExifTool diagnosis reproduced the ten-second timeout without a GPU model: the child waited in `p9_client_rpc` on the 9p source filesystem; identical local copies succeeded. A follow-up confirmed input-descriptor reads on this path but had no timeouts. Host-side cause remains unknown. Trace 9p/storage delays or evaluate a pixel-equivalent production mitigation separately. Decoder, timeout and completed comparison remain unchanged; preserve this baseline for later changes.
+4. The separate portrait/release work remains in docs/reports/localization-rollout-next-steps-2026-10-09.md. Resume 6945 only within that task, verify scores/keywords/captions, restore species and close #418 afterward. Release 9.0.0 delivery remains unrequested here.
+5. Stage 6 waits on #415 labels, #409 storage/fusion and #423 evidence; detector adoption/vision judging and Stage 8 retirement remain separate gates.
 
-## Resume sequence
-
-1. Check git status and the current branch. Preserve all unrelated changes. Read AGENTS.md and applicable canonical project skills. Use the connected Jev server for unresolved method/permission/sensitivity choices; do not send private photo paths or secrets to it.
-2. Check free space and Docker. If the user resumes this comparison, restore the existing PostgreSQL and GPU shell. Inspect the state of the WebUI before restoring it; do not resume portrait job 6945 or submit production jobs as part of this shadow comparison.
-3. Validate the saved helper without importing the application:
-
-   docker exec image-scoring-gpu-shell python -c "import ast; from pathlib import Path; ast.parse(Path('/app/.agent/scratch/localization-policy-20261009.py').read_text()); print('helper syntax valid')"
-
-4. Inspect the helper and any artifacts created after this handoff. Verify the frozen species, classifier, canonical script, decoder, cropper/padding, source file metadata, region identities and stored baseline still match. If they changed, retain the old snapshot and establish a clearly dated new baseline; do not overwrite the frozen snapshot or relax assertions blindly.
-5. Run the two halves sequentially, one GPU model process at a time:
-
-   docker exec -e PYTHONPATH=/app -e HF_HUB_OFFLINE=1 image-scoring-gpu-shell timeout 5400 python /app/.agent/scratch/localization-policy-20261009.py part --part 0
-
-   Only after part 0 completes successfully:
-
-   docker exec -e PYTHONPATH=/app -e HF_HUB_OFFLINE=1 image-scoring-gpu-shell timeout 5400 python /app/.agent/scratch/localization-policy-20261009.py part --part 1
-
-   Part sizes are 2,201 and 2,200. Each has a 90-minute bound. Measured GPU memory ruled out two simultaneous workers while WebUI models were resident. Do not add parallel workers or change the production model load to accommodate them.
-
-6. Monitor progress, GPU headroom, decode errors, and source stability. If a decode failure or resource problem occurs, retain checkpoints and diagnose it before declaring success. Checkpoints preserve partial results; the helper does not yet automatically resume from them. Do not claim zero skips unless all 4,401 IDs have successful final inference exactly once.
-7. When both parts pass, merge and verify:
-
-   docker exec -e PYTHONPATH=/app image-scoring-gpu-shell python /app/.agent/scratch/localization-policy-20261009.py merge
-
-   Required: exactly 4,401 distinct expected IDs, zero final skips, frozen inputs and baseline unchanged, retained decode/crop provenance. The merge refuses changed input/baseline state. Recheck model revision and partition metadata, not only the process exit code.
-8. Write a dated aggregate policy-validation report, update docs/architecture/pipeline/localization-rollout.md, report index and log using the docs-wiki workflow, and run targeted OKF lint plus git diff --check. Clarify that the new-image boundary fix is merged/deployed while production retry timing is still unobserved.
-9. Keep this as shadow agreement evidence. Do not rewrite species keywords, change rollout flags, enable region reads, alter detector settings, promote crop scoring, or fabricate a live retry event. Broader labelled accuracy, Stage 5 promotion and Stage 6 gates remain separate work.
-10. Commit/push only when requested for the new continuation. The earlier requested delivery is already recorded above.
-
-## Concurrent work to preserve
-
-At pause, unrelated modified/untracked files included:
-.claude/HOOKS.md, .claude/settings.json, .gitignore, CHANGELOG.md, modules/version.py,
-data/bird_species_list.txt, data/bird_species_austin_frequency_proxy_2026-10-09.csv,
-data/other_animal_species_list.txt, docs/technical/BIRD_SPECIES_WALKTHROUGH.md,
-scripts/research/clip_species_study.py, tests/test_clip_species_study.py,
-reports/model-selection-2026-10-01/, and the broader localization next-steps report/index/log edits.
-
-Do not stage these indiscriminately. Never modify .git/config. Preserve .agent/scratch/418/ backups and the staged-data cleanup history recorded in the broader next-steps report.
+Keep `.agent/scratch/418/`, `422/`, `stage5-nef/` and existing database backups.
+The earlier handoff is retained in commit 2269ef1 and local
+`localization-policy-20261010-handoff-history.md`; its paused commands are historical.
+Never modify `.git/config`, stage unrelated dirty files, publish private photo artifacts,
+rewrite production keywords or flip rollout flags as part of this completed shadow comparison.

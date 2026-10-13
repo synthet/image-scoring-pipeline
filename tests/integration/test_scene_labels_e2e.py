@@ -55,7 +55,7 @@ def test_rows_cascade_with_the_image(image_id):
 
 
 def test_scene_route_skip_run_species_fallback_and_reopen(tmp_path):
-    """AC-7 skip record, unchanged re-run, species full frame, AC-9/AC-10 replacement by detection."""
+    """AC-7 skip record, unchanged re-run, species legacy (no selection), AC-9/AC-10 replacement by detection."""
     from PIL import Image
 
     from modules import localization as loc
@@ -80,7 +80,8 @@ def test_scene_route_skip_run_species_fallback_and_reopen(tmp_path):
     run = loc.get_current_run(iid)
     assert (run["status"], run["error_code"], run["error_detail"]) == (
         "disabled", "scene_route", "scene_v2/x:landscape")
-    assert species_input_for_image(iid)["mode"] == "full_frame"
+    # Species reads only gated selections (#592); a scene-route run alone keeps the legacy path.
+    assert species_input_for_image(iid)["mode"] == "legacy"
 
     loc.record_scene_skip(iid, ctx, decoded, scene_version="scene_v3/x", top_label="landscape")
     assert loc.get_current_run(iid)["error_detail"] == "scene_v3/x:landscape"
