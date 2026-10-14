@@ -7,6 +7,9 @@
 This file is preserved as a pointer only. **Do not add tasks here** — open an issue
 in the appropriate repo and let the Project automation pick it up.
 
+Current status and resume instructions: [NEXT_STEPS.md](NEXT_STEPS.md).
+Track-specific roadmaps are linked there; this pointer does not duplicate their tasks.
+
 ## How to use the queue
 
 1. Pick a card from the **`Ready`** column on the board.

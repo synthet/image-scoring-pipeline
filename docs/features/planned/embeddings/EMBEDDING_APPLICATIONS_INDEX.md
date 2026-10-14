@@ -1,10 +1,21 @@
+---
+type: Documentation Index
+title: Embedding applications index
+description: Embedding feature specs and current normalized-storage and next-task pointers.
+resource: features/planned/embeddings/EMBEDDING_APPLICATIONS_INDEX.md
+tags: [docs, planning, next-steps]
+timestamp: 2026-10-13T00:58:42Z
+okf_version: 0.2
+---
+
 # Embedding Applications - Detailed Specs
 
 This index breaks out each proposed `image_embedding` use case into a separate implementation document. See the [source document](EMBEDDING_APPLICATIONS.md) for the overview and summary.
 
 ## Documents
 
-- [TODO.md](TODO.md) — Index to root backlog (canonical: [TODO.md](../../../TODO.md))
+- [NEXT_STEPS.md](NEXT_STEPS.md) — current shipped-versus-proposed gaps and implementation order
+- [TODO.md](TODO.md) — retired task pointer to the canonical GitHub Project board
 - [01 - Diversity-Aware Selection](EMBEDDING_APP_01_DIVERSITY_SELECTION.md)
 - [02 - Near-Duplicate Detection](EMBEDDING_APP_02_NEAR_DUPLICATE_DETECTION.md)
 - [03 - Tag Propagation](EMBEDDING_APP_03_TAG_PROPAGATION.md)
@@ -16,7 +27,7 @@ This index breaks out each proposed `image_embedding` use case into a separate i
 
 ## Scope and assumptions
 
-- Existing embedding source remains `MobileNetV2` from `modules/clustering.py`.
-- Existing storage remains `images.image_embedding` (`BLOB SUB_TYPE 0`).
-- Existing retrieval path remains `db.get_embeddings_for_search()`.
+- Spaces are registered, including the default MobileNet and additional CLIP/BioCLIP/BLIP spaces; use current [embedding documentation](../../../EMBEDDINGS.md).
+- PostgreSQL stores normalized embeddings in `image_embeddings` and per-dimension fact tables. Revision 0024 removes the legacy `images.image_embedding`; the old Firebird BLOB description is historical.
+- Retrieval uses the DB facade and `modules/projections_db.py`; route contracts live under `modules/api/routers/`.
 - No model retraining is required for any of these items.

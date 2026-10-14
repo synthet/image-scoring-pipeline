@@ -4,7 +4,7 @@ title: "Spec 03: detector cascade"
 description: A shadow localization provider that combines the bird YOLO with an open COCO detector (RTMDet-tiny) and a small-box YOLO refine, raising recall without the false positives of YOLO at 1280.
 resource: docs/specs/pipeline-streamlining/03-detector-cascade.md
 tags: [specs, localization, detection, bird-detection, rtmdet, onnx]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 status: proposed
 ---
@@ -139,6 +139,9 @@ Recommendations and deadlines: [07 — decision register](07-blockers-and-decisi
 
 ## Slice 1 status (2026-09-27)
 
+This subsection is historical. The current slice-2 status below supersedes its
+"not yet" persistence and AC-17 entries.
+
 - `modules/detectors/rtmdet.py`: onnxruntime provider on the image-scoring-model export of the upstream checkpoint,
   manifest SHA-256 check (AC-1 to AC-4); AC-5's retry is **off by default** per C-4.
 - `modules/localization_cascade.py`: the combination as a pure function over child outcomes, with the refine pass
@@ -148,6 +151,29 @@ Recommendations and deadlines: [07 — decision register](07-blockers-and-decisi
   [cascade-benchmark-2026-09-27](../../reports/cascade-benchmark-2026-09-27.md). The cascade at 0.40 passes AC-18
   on the independent strata.
 - Not yet: persisting `coco` / `subject_cascade` runs from the runner (AC-6, AC-7 writes, AC-15) and AC-17.
+
+## Current status and remaining tasks (2026-10-12)
+
+[PR #594](https://github.com/synthet/image-scoring-pipeline/pull/594) merged
+`modules/localization_cascade_runner.py`, runner wiring and regression tests for
+persistence, YOLO adoption, refinement, child failure, unchanged identity and
+default-off isolation (AC-6/AC-7/AC-15). The
+[agent-panel report](../../reports/localization-agent-panel-gates-2026-10-12.md)
+records AC-17 TIGHT 98/141 versus YOLO 97/140, and AC-18 independent recall 65/78
+versus 63/78 with false positives 5/71. Twenty-three box judgments remain unresolved.
+
+The registered runner operating point is **0.60 without retry**, reflecting the
+production `bird_detect_v1` re-collection. It supersedes the earlier 0.40/0.25
+proposal in AC-5 for this gated rollout; no post-label threshold tuning occurred.
+The combination uses the existing 0.02 small-area, 1.0 padding and 0.3 IoU policy.
+
+Next: verify deployed code and frozen state, take a verified backup before a flag
+write, then observe persisted shadow runs in an authorized lane. The flag has not
+been enabled by this delivery. Choosing the cascade as a consumer's authoritative
+region source requires a separate selection rule and gate; passing AC-18 is a
+necessary condition, not automatic promotion. Small-crop species failed its own
+gate and must not be implicitly enabled through new selections. See
+[the current handoff](../../../NEXT_STEPS.md).
 
 ## Implementation plan
 

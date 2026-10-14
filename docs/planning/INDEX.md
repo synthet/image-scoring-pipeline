@@ -4,7 +4,7 @@ title: Planning and migrations index
 description: Index of database migrations, schema phases, refactors, and model roadmaps under docs/planning/.
 resource: docs/planning/INDEX.md
 tags: [docs, planning, index]
-timestamp: 2026-09-25T18:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 
@@ -14,9 +14,23 @@ Database migrations, schema phases, refactors, and model roadmaps. **Product / U
 
 ---
 
-## Priority overview (backlog order, 2026-04-10)
+## Current next-task documents
 
-Aligned with root [`TODO.md`](../../TODO.md) **Highest-Impact Next Steps**. Tiers are relative; within a tier, cross-repo coordination and schema safety come first.
+The [GitHub Project board](https://github.com/users/synthet/projects/1) is the
+canonical queue. These pages describe verified status and dependencies; they do
+not replace its priorities or claim work automatically.
+
+| Track | Current continuation |
+|---|---|
+| Localization / operations | [Root handoff](../../NEXT_STEPS.md): #594 merged; small-species gate fails; live species/cascade activation remains. |
+| Scoring inputs | [NEXT-STEPS](scoring-inputs/NEXT-STEPS.md): #573 merged, #569 closed; #568 gallery/representative acceptance and #570 adoption gates remain. |
+| Database | [NEXT_STEPS](database/NEXT_STEPS.md): verify migration/reader state before keyword retirement or region-score schema work. |
+| Embedding features | [NEXT_STEPS](../features/planned/embeddings/NEXT_STEPS.md): multi-space/PCA shipped; persistence/HDBSCAN, projection job and UI remain proposed. |
+
+## April priority overview (historical planning context)
+
+The tiers below preserve the April planning context. Root TODO is now a board
+pointer; do not use these old tiers to reprioritize or select current work.
 
 | Tier | Tracks | Notes |
 |------|--------|--------|
@@ -66,9 +80,9 @@ Aligned with root [`TODO.md`](../../TODO.md) **Highest-Impact Next Steps**. Tier
 | [SUGGESTED_SCORING_ADJUSTMENTS.md](models/SUGGESTED_SCORING_ADJUSTMENTS.md) | Proposed scoring weight changes |
 | [ONNX_CONVERSION_FEASIBILITY.md](models/ONNX_CONVERSION_FEASIBILITY.md) | ONNX export feasibility per model, pros/cons, phased plan (MUSIQ is the hard one) |
 | [localization-region-scores-and-backfill.md](localization-region-scores-and-backfill.md) | Bbox vs region-IQA backfill; parallel full-frame vs crop score storage (synthesis) |
-| [localization-stage4-slice1-status.md](localization-stage4-slice1-status.md) | Status of #387 shadow localization slice: decisions, open questions, blockers, action items |
+| [localization-stage4-slice1-status.md](localization-stage4-slice1-status.md) | Historical #387 slice-1 evidence; current tasks route to the rollout/handoff rather than its superseded branch instructions |
 | [subject-aware-culling-evidence.md](subject-aware-culling-evidence.md) | **Proposal** (evidence, ranker, explainability; idea→issue map vs pipeline streamlining) — region/keypoint/mask-conditioned evidence, code-owned burst ranker, 0.5 s burst split; mapped onto localization Stages 2–7 (clean-room) |
-| [pipeline-streamlining.md](pipeline-streamlining.md) | **Proposal** — streamlined order (decode once, scene route, localize, species on crop, subject-aware scoring, bursts, picks); tracks #406–#409, #412, #413; related tracks #415, #416, #420–#424 |
+| [pipeline-streamlining.md](pipeline-streamlining.md) | Target design with delivered foundations: #594 cascade persistence/gates merged, small-species activation blocked; remaining consumer/storage/fusion gates stay explicit |
 | [subject-evidence-model-roles.md](models/subject-evidence-model-roles.md) | Functional requirements for detector, bird/mammal keypoints, subject mask and embedding roles |
 | [human-culling-labels.md](human-culling-labels.md) | **In progress** (#415) — stratified, weighted ~300-group human culling label set: blind pick/keep/reject + best frame, `human_labels` schema, evaluation plan; 20/302 done. Mobile collection channel: [human labeling sync specs](../specs/human-labeling-sync/INDEX.md) (#453) |
 | [reference-workflow-improvement-candidates.md](reference-workflow-improvement-candidates.md) | **Proposal** — versioned evidence, uncertainty-aware ranking, editable sequence boundaries, close-call review, calibration, caches, and diagnostics |

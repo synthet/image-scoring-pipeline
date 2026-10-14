@@ -4,7 +4,7 @@ title: Localization agent-panel gates (2026-10-12)
 description: Frozen rollout gates, confidence-filtered adjudication, verification and promotion status.
 resource: reports/localization-agent-panel-gates-2026-10-12.md
 tags: [localization, species, cascade, validation]
-timestamp: 2026-10-13T00:07:42Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 # Localization agent-panel gates (2026-10-12)
@@ -14,6 +14,12 @@ precision requirement: Wilson 95% lower bound **0.8123**, below **0.85**. This
 continuation stops before promotion, configuration changes or species refresh.
 The small-box geometry gate passed earlier; a usable box does not establish
 species accuracy on that crop.
+
+**Post-report delivery:** [PR #594](https://github.com/synthet/image-scoring-pipeline/pull/594)
+merged this report and the implementation into `master` at `0e24a43`.
+#592 closed automatically. The original operational observations below describe
+the gate continuation; no live activation or refresh was performed by the merge
+and local branch sync. Remaining tasks are maintained in [NEXT_STEPS](../../NEXT_STEPS.md).
 
 ## Scope and evidence
 
@@ -130,9 +136,10 @@ by this continuation. Record that decision and its consumer behavior before any
 such write. Otherwise retain the current selections and gather independently
 reviewed evidence under a new preregistered evaluation; do not lower this gate.
 
-Passing large/medium species and shadow cascade work still needs scoped delivery,
-a fresh frozen-state/keyword-preservation preflight, and a verified database
-backup before any production write. Keep WebUI stopped and job 6945 paused.
+The code is now merged. Passing large/medium species and shadow cascade work
+still needs a deployed-process version check, a fresh frozen-state/keyword
+preservation preflight, and a verified database backup before any production
+write. Keep WebUI stopped and job 6945 paused.
 
 See [the rollout status](../architecture/pipeline/localization-rollout.md),
 [the frozen comparison](localization-species-policy-validation-2026-10-10.md), and

@@ -4,7 +4,7 @@ title: "Pipeline streamlining: blockers, decisions and suggestions"
 description: Status snapshot, blockers with unblock actions, a decision register covering every open question in specs 01–06 and rollout stage 4, a cost model, GPU sequencing, risks and prioritised suggestions.
 resource: docs/specs/pipeline-streamlining/07-blockers-and-decisions.md
 tags: [specs, pipeline, localization, scoring, blockers, decisions, risks]
-timestamp: 2026-10-04T00:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 
@@ -16,7 +16,27 @@ This page collects what the specs leave open: blockers, decisions, numbers and r
 recommends; you decide. Figures cite their source. Anything marked **estimate** is arithmetic on
 stated assumptions, not a measurement.
 
-## Update 2026-10-04
+## Current update after #594 (2026-10-12)
+
+The [gate report](../../reports/localization-agent-panel-gates-2026-10-12.md)
+and [current handoff](../../../NEXT_STEPS.md) supersede the dated blocker tables.
+
+| Track | Delivered evidence | Remaining unblock action |
+|---|---|---|
+| Legacy import / M0 | 76,475 current runs imported/reconciled September 27; decisions and #399 fix delivered. | Do not rerun the import; production retry timing remains unobserved. |
+| Delegated lifecycle / test target | #575/revision 0040 and #580 merged. | Verify deployed environment when running operational checks; no new full-suite claim here. |
+| Cascade (#408) | Persistence/wiring merged in #594; AC-17/AC-18 pass. | Verify runtime, back up before a flag write, enable/observe shadow runs. Consumer-source adoption needs a separate gate. |
+| Large/medium species | Active-selection reader, strict floor and passing existing-cohort gate/parity merged. #592 closed on merge. | Code delivery is complete; running-code verification, keyword preservation, backup and approved refresh remain. |
+| Small selections (#593) | Geometry passes; species lower bound 0.8123 fails 0.85. | Implement/test species exclusion before geometry-only promotion, or collect new independently reviewed evidence under a preregistered gate. |
+| Human burst evidence / scores | Species/box panels are agent-derived evidence. | Reconcile current #415 owner labels; #409 storage/fusion and #423 evidence remain separate. |
+| Portrait / gallery | Upright fixes delivered; scoring/input implementation merged in #573. | Job 6945 and keyword/species restoration remain; #568/gallery #176 representative acceptance is open. |
+
+C-4's current cascade setting is **0.60, no retry** from the pre-registered
+production-v1 re-collection. C-1/C-2 consumer/multi-subject choices remain separate.
+Do not apply September B1/B3/B6 instructions as new tasks. No production flag,
+selection or species keyword changed in the #594 gate continuation.
+
+## Historical update 2026-10-04
 
 The sections below are the September snapshot. These facts supersede them:
 
@@ -31,7 +51,7 @@ The sections below are the September snapshot. These facts supersede them:
 #379, #415, #416, #418, #368, and gallery #176 are still open. The current ordered list of
 remaining localization work is [What is left](../../architecture/pipeline/localization-rollout.md#what-is-left).
 
-## 1. Status snapshot
+## 1. September status snapshot (historical)
 
 | Item | State |
 |---|---|
@@ -48,7 +68,7 @@ remaining localization work is [What is left](../../architecture/pipeline/locali
 - #368: parent/child lifecycle for delegated culling runs.
 - #109 / #110: Lightroom recognition of pick/reject flags and ratings.
 
-## 2. Blockers
+## 2. September blockers (historical)
 
 | ID | Blocks | Evidence | Unblock action | Who | Issue |
 |---|---|---|---|---|---|
