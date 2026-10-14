@@ -1,6 +1,7 @@
 """Stage 5 (#444, #592): bird_species consumes the active localization selection's region."""
 
 from PIL import Image
+import pytest
 
 import modules.bird_species as bs
 from modules.bird_species import BirdSpeciesRunner, species_input_for_image
@@ -26,6 +27,24 @@ def test_active_selection_selects_region(monkeypatch):
     choice = species_input_for_image(1)
     assert choice["mode"] == "region" and choice["region"] == (0.1, 0.2, 0.5, 0.6)
     assert (choice["run_id"], choice["region_id"]) == (7, 9)
+
+
+@pytest.mark.parametrize("area,mode", [(0.004999, "legacy"), (0.005, "region"), (0.005001, "region")])
+def test_selected_area_boundary_before_padding(monkeypatch, area, mode):
+    _with_conn(monkeypatch, _Conn({"run_id": 7, "region_id": 9,
+                                  "x1": 0, "y1": 0, "x2": area, "y2": 1}))
+    choice = species_input_for_image(1)
+    assert choice["mode"] == mode
+    assert (choice["run_id"], choice["region_id"]) == (7, 9)
+    if mode == "legacy":
+        assert choice["region"] is None
+        assert choice["exclusion_reason"] == "selected_area_below_0.005"
+
+
+def test_exact_area_boundary_is_eligible_away_from_origin(monkeypatch):
+    _with_conn(monkeypatch, _Conn({"run_id": 7, "region_id": 9,
+                                  "x1": 0.2, "y1": 0.2, "x2": 0.3, "y2": 0.25}))
+    assert species_input_for_image(1)["mode"] == "region"
 
 
 def test_lookup_reads_active_selections_not_current_runs(monkeypatch):
@@ -76,6 +95,7 @@ def _run_row(monkeypatch, tmp_path, *, use_regions, choice, legacy_bbox=None, pr
     monkeypatch.setattr(bs, "species_input_for_image", lambda image_id: choice)
     monkeypatch.setattr(runner, "_persist_bioclip_embedding", lambda image_id: None)
     monkeypatch.setattr(bs.db, "update_image_bird_bbox", lambda i, b: writes["bbox"].append((i, b)))
+    monkeypatch.setattr(bs, "write_legacy_bird_bbox", lambda i, b: writes["bbox"].append((i, b)))
     monkeypatch.setattr(bs.db, "set_image_phase_status", lambda *a, **kw: None)
     monkeypatch.setattr(bs.db, "get_connector", lambda: object())
     monkeypatch.setattr("modules.localization_legacy.read_bird_bbox",
@@ -106,6 +126,15 @@ def test_flag_off_is_the_legacy_path(monkeypatch, tmp_path):
                             choice={"mode": "region", "region": (0.1, 0.2, 0.5, 0.6)}, legacy_bbox=legacy)
     assert call == {"region": None, "use_detector": True}
     assert writes["bbox"] == [(3, legacy)]
+    assert writes["sources"] == [{"species:carolina wren": "bioclip"}]
+
+
+def test_small_selection_uses_embedded_detector_and_legacy_source(monkeypatch, tmp_path):
+    _with_conn(monkeypatch, _Conn({"run_id": 7, "region_id": 9,
+                                  "x1": 0, "y1": 0, "x2": 0.0049, "y2": 1}))
+    choice = species_input_for_image(3)
+    call, writes = _run_row(monkeypatch, tmp_path, use_regions=True, choice=choice)
+    assert call == {"region": None, "use_detector": True}
     assert writes["sources"] == [{"species:carolina wren": "bioclip"}]
 
 

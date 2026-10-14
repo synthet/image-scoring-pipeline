@@ -11,9 +11,11 @@ Top predicted species are stored as "species:Common Name" keywords.
 import logging
 import os
 import threading
+from decimal import Decimal
 from pathlib import Path
 
 from modules import db
+from modules.localization_selection import write_legacy_bird_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,9 @@ USE_REGIONS_KEY = "bird_species.use_regions"
 #: ``docs/reports/bird-species-abstention-2026-10-08.md``. A job's explicit ``threshold`` wins.
 MIN_CONFIDENCE_KEY = "bird_species.min_confidence"
 DEFAULT_MIN_CONFIDENCE = 0.5
+
+# Geometry-only small selections passed the box gate but failed the species gate (#593).
+MIN_REGION_AREA = 0.005
 
 #: The active production selection (#484): only regions that passed a promotion gate. The
 #: current run is not used, because for most images it is an unpromoted shadow run (#592).
@@ -56,6 +61,12 @@ def min_confidence() -> float:
     return float(config.get_config_value(MIN_CONFIDENCE_KEY, default=DEFAULT_MIN_CONFIDENCE))
 
 
+def region_species_eligible(region) -> bool:
+    """Compare unpadded normalized area using stored decimal coordinates at the boundary."""
+    x1, y1, x2, y2 = (Decimal(str(value)) for value in region)
+    return (x2 - x1) * (y2 - y1) >= Decimal(str(MIN_REGION_AREA))
+
+
 def species_input_for_image(image_id: int) -> dict:
     """Choose the BioCLIP input from the image's active ``bird`` localization selection.
 
@@ -65,8 +76,9 @@ def species_input_for_image(image_id: int) -> dict:
 
     * ``"region"`` -- an active selection: classify a padded crop of the selected region
       (``region`` is its normalized ``(x1, y1, x2, y2)``);
-    * ``"legacy"`` -- no active selection or a failed lookup: the embedded detector path,
-      unchanged (fail open). Unpromoted shadow runs never feed species (#592).
+    * ``"legacy"`` -- no active selection, a failed lookup, or selected area < 0.005:
+      the embedded detector path. Excluded selections retain identity and a reason,
+      with no selected crop. Area is measured before padding. Shadow runs never feed species.
     """
     legacy = {"mode": "legacy", "region": None, "run_id": None, "region_id": None}
     try:
@@ -76,8 +88,12 @@ def species_input_for_image(image_id: int) -> dict:
         return legacy
     if not row or row.get("region_id") is None:
         return legacy
-    return {"mode": "region", "region": (float(row["x1"]), float(row["y1"]), float(row["x2"]), float(row["y2"])),
-            "run_id": row["run_id"], "region_id": row["region_id"]}
+    region = tuple(float(row[key]) for key in ("x1", "y1", "x2", "y2"))
+    identity = {"run_id": row["run_id"], "region_id": row["region_id"]}
+    if not region_species_eligible(region):
+        return {"mode": "legacy", "region": None, **identity,
+                "exclusion_reason": "selected_area_below_0.005"}
+    return {"mode": "region", "region": region, **identity}
 
 
 # Default candidate species list (common North American names)
@@ -542,7 +558,7 @@ class BirdSpeciesRunner:
             try:
                 from modules.bird_detection import bbox_scan_failed
 
-                db.update_image_bird_bbox(int(row["id"]), bbox_scan_failed("file_missing"))
+                write_legacy_bird_bbox(int(row["id"]), bbox_scan_failed("file_missing"))
             except Exception:
                 logger.warning(
                     "bird_species: bird_bbox persist failed for image_id=%s",
@@ -561,6 +577,9 @@ class BirdSpeciesRunner:
             return 0, 1
 
         choice = species_input_for_image(int(row["id"])) if use_regions_enabled() else {"mode": "legacy"}
+        if choice.get("exclusion_reason"):
+            logger.info("bird_species: legacy inference image_id=%s run_id=%s region_id=%s exclusion=%s",
+                        row["id"], choice.get("run_id"), choice.get("region_id"), choice["exclusion_reason"])
         try:
             predictions = self.classifier.classify(
                 inference_path, species_list, threshold=threshold, top_k=top_k,
@@ -583,7 +602,7 @@ class BirdSpeciesRunner:
             if choice["mode"] == "legacy":
                 if bbox is not None:
                     try:
-                        db.update_image_bird_bbox(int(row["id"]), bbox)
+                        write_legacy_bird_bbox(int(row["id"]), bbox)
                     except Exception:
                         logger.warning(
                             "bird_species: bird_bbox persist failed for image_id=%s",
@@ -652,7 +671,7 @@ class BirdSpeciesRunner:
             try:
                 from modules.bird_detection import bbox_scan_failed
 
-                db.update_image_bird_bbox(
+                write_legacy_bird_bbox(
                     int(row["id"]), bbox_scan_failed(f"classify_error: {exc}")
                 )
             except Exception:
@@ -711,8 +730,8 @@ class BirdSpeciesRunner:
 
             bbox = scan_bird_bbox_only(row, detector)
             try:
-                db.update_image_bird_bbox(int(row["id"]), bbox)
-                rescanned += 1
+                if write_legacy_bird_bbox(int(row["id"]), bbox):
+                    rescanned += 1
             except Exception:
                 logger.warning(
                     "bird_species: bird_bbox persist failed for image_id=%s",
