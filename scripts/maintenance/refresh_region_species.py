@@ -143,8 +143,19 @@ def _restore(data, *, ids=None):
 
     ids = data["ids"] if ids is None else ids
     before = {(r["image_id"], r["keyword_norm"]): r for r in data["rows"]}
+    current = _rows(ids)
+    present = {(r["image_id"], r["keyword_norm"]) for r in current}
+    scope = set(ids)
     fixed = 0
-    for row in _rows(ids):
+    for key, old in before.items():
+        if key[0] not in scope or key[1].startswith("species:") or key in present:
+            continue
+        db.get_connector().execute(
+            "INSERT INTO image_keywords (image_id, keyword_id, source, confidence, relevance_weight) "
+            "SELECT ?, keyword_id, ?, ?, ? FROM keywords_dim WHERE keyword_norm = ?",
+            (old["image_id"], old["source"], old["confidence"], old["relevance_weight"], old["keyword_norm"]))
+        fixed += 1
+    for row in current:
         old = before.get((row["image_id"], row["keyword_norm"]))
         if old is None or row["keyword_norm"].startswith("species:"):
             continue
