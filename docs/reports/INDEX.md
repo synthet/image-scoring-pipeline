@@ -125,5 +125,6 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | [localization-species-policy-validation-2026-10-10](localization-species-policy-validation-2026-10-10.md) | Complete frozen 369-species/0.5 comparison: 4,401 distinct expected results, zero final skips; byte-identical staging bypassed shadow-run ExifTool timeouts; frozen inputs/baseline and production state unchanged. |
 | [localization-session-work-log-2026-10-10](localization-session-work-log-2026-10-10.md) | Complete 4,401-image frozen comparison, recovery provenance, mounted-source ExifTool diagnosis and requested Docker shutdown. |
 | [localization-agent-panel-gates-2026-10-12](localization-agent-panel-gates-2026-10-12.md) | Final gates and #594 merge receipt: cascade passes; small-crop species fails; live activation/refresh and small-selection exclusion remain. |
+| [localization-geometry-only-activation-2026-10-13](localization-geometry-only-activation-2026-10-13.md) | Geometry-only species exclusion, box ownership and stopped activation preflight for four changed production boxes. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)

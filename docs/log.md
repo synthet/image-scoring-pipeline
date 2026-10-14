@@ -6,6 +6,8 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-14] updated | #593 geometry-only implementation; activation stopped on four changed manifest rows
+
 ## [2026-10-12] edit | Reconcile next-task roadmaps after merged localization delivery
 
 Updated root handoff, active pipeline plans/specs, scoring-input, database and embedding next steps, historical handoff supersession links and queue pointers. PR #594 is merged at 0e24a43; code delivery is distinct from live activation and the failed 0.8123/0.85 small-species gate. #573/#569 scoring delivery is recorded, while remaining acceptance stays open. Corrected stale removal dates, API paths and proposed migration numbering without changing runtime or original research evidence.
