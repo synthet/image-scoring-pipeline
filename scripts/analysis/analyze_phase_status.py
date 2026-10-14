@@ -20,6 +20,7 @@ Discrepancy types detected (GAP codes map to that document):
    9. ips_status_invalid       [GAP-H] IPS status value not in PhaseStatus enum
   10. bird_species_gap         [GAP-I/J] images with 'birds' not species-classified (outside IPS)
   11. stuck_running            [GAP-K] IPS rows frozen in running/queued (job_id propagation loss)
+  12. ips_missing              [GAP-J] No IPS row, including images with no phase output
 
 Usage (WSL + ~/.venvs/tf):
   python scripts/analysis/analyze_phase_status.py
@@ -48,8 +49,7 @@ logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-PHASES = [p.value for p in PIPELINE_PHASE_ORDER]
-PHASE_ORDER_IDX = {p: i for i, p in enumerate(PHASES)}
+REGISTERED_PHASES = [p.value for p in PIPELINE_PHASE_ORDER]
 
 # Derived from the PhaseStatus enum in modules/phases.py
 VALID_STATUSES = frozenset(s.value for s in PhaseStatus)
@@ -65,6 +65,11 @@ DATA_SIGNAL = {
     'keywords': 'data_keywords',
 }
 
+# Audit required phases by default. Optional phase coverage is meaningful only
+# for an explicitly selected cohort, and has no generic data-presence signal.
+PHASES = [p for p in REGISTERED_PHASES if p in DATA_SIGNAL]
+PHASE_ORDER_IDX = {p: i for i, p in enumerate(REGISTERED_PHASES)}
+
 # Phases where IPS=done with no data output is a VALID state (not a gap).
 # keywords: tagger ran but produced zero keywords for the image.
 # Scoring/indexing/metadata always produce data if they complete — not included.
@@ -74,6 +79,7 @@ OPTIONAL_DATA_PHASES = frozenset({'keywords'})
 DISCREPANCY_LABELS = {
     'ips_done_no_data':           'IPS=done but no data present',
     'ips_missing_has_data':       'No IPS row but data is present',
+    'ips_missing':                'No IPS row (no known phase output)',
     'ips_not_started_has_data':   'IPS=not_started but data already present',
     'ips_failed_has_data':        'IPS=failed but data is present',
     'phase_order_violation':      'Later phase=done, earlier phase not done',
@@ -276,7 +282,8 @@ def analyze_image(img: dict, ips_map: dict, phases: List[str]) -> List[dict]:
     for phase in phases:
         entry = img_ips.get(phase)
         status = entry['status'] if entry else None
-        data_present = bool(img.get(DATA_SIGNAL[phase], False))
+        signal = DATA_SIGNAL.get(phase)
+        data_present = bool(img.get(signal, False)) if signal else None
         statuses[phase] = status
 
         ctx = {
@@ -288,11 +295,11 @@ def analyze_image(img: dict, ips_map: dict, phases: List[str]) -> List[dict]:
             'data_present': data_present,
         }
 
-        if status == 'done' and not data_present and phase not in OPTIONAL_DATA_PHASES:
+        if status == 'done' and data_present is False and phase not in OPTIONAL_DATA_PHASES:
             issues.append({**ctx, 'type': 'ips_done_no_data'})
 
-        elif entry is None and data_present:
-            issues.append({**ctx, 'type': 'ips_missing_has_data'})
+        elif entry is None:
+            issues.append({**ctx, 'type': 'ips_missing_has_data' if data_present else 'ips_missing'})
 
         elif status == 'not_started' and data_present:
             issues.append({**ctx, 'type': 'ips_not_started_has_data'})
@@ -633,14 +640,14 @@ def check_stuck_running(conn, stuck_hours: int = DEFAULT_STUCK_HOURS, folder_pat
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
-def _phase_cell(status: Optional[str], data_present: bool) -> str:
+def _phase_cell(status: Optional[str], data_present: Optional[bool]) -> str:
     """Compact cell for the verbose per-image table: 'status(Y/N)'."""
     s = status or '-'
-    d = 'Y' if data_present else 'N'
-    if status == 'done' and not data_present:
+    d = '?' if data_present is None else ('Y' if data_present else 'N')
+    if status == 'done' and data_present is False:
         return f'DONE!{d}'   # discrepancy — done but no data
-    if status is None and data_present:
-        return f'null!{d}'   # discrepancy — no IPS but data present
+    if status is None:
+        return f'null!{d}'   # discrepancy — no IPS, regardless of phase output
     if status in ('not_started', 'failed') and data_present:
         return f'{s}!{d}'    # discrepancy
     return f'{s}|{d}'
@@ -675,6 +682,7 @@ def print_report(
     per_phase_types = [
         'ips_done_no_data',
         'ips_missing_has_data',
+        'ips_missing',
         'ips_not_started_has_data',
         'ips_failed_has_data',
         'ips_status_invalid',
@@ -694,6 +702,7 @@ def print_report(
     short_col = {
         'ips_done_no_data':           'done/no-data',
         'ips_missing_has_data':       'miss/has-data',
+        'ips_missing':                'miss/no-row',
         'ips_not_started_has_data':   'ns/has-data',
         'ips_failed_has_data':        'fail/has-data',
         'ips_status_invalid':         'bad-status',
@@ -802,6 +811,17 @@ def print_report(
             f'  [GAP-B] {missing_ips_total:,} images have data but no IPS row for that phase.\n'
             '          Likely causes: legacy import path (e.g. direct DB write) that did not\n'
             '          create IMAGE_PHASE_STATUS rows, or rows were deleted from IPS table.'
+        )
+
+    # Gap J: no IPS and no known output. These images were previously invisible.
+    missing_no_data_total = sum(by_phase[p].get('ips_missing', 0) for p in phases)
+    if missing_no_data_total:
+        gap_items.append(
+            f'  [GAP-J] {missing_no_data_total:,} image/phase pairs have no IPS row.\n'
+            '          Use repair_analyzer_gaps.py --missing-rows --dry-run first,\n'
+            '          with --missing-rows-folder and optional --missing-rows-phase\n'
+            '          to scope the existing backfill. Optional phases require an\n'
+            '          explicitly selected cohort; absence alone is not proof of lost output.'
         )
 
     # Gap C: not_started / failed but data present
@@ -986,7 +1006,8 @@ def print_report(
             for phase in phases:
                 entry = img_ips.get(phase)
                 status = entry['status'] if entry else None
-                data_present = bool(img.get(DATA_SIGNAL[phase], False))
+                signal = DATA_SIGNAL.get(phase)
+                data_present = bool(img.get(signal, False)) if signal else None
                 cells.append(f'{_phase_cell(status, data_present):^{col_w2}}')
             fname = _trunc(img.get('file_name') or img.get('file_path', ''), 40)
             print(f"  {img['id']:>8}  {fname:<40}  " + '  '.join(cells))
@@ -1006,8 +1027,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument('--folder', metavar='PATH', help='Scope to one folder tree')
     parser.add_argument(
-        '--phase', metavar='PHASE', choices=PHASES,
-        help='Scope checks to a single phase',
+        '--phase', metavar='PHASE', choices=REGISTERED_PHASES,
+        help='Scope checks to a single phase; optional phases require an explicit cohort',
     )
     parser.add_argument('--limit', type=int, metavar='N', help='Analyze at most N images')
     parser.add_argument('--output', metavar='FILE', help='Export full results as JSON')
