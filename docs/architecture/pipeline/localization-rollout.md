@@ -124,6 +124,18 @@ automatically with the merge; live flag enablement and cohort refresh were not
 performed. Use [the current handoff](../../../NEXT_STEPS.md) for those remaining
 tasks. Code delivery does not override the failed small-species gate.
 
+**Geometry-only follow-up 2026-10-13 (#593):** the follow-up implementation
+excludes selections with unpadded normalized area < 0.005 from region species;
+ordinary jobs use legacy inference and `bioclip` provenance. Exactly 0.005 stays
+eligible. A transaction locks the image before checking active selection ownership
+on every species box-write path. The tracked refresh operator admits only the
+hash-bound frozen 369-name large/medium cohort and matching selected geometry.
+Implementation delivery is pending; production activation stopped at preflight:
+270 of 274 rule/4 rows ready, four production boxes changed. All 4,401 existing
+selection identities/geometries match and job 6945 is paused. No selections,
+flags or species state changed. See the
+[implementation and stopped activation report](../../reports/localization-geometry-only-activation-2026-10-13.md).
+
 | Stage | Status through 2026-10-12 | Still open | What changed from the original design |
 |---|---|---|---|
 | 1. Control plane | **Done** (#346 and follow-ups). `localization` is a real phase after `metadata`. **#368 deployed and live-verified on 2026-10-07** (PR #575, revision 0040). | **#407** attempt-before edge and burst/picks split, not started. | Spec 02 adds **attempt-before** for `localization` → `scoring`. |

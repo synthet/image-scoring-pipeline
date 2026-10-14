@@ -1,6 +1,33 @@
 # Localization rollout — next steps
 
-## Current handoff — 2026-10-12
+## Current handoff — 2026-10-13
+
+The #593 implementation separates geometry eligibility from species eligibility:
+selected normalized area **< 0.005** uses legacy embedded-detector inference with
+no selected crop and `bioclip` provenance. Exactly 0.005 remains region eligible.
+A transactional image-row lock protects active selected projections in every
+species box-write path, including failures and repairs with region mode off.
+The tracked operator is `scripts/maintenance/refresh_region_species.py`; it
+accepts only explicit IDs from the hash-bound frozen large/medium cohort and
+369-name list, checks geometry/identity, restores non-species keyword metadata,
+verifies preserved captions/scores and predictions, and records verified IDs.
+This follow-up is awaiting PR merge and deployment; #594 remains the merged
+selection-reader implementation. The failed small-species gate stays unchanged.
+
+**Activation stopped at preflight:** production `image_scoring` on port 5432
+has 270 ready rule/4 rows and **four `production_changed` rows** out of 274.
+No row is already selected by this manifest. All 4,401 frozen large/medium
+selection identities/geometries match. Job **6945 is paused** and WebUI remains
+stopped. No promotion, region-mode setting, keyword/species refresh or normal
+service start occurred. Review the four changed boxes before an explicitly
+reviewed manifest disposition; do not reset them to the old sentinel, silently
+drop them, or rerun completed evidence. Private receipts are retained under
+`.agent/scratch/issue593-activation-20261013/`.
+
+See [the implementation and stopped activation report](docs/reports/localization-geometry-only-activation-2026-10-13.md)
+for acceptance criteria, commands, staging order and rollback limits.
+
+## October 12 delivery and frozen gates
 
 PR [#594](https://github.com/synthet/image-scoring-pipeline/pull/594) merged the
 implementation and gate reports into `master` at **`0e24a43`**. Local `master`
@@ -27,25 +54,24 @@ All source replies and completed inference stay intact. Frozen analysis copies,
 SHA-256 receipt, consensus, baseline/final gates, blind descriptions and Jev
 responses live in ignored `.agent/scratch/rollout-20261012-resume/`.
 
-**Next action:** retain the failed small-species gate. Geometry-only small-box
-promotion needs an explicit consumer exclusion for small selections before they
-can feed region species; that behavior is not implemented by this continuation.
-Alternatively gather independent reviewed evidence under a new preregistered
-evaluation. Do not lower the gate or repeat inference over completed artifacts.
-The implementation is delivered; live enablement is a separate remaining task.
+**Next action:** retain the failed small-species gate and use the October 13
+preflight stop condition above. The #593 consumer exclusion is implemented on
+the follow-up branch; live deployment and activation remain pending.
 Passing large/medium species and shadow cascade changes still need a running-code
 version check, fresh state/keyword-preservation checks and a verified DB backup
 before production writes. Keep WebUI stopped and portrait job 6945 paused.
 
 ## Remaining tasks in order
 
-1. **Small selections (#593):** decide and implement a tested exclusion from
-   region species before any geometry-only promotion, or preregister new
-   independently reviewed species evidence. Retain the failed 0.8123/0.85 gate.
+1. **Small selections (#593):** review the four changed production boxes,
+   then deliver/deploy the tested exclusion and box ownership guard. Require
+   every intended manifest row ready or already selected by that exact manifest
+   before geometry-only promotion. Retain the failed 0.8123/0.85 species gate.
 2. **Large/medium species activation:** verify the deployed process uses the
    merged selection reader, the frozen 369-name list and strict `> 0.5` floor;
    back up PostgreSQL, snapshot keywords, and refresh only the approved cohort
-   with preservation checks. #592 closed automatically when #594 merged; that
+   with a seeded 20-image canary and per-image completion receipts. Exclude all
+   small images from this refresh. #592 closed automatically when #594 merged; that
    issue closure does not establish live enablement or refresh completion.
 3. **Cascade shadow activation (#408):** verify merged runner wiring and its
    0.60/no-retry operating point, back up before a flag write, and observe
