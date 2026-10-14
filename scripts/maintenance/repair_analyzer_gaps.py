@@ -24,6 +24,7 @@ Usage (WSL + ~/.venvs/tf, same as webapp):
   python scripts/maintenance/repair_analyzer_gaps.py --all --folder-agg --folder-agg-limit 200
   python scripts/maintenance/repair_analyzer_gaps.py --keywords --limit 500
   python scripts/maintenance/repair_analyzer_gaps.py --stuck-running --stuck-hours 2
+  python scripts/maintenance/repair_analyzer_gaps.py --missing-rows --dry-run --missing-rows-folder /photos --missing-rows-phase bird_species
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from modules import db  # noqa: E402
+from modules.phases import PIPELINE_PHASE_ORDER  # noqa: E402
 
 
 def main() -> None:
@@ -64,6 +66,14 @@ def main() -> None:
         default=None,
         metavar='PATH',
         help='Restrict --missing-rows to images under this folder (and descendants)',
+    )
+    parser.add_argument(
+        '--missing-rows-phase',
+        action='append',
+        choices=[phase.value for phase in PIPELINE_PHASE_ORDER],
+        metavar='CODE',
+        help='Phase to backfill (repeatable); default is the five required phases. '
+             'Optional phases need an explicitly selected cohort.',
     )
     parser.add_argument(
         '--zombie-scores',
@@ -150,6 +160,7 @@ def main() -> None:
         print(f'[repair] missing IPS rows backfill (scope={scope})…', flush=True)
         r = db.backfill_missing_phase_rows(
             folder_path=args.missing_rows_folder,
+            phase_codes=args.missing_rows_phase,
             limit=args.limit,
             dry_run=args.dry_run,
         )
