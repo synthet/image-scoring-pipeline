@@ -235,6 +235,29 @@ def test_geometry_promotion_preserves_keywords_embeddings_and_phase_state(tmp_pa
     assert refresh.verify(baseline)["metadata_preserved"] is True
 
 
+def test_refresh_restores_removed_non_species_membership_and_metadata(tmp_path):
+    from scripts.maintenance import refresh_region_species as refresh
+
+    iid = _image()
+    db.update_image_keywords_for_image(iid, "birds,birds:species-exhausted,travel,species:old",
+                                       source="manual", confidence=0.9, relevance_weight=0.7)
+    db.get_connector().execute(
+        "UPDATE image_keywords SET confidence=NULL WHERE image_id=? AND keyword_id="
+        "(SELECT keyword_id FROM keywords_dim WHERE keyword_norm='birds:species-exhausted')", (iid,))
+    before = refresh._rows([iid])
+    baseline = tmp_path / "before.json"
+    refresh.snapshot([iid], baseline)
+    db.update_image_keywords_for_image(iid, "birds,travel,species:new", source="auto")
+
+    assert refresh.restore(baseline) == {"restored_rows": 3}
+    after = refresh._rows([iid])
+    assert sorted((r for r in before if not r["keyword_norm"].startswith("species:")),
+                  key=lambda r: r["keyword_norm"]) == sorted(
+        (r for r in after if not r["keyword_norm"].startswith("species:")), key=lambda r: r["keyword_norm"])
+    assert [r["keyword_norm"] for r in after if r["keyword_norm"].startswith("species:")] == ["species:new"]
+    assert refresh.restore(baseline) == {"restored_rows": 0}
+
+
 def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, tmp_path):
     import hashlib
     import json
