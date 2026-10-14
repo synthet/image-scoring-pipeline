@@ -4,7 +4,7 @@ title: Pipeline streamlining — spec hub
 description: Implementation specs, roadmap, dependencies and shared conventions for the streamlined pipeline with subject-aware scoring (#406–#413).
 resource: docs/specs/pipeline-streamlining/INDEX.md
 tags: [specs, pipeline, localization, scoring, detection, roadmap]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 status: proposed
 ---
@@ -59,19 +59,28 @@ flowchart LR
 
 ## Roadmap
 
+**Current status (2026-10-12):** #594 merged cascade persistence, the active-selection
+species reader and gate evidence. Cascade AC-17/AC-18 pass; small-crop species
+fails (0.8123 < 0.85). Live activation/refresh is pending. Use
+[the current handoff](../../../NEXT_STEPS.md) for the execution order and
+[the gate report](../../reports/localization-agent-panel-gates-2026-10-12.md)
+for evidence. The roadmap is not a command to repeat completed imports.
+
 | Milestone | Contents | Exit |
 |---|---|---|
-| **M0 — unblock** | Finish rollout stage 4 (#414): answer its open questions, fix the test-DB truncation rollback (#399), get a clean `-m postgres` run, and run the stage 2 legacy import. | The stage 4 exit gate is met. The normalized tables hold the ~76k imported outcomes. |
+| **M0 — unblock** | Decisions and legacy import completed; truncate fix delivered (#427). Lane admission/completion observed; registration boundary fixed (#585). | Production retry timing remains unobserved; complete those observations under the rollout policy. |
 | **M1 — foundations** | 01 rendition, 02 phase graph. | Every AC in both specs passes. Existing runs select the same work, except that keywords no longer waits for scoring. |
-| **M2 — detection** | 03 cascade in shadow; the 05 scene-route benchmark. | The cascade beats YOLO-640 on the #377 cohort under the spec's gates. The scene benchmark is reported. |
-| **M3 — consumers** | Rollout stage 5 (BioCLIP on regions) merged with stage 7 (backfill); the 06 species benchmark. | BioCLIP reads cascade regions. The species benchmark is reported. |
+| **M2 — detection** | Cascade persistence and AC-17/AC-18 evidence merged in #594; scene route implemented (#412). | Verify deployed wiring, enable/observe the cascade in shadow; consumer-source adoption remains separate. |
+| **M3 — consumers** | Region species reads active production selections; existing-cohort gate/parity pass. Small-crop species fails; multi-taxon work remains. | Complete approved-cohort activation/refresh and the small-selection exclusion/evidence requirement. BioCLIP does not automatically consume current cascade runs. |
 | **M4 — subject-aware scoring** | 04 in shadow, the crop-only backfill, then promotion. | Fusion v2 beats v1 on the labelled bursts, and the operator approves the rating change. |
 
 **Parallel track: labelled bursts.** About 300 bursts of human pick/reject labels, stratified by
 subject-size tercile. This is step 0 of
 [subject-aware-culling-evidence.md](../../planning/subject-aware-culling-evidence.md), and it is
 the only way to pass M4's gate honestly. Tracked in #415. No usable human labels exist today
-([07 §4.4](07-blockers-and-decisions.md#44-labelled-bursts-existing-labels-then-collection)), so all of it is new collection.
+([07 §4.4](07-blockers-and-decisions.md#44-labelled-bursts-existing-labels-then-collection)).
+Those September counts are historical; reconcile current owner-label coverage
+before collection. Agent species/box labels from #594 do not satisfy #415.
 
 **Parallel track: evidence and explainability.** These tracks sit beside M0–M4. They reuse the same
 regions, rendition and labels, but none of them changes production scores.
@@ -84,7 +93,7 @@ regions, rendition and labels, but none of them changes production scores.
 | **E4: explainability** | Sub-scores, bands and reasons through the API (spec 04 O-4); gallery breakdown, nearly-tied badge and overlays | E2, #415 | The display gate passes per criterion (CI above chance on labelled bursts). |
 
 The consolidated stage-by-stage status, including these tracks, is at the top of the
-[localization rollout](../../architecture/pipeline/localization-rollout.md#consolidated-status-and-changes-2026-09-25).
+[localization rollout](../../architecture/pipeline/localization-rollout.md).
 
 ## Shared conventions
 
@@ -104,7 +113,12 @@ Every spec follows these rules. They carry over from the
 - **Measured claims only.** Each benchmark reports its cohort, labels, confidence intervals and
   limits, the way #377 does.
 
-## Proposed configuration keys (all new)
+## Configuration keys from the design
+
+The table preserves the original design; several keys now have implementations.
+Check `config.example.json` and current code rather than adding duplicate keys.
+Cascade persistence uses the merged `localization.cascade` flag. Proposed keys
+do not authorize production activation.
 
 | Key | Default | Spec |
 |---|---|---|

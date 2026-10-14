@@ -1,6 +1,24 @@
+---
+type: Implementation Plan
+title: Embedding features next steps
+description: Delivered multi-space endpoints and remaining persistence, job and UI proposals.
+resource: features/planned/embeddings/NEXT_STEPS.md
+tags: [docs, planning, next-steps]
+timestamp: 2026-10-13T00:58:42Z
+okf_version: 0.2
+---
+
 # Embedding Features: Next Steps Roadmap
 
 This document summarizes the current implementation status and the **true remaining gaps** for the 8 proposed embedding applications.
+
+**Code review refreshed 2026-10-12:** multi-space/PCA and the embedding-space
+registry routes are implemented in `modules/api/routers/embedding.py`.
+Persistent projection storage, HDBSCAN and `modules/projection_runner.py` remain
+proposals in this checkout. The queue is the GitHub Project board, not a new
+local task list. [The current handoff](../../../../NEXT_STEPS.md) covers separate
+localization operational blockers; its agent species/box labels are not culling
+ground truth and do not approve embedding-space or scoring-default changes.
 
 ## Status Overview
 
@@ -21,11 +39,13 @@ This document summarizes the current implementation status and the **true remain
 
 Use these code references as the source of truth when reviewing status:
 - `modules/projections.py` (2D projection compute + cache layer)
-- `modules/api.py` (`/api/embedding_map` route)
+- `modules/api/routers/embedding.py` (`/api/embedding_map` and `/api/embedding_spaces`)
 - `tests/test_api_embedding_map.py` (API behavior and fallback/cache tests)
 - `modules/clustering.py` (`_select_best_image` centroid strategy)
 
-Similarity REST routes (search, duplicates, outliers) are listed in the root [TODO.md](../../../TODO.md); request/response shapes are described in [API_CONTRACT.md](../../../technical/API_CONTRACT.md).
+Similarity REST routes are defined in `modules/api/routers/` and
+[API_CONTRACT.md](../../../technical/API_CONTRACT.md). The retired TODO pointers
+route to the Project board; they are not an endpoint inventory.
 
 ---
 
@@ -40,15 +60,16 @@ Similarity REST routes (search, duplicates, outliers) are listed in the root [TO
 - Out of scope here (phase 2): persistent projections + HDBSCAN; phase 3: React atlas UI.
 
 ### 2) Persistent projections + HDBSCAN (App 05, phase 2 — opt-in)
-- Alembic `0013` introduces `image_embedding_projections (image_id, embedding_space_id, projection_method, projection_version, x, y, z, cluster_id, updated_at)` with a deterministic `projection_version` hash. Mirror DDL in `db_postgres._init_db_transaction()`.
-- Add `hdbscan` dependency; verify install in `~/.venvs/tf`. Cluster over PCA-50, not 2D.
-- New `modules/projection_runner.py` one-shot job (not a phase) wired through `job_dispatcher` with memory ceiling and resume-safe state.
-- Endpoint reads from the table when `(space_code, method, version)` matches; writes back when `?persist=true`.
+- First measure whether the disk-cache/recompute path is a bottleneck; keep persistence opt-in.
+- Proposed table: `image_embedding_projections` with a deterministic `projection_version`. Allocate a fresh Alembic revision when implementing it: **0013 is already GPS/location**. Mirror DDL under `modules/db_schema/` and update the application-table catalog.
+- Add/verify `hdbscan` in the documented GPU-shell environment. Cluster over PCA-50, not 2D.
+- Implement `modules/projection_runner.py` as a one-shot job (not a phase) with memory bounds and resume-safe state.
+- Proposed endpoint persistence is a new API contract (`persist` is not a current parameter); ship reader/write tests and contract updates before exposing it.
 
 ### 3) Electron / Gradio UX Wiring (App 05/07, phase 3)
 - Connect existing similarity and embedding-map APIs to production UI flows.
 - React atlas (Deck.gl ScatterplotLayer ≥10k points; Plotly fallback below) with color-by selector, side-panel k-NN, and cluster filters.
-- `GET /api/embedding_spaces` (✅ shipped) surfaces the registry rows for the space dropdown — Postgres reads `embedding_spaces`, Firebird falls back to the static `SPACE_DIMS` registry. Coverage in `tests/test_api_embedding_map.py`.
+- `GET /api/embedding_spaces` (✅ shipped) supplies the registry dropdown on the PostgreSQL runtime. Any legacy engine fallback is compatibility code, not a Firebird deployment task. Coverage lives in `tests/test_api_embedding_map.py`.
 - Add user-facing interactions for map exploration and "more like this" actions.
 - Keep frontend contracts aligned with backend payloads.
 
