@@ -138,7 +138,20 @@ def restore(snap: Path, *, ids=None):
     return _restore(_read(snap), ids=ids)
 
 
-def _restore(data, *, ids=None):
+def _keyword_created_at(ids):
+    """Live non-species timestamps, read before a refresh can delete the rows."""
+    from modules import db
+
+    rows = db.get_connector().query(
+        "SELECT k.image_id, d.keyword_norm, k.created_at FROM image_keywords k "
+        "JOIN keywords_dim d ON d.keyword_id = k.keyword_id WHERE k.image_id IN ({})".format(
+            ",".join("?" * len(ids))),
+        tuple(ids)) or []
+    return {(int(row["image_id"]), row["keyword_norm"]): row["created_at"]
+            for row in rows if not str(row["keyword_norm"]).startswith("species:")}
+
+
+def _restore(data, *, ids=None, created_at=None):
     from modules import db
 
     ids = data["ids"] if ids is None else ids
@@ -150,10 +163,18 @@ def _restore(data, *, ids=None):
     for key, old in before.items():
         if key[0] not in scope or key[1].startswith("species:") or key in present:
             continue
-        db.get_connector().execute(
-            "INSERT INTO image_keywords (image_id, keyword_id, source, confidence, relevance_weight) "
-            "SELECT ?, keyword_id, ?, ?, ? FROM keywords_dim WHERE keyword_norm = ?",
-            (old["image_id"], old["source"], old["confidence"], old["relevance_weight"], old["keyword_norm"]))
+        stamp = None if created_at is None else created_at.get(key)
+        if stamp is None:
+            db.get_connector().execute(
+                "INSERT INTO image_keywords (image_id, keyword_id, source, confidence, relevance_weight) "
+                "SELECT ?, keyword_id, ?, ?, ? FROM keywords_dim WHERE keyword_norm = ?",
+                (old["image_id"], old["source"], old["confidence"], old["relevance_weight"], old["keyword_norm"]))
+        else:
+            db.get_connector().execute(
+                "INSERT INTO image_keywords (image_id, keyword_id, source, confidence, relevance_weight, created_at) "
+                "SELECT ?, keyword_id, ?, ?, ?, ? FROM keywords_dim WHERE keyword_norm = ?",
+                (old["image_id"], old["source"], old["confidence"], old["relevance_weight"], stamp,
+                 old["keyword_norm"]))
         fixed += 1
     for row in current:
         old = before.get((row["image_id"], row["keyword_norm"]))
@@ -255,11 +276,12 @@ def run(ids, species_list, cohort, full, snap, completed):
             rows = db.get_images_with_keyword(keyword="birds", resolved_image_ids=[iid])
             if len(rows) != 1 or int(rows[0]["id"]) != iid:
                 raise ValueError(f"image {iid} no longer bird eligible")
+            stamps = _keyword_created_at([iid])
             try:
                 runner._process_bird_species_image_row(rows[0], species_list=species, threshold=0.5, top_k=1,
                     phase_code="bird_species", refresh=True, log=lambda message, *args: runner.log_history.append(message))
             finally:
-                _restore(baseline, ids=[iid])
+                _restore(baseline, ids=[iid], created_at=stamps)
             phase = db.get_connector().query_one(
                 "SELECT ips.status, ips.skip_reason FROM image_phase_status ips "
                 "JOIN pipeline_phases p ON p.id = ips.phase_id WHERE ips.image_id = ? AND p.code = 'bird_species'",
