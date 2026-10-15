@@ -176,9 +176,19 @@ def _restore(data, *, ids=None, created_at=None):
                 (old["image_id"], old["source"], old["confidence"], old["relevance_weight"], stamp,
                  old["keyword_norm"]))
         fixed += 1
+    snapshotted = set(data["ids"])
     for row in current:
         old = before.get((row["image_id"], row["keyword_norm"]))
-        if old is None or row["keyword_norm"].startswith("species:"):
+        if row["keyword_norm"].startswith("species:"):
+            continue
+        if old is None:
+            # A species write can also add a parent tag (e.g. ``birds``); membership stays as snapshotted.
+            if row["image_id"] in snapshotted:
+                db.get_connector().execute(
+                    "DELETE FROM image_keywords WHERE image_id = ? "
+                    "AND keyword_id = (SELECT keyword_id FROM keywords_dim WHERE keyword_norm = ?)",
+                    (row["image_id"], row["keyword_norm"]))
+                fixed += 1
             continue
         if any(row[k] != old[k] for k in ("source", "confidence", "relevance_weight")):
             db.get_connector().execute(
