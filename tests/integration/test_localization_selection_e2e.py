@@ -271,8 +271,14 @@ def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, t
     rid = _region(_run(iid, publish=False))
     select_region(iid, rid, refresh.SELECTED_BY)
     selection = active_selection(iid)
-    db.update_image_keywords_for_image(iid, "birds,travel,species:old", source="manual", confidence=0.9,
+    db.update_image_keywords_for_image(iid, "birds,birds:species-exhausted,travel,species:old", source="manual", confidence=0.9,
                                        relevance_weight=0.7)
+    def marker_created_at():
+        return db.get_connector().query_one(
+            "SELECT ik.created_at FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id=ik.keyword_id "
+            "WHERE ik.image_id=? AND kd.keyword_norm='birds:species-exhausted'", (iid,))["created_at"]
+
+    original_created_at = marker_created_at()
     region = db.get_connector().query_one("SELECT x1,y1,x2,y2 FROM image_regions WHERE id = ?", (rid,))
     cohort, full, baseline, completed = (tmp_path / name for name in ("cohort.json", "full.json", "baseline.json", "completed.json"))
     cohort.write_text(json.dumps({"selected_by": refresh.SELECTED_BY, "rows": [{"id": iid, **region}],
@@ -300,6 +306,7 @@ def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, t
     refresh.snapshot([iid], baseline)
     result = refresh.run([iid], bs._DEFAULT_SPECIES_LIST_PATH, cohort, full, baseline, completed)
     assert result["completed_ids"] == [iid]
+    assert marker_created_at() == original_created_at
     assert refresh.verify(baseline, full)["metadata_preserved"] is True
     assert calls == [{"threshold": 0.5, "top_k": 1, "region": (0.1, 0.2, 0.3, 0.4), "use_detector": False}]
     assert _bbox(iid) == selection["projected_bird_bbox"]
