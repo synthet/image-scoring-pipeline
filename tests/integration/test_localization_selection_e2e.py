@@ -323,3 +323,46 @@ def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, t
         refresh.run([iid], bs._DEFAULT_SPECIES_LIST_PATH, cohort, full, paused_baseline, tmp_path / "paused-done.json")
     assert statuses == ["running"]
     assert len(calls) == 1
+
+
+def test_refresh_removes_parent_tag_added_to_marker_only_image(monkeypatch, tmp_path):
+    """An image eligible only through ``birds:species-exhausted`` keeps exactly that membership (#593)."""
+    import hashlib
+    import json
+
+    from modules import bird_species as bs
+    from scripts.maintenance import refresh_region_species as refresh
+
+    iid = _image()
+    db.get_connector().execute("UPDATE images SET file_path = ? WHERE id = ?", (str(tmp_path / "bird.jpg"), iid))
+    (tmp_path / "bird.jpg").write_bytes(b"fake classifier input")
+    rid = _region(_run(iid, publish=False))
+    select_region(iid, rid, refresh.SELECTED_BY)
+    selection = active_selection(iid)
+    db.update_image_keywords_for_image(iid, "birds:species-exhausted", source="auto", confidence=1.0)
+    region = db.get_connector().query_one("SELECT x1,y1,x2,y2 FROM image_regions WHERE id = ?", (rid,))
+    cohort, full, baseline, completed = (tmp_path / name for name in ("cohort.json", "full.json", "baseline.json", "completed.json"))
+    cohort.write_text(json.dumps({"selected_by": refresh.SELECTED_BY, "rows": [{"id": iid, **region}],
+        "identities": [{"image_id": iid, "region_id": rid, "localization_run_id": selection["localization_run_id"]}]}))
+    full.write_text(json.dumps({"meta": {"selected_by": refresh.SELECTED_BY},
+                               "images": [{"image_id": iid, "new": "American Wigeon"}]}))
+    monkeypatch.setattr(refresh, "COHORT_SHA256", hashlib.sha256(cohort.read_bytes()).hexdigest())
+    monkeypatch.setattr(refresh, "FULL_SHA256", hashlib.sha256(full.read_bytes()).hexdigest())
+    monkeypatch.setattr(bs, "use_regions_enabled", lambda: True)
+    monkeypatch.setattr(bs, "min_confidence", lambda: 0.5)
+
+    class Classifier:
+        last_bbox = None
+        last_image_embedding = None
+
+        def load_model(self):
+            pass
+
+        def classify(self, *args, **kwargs):
+            return [("American Wigeon", 0.5679)]
+
+    monkeypatch.setattr(bs, "new_bioclip_classifier", lambda: Classifier())
+    refresh.snapshot([iid], baseline)
+    assert refresh.run([iid], bs._DEFAULT_SPECIES_LIST_PATH, cohort, full, baseline, completed)["completed_ids"] == [iid]
+    assert sorted(r["keyword_norm"] for r in refresh._rows([iid])) == [
+        "birds:species-exhausted", "species:american wigeon"]
