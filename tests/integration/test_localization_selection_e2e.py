@@ -235,6 +235,29 @@ def test_geometry_promotion_preserves_keywords_embeddings_and_phase_state(tmp_pa
     assert refresh.verify(baseline)["metadata_preserved"] is True
 
 
+def test_refresh_restores_removed_non_species_membership_and_metadata(tmp_path):
+    from scripts.maintenance import refresh_region_species as refresh
+
+    iid = _image()
+    db.update_image_keywords_for_image(iid, "birds,birds:species-exhausted,travel,species:old",
+                                       source="manual", confidence=0.9, relevance_weight=0.7)
+    db.get_connector().execute(
+        "UPDATE image_keywords SET confidence=NULL WHERE image_id=? AND keyword_id="
+        "(SELECT keyword_id FROM keywords_dim WHERE keyword_norm='birds:species-exhausted')", (iid,))
+    before = refresh._rows([iid])
+    baseline = tmp_path / "before.json"
+    refresh.snapshot([iid], baseline)
+    db.update_image_keywords_for_image(iid, "birds,travel,species:new", source="auto")
+
+    assert refresh.restore(baseline) == {"restored_rows": 3}
+    after = refresh._rows([iid])
+    assert sorted((r for r in before if not r["keyword_norm"].startswith("species:")),
+                  key=lambda r: r["keyword_norm"]) == sorted(
+        (r for r in after if not r["keyword_norm"].startswith("species:")), key=lambda r: r["keyword_norm"])
+    assert [r["keyword_norm"] for r in after if r["keyword_norm"].startswith("species:")] == ["species:new"]
+    assert refresh.restore(baseline) == {"restored_rows": 0}
+
+
 def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, tmp_path):
     import hashlib
     import json
@@ -248,8 +271,14 @@ def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, t
     rid = _region(_run(iid, publish=False))
     select_region(iid, rid, refresh.SELECTED_BY)
     selection = active_selection(iid)
-    db.update_image_keywords_for_image(iid, "birds,travel,species:old", source="manual", confidence=0.9,
+    db.update_image_keywords_for_image(iid, "birds,birds:species-exhausted,travel,species:old", source="manual", confidence=0.9,
                                        relevance_weight=0.7)
+    def marker_created_at():
+        return db.get_connector().query_one(
+            "SELECT ik.created_at FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id=ik.keyword_id "
+            "WHERE ik.image_id=? AND kd.keyword_norm='birds:species-exhausted'", (iid,))["created_at"]
+
+    original_created_at = marker_created_at()
     region = db.get_connector().query_one("SELECT x1,y1,x2,y2 FROM image_regions WHERE id = ?", (rid,))
     cohort, full, baseline, completed = (tmp_path / name for name in ("cohort.json", "full.json", "baseline.json", "completed.json"))
     cohort.write_text(json.dumps({"selected_by": refresh.SELECTED_BY, "rows": [{"id": iid, **region}],
@@ -277,6 +306,7 @@ def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, t
     refresh.snapshot([iid], baseline)
     result = refresh.run([iid], bs._DEFAULT_SPECIES_LIST_PATH, cohort, full, baseline, completed)
     assert result["completed_ids"] == [iid]
+    assert marker_created_at() == original_created_at
     assert refresh.verify(baseline, full)["metadata_preserved"] is True
     assert calls == [{"threshold": 0.5, "top_k": 1, "region": (0.1, 0.2, 0.3, 0.4), "use_detector": False}]
     assert _bbox(iid) == selection["projected_bird_bbox"]
