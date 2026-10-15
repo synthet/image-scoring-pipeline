@@ -99,6 +99,54 @@ def test_metadata_restore_preserves_null_distinctions(operator, monkeypatch, tmp
     assert writes[0][:3] == ("manual", None, 0.7)
 
 
+@pytest.mark.parametrize("keyword", ["birds:species-exhausted", "hand-added note"])
+def test_restore_reinserts_missing_non_species_keyword_without_restoring_old_species(
+    operator, monkeypatch, tmp_path, keyword,
+):
+    cli, *_ = operator
+    missing = {"image_id": 1, "keyword_norm": keyword, "source": "manual",
+               "confidence": None, "relevance_weight": 0.7}
+    old_species = {**missing, "keyword_norm": "species:old"}
+    new_species = {**missing, "keyword_norm": "species:new", "source": "bioclip_region",
+                   "confidence": 0.9}
+    snap = tmp_path / "baseline.json"
+    snap.write_text(json.dumps({"ids": [1], "rows": [missing, old_species]}))
+    current = [new_species]
+    monkeypatch.setattr(cli, "_rows", lambda ids: current)
+    writes = []
+
+    class Connector:
+        def execute(self, sql, params):
+            writes.append((sql, params))
+
+    monkeypatch.setattr(bs.db, "get_connector", lambda: Connector())
+    assert cli.restore(snap) == {"restored_rows": 1}
+    assert len(writes) == 1 and "INSERT INTO image_keywords" in writes[0][0]
+    assert writes[0][1] == (1, "manual", None, 0.7, keyword)
+    assert current == [new_species]
+
+
+def test_restore_reinsert_keeps_supplied_created_at(operator, monkeypatch, tmp_path):
+    cli, *_ = operator
+    missing = {"image_id": 1, "keyword_norm": "birds:species-exhausted", "source": "auto",
+               "confidence": 1.0, "relevance_weight": 1.0}
+    snap = tmp_path / "baseline.json"
+    snap.write_text(json.dumps({"ids": [1], "rows": [missing]}))
+    monkeypatch.setattr(cli, "_rows", lambda ids: [])
+    writes = []
+
+    class Connector:
+        def execute(self, sql, params):
+            writes.append((sql, params))
+
+    monkeypatch.setattr(bs.db, "get_connector", lambda: Connector())
+    stamp = "2026-10-14 23:40:32.900621"
+    assert cli._restore(json.loads(snap.read_text()), created_at={(1, missing["keyword_norm"]): stamp}) == {
+        "restored_rows": 1}
+    assert "created_at" in writes[0][0]
+    assert writes[0][1] == (1, "auto", 1.0, 1.0, stamp, missing["keyword_norm"])
+
+
 @pytest.mark.parametrize("change", ["keyword", "confidence", "source", "relevance_weight", "caption", "score",
                                     "species", "embedding", "phase"])
 def test_geometry_only_verification_rejects_preservation_drift(operator, monkeypatch, tmp_path, change):
