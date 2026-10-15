@@ -126,6 +126,28 @@ def test_restore_reinserts_missing_non_species_keyword_without_restoring_old_spe
     assert current == [new_species]
 
 
+def test_restore_deletes_added_non_species_keyword_and_keeps_new_species(operator, monkeypatch, tmp_path):
+    cli, *_ = operator
+    kept = {"image_id": 1, "keyword_norm": "birds:species-exhausted", "source": "auto",
+            "confidence": 1.0, "relevance_weight": 1.0}
+    added = {**kept, "keyword_norm": "birds"}
+    new_species = {**kept, "keyword_norm": "species:american wigeon", "source": "bioclip_region",
+                   "confidence": 0.5679}
+    snap = tmp_path / "baseline.json"
+    snap.write_text(json.dumps({"ids": [1], "rows": [kept]}))
+    monkeypatch.setattr(cli, "_rows", lambda ids: [kept, added, new_species])
+    writes = []
+
+    class Connector:
+        def execute(self, sql, params):
+            writes.append((sql, params))
+
+    monkeypatch.setattr(bs.db, "get_connector", lambda: Connector())
+    assert cli.restore(snap) == {"restored_rows": 1}
+    assert len(writes) == 1 and writes[0][0].lstrip().startswith("DELETE FROM image_keywords")
+    assert writes[0][1] == (1, "birds")
+
+
 def test_restore_reinsert_keeps_supplied_created_at(operator, monkeypatch, tmp_path):
     cli, *_ = operator
     missing = {"image_id": 1, "keyword_norm": "birds:species-exhausted", "source": "auto",
