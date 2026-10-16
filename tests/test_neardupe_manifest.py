@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -13,6 +14,11 @@ class FakeDB:
     def __init__(self):
         self.ids = {1, 2}
         self.fail = False
+        self.human_labelled = set()
+
+    def assert_removable(self, row):
+        if row["image_id"] in self.human_labelled:
+            raise SafetyError("human-labelled frame is protected")
 
     def identity(self):
         return {"database": "isolated_test"}
@@ -273,6 +279,42 @@ class MaintenanceTests(unittest.TestCase):
         self.row["replacement_id"] = 1
         with self.assertRaises(SafetyError):
             self.executor()
+
+    def test_human_labelled_frame_is_protected_before_any_mutation(self):
+        self.db.human_labelled.add(1)
+        e = self.executor()
+        with self.assertRaises(SafetyError):
+            e.dry_run()
+        with self.assertRaises(SafetyError):
+            e.apply()
+        self.assertEqual(sha256(self.row["path"]), self.row["sha256"])
+        self.assertTrue(Path(self.row["sidecars"][0]["path"]).exists())
+        self.assertEqual(self.db.ids, {1, 2})
+
+    def test_recovery_link_stays_on_the_source_volume(self):
+        e = self.executor()
+        e.apply()
+        real_link = os.link
+
+        def same_volume_link(src, dst):
+            # Hard links cannot cross volumes; model the backup as another drive.
+            if Path(src).parent != Path(dst).parent:
+                raise OSError(
+                    17, "The system cannot move the file to a different disk drive"
+                )
+            return real_link(src, dst)
+
+        with patch(
+            "scripts.neardupe_maintenance.maintenance.os.link", same_volume_link
+        ):
+            e.recover()
+        self.assertEqual(sha256(self.row["path"]), self.row["sha256"])
+        self.assertEqual(
+            sha256(self.row["sidecars"][0]["path"]), self.row["sidecars"][0]["sha256"]
+        )
+        self.assertEqual(
+            sorted(p.name for p in self.photos.iterdir()), ["a.NEF", "a.xmp", "b.NEF"]
+        )
 
     def test_duplicate_filename_in_another_folder_does_not_match(self):
         outside = Path(self.tmp.name) / "other"

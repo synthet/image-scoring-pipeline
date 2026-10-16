@@ -177,6 +177,77 @@ class PostgresMaintenanceTests(unittest.TestCase):
             self.assertEqual([r[0] for r in c.fetchall()], [prior])
         self.conn.rollback()
 
+    def test_human_labelled_frame_is_protected_and_labels_never_deleted(self):
+        self.assertNotIn(("human_labels", "labels"), self.adapter.direct_tables)
+        key = "neardupe-test-" + self.token
+        with self.conn.cursor() as c:
+            c.execute(
+                "INSERT INTO human_labels.units(unit_id,unit_key,source,image_ids,strata,weight,sample_order,sample_version) "
+                "VALUES ((SELECT coalesce(min(unit_id),0)-1 FROM human_labels.units),%s,'test',%s,'{}'::jsonb,1,0,'test') RETURNING unit_id",
+                (key, self.ids),
+            )
+            unit = c.fetchone()[0]
+            c.execute(
+                "INSERT INTO human_labels.labels(unit_id,image_id,labeler,grade,is_best) VALUES (%s,%s,%s,%s,%s)",
+                (unit, self.ids[0], key, 2, True),
+            )
+        self.conn.commit()
+        try:
+            with self.assertRaises(SafetyError):
+                self.adapter.assert_removable(self.row)
+            self.adapter.begin_batch(self.row)
+            with self.assertRaises(SafetyError):
+                self.adapter.delete(self.row)
+            self.assertTrue(self.adapter.exists(self.ids[0]))
+            with self.conn.cursor() as c:
+                c.execute(
+                    "SELECT count(*) FROM human_labels.labels WHERE unit_id=%s", (unit,)
+                )
+                self.assertEqual(c.fetchone()[0], 1)
+        finally:
+            self.conn.rollback()
+            with self.conn.cursor() as c:
+                c.execute("DELETE FROM human_labels.units WHERE unit_id=%s", (unit,))
+            self.conn.commit()
+
+    def test_stack_review_history_is_kept_and_set_null_is_restored(self):
+        with self.conn.cursor() as c:
+            c.execute(
+                "INSERT INTO sub_stacks(stack_id,name,best_image_id) VALUES (%s,%s,%s) RETURNING id",
+                (self.stack, "solo", self.ids[0]),
+            )
+            solo = c.fetchone()[0]
+            c.execute(
+                "UPDATE images SET sub_stack_id=%s WHERE id=%s", (solo, self.ids[0])
+            )
+            c.execute(
+                "INSERT INTO agent_cull_review_groups(stack_id,sub_stack_id,review_unit_key) VALUES (%s,%s,%s) RETURNING id",
+                (self.stack, solo, "neardupe-test-" + self.token),
+            )
+            group = c.fetchone()[0]
+        self.conn.commit()
+        self.adapter.begin_batch(self.row)
+        snapshot = self.adapter.snapshot(self.row)
+        self.adapter.delete(self.row)
+        with self.conn.cursor() as c:
+            # The emptied sub-stack is removed; its FK nulls the group, which survives.
+            c.execute(
+                "SELECT sub_stack_id FROM agent_cull_review_groups WHERE id=%s",
+                (group,),
+            )
+            self.assertEqual(c.fetchone(), (None,))
+        self.conn.rollback()
+        self.adapter.restore(self.row, snapshot)
+        with self.conn.cursor() as c:
+            c.execute(
+                "SELECT sub_stack_id FROM agent_cull_review_groups WHERE id=%s",
+                (group,),
+            )
+            self.assertEqual(c.fetchone(), (solo,))
+            c.execute("SELECT sub_stack_id FROM images WHERE id=%s", (self.ids[0],))
+            self.assertEqual(c.fetchone(), (solo,))
+        self.conn.rollback()
+
     def test_derived_view_is_not_a_recovery_table(self):
         view = "neardupe_test_view_" + self.token
         with self.conn.cursor() as c:
