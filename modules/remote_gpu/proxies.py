@@ -392,10 +392,12 @@ class RemoteBioCLIPClassifier(BioCLIPClassifier):
 
         self.last_image_embedding = None
         self.last_bbox = None
+        self.last_error = None  # as in a local run: set only when ``[]`` means failure, not abstention
         try:
             img = open_oriented_for_ml(image_path)
         except Exception as exc:  # noqa: BLE001 — same outcome as a local decode failure
             logger.error("BioCLIP classify error for %s: %s", image_path, exc)
+            self.last_error = str(exc)[:200]
             return []
         out = self._client.call(
             BIOCLIP,
