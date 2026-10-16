@@ -3,7 +3,6 @@
 import hashlib
 import importlib
 import json
-from pathlib import Path
 
 import pytest
 
@@ -13,7 +12,7 @@ from modules import bird_species as bs
 @pytest.fixture
 def operator(monkeypatch, tmp_path):
     cli = importlib.import_module("scripts.maintenance.refresh_region_species")
-    species = Path(bs._DEFAULT_SPECIES_LIST_PATH)
+    species = cli.FROZEN_SPECIES_LIST
     frozen = {"selected_by": cli.SELECTED_BY,
               "rows": [{"id": 1, "x1": 0, "y1": 0, "x2": 0.1, "y2": 1}],
               "identities": [{"image_id": 1, "localization_run_id": 7, "region_id": 9}]}
