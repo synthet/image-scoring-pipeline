@@ -233,3 +233,25 @@ def test_region_mode_disabled_prevents_job_creation(operator, monkeypatch, tmp_p
     with pytest.raises(ValueError, match="region mode"):
         cli.run([1], species, cohort, report, tmp_path / "baseline.json", tmp_path / "done.json")
     assert jobs == []
+
+
+def test_profile_379_pins_the_gated_list_and_its_predictions(operator, monkeypatch):
+    cli, species_369, cohort, report, _, jobs = operator
+    live_379 = cli._ROOT / "data" / "bird_species_list.txt"
+    monkeypatch.setattr(cli, "FULL_379_SHA256", cli.FULL_SHA256)
+    names, _ = cli.preflight([1], live_379, cohort, report, profile="379")
+    assert len(names) == 379
+    with pytest.raises(ValueError, match="379-name"):
+        cli.preflight([1], species_369, cohort, report, profile="379")
+    with pytest.raises(ValueError, match="369-name"):
+        cli.preflight([1], live_379, cohort, report)
+    with pytest.raises(ValueError, match="profile"):
+        cli.preflight([1], live_379, cohort, report, profile="382")
+    assert jobs == []
+
+
+def test_profile_379_rejects_the_369_predictions(operator):
+    cli, _, cohort, report, _, jobs = operator
+    with pytest.raises(ValueError, match="hash"):
+        cli.preflight([1], cli._ROOT / "data" / "bird_species_list.txt", cohort, report, profile="379")
+    assert jobs == []
