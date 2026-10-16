@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-16] edit | Assess Jev 1.14 image inputs
+
+Added [the assessment](reports/jev-1.14-image-inputs-assessment-2026-10-16.md) and a follow-up in the Jev harness doc. Verified that `jev-1.14.0` is available and that `typesafe-sdk` 0.7.5 has `Image` assets and `Box`. The size limits and pricing come from a third-party report and are unverified. The MCP tool cannot send images. Use is limited to research gates after egress approval, an SDK upgrade and a pilot. No code or configuration changed.
+
 ## [2026-10-16] edit | Gate and adopt the 379-name bird species list
 
 Added [the list gate report](reports/bird-species-list-379-gate-2026-10-16.md). Stored region embeddings reproduced all 4,401 live outcomes. A Jev range screen and the AOS checklist removed three of the 13 proposed additions. A four-CLI blind panel with Jev split adjudication judged all 124 differing frames: 379-list right 110 / wrong 4 versus 369-list right 5 / wrong 29. L1–L3 pass. The Stage 5 operator keeps a frozen 369-name list. Agent-panel labels, not owner labels.
