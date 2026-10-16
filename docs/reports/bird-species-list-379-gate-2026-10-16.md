@@ -91,8 +91,15 @@ gate would still pass.
 The gate measures the selected-region cohort only:
 - **Legacy path not measured.** Full-frame and detector-crop species inference on unselected
   images uses the same list, but these frames did not test it.
-- **No relabelling yet.** Existing production labels still come from the 369-name list.
-  Relabelling the 124 affected cohort images is a separate approved refresh. The frozen 369-name
-  operator cannot do it as built.
+- **Relabelling done on 2026-10-16 (#619).** The refresh operator gained `--profile 379` (#620).
+  It pins the 379-name list and a frozen predictions artifact: the 369 artifact with the 124 rescored
+  differences applied. After a verified backup, all 124 images were refreshed with per-image receipts
+  (jobs 7006 and 7007).
+  - **Result:** all 4,401 cohort images verify against the 379 predictions, with 4,029 labelled and
+    372 abstaining.
+  - **Preserved:** non-species keywords and image metadata, checked against the pre-run snapshot.
+  - **Bug found on the way:** the first attempt stopped at image 13941. The GPU-runner BioCLIP proxy
+    never set `last_error`, so an abstention kept its stale label (fixed in #621). No other image in
+    the library had a no-match phase with a `species:*` keyword.
 - **Evidence location:** contract, rescoring, panel, consensus and Jev receipts are in the ignored
   `.agent/scratch/species-list-382/`.

@@ -15,9 +15,14 @@ Receipts are in ignored `.agent/scratch/issue593-activation-20261014-approved-ta
 The verified pre-activation backup is
 `backups/issue593-activation-20261014/image_scoring_pre_activation.dump`.
 
+**Update 2026-10-16:**
+- **379-name relabel done (#619).** All 124 affected cohort images were relabelled through the operator's new `--profile 379` (#620). All 4,401 now verify against the frozen 379 predictions: 4,029 labelled and 372 abstaining. Non-species keywords and metadata were preserved. Backup: `backups/issue619-relabel-20261016/image_scoring_pre_relabel_379.dump`.
+- **#621:** the GPU-runner BioCLIP proxy never set `last_error`, so a refresh that abstained kept its stale label. The relabel's verification caught this on image 13941. A library-wide check found no other stale labels.
+- **#408 closed.** Live `subject_cascade` runs were observed on 10 newly localized images, covering the adopt, fallback and scene-routed paths. Start WebUI with `docker compose up`, which recreates the container; the stopped container still has the pre-onnxruntime image.
+
 **Next:**
 1. **Before starting WebUI:** check out a tree that contains `master` at `b1ffda8`/#598 or later. Compose mounts the working tree at `/app`. With region mode on, an older checkout would feed the geometry-only small selections to region species.
-2. **#408:** cascade enabled (`onnxruntime` deployed via #613; rollback image `image-scoring:pre-onnxruntime-20261015`). Observe the first live `subject_cascade` runs.
+2. **#408 (closed):** cascade enabled and observed live. Rollback image `image-scoring:pre-onnxruntime-20261015` can be removed once WebUI has run on the new image.
 3. **Small-crop species (#610):** stays failed (0.8123 < 0.85). Re-opening it needs new pre-registered evidence. Don't lower the gate.
 4. **Other open work:** portrait job 6945 / #418, the remaining #422 list/routing items, and Stage 6 (#415/#409/#423).
 

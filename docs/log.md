@@ -6,6 +6,15 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-16] edit | Record the 379-name relabel and the #408 live cascade runs
+
+Updated the 379 gate report, the rollout status and NEXT_STEPS.
+- **Relabel:** the 124 affected Stage 5 images were relabelled under the 379-name list through `--profile 379` (#620, #619). All 4,401 verify: 4,029 labelled and 372 abstaining.
+- **Bug fix:** #621 makes the GPU-runner BioCLIP proxy report `last_error`, so a refresh abstention clears stale labels.
+- **Cascade:** live `subject_cascade` runs were observed on all three paths, and #408 is closed.
+
+Agent-panel labels, not owner labels.
+
 ## [2026-10-16] edit | Assess Jev 1.14 image inputs
 
 Added [the assessment](reports/jev-1.14-image-inputs-assessment-2026-10-16.md) and a follow-up in the Jev harness doc. Verified that `jev-1.14.0` is available and that `typesafe-sdk` 0.7.5 has `Image` assets and `Box`. The size limits and pricing come from a third-party report and are unverified. The MCP tool cannot send images. Use is limited to research gates after egress approval, an SDK upgrade and a pilot. No code or configuration changed.
