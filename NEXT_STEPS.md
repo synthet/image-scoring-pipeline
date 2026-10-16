@@ -16,9 +16,10 @@ The verified pre-activation backup is
 `backups/issue593-activation-20261014/image_scoring_pre_activation.dump`.
 
 **Next:**
-1. **#408:** add `onnxruntime` to the production image, which today has it only in the hand-patched gpu-shell. Then set `localization.cascade.enabled: true` and observe shadow `subject_cascade` runs. AC-15 held: there are zero cascade runs.
-2. **Small-crop species:** stays failed (0.8123 < 0.85). Re-opening it needs new pre-registered evidence. Don't lower the gate.
-3. **Other open work:** portrait job 6945 / #418, the remaining #422 list/routing items, and Stage 6 (#415/#409/#423).
+1. **Before starting WebUI:** check out a tree that contains `master` at `b1ffda8`/#598 or later. Compose mounts the working tree at `/app`. With region mode on, an older checkout would feed the geometry-only small selections to region species.
+2. **#408:** cascade enabled (`onnxruntime` deployed via #613; rollback image `image-scoring:pre-onnxruntime-20261015`). Observe the first live `subject_cascade` runs.
+3. **Small-crop species (#610):** stays failed (0.8123 < 0.85). Re-opening it needs new pre-registered evidence. Don't lower the gate.
+4. **Other open work:** portrait job 6945 / #418, the remaining #422 list/routing items, and Stage 6 (#415/#409/#423).
 
 ## Handoff — 2026-10-13
 
