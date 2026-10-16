@@ -152,7 +152,7 @@ See the
 | 1. Control plane | **Done** (#346 and follow-ups). `localization` is a real phase after `metadata`. **#368 deployed and live-verified on 2026-10-07** (PR #575, revision 0040). | **#407** attempt-before edge and burst/picks split, not started. | Spec 02 adds **attempt-before** for `localization` → `scoring`. |
 | 2. Normalized persistence | **Done.** Legacy import 2026-09-27: 76,475 current runs. Reader exists; `localization.read_normalized_first` stays off, so `bird_bbox` is still the production read. | Mask artifacts and a second keypoint pass (#426). | Region-linked keypoints landed in shadow (migration 0036, eye-pose backfill, [spot check](../../reports/eye-keypoint-spot-check-2026-09-27.md)). |
 | 3. Rendition and crops | **Code complete** (#375). Detector benchmark done (#377). Default weights are `bird_detect_v1.pt` (#462), still `imgsz=640`. Upright ML inputs are deployed (#418); the 80-image re-embed check matched upright pixels. | Shared decode-once for every phase (#406). Slice 1 cache/pruner landed (#446). Portrait re-score job 6945 and keyword/species restoration remain unfinished. | One ~2048 px inference rendition for every phase (spec 01), not only localization. |
-| 4. Shadow localization | **Slice 1 + M0 done** (#395, #414); lane code and registration boundary delivered (#527, #585). Live admission/completion observed October 9. Cascade persistence merged in #594; AC-17/AC-18 pass at fallback 0.60 without retry; AC-15 holds (zero cascade runs). | Production retry timing remains. Cascade **enabled 2026-10-15** (`localization.cascade.enabled: true`, `onnxruntime` in the image via #613); live `subject_cascade` runs not yet observed. Cascade consumer-source adoption needs its own rule and gate (#408). | `subject_cascade` stays a shadow provider; production YOLO remains `bird_detect_v1` at 640. Scene route can skip detection (#412). |
+| 4. Shadow localization | **Slice 1 + M0 done** (#395, #414); lane code and registration boundary delivered (#527, #585). Live admission/completion observed October 9. Cascade persistence merged in #594; AC-17/AC-18 pass at fallback 0.60 without retry; AC-15 holds (zero cascade runs). | Production retry timing remains. Cascade **enabled 2026-10-15** (`localization.cascade.enabled: true`, `onnxruntime` in the image via #613). Live `subject_cascade` runs were observed on 2026-10-16 on all three paths, and #408 is closed. Cascade consumer-source adoption needs its own rule and gate. | `subject_cascade` stays a shadow provider; production YOLO remains `bird_detect_v1` at 640. Scene route can skip detection (#412). |
 | 5. BioCLIP on regions | **Live 2026-10-15.** `use_regions` on, floor 0.5. All 4,401 large/medium selections were refreshed and verified (3,948 labels, 453 abstentions, matching the frozen comparison). Small selections (< 0.005 area) are excluded from region species (#598). | Small-crop species stays failed (0.8123 < 0.85) and needs new pre-registered evidence. Other #422/#413/multi-region work remains. | Species reads active production selections, not current shadow runs. `read_normalized_first` stays off; `bird_bbox` projections preserve compatibility. |
 | 6. Crop / fusion | **Not started.** | #409 (crop score storage + fusion), #423 (evidence JSONL), #415 (~300 labelled bursts). | Region IQA is scoring design, gated on those bursts, not a global crop switch. Captions, accessibility, and Jev stay shadow. |
 | 7. Repair and backfill | **Split.** Legacy import is done (stage 2). v1 rescan of 35,209 legacy misses is done and stays shadow unless a selection says otherwise. Bounded repair and the dispatcher-idle repair lane are merged as stage 4 work (#559, #561). Live lane cycles were observed on 2026-10-09. | Production retry timing remains unobserved. Crop-score backfill waits on #409. `scripts/backfill_bird_bbox.py` still writes the JSON column and must be retired or rerouted before normalized authority. | No unbenchmarked full-library rescan. The v1 rescan was an explicit, resumable job, not an automatic scan of every new image. |
@@ -238,12 +238,20 @@ In order. Do not start a later row while an earlier blocker is open.
    portrait job 6945 and restore/verify species keywords before closing the issue;
    this is separate from the read-only selected-region comparison.
 4. **#408** cascade enabled on 2026-10-15 after `onnxruntime` reached the production image
-   (#613). AC-15 held, with zero cascade runs before the flip. Observe live shadow runs on the next
-   new-image localization. AC-17/AC-18 pass at 0.60 without retry.
+   (#613). AC-15 held, with zero cascade runs before the flip. Live shadow runs were observed on
+   2026-10-16 on 10 newly localized images (#408 closed):
+   - 7 frames where YOLO detected a bird: the cascade adopted YOLO's box.
+   - 2 frames where YOLO found nothing: RTMDet ran as the fallback and wrote `coco` runs.
+   - 1 frame the scene route marked `other`: the cascade recorded `disabled`.
+   Start WebUI with `docker compose up`, which recreates the container. A plain `docker start` revives the
+   pre-onnxruntime image. AC-17/AC-18 pass at 0.60 without retry.
    Production detection remains YOLO `bird_detect_v1` at 640; consumer region
    adoption remains a separate decision and gate. Do not change `imgsz` here.
 5. **Stage 5 activation: done on 2026-10-15.** See the
    [activation report](../../reports/localization-stage5-activation-2026-10-15.md).
+   On 2026-10-16 the 124 cohort images affected by the gated 379-name list were relabelled (#619).
+   All 4,401 now carry 379-list outcomes: 4,029 labelled and 372 abstaining. See the
+   [list gate report](../../reports/bird-species-list-379-gate-2026-10-16.md).
    Small-crop species needs new independent evidence before small selections
    feed region species. Other #422 list/routing follow-ups stay open.
 6. **Stage 6** waits on #415 labels, then #409 storage (prefer a sibling score table over
