@@ -9,8 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.0.0] - 2026-10-15
+
+### Breaking
+- **Remote GPU transport API v2** (#568–#570): scoring sends independently prepared, upright per-model inputs with provenance. Upgrade the backend and the GPU runner together. Endpoint paths stay `/v1`.
+- **Migrations `0039`–`0041` need `alembic upgrade head`:**
+  - `localization_enablement` boundary (0039);
+  - delegated culling lifecycle (0040, #368);
+  - `images.registered_at` (0041, #584). It is backfilled from `created_at` before its default is set, so existing rows keep their new-image classification.
+
+### Added
+- **Localization Stage 4 exit-gate code** (#527): new-images-only boundary with claimed selector submits; bounded repair from run history (3 attempts, 1 min / 5 min); phantom reconciliation from the current terminal run; and an automatic repair lane on the dispatcher idle path.
+- **Bird species abstention** (#422): `bird_species.min_confidence` (default 0.5) is the threshold for jobs that do not pass one. Below it, no species is stored and the image takes the `no_species_match` path. Nine missing species were added to the bundled list. Calibration report: `docs/reports/bird-species-abstention-2026-10-08.md`.
+- **Remote GPU local fallback** (#529): an ordered fallback chain of configured runner, same-machine HTTP runner, then embedded inference.
+- **RAW diagnostics**: opt-in RAW decode diagnostics and a decode-comparison tool (#571).
+- **Keypoints**: `backfill_region_keypoints.py --selected-by <rule>` targets promoted selected regions (#492). There is also a read-only species shadow re-run harness for promoted selections (#493).
+- **Stage 5 region species** (#592, #594, #598): with `bird_species.use_regions`, BioCLIP classifies the active production selection region (`image_localization_selections`) instead of the current shadow run. Images without a selection keep the legacy path. Selections smaller than 0.005 normalized area stay legacy (geometry-only), and a row lock protects selected boxes in every species box-write path.
+- **Shadow detector cascade persistence** (#408, #594): with `localization.cascade.enabled` (default false), the localization runner also persists `coco` and `subject_cascade` runs (RTMDet fallback at 0.60, small-box refine). It is shadow only and needs `onnxruntime`.
+- **Region-species refresh operator** `scripts/maintenance/refresh_region_species.py` (#598, #599, #608): bounded refresh of an explicit frozen cohort with keyword-preservation snapshots, per-image verified completion receipts and prediction checks.
+- **Research**: blind multi-CLI judge panels for species and box gates (`scripts/research/judges/`, #594).
+
+### Changed
+- **Scoring preparation**: scoring bakes EXIF rotation and reflection before inference, rejects failed preparation, versions cache identity, and records input provenance in run snapshots. Cached scores computed on unrotated inputs become stale.
+- **ML inputs are upright** (#418): `open_image_for_ml` returns oriented RGB, so CLIP keywords, BLIP captions, MobileNet clustering and the embedding extractors now see portrait RAWs upright.
+- **Species threshold**: `threshold` is optional on `POST /api/bird-species/start` and the MCP tool; when omitted, the config floor applies.
+- **Species floor is strict** (#422, #594): a species is stored only when its probability is above `bird_species.min_confidence`. An explicit refresh (`overwrite`) that abstains removes the stale `species:*` keyword.
+- **Dependency**: `onnxruntime==1.22.1` is now in `requirements/requirements_wsl_gpu.txt` for the cascade's RTMDet fallback (#613). Rebuild the image or install it into existing containers.
+
 ### Fixed
+- **Remote scoring host** (#588): it now includes models registered at import time (TOPIQ, ARNIQA). Previously every image failed with `Missing prepared input for topiq`.
+- **Tagging overwrite**: `POST /api/tagging/start` with `overwrite: true` now forces a re-tag. The dispatcher had ignored the payload flag.
+- **Selector-mode metadata**: `convert_path_to_local` passes a `None` path through instead of crashing.
+- **Localization boundary** (#584): new images are judged by registration time, not capture time. Photos captured before the boundary but imported later now enter the lane.
+- **Localization retries**: recovered retries re-enter `running` before their outcome is recorded, so strict phase-transition checking accepts them (#576).
+- **Delegated culling lifecycle** is persisted (#368).
+- **Thumbnails**: `rawpy` thumbnails no longer get a copied Orientation tag, which rotated them a second time.
+- **BLIP captions** no longer loop on repeated tokens (#546). `log_line` broadcasts are no longer DEBUG-logged (#544).
+- **Runs**: canceled maintenance jobs release the runner so queued runs start.
+- **Tooling**: MCP stdio servers run in gpu-shell and reach the WebUI over the compose network. The image-scoring container image installs alembic.
+- **Tests**: PostgreSQL test skips name the host, port and database they tried (#379).
 - **JPEG thumbnail orientation:** Apply EXIF transpose before saving raster thumbnails so portrait sources keep upright pixels when Pillow drops the EXIF tag. RAW thumbnail handling is unchanged; existing affected JPEG thumbnails require regeneration. See the companion gallery's [orientation solution and verification](https://github.com/synthet/image-scoring-gallery/blob/main/docs/features/implemented/05-jpeg-export-exif-orientation.md), including preserved image 240203.
+- **RAW embedded previews** (#594): an ExifTool timeout is retried once with a longer timeout (10 s, then 60 s), and a `JpgFromRaw` timeout still falls through to `PreviewImage`.
+- **Region-species refresh preservation** (#599, #608): restore puts back non-species keywords that a refresh removed, with their original metadata and `created_at`. It also removes non-species keywords a refresh added, such as a parent `birds` tag.
+- **Study tooling** (#611): `agent_cull_vision_smoke.sh` passes Codex `--ask-for-approval` before `exec` and uses a valid sandbox mode.
 
 ## [8.18.0] - 2026-10-03
 
