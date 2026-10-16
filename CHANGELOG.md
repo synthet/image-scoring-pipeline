@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.1.0] - 2026-10-16
+
+### Added
+- **379-name bird species list** (#616): the bundled list grows from 369 to 379 names, reordered by an Austin-area frequency proxy. An agent-panel gate (agent-panel labels, not owner labels) passed on the 118 resolved frames whose label changes: right 110 / wrong 4, against 5 / 29 for the 369-name list. Boat-tailed Grackle, Eurasian Jackdaw and American Herring Gull were not adopted. Report: `docs/reports/bird-species-list-379-gate-2026-10-16.md`.
+- **`refresh_region_species.py --profile 379`** (#620): refreshes a cohort under the gated 379-name list against its own frozen predictions artifact. The default profile stays `369`. Used for the #619 relabel of 124 images; all 4,401 cohort images verify against the 379 predictions.
+
+### Fixed
+- **Remote GPU species abstention** (#621): `RemoteBioCLIPClassifier` now sets `last_error` the way a local run does: `None` on an abstention, the error text on a failure. Before, a refresh that abstained through the GPU runner kept the image's stale `species:*` keyword.
+
+### Documentation
+- Jev 1.14 image-input assessment for gate judging (#617), and the rollout docs record the live #408 cascade runs and the 379 relabel (#622).
+
 ## [9.0.0] - 2026-10-15
 
 ### Breaking
