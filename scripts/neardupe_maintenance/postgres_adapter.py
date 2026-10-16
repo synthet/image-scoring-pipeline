@@ -10,6 +10,8 @@ from psycopg2.extras import Json, RealDictCursor
 
 from .maintenance import SafetyError
 
+HUMAN_LABEL_SCHEMAS = ("human_labels",)
+
 
 class PostgresAdapter:
     def __init__(self, conn):
@@ -34,10 +36,19 @@ class PostgresAdapter:
                 JOIN pg_attribute pa ON pa.attrelid=k.confrelid AND pa.attnum=k.confkey[1]
                 WHERE k.contype='f' AND array_length(k.conkey,1)=1""")
             self.fks = [dict(r) for r in c.fetchall()]
+        # Human ground truth is never a deletion dependency: labelled frames are
+        # protected instead, so these rows are neither deleted nor restored.
+        self.label_tables = [
+            t
+            for t, cols in self.schema.items()
+            if "image_id" in cols and t[0] in HUMAN_LABEL_SCHEMAS
+        ]
         self.direct_tables = [
             t
             for t, cols in self.schema.items()
-            if "image_id" in cols and t != ("public", "images")
+            if "image_id" in cols
+            and t != ("public", "images")
+            and t[0] not in HUMAN_LABEL_SCHEMAS
         ]
         conn.rollback()
 
@@ -103,6 +114,15 @@ class PostgresAdapter:
             raise SafetyError(
                 "Frozen image ID, UUID or exact database path no longer agrees"
             )
+        if not self.batch:
+            self.conn.rollback()
+
+    def assert_removable(self, row):
+        for table in self.label_tables:
+            if self._rows(table, "image_id", [row["image_id"]]):
+                if not self.batch:
+                    self.conn.rollback()
+                raise SafetyError("Human-labelled frame is protected from removal")
         if not self.batch:
             self.conn.rollback()
 
@@ -233,6 +253,7 @@ class PostgresAdapter:
                 self.batch = False
                 return tombstone
             self.check_identity(row)
+            self.assert_removable(row)
             image = self.query("SELECT * FROM images WHERE id=%s", (row["image_id"],))[
                 0
             ]
@@ -248,11 +269,8 @@ class PostgresAdapter:
                     ),
                 )
                 tombstone = c.fetchone()[0]
-                if image["stack_id"] is not None:
-                    c.execute(
-                        "DELETE FROM agent_cull_review_groups WHERE stack_id=%s",
-                        (image["stack_id"],),
-                    )
+                # Stack review groups and other members' recommendations are kept;
+                # the removed image's own recommendations cascade from images.
                 # Some deployed score/selection tables have no FK. An exact
                 # image_id predicate removes these dependencies as well.
                 for table in self.direct_tables:
@@ -334,6 +352,13 @@ class PostgresAdapter:
         keys = [r["name"] for r in primary]
         if not keys:
             raise SafetyError("Recovery relation lacks a primary key")
+        # Columns an ON DELETE SET NULL constraint may have cleared during removal.
+        set_null = {
+            fk["child_column"]
+            for fk in self.fks
+            if (fk["child_schema"], fk["child_table"]) == table
+            and fk["delete_action"] == "n"
+        }
         for row in rows:
             where = sql.SQL(" AND ").join(
                 sql.SQL("{}=%s").format(sql.Identifier(k)) for k in keys
@@ -349,10 +374,29 @@ class PostgresAdapter:
                 actual = {
                     k: v for k, v in old[0]["row"].items() if k not in ignore_columns
                 }
-                if actual != compare:
+                changed = {
+                    k
+                    for k in compare.keys() | actual.keys()
+                    if compare.get(k) != actual.get(k)
+                }
+                if any(k not in set_null or actual.get(k) is not None for k in changed):
                     raise SafetyError(
                         "Recovery would overwrite an independently changed database row"
                     )
+                if changed:
+                    names = sorted(changed)
+                    with self.conn.cursor() as c:
+                        c.execute(
+                            sql.SQL("UPDATE {} SET {} WHERE {}").format(
+                                sql.Identifier(*table),
+                                sql.SQL(",").join(
+                                    sql.SQL("{}=%s").format(sql.Identifier(k))
+                                    for k in names
+                                ),
+                                where,
+                            ),
+                            tuple(row[k] for k in names) + tuple(row[k] for k in keys),
+                        )
                 continue
             names = list(row)
             values = [

@@ -215,6 +215,7 @@ class Executor:
                 if sha256(side["path"]) != side["sha256"]:
                     raise SafetyError("Sidecar changed")
             self.db.check_identity(row)
+            self.db.assert_removable(row)
             report.append(
                 {
                     "image_id": row["image_id"],
@@ -257,6 +258,9 @@ class Executor:
                 self.db.assert_quiescent()
                 if sha256(row["replacement_path"]) != row["replacement_sha256"]:
                     raise SafetyError("Retained replacement changed or disappeared")
+                if self.db.exists(iid):
+                    # Human ground truth outranks any model redundancy verdict.
+                    self.db.assert_removable(row)
                 directory = self.backup / str(iid)
                 directory.mkdir(exist_ok=True)
                 done = any(
@@ -457,7 +461,11 @@ class Executor:
             for obj in [row, *row.get("sidecars", [])]:
                 src = Path(obj["path"])
                 if not src.exists():
-                    temporary = directory / (src.name + ".recovering")
+                    # Stage beside the source: a hard link cannot cross volumes,
+                    # and the backup may live on another drive.
+                    temporary = src.parent / ("." + src.name + ".neardupe-recovering")
+                    if temporary.exists() and sha256(temporary) != obj["sha256"]:
+                        temporary.unlink()  # Our own interrupted staging copy.
                     if not temporary.exists():
                         shutil.copy2(directory / src.name, temporary)
                     if sha256(temporary) != obj["sha256"]:
