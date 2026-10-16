@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-16] edit | Gate and adopt the 379-name bird species list
+
+Added [the list gate report](reports/bird-species-list-379-gate-2026-10-16.md). Stored region embeddings reproduced all 4,401 live outcomes. A Jev range screen and the AOS checklist removed three of the 13 proposed additions. A four-CLI blind panel with Jev split adjudication judged all 124 differing frames: 379-list right 110 / wrong 4 versus 369-list right 5 / wrong 29. L1–L3 pass. The Stage 5 operator keeps a frozen 369-name list. Agent-panel labels, not owner labels.
+
 ## [2026-10-15] edit | Enable the #408 shadow cascade after deploying onnxruntime
 
 Updated the rollout status and NEXT_STEPS. `onnxruntime==1.22.1` is pinned (#613) and overlaid on `image-scoring:latest`; the rollback image is `image-scoring:pre-onnxruntime-20261015`. RTMDet parity on 20 AC-18 images is exact. `localization.cascade.enabled` is on, with AC-15 holding before the flip. Live runs are not yet observed. WebUI needs a checkout containing #598 before it starts.
