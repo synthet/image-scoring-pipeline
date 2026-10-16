@@ -25,6 +25,10 @@ FROZEN_SPECIES_LIST = _ROOT / "data" / "bird_species_list_369_stage5.txt"
 SPECIES_SHA256 = "dc6984a9fa305db099f7a155d1e319fdf495c0917897c2738d2c5eee79674070"
 COHORT_SHA256 = "ea4fe890940024d2055856c92ead75b6a21ab25fbacfe608e51825e8742cb8d3"
 FULL_SHA256 = "05f4d357622887ed3fc44543b8e605296c4e6ce7836ae970f38643819f9a6f0d"
+# --profile 379 relabels the same cohort under the gated 379-name list (#616, #619). Its predictions are
+# the 369 artifact with the 124 differences from rescoring the stored region embeddings applied.
+SPECIES_379_SHA256 = "3a4be7d52d37f69603e526e3cf071440de11c91b5b7327f5a31e4b9c4084bac2"
+FULL_379_SHA256 = "08cc106face3272d9eedff1113b48ecbe798292cc7df5d681e657af849f4c9b2"
 
 _KW_SQL = """
     SELECT k.image_id, d.keyword_norm, k.source, k.confidence, k.relevance_weight
@@ -53,17 +57,27 @@ def _read(path, sha256=None):
     return json.loads(raw)
 
 
-def preflight(ids, species_list: Path, cohort: Path, full: Path):
+def _profile(profile):
+    """(species count, list hash, predictions hash) for a frozen profile; read at call time."""
+    if profile == "369":
+        return 369, SPECIES_SHA256, FULL_SHA256
+    if profile == "379":
+        return 379, SPECIES_379_SHA256, FULL_379_SHA256
+    raise ValueError(f"unknown frozen profile {profile!r}")
+
+
+def preflight(ids, species_list: Path, cohort: Path, full: Path, profile="369"):
     """Reject the entire request before a job or any database write exists."""
     from modules import bird_species as bs
 
     _ids(ids)
+    count, species_sha256, full_sha256 = _profile(profile)
     species = [ln.strip() for ln in species_list.read_text(encoding="utf-8").splitlines()
                if ln.strip() and not ln.lstrip().startswith("#")]
     digest = hashlib.sha256(json.dumps(species, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    if len(species) != 369 or digest != SPECIES_SHA256:
-        raise ValueError("frozen 369-name species list hash mismatch")
-    frozen, report = _read(cohort, COHORT_SHA256), _read(full, FULL_SHA256)
+    if len(species) != count or digest != species_sha256:
+        raise ValueError(f"frozen {count}-name species list hash mismatch")
+    frozen, report = _read(cohort, COHORT_SHA256), _read(full, full_sha256)
     if frozen["selected_by"] != SELECTED_BY or report["meta"]["selected_by"] != SELECTED_BY:
         raise ValueError("unvalidated cohort rule")
     if not bs.use_regions_enabled() or bs.min_confidence() != 0.5:
@@ -201,14 +215,14 @@ def _restore(data, *, ids=None, created_at=None):
     return {"restored_rows": fixed}
 
 
-def verify(snap: Path, full: Path | None = None, *, ids=None):
+def verify(snap: Path, full: Path | None = None, *, ids=None, profile="369"):
     """Raise on prediction or metadata drift; partial verification never passes."""
     data = _read(snap)
     predictions = None
     if not data.get("preserve_species", False):
         if full is None:
             raise ValueError("frozen full predictions required")
-        predictions = {int(r["image_id"]): r for r in _read(full, FULL_SHA256)["images"]}
+        predictions = {int(r["image_id"]): r for r in _read(full, _profile(profile)[2])["images"]}
     return _verify(data, predictions, ids=ids)
 
 
@@ -250,16 +264,16 @@ def _verify(data, predictions, *, ids=None):
     return {"verified_ids": ids, "metadata_preserved": True}
 
 
-def run(ids, species_list, cohort, full, snap, completed):
+def run(ids, species_list, cohort, full, snap, completed, profile="369"):
     from modules import bird_species as bs
     from modules import db
 
-    species, predictions = preflight(ids, species_list, cohort, full)
+    species, predictions = preflight(ids, species_list, cohort, full, profile)
     frozen = _read(cohort, COHORT_SHA256)
     baseline = _read(snap)
     if baseline.get("preserve_species") or not set(ids) <= set(baseline["ids"]):
         raise ValueError("refresh IDs missing from refresh preservation snapshot")
-    binding = {"snapshot_sha256": hashlib.sha256(snap.read_bytes()).hexdigest(), "full_sha256": FULL_SHA256}
+    binding = {"snapshot_sha256": hashlib.sha256(snap.read_bytes()).hexdigest(), "full_sha256": _profile(profile)[2]}
     receipt = _read(completed) if completed.exists() else {**binding, "completed_ids": []}
     if any(receipt.get(k) != v for k, v in binding.items()):
         raise ValueError("completion receipt belongs to different frozen inputs")
@@ -275,7 +289,8 @@ def run(ids, species_list, cohort, full, snap, completed):
     before = {(r["image_id"], r["keyword_norm"]): r for r in baseline["rows"] if r["image_id"] in pending}
     if before != {(r["image_id"], r["keyword_norm"]): r for r in _rows(pending)}:
         raise ValueError("pending keyword baseline changed before refresh")
-    job_id = db.create_job("BIRD_SPECIES stage5 large/medium refresh #593")
+    job_id = db.create_job("BIRD_SPECIES stage5 large/medium refresh #593"
+                           + ("" if profile == "369" else f" ({profile}-name list)"))
     runner = bs.BirdSpeciesRunner()
     try:
         db.update_job_status(job_id, "running")
@@ -321,6 +336,7 @@ def main():
     p.add_argument("action", choices=("snapshot", "preflight", "run", "restore", "verify"))
     for name in ("ids", "out", "snap", "cohort", "full", "species-list", "completed"):
         p.add_argument(f"--{name}", type=Path)
+    p.add_argument("--profile", choices=("369", "379"), default="369")
     p.add_argument("--preserve-species", action="store_true")
     p.add_argument("--confirm", action="store_true")
     a = p.parse_args()
@@ -335,14 +351,14 @@ def main():
     if a.action == "snapshot":
         result = snapshot(ids, a.out, preserve_species=a.preserve_species)
     elif a.action == "preflight":
-        species, _ = preflight(ids, a.species_list, a.cohort, a.full)
+        species, _ = preflight(ids, a.species_list, a.cohort, a.full, a.profile)
         result = {"eligible_ids": ids, "species_count": len(species)}
     elif a.action == "run":
-        result = run(ids, a.species_list, a.cohort, a.full, a.snap, a.completed)
+        result = run(ids, a.species_list, a.cohort, a.full, a.snap, a.completed, a.profile)
     elif a.action == "restore":
         result = restore(a.snap)
     else:
-        result = verify(a.snap, a.full, ids=ids)
+        result = verify(a.snap, a.full, ids=ids, profile=a.profile)
     print(json.dumps(result, indent=2))
 
 
