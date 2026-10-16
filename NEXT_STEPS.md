@@ -1,6 +1,26 @@
 # Localization rollout — next steps
 
-## Current handoff — 2026-10-13
+## Current handoff — 2026-10-15
+
+**Stage 5 is live.** The production refresh finished and its final verification passed:
+- `bird_species.use_regions: true` and floor 0.5 are set in live `config.json`.
+- All 4,401 frozen large/medium selections were refreshed with region BioCLIP: 3,948 `bioclip_region` labels and 453 abstentions, equal to the frozen comparison.
+- Every image has a verified receipt. Non-species keywords, captions, scores and metadata are preserved.
+- The 274 rule/4 small selections are active for geometry only (#598). Their species stays legacy.
+- #608 fixed the last preservation stop: a refresh adding a parent `birds` tag on image 14547.
+- Job 6945 is still paused and WebUI was not started.
+
+See [the activation report](docs/reports/localization-stage5-activation-2026-10-15.md).
+Receipts are in ignored `.agent/scratch/issue593-activation-20261014-approved-tags/`.
+The verified pre-activation backup is
+`backups/issue593-activation-20261014/image_scoring_pre_activation.dump`.
+
+**Next:**
+1. **#408:** add `onnxruntime` to the production image, which today has it only in the hand-patched gpu-shell. Then set `localization.cascade.enabled: true` and observe shadow `subject_cascade` runs. AC-15 held: there are zero cascade runs.
+2. **Small-crop species:** stays failed (0.8123 < 0.85). Re-opening it needs new pre-registered evidence. Don't lower the gate.
+3. **Other open work:** portrait job 6945 / #418, the remaining #422 list/routing items, and Stage 6 (#415/#409/#423).
+
+## Handoff — 2026-10-13
 
 The #593 implementation separates geometry eligibility from species eligibility:
 selected normalized area **< 0.005** uses legacy embedded-detector inference with

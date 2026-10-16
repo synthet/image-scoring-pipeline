@@ -126,5 +126,6 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | [localization-session-work-log-2026-10-10](localization-session-work-log-2026-10-10.md) | Complete 4,401-image frozen comparison, recovery provenance, mounted-source ExifTool diagnosis and requested Docker shutdown. |
 | [localization-agent-panel-gates-2026-10-12](localization-agent-panel-gates-2026-10-12.md) | Final gates and #594 merge receipt: cascade passes; small-crop species fails; live activation/refresh and small-selection exclusion remain. |
 | [localization-geometry-only-activation-2026-10-13](localization-geometry-only-activation-2026-10-13.md) | Geometry-only species exclusion, box ownership and stopped activation preflight for four changed production boxes. |
+| [localization-stage5-activation-2026-10-15](localization-stage5-activation-2026-10-15.md) | Stage 5 live: 4,401 large/medium images refreshed and verified with region BioCLIP; 274 rule/4 small selections geometry-only; cascade enablement held on missing onnxruntime. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)
