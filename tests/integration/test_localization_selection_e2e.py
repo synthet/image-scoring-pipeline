@@ -304,13 +304,13 @@ def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, t
 
     monkeypatch.setattr(bs, "new_bioclip_classifier", lambda: Classifier())
     refresh.snapshot([iid], baseline)
-    result = refresh.run([iid], bs._DEFAULT_SPECIES_LIST_PATH, cohort, full, baseline, completed)
+    result = refresh.run([iid], refresh.FROZEN_SPECIES_LIST, cohort, full, baseline, completed)
     assert result["completed_ids"] == [iid]
     assert marker_created_at() == original_created_at
     assert refresh.verify(baseline, full)["metadata_preserved"] is True
     assert calls == [{"threshold": 0.5, "top_k": 1, "region": (0.1, 0.2, 0.3, 0.4), "use_detector": False}]
     assert _bbox(iid) == selection["projected_bird_bbox"]
-    refresh.run([iid], bs._DEFAULT_SPECIES_LIST_PATH, cohort, full, baseline, completed)
+    refresh.run([iid], refresh.FROZEN_SPECIES_LIST, cohort, full, baseline, completed)
     assert len(calls) == 1
     # A user pause of a maintenance job must stop inference and retain the pause.
     paused_baseline = tmp_path / "paused-baseline.json"
@@ -320,7 +320,7 @@ def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, t
     statuses = []
     monkeypatch.setattr(db, "update_job_status", lambda *args: statuses.append(args[1]))
     with pytest.raises(RuntimeError, match="paused"):
-        refresh.run([iid], bs._DEFAULT_SPECIES_LIST_PATH, cohort, full, paused_baseline, tmp_path / "paused-done.json")
+        refresh.run([iid], refresh.FROZEN_SPECIES_LIST, cohort, full, paused_baseline, tmp_path / "paused-done.json")
     assert statuses == ["running"]
     assert len(calls) == 1
 
@@ -363,6 +363,6 @@ def test_refresh_removes_parent_tag_added_to_marker_only_image(monkeypatch, tmp_
 
     monkeypatch.setattr(bs, "new_bioclip_classifier", lambda: Classifier())
     refresh.snapshot([iid], baseline)
-    assert refresh.run([iid], bs._DEFAULT_SPECIES_LIST_PATH, cohort, full, baseline, completed)["completed_ids"] == [iid]
+    assert refresh.run([iid], refresh.FROZEN_SPECIES_LIST, cohort, full, baseline, completed)["completed_ids"] == [iid]
     assert sorted(r["keyword_norm"] for r in refresh._rows([iid])) == [
         "birds:species-exhausted", "species:american wigeon"]

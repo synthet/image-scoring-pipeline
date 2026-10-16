@@ -20,6 +20,8 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 SELECTED_BY = "v1_regate_rule/3:a1c2e1f64b24cc79"
+# The frozen Stage 5 cohort was gated with this 369-name list; the bundled default list may differ.
+FROZEN_SPECIES_LIST = _ROOT / "data" / "bird_species_list_369_stage5.txt"
 SPECIES_SHA256 = "dc6984a9fa305db099f7a155d1e319fdf495c0917897c2738d2c5eee79674070"
 COHORT_SHA256 = "ea4fe890940024d2055856c92ead75b6a21ab25fbacfe608e51825e8742cb8d3"
 FULL_SHA256 = "05f4d357622887ed3fc44543b8e605296c4e6ce7836ae970f38643819f9a6f0d"

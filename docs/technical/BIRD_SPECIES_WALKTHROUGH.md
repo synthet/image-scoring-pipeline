@@ -257,7 +257,7 @@ The model is loaded **lazily** on the first job and reused for all subsequent ru
 
 ## 5. Default species list
 
-`data/bird_species_list.txt` — bundled North American common names (~360 entries; recount the file if you need an exact number) organized by family group:
+`data/bird_species_list.txt` contains 382 bundled North American common-name candidates. They span:
 
 - Passerines (robins, warblers, sparrows, tanagers, finches, …)
 - Woodpeckers
@@ -275,6 +275,12 @@ The model is loaded **lazily** on the first job and reused for all subsequent ru
 - Pelicans, cormorants, anhingas
 - Rails, coots, gallinules
 - Nightjars and swifts
+
+The file is ordered by a five-year Austin-area observation/detection proxy. Species without local records are grouped alphabetically at the end. The [count and score snapshot](../../data/bird_species_austin_frequency_proxy_2026-10-09.csv) records the ordering evidence.
+
+The proxy is not a calibrated encounter probability. Reordering the same candidates does not change BioCLIP scores except when scores tie exactly.
+
+The 2026-10-16 agent-panel gate adopted ten additions to the earlier 369-name list. It did not adopt Boat-tailed Grackle or Eurasian Jackdaw, which have no local photo records, or American Herring Gull, which duplicates Herring Gull. See [the list gate report](../reports/bird-species-list-379-gate-2026-10-16.md). The Stage 5 refresh operator keeps the frozen [369-name list](../../data/bird_species_list_369_stage5.txt).
 
 Comments (`#`) and blank lines are ignored. The file path is resolved relative to the project root at import time.
 
@@ -519,7 +525,7 @@ curl -X POST http://127.0.0.1:7860/api/bird-species/start \
 | File | Role |
 |------|------|
 | [`modules/bird_species.py`](../../modules/bird_species.py) | `BioCLIPClassifier` + `BirdSpeciesRunner` + module helpers |
-| [`data/bird_species_list.txt`](../../data/bird_species_list.txt) | Default bundled (~360) North American species list |
+| [`data/bird_species_list.txt`](../../data/bird_species_list.txt) | Default bundled (379) North American species list, ordered by an Austin-area frequency proxy |
 | [`modules/db_legacy.py`](../../modules/db_legacy.py) | `get_images_with_keyword()` — SQL filter; post-filters large ID lists in Python |
 | [`modules/job_dispatcher.py`](../../modules/job_dispatcher.py) | Routes `job_type="bird_species"` to `BirdSpeciesRunner` |
 | [`modules/api.py`](../../modules/api.py) | `BirdSpeciesStartRequest`; `/bird-species/start`, `/stop`, `/status`; `submit_run` routing |
