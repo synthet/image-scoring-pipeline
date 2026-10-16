@@ -362,6 +362,19 @@ def test_bird_species_parity_with_exif_rotation(runner, tmp_path):
     assert remote.last_image_embedding.dtype == np.float32
 
 
+def test_bird_species_proxy_reports_abstention_vs_failure(runner, tmp_path):
+    """A refresh clears a stale label only when ``last_error`` is None (a real abstention)."""
+    from modules.remote_gpu.proxies import RemoteBioCLIPClassifier
+
+    provider, client, _http = runner
+    provider.bio.classify = lambda *a, **kw: []  # nothing above the floor
+    remote = RemoteBioCLIPClassifier(client)
+    path = _image(tmp_path / "bird.jpg", size=(64, 40))
+    assert remote.classify(path, ["Robin", "Mallard"]) == []
+    assert remote.last_error is None
+    assert remote.classify(str(tmp_path / "missing.jpg"), ["Robin"]) == []
+    assert remote.last_error
+
 def test_bird_rescan_detector_runs_remotely(runner):
     from modules.remote_gpu.proxies import RemoteBioCLIPClassifier, RemoteBirdDetector
 
