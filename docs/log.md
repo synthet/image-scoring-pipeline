@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-15] edit | Enable the #408 shadow cascade after deploying onnxruntime
+
+Updated the rollout status and NEXT_STEPS. `onnxruntime==1.22.1` is pinned (#613) and overlaid on `image-scoring:latest`; the rollback image is `image-scoring:pre-onnxruntime-20261015`. RTMDet parity on 20 AC-18 images is exact. `localization.cascade.enabled` is on, with AC-15 holding before the flip. Live runs are not yet observed. WebUI needs a checkout containing #598 before it starts.
+
 ## [2026-10-15] edit | Stage 5 region-species activation complete; rule/4 geometry promoted
 
 Added [the activation report](reports/localization-stage5-activation-2026-10-15.md) and updated the rollout status, NEXT_STEPS.md and the reports index. All 4,401 large/medium images were refreshed and verified: 3,948 region labels and 453 abstentions, equal to the frozen counts, with non-species keywords preserved. The 274 rule/4 selections are active for geometry only. #608 fixed the parent-tag preservation stop. #408 enablement is held on a missing onnxruntime dependency. Job 6945 is still paused. These are agent-panel gates, not owner labels.
