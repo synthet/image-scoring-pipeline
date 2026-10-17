@@ -640,6 +640,7 @@ class BirdSpeciesRunner:
                     source="auto",
                     confidence_map=confidence_map,
                     source_map=source_map,
+                    scope="species",
                 )
                 db.set_image_phase_status(
                     row["id"],
@@ -659,7 +660,7 @@ class BirdSpeciesRunner:
                 cleared = build_bird_species_keyword_csv(int(row["id"]), legacy_csv=existing, new_species=[])
                 if "species:" in (db.get_resolved_image_keywords(int(row["id"]), legacy_fallback=existing,
                                                                  hide_internal=False) or "").lower():
-                    db.update_image_keywords_for_image(row["id"], cleared, source="auto")
+                    db.update_image_keywords_for_image(row["id"], cleared, source="auto", scope="species")
             mark_species_exhausted(int(row["id"]))
             log(
                 f"{os.path.basename(file_path)}: no species above threshold "
