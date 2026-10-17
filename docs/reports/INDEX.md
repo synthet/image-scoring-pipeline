@@ -128,6 +128,7 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | [localization-geometry-only-activation-2026-10-13](localization-geometry-only-activation-2026-10-13.md) | Geometry-only species exclusion, box ownership and stopped activation preflight for four changed production boxes. |
 | [localization-stage5-activation-2026-10-15](localization-stage5-activation-2026-10-15.md) | Stage 5 live: 4,401 large/medium images refreshed and verified with region BioCLIP; 274 rule/4 small selections geometry-only; cascade enablement held on missing onnxruntime. |
 | [bird-species-list-379-gate-2026-10-16](bird-species-list-379-gate-2026-10-16.md) | Agent-panel gate adopting a 379-name Austin-ordered species list; three proposed additions rejected. |
+| [retag-418-session-2026-10-17](retag-418-session-2026-10-17.md) | #418 re-tag (job 6945) recovered after host sleep failed it; restart vs resume, progress timeline, verification and follow-up decisions. |
 | [jev-1.14-image-inputs-assessment-2026-10-16](jev-1.14-image-inputs-assessment-2026-10-16.md) | Jev 1.14 image inputs: verified claims, tooling gaps, gate use cases and conditions before use; research only. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)
