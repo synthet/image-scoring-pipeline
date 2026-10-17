@@ -4,7 +4,7 @@ title: Phase — Keywords
 description: Tagging phase internals — CLIP keyword scoring, BLIP captioning, accessibility text, the normalized keyword schema, and the confidence vs relevance_weight distinction.
 resource: architecture/pipeline/phases/keywords.md
 tags: [pipeline, phases, keywords, tagging, clip, blip]
-timestamp: 2026-09-01T00:00:00Z
+timestamp: 2026-10-16T00:00:00Z
 okf_version: 0.2
 ---
 
@@ -123,10 +123,26 @@ CREATE TABLE image_keywords (
 **Normalisation rule:** `keyword_norm = keyword.strip().lower()`; `keyword_display` preserves the
 original casing.
 
-`_sync_image_keywords` (`modules/db_legacy.py:15535-15621`) runs in one transaction:
-**delete every `image_keywords` row for the image**, then upsert `keywords_dim` and insert fresh
-rows with per-keyword `source`, `confidence` and `relevance_weight`. This full-replace semantic
-means a re-run with a narrower keyword set removes the old ones.
+`_sync_image_keywords` (`modules/db_legacy.py`) runs in one transaction. What it replaces
+depends on `scope` (#586):
+
+- **`scope=None`, a full keyword edit:** deletes every `image_keywords` row for the image, then
+  inserts the given set.
+- **`scope="keywords"`, used by this phase:** deletes only the rows this phase owns: non-species
+  rows whose `source` is `auto`, `repair_legacy_keywords_junction`, `legacy_backfill` or
+  `phase4a_remediation`. All four hold the same CLIP vocabulary. A re-run with a narrower tag set
+  still removes old CLIP tags. These rows stay:
+  - `species:*` rows and the `birds:species-exhausted` marker;
+  - hand-entered (`electron_ui`) and `localization_selection` rows;
+  - any other source.
+
+  A tag that matches a kept row leaves that row's source and confidence alone. While a species
+  label survives, `birds` stays too, so the image remains in species scope.
+- **`scope="species"`, used by `bird_species`:** replaces only `species:*` rows and the marker. Every
+  other row keeps its source and confidence.
+
+Each write upserts `keywords_dim` and stores per-keyword `source`, `confidence` and
+`relevance_weight`.
 
 The legacy `images.keywords` CSV column is written only when
 `database.write_legacy_keywords_column` is on.
@@ -198,10 +214,9 @@ participate in phase status.
 
 ## Known gaps
 
-- `_sync_image_keywords` deletes **all** keywords for an image before reinserting, including
-  `species:*` keywords written by `bird_species`. `build_bird_species_keyword_csv` exists
-  specifically to merge them back, so any new keyword writer must do the same or it will silently
-  destroy species data.
+- A new keyword writer that calls `update_image_keywords_for_image` without a `scope` replaces
+  **every** row for the image, species and hand-entered rows included. Phase writers should pass
+  their scope (#586).
 - A `caption_only_no_keywords` skip leaves the image with a caption and no keywords, and because
   skips are terminal it will never be retried at the current executor version — even if the
   keyword list is later widened.
