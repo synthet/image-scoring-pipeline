@@ -9027,6 +9027,29 @@ def update_image_fields_batch(updates):
         logging.error(f"Failed batch update_image_fields: {e}")
 
 
+# ``image_keywords.source`` values the keywords phase has written, now or in earlier versions.
+# The repair, backfill and remediation rows hold the same CLIP vocabulary (#586).
+KEYWORDS_PHASE_SOURCES = frozenset({
+    "auto", "repair_legacy_keywords_junction", "legacy_backfill", "phase4a_remediation",
+})
+
+
+def _keyword_row_owned_by(scope, keyword_norm, source) -> bool:
+    """Whether a phase-scoped keyword write may replace this ``image_keywords`` row (#586).
+
+    The species phase owns ``species:*`` rows and the ``birds:species-exhausted`` marker,
+    whatever their source. The keywords phase owns the remaining rows written by
+    :data:`KEYWORDS_PHASE_SOURCES`. Hand-entered, selection and unknown sources belong to neither.
+    """
+    norm = str(keyword_norm or "").lower()
+    species_row = norm.startswith("species:") or norm == "birds:species-exhausted"
+    if scope == "species":
+        return species_row
+    if scope == "keywords":
+        return not species_row and (source or "auto") in KEYWORDS_PHASE_SOURCES
+    raise ValueError(f"unknown keyword scope {scope!r}")
+
+
 def update_image_keywords_for_image(
     image_id,
     keywords_str,
@@ -9036,20 +9059,22 @@ def update_image_keywords_for_image(
     confidence_map=None,
     source_map=None,
     relevance_map=None,
+    scope=None,
 ):
     """
     Update one image's legacy keywords CSV and normalized keyword rows.
 
     ``confidence_map``, ``relevance_map`` and ``source_map`` use normalized
     lowercase keyword strings as keys and are applied only to ``image_keywords``
-    rows.
+    rows. ``scope`` limits the write to the rows one phase owns (see
+    :func:`_sync_image_keywords`); the legacy CSV then holds the resulting full set.
     """
     if not image_id:
         return
 
     keywords_str = keywords_str or ""
     try:
-        if _write_legacy_keywords_column():
+        if scope is None and _write_legacy_keywords_column():
             get_connector().execute(
                 "UPDATE images SET keywords = ? WHERE id = ?",
                 (keywords_str, image_id),
@@ -9064,7 +9089,17 @@ def update_image_keywords_for_image(
             confidence_map=confidence_map,
             source_map=source_map,
             relevance_map=relevance_map,
+            scope=scope,
         )
+
+        if scope is not None:
+            resolved = get_resolved_image_keywords(image_id, None, hide_internal=False)
+            keywords_str = ",".join(k.strip() for k in (resolved or "").split(",") if k.strip())
+            if _write_legacy_keywords_column():
+                get_connector().execute(
+                    "UPDATE images SET keywords = ? WHERE id = ?",
+                    (keywords_str, image_id),
+                )
 
         invalidate_folder_images_cache()
         try:
@@ -12952,6 +12987,7 @@ def _sync_image_keywords(
     confidence_map=None,
     source_map=None,
     relevance_map=None,
+    scope=None,
 ):
     """
     Dual-write sync: Parses the legacy keywords CSV string and updates the normalized
@@ -12961,6 +12997,10 @@ def _sync_image_keywords(
     keyword importance for the image (ranking, propagation, filtering). Defaults to 1.0.
     ``confidence_map``, ``relevance_map`` and ``source_map`` can override those values
     per normalized keyword string.
+
+    ``scope=None`` replaces every row for the image (a full keyword edit). A phase scope
+    (``"keywords"`` or ``"species"``) replaces only the rows that phase owns and leaves
+    every other row untouched; see :func:`_keyword_row_owned_by` (#586).
     """
     if not image_id:
         return
@@ -13004,17 +13044,34 @@ def _sync_image_keywords(
 
     try:
         def _tx(tx):
-            tx.execute("DELETE FROM image_keywords WHERE image_id = ?", (image_id,))
+            kept = set()
+            if scope is None:
+                tx.execute("DELETE FROM image_keywords WHERE image_id = ?", (image_id,))
+            else:
+                existing = tx.query(
+                    "SELECT ik.keyword_id, kd.keyword_norm, ik.source FROM image_keywords ik "
+                    "JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id WHERE ik.image_id = ?",
+                    (image_id,)) or []
+                for r in existing:
+                    if _keyword_row_owned_by(scope, r["keyword_norm"], r["source"]):
+                        tx.execute("DELETE FROM image_keywords WHERE image_id = ? AND keyword_id = ?",
+                                   (image_id, r["keyword_id"]))
+                    else:
+                        kept.add(str(r["keyword_norm"]).lower())
 
-            if not keywords_str:
-                return
-
-            kws = [k.strip() for k in keywords_str.split(',') if k.strip()]
+            kws = [k.strip() for k in (keywords_str or "").split(',') if k.strip()]
+            # Species labels that survive a keywords run keep ``birds``, as a species write does;
+            # without it the image drops out of species scope and its label can never be refreshed.
+            if (scope == "keywords" and any(k.startswith("species:") for k in kept)
+                    and "birds" not in kept and "birds" not in {k.lower() for k in kws}):
+                kws.append("birds")
             if not kws:
                 return
 
             for kw in kws:
                 kw_norm = kw.lower()
+                if kw_norm in kept:
+                    continue  # another writer owns this row; leave its source and confidence as they are
                 row_source = normalized_source_map.get(kw_norm, source)
                 row_confidence = normalized_confidence_map.get(kw_norm, confidence)
                 row_relevance = normalized_relevance_map.get(kw_norm, relevance_weight)

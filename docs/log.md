@@ -6,6 +6,13 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-16] edit | Keyword writes keep rows other writers own (#586)
+
+Updated [the keywords phase page](architecture/pipeline/phases/keywords.md) for the scoped keyword writes in #586:
+- A keywords run now replaces only CLIP-owned rows. Species labels, the species marker, hand-entered rows and selection rows are kept.
+- A species write now replaces only `species:*` rows, without overwriting the source of other rows.
+- Removed the known gap that said every keyword write deletes species data.
+
 ## [2026-10-16] edit | Record the 379-name relabel and the #408 live cascade runs
 
 Updated the 379 gate report, the rollout status and NEXT_STEPS.

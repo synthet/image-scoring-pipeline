@@ -58,6 +58,12 @@ def test_process_tagging_image_row_records_done_result(monkeypatch) -> None:
         "update_image_fields_batch",
         lambda updates: field_updates.extend(updates),
     )
+    keyword_writes = []
+    monkeypatch.setattr(
+        processor.db,
+        "update_image_keywords_for_image",
+        lambda *args, **kwargs: keyword_writes.append((args, kwargs)),
+    )
     report = _Report()
     folders = set()
 
@@ -81,8 +87,11 @@ def test_process_tagging_image_row_records_done_result(monkeypatch) -> None:
 
     assert counts == (1, 0)
     assert [call[0][2].value for call in statuses] == ["running", "done"]
-    assert field_updates == [
-        (7, {"title": "A bird", "description": "A bird", "keywords": "birds,nature"})
+    assert field_updates == [(7, {"title": "A bird", "description": "A bird"})]
+    # Keywords go through the phase-scoped write, which keeps species and hand-entered rows (#586).
+    assert keyword_writes == [
+        ((7, "birds,nature"), {"source": "auto", "confidence_map": None, "relevance_map": None,
+                               "scope": "keywords"})
     ]
     assert folders == {"/photos"}
     assert len(metadata_writes) == 1
