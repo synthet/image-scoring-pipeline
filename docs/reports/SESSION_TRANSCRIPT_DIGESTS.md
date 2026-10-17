@@ -19,6 +19,7 @@ worth keeping, they are distilled into the pages below (no transcript paths, no 
 | [SESSION_TRANSCRIPT_DIGEST_2026-08-cli-judge-labelling.md](SESSION_TRANSCRIPT_DIGEST_2026-08-cli-judge-labelling.md) | CLI judge harness for bird-crop labels + provenance caveat |
 | [SESSION_TRANSCRIPT_DIGEST_2026-09-postgres-truncate.md](SESSION_TRANSCRIPT_DIGEST_2026-09-postgres-truncate.md) | `#399` truncate_app_tables rollback |
 | [SESSION_TRANSCRIPT_DIGEST_2026-09-gallery-contract-ci.md](SESSION_TRANSCRIPT_DIGEST_2026-09-gallery-contract-ci.md) | Gallery ESLint gate, OpenAPI sync, `ImageEyeKeypoints` type-sync |
+| [retag-418-session-2026-10-17.md](retag-418-session-2026-10-17.md) | `#418` job 6945 re-tag recovery after host sleep; `jobs/{id}/restart` for failed runs; verification results |
 
 Older structured session records (August 2026 research pause) remain under
 [RESEARCH_SESSIONS_2026-08-05.md](RESEARCH_SESSIONS_2026-08-05.md).
