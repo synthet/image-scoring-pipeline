@@ -257,7 +257,7 @@ The model is loaded **lazily** on the first job and reused for all subsequent ru
 
 ## 5. Default species list
 
-`data/bird_species_list.txt` contains 382 bundled North American common-name candidates. They span:
+`data/bird_species_list.txt` contains 379 bundled North American common-name candidates. They span:
 
 - Passerines (robins, warblers, sparrows, tanagers, finches, …)
 - Woodpeckers
