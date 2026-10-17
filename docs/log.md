@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-17] ingest | #418 re-tag recovery session
+
+Saved the [session summary](reports/retag-418-session-2026-10-17.md) from a gitignored Claude Code export: host sleep failed job 6945 through a bind-mount I/O error, `jobs/{id}/restart` recovered it in place, and the re-tag completed with 0 failed actions and verified keyword preservation. Linked from the reports index and the session digest router.
+
 ## [2026-10-16] edit | Keyword writes keep rows other writers own (#586)
 
 Updated [the keywords phase page](architecture/pipeline/phases/keywords.md) for the scoped keyword writes in #586:
