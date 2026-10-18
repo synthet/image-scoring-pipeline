@@ -375,6 +375,21 @@ def test_bird_species_proxy_reports_abstention_vs_failure(runner, tmp_path):
     assert remote.classify(str(tmp_path / "missing.jpg"), ["Robin"]) == []
     assert remote.last_error
 
+
+def test_bird_species_proxy_reports_input_mode(runner, tmp_path):
+    """#641: the host knows which input the runner embedded, so the vector lands in the right space."""
+    from modules.remote_gpu.proxies import RemoteBioCLIPClassifier
+
+    _provider, client, _http = runner
+    remote = RemoteBioCLIPClassifier(client)
+    path = _image(tmp_path / "bird.jpg", size=(64, 40))
+    remote.classify(path, ["Robin"])
+    assert remote.last_input_mode == "detector_crop"
+    remote.classify(path, ["Robin"], region=(0.1, 0.1, 0.6, 0.6))
+    assert remote.last_input_mode == "region"
+    remote.classify(path, ["Robin"], use_detector=False)
+    assert remote.last_input_mode == "full_frame"
+
 def test_bird_rescan_detector_runs_remotely(runner):
     from modules.remote_gpu.proxies import RemoteBioCLIPClassifier, RemoteBirdDetector
 
