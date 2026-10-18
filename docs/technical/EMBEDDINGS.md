@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Image Embeddings
+description: Embedding spaces stored in PostgreSQL (MobileNetV2, CLIP, BioCLIP full-frame and crop, BLIP, culling towers), their producers, config flags and backfill.
+resource: technical/EMBEDDINGS.md
+tags: [technical, embeddings, pgvector, bioclip]
+timestamp: 2026-10-17T00:00:00Z
+okf_version: 0.2
+---
+
 # Image embeddings (MobileNetV2, Postgres, backfill)
 
 ## What is stored
