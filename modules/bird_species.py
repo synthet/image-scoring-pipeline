@@ -67,6 +67,20 @@ def region_species_eligible(region) -> bool:
     return (x2 - x1) * (y2 - y1) >= Decimal(str(MIN_REGION_AREA))
 
 
+def bioclip_input_mode(region, last_bbox) -> str:
+    """Which pixels a classify embedded: ``region``, ``detector_crop`` or ``full_frame`` (#641).
+
+    ``classify`` crops to a region when one is passed, and to the embedded detector's box only
+    when ``last_bbox`` holds real coordinates; a not-detected or scan-failed sentinel means the
+    whole frame was used.
+    """
+    if region is not None:
+        return "region"
+    if isinstance(last_bbox, dict) and "x1" in last_bbox:
+        return "detector_crop"
+    return "full_frame"
+
+
 def species_input_for_image(image_id: int) -> dict:
     """Choose the BioCLIP input from the image's active ``bird`` localization selection.
 
@@ -229,8 +243,10 @@ class BioCLIPClassifier:
         self._cached_text_features = None
         # Most-recent BioCLIP image embedding (768-d, L2-normalized) populated
         # as a side effect of classify() so BirdSpeciesRunner can persist it
-        # under the ``bioclip_2_image`` space without an extra forward pass.
+        # without an extra forward pass: ``bioclip_2_image`` for a full frame,
+        # ``bioclip_2_crop`` for a crop, per ``last_input_mode`` (#641).
         self.last_image_embedding = None
+        self.last_input_mode: str | None = None
         # Optional YOLO bird detector used to crop to the bird before classifying.
         # ``_detector_state`` is one of: None (not yet resolved), "enabled",
         # "disabled" (unavailable / fail-open). ``last_bbox`` is populated as a
@@ -338,6 +354,7 @@ class BioCLIPClassifier:
 
         self.load_model()
         self.last_image_embedding = None
+        self.last_input_mode = None
         self.last_bbox = None
         #: ``None`` after a successful forward pass; the error text when ``[]`` means failure, not abstention.
         self.last_error = None
@@ -372,6 +389,7 @@ class BioCLIPClassifier:
                         self.last_bbox = bbox_scan_failed(f"detect_error: {det_err}")
                 else:
                     self.last_bbox = bbox_scan_failed("detector_unavailable")
+            self.last_input_mode = bioclip_input_mode(region, self.last_bbox)
 
             img_tensor = self.preprocess(img).unsqueeze(0).to(self.device)
 
@@ -461,17 +479,26 @@ class BirdSpeciesRunner:
         try:
             from modules import config as _cfg
             from modules import db as _db
-            from modules.embedding_spaces import BIOCLIP_IMAGE_SPACE_CODE
+            from modules.embedding_spaces import BIOCLIP_CROP_SPACE_CODE, BIOCLIP_IMAGE_SPACE_CODE
 
+            # Full frames and crops never share a space (#641). An unknown mode cannot be placed.
+            space = {
+                "full_frame": BIOCLIP_IMAGE_SPACE_CODE,
+                "region": BIOCLIP_CROP_SPACE_CODE,
+                "detector_crop": BIOCLIP_CROP_SPACE_CODE,
+            }.get(getattr(self.classifier, "last_input_mode", None))
+            if space is None:
+                logger.debug("bird_species: no input mode for image_id=%s; embedding not persisted", image_id)
+                return
             emb_section = _cfg.get_config_section('embeddings') or {}
             if not bool(emb_section.get('persist_bioclip_image', True)):
                 return
             versions = emb_section.get('model_versions') or {}
-            model_version = versions.get(BIOCLIP_IMAGE_SPACE_CODE) or getattr(
+            model_version = versions.get(space) or getattr(
                 self.classifier, "MODEL_ID", None
             )
             _db.update_image_embeddings_batch_for_space(
-                BIOCLIP_IMAGE_SPACE_CODE,
+                space,
                 [(image_id, vec, model_version)],
             )
         except Exception as exc:  # noqa: BLE001 — best-effort

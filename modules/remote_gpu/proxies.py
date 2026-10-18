@@ -15,7 +15,7 @@ import os
 from typing import Any
 
 from modules.bird_detection import BirdDetector
-from modules.bird_species import BioCLIPClassifier
+from modules.bird_species import BioCLIPClassifier, bioclip_input_mode
 from modules.engines.host import MultiModelHost
 from modules.remote_gpu.client import GpuRunnerClient, ready_client
 from modules.remote_gpu.contract import (
@@ -391,6 +391,7 @@ class RemoteBioCLIPClassifier(BioCLIPClassifier):
         from modules.thumbnails import open_oriented_for_ml
 
         self.last_image_embedding = None
+        self.last_input_mode = None
         self.last_bbox = None
         self.last_error = None  # as in a local run: set only when ``[]`` means failure, not abstention
         try:
@@ -414,4 +415,6 @@ class RemoteBioCLIPClassifier(BioCLIPClassifier):
         )
         self.last_bbox = out.get("last_bbox")
         self.last_image_embedding = as_vector(out.get("last_image_embedding"))
+        # Derived on the host from what the runner already returns, so the wire contract is unchanged (#641).
+        self.last_input_mode = bioclip_input_mode(region, self.last_bbox)
         return [(str(name), float(prob)) for name, prob in out.get("predictions") or []]

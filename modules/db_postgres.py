@@ -197,6 +197,14 @@ _SEED_EXTRA_EMBEDDING_SPACES_SQL = [
     (
         """
         INSERT INTO embedding_spaces (code, dim, description, active)
+        SELECT 'bioclip_2_crop', 768,
+               'BioCLIP 2 image tower ViT-L/14 on a bird crop (region or detector box) — species similarity', 1
+        WHERE NOT EXISTS (SELECT 1 FROM embedding_spaces WHERE code = 'bioclip_2_crop')
+        """
+    ),
+    (
+        """
+        INSERT INTO embedding_spaces (code, dim, description, active)
         SELECT 'blip_vit_b16_image', 768,
                'BLIP base vision encoder pooler_output — caption-aligned similarity', 1
         WHERE NOT EXISTS (SELECT 1 FROM embedding_spaces WHERE code = 'blip_vit_b16_image')
