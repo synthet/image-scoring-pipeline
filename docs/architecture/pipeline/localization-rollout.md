@@ -22,7 +22,7 @@ current graph and its implementation are documented in [phase-graph.md](phase-gr
 
 ## Consolidated status (2026-10-04)
 
-This page is the status of record, with operational updates through 2026-10-12.
+This page is the status of record, with operational updates through 2026-10-17.
 Epic #345's issue body still describes September 2026
 (the live import "not yet run", stage 4 "open questions pending"). Replacing that body
 needs a token that can edit issues; this page and #527 are the update.
@@ -212,8 +212,8 @@ In order. Do not start a later row while an earlier blocker is open.
    small-selection exclusion requirements before writes. See the
    [report](../../reports/localization-species-policy-validation-2026-10-10.md).
    The small stratum stays in shadow.
-2. **#527 stage 4 remainder** (repair lane, new-image boundary, auto-drive bucket, phantom
-   reconciliation). The exit-gate text is:
+2. **#527 stage 4 remainder: closed.** Its slices #538–#541 (repair lane, new-image boundary,
+   auto-drive bucket, phantom reconciliation) closed on 2026-10-05. The exit-gate text is:
    bounded repair (3 attempts, 1 min / 5 min, one repair job while core work is idle);
    a persisted enablement boundary for new or source-changed images;
    auto-drive must not use localization as the earliest blocking bucket;
@@ -222,7 +222,7 @@ In order. Do not start a later row while an earlier blocker is open.
    `localization.enabled: true` and `localization.repair.enabled: true`. An eligible
    production lane cycle was observed on 2026-10-09: automatic jobs 6939 and 6941
    were admitted while core work was idle and logged their backlogs. No retryable
-   failure occurred, so the 1 min / 5 min schedule has no production observation.
+   failure occurred, so the 1 min / 5 min schedule still has no production observation.
    Normal indexing's capture-date mismatch was fixed and deployed by #585 /
    revision 0041: the boundary now uses `images.registered_at`. The staged
    NEFs and their rows have since been removed. See the
@@ -279,11 +279,9 @@ In order. Do not start a later row while an earlier blocker is open.
 | Blocker | Stops | Issue |
 |---|---|---|
 | Small v1 stratum failed the owner gate | Promoting the rest of the 16,666 shadow boxes | #472 (closed; small stays shadow) |
-| Normal indexing overwrites new-image timestamps with older camera dates | Reliably admitting newly indexed historical RAWs | #527 |
 | ~300 labelled bursts do not exist | Promoting subject-aware scores | #415 |
 | No timing baseline on the 8 GB card | Crop-backfill cost and the 2048 px decision | #416 |
 | Gallery must filter `input_mode` before a score-table migration | #409 | gallery #176 |
-| Postgres suite can skip when the port or Alembic is wrong | Trusting `-m postgres` on a host Python | #379 |
 
 **Design ideas from the reference-design analysis, and where they are tracked:**
 
