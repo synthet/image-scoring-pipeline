@@ -151,7 +151,7 @@ See the
 |---|---|---|---|
 | 1. Control plane | **Done** (#346 and follow-ups). `localization` is a real phase after `metadata`. **#368 deployed and live-verified on 2026-10-07** (PR #575, revision 0040). | **#407** attempt-before edge and burst/picks split, not started. | Spec 02 adds **attempt-before** for `localization` → `scoring`. |
 | 2. Normalized persistence | **Done.** Legacy import 2026-09-27: 76,475 current runs. Reader exists; `localization.read_normalized_first` stays off, so `bird_bbox` is still the production read. | Mask artifacts and a second keypoint pass (#426). | Region-linked keypoints landed in shadow (migration 0036, eye-pose backfill, [spot check](../../reports/eye-keypoint-spot-check-2026-09-27.md)). |
-| 3. Rendition and crops | **Code complete** (#375). Detector benchmark done (#377). Default weights are `bird_detect_v1.pt` (#462), still `imgsz=640`. Upright ML inputs are deployed (#418); the 80-image re-embed check matched upright pixels. | Shared decode-once for every phase (#406). Slice 1 cache/pruner landed (#446). Portrait re-score job 6945 and keyword/species restoration remain unfinished. | One ~2048 px inference rendition for every phase (spec 01), not only localization. |
+| 3. Rendition and crops | **Code complete** (#375). Detector benchmark done (#377). Default weights are `bird_detect_v1.pt` (#462), still `imgsz=640`. Upright ML inputs are deployed (#418); the 80-image re-embed check matched upright pixels. The portrait re-tag (job 6945) completed on 2026-10-17 and #418 is closed. | Shared decode-once for every phase (#406). Slice 1 cache/pruner landed (#446). | One ~2048 px inference rendition for every phase (spec 01), not only localization. |
 | 4. Shadow localization | **Slice 1 + M0 done** (#395, #414); lane code and registration boundary delivered (#527, #585). Live admission/completion observed October 9. Cascade persistence merged in #594; AC-17/AC-18 pass at fallback 0.60 without retry; AC-15 holds (zero cascade runs). | Production retry timing remains. Cascade **enabled 2026-10-15** (`localization.cascade.enabled: true`, `onnxruntime` in the image via #613). Live `subject_cascade` runs were observed on 2026-10-16 on all three paths, and #408 is closed. Cascade consumer-source adoption needs its own rule and gate. | `subject_cascade` stays a shadow provider; production YOLO remains `bird_detect_v1` at 640. Scene route can skip detection (#412). |
 | 5. BioCLIP on regions | **Live 2026-10-15.** `use_regions` on, floor 0.5. All 4,401 large/medium selections were refreshed and verified (3,948 labels and 453 abstentions under the 369-name list, matching the frozen comparison; 4,029 and 372 after the 379-name relabel on 2026-10-16, #619). Small selections (< 0.005 area) are excluded from region species (#598). | Small-crop species stays failed (0.8123 < 0.85) and needs new pre-registered evidence. Other #422/#413/multi-region work remains. | Species reads active production selections, not current shadow runs. `read_normalized_first` stays off; `bird_bbox` projections preserve compatibility. |
 | 6. Crop / fusion | **Not started.** | #409 (crop score storage + fusion), #423 (evidence JSONL), #415 (~300 labelled bursts). | Region IQA is scoring design, gated on those bursts, not a global crop switch. Captions, accessibility, and Jev stay shadow. |
@@ -234,9 +234,10 @@ In order. Do not start a later row while an earlier blocker is open.
    34-image batch. Isolated fault-injection validation is separate evidence and
    cannot substitute for an eligible production lane cycle.
    S4-4 was revisited and is kept (see Open questions).
-3. **#418** upright-input fixes and the re-embed check are delivered. Complete
-   portrait job 6945 and restore/verify species keywords before closing the issue;
-   this is separate from the read-only selected-region comparison.
+3. **#418: done on 2026-10-17.** The upright-input fixes and re-embed check were
+   delivered earlier; the restored species and hand-entered keywords were verified,
+   and portrait job 6945 completed with 0 failed actions. See the
+   [session report](../../reports/retag-418-session-2026-10-17.md).
 4. **#408** cascade enabled on 2026-10-15 after `onnxruntime` reached the production image
    (#613). AC-15 held, with zero cascade runs before the flip. Live shadow runs were observed on
    2026-10-16 on 10 newly localized images (#408 closed):
@@ -279,7 +280,6 @@ In order. Do not start a later row while an earlier blocker is open.
 |---|---|---|
 | Small v1 stratum failed the owner gate | Promoting the rest of the 16,666 shadow boxes | #472 (closed; small stays shadow) |
 | Normal indexing overwrites new-image timestamps with older camera dates | Reliably admitting newly indexed historical RAWs | #527 |
-| Portrait RAW thumbnails unrotated | Scene, keyword, and embedding quality on those files | #418 |
 | ~300 labelled bursts do not exist | Promoting subject-aware scores | #415 |
 | No timing baseline on the 8 GB card | Crop-backfill cost and the 2048 px decision | #416 |
 | Gallery must filter `input_mode` before a score-table migration | #409 | gallery #176 |
