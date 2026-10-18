@@ -387,7 +387,6 @@ Use flags with explicit defaults so each stage is independently deployable:
 | `localization.enabled` | `false` | Register/schedule the new phase. |
 | `localization.new_images_only` | `true` | Prevent automatic legacy-library scanning. |
 | `localization.detectors.bird.enabled` | `false` | Enable the initial detector provider. |
-| `localization.dual_write_bird_bbox` | `false` | Maintain the legacy JSONB projection after normalized authority is enabled. |
 | `localization.read_normalized_first` | `false` | Prefer normalized regions over `bird_bbox`. |
 | `localization.repair.enabled` | `false` | Enable bounded retry and the independent repair lane. |
 | `bird_species.use_regions` | `false` | Remove detection ownership from BioCLIP. |
@@ -735,6 +734,12 @@ convergence without changing downstream results.
   consumers to their full-frame paths after that attempt. Later retries run independently and do
   not hold the core run open.
 
+**As built (spec 05, #412):** with `scene_route.enabled`, a zero-shot CLIP scene classifier runs on
+the decoded rendition before detection. The bird detector runs only when `p(wildlife_bird)` reaches
+its calibrated threshold (`modules/scene_route.py`, `detectors_to_run`). A label with no calibrated
+threshold fails open, so the detector still runs. A skipped image gets a `disabled` run with
+`error_code = 'scene_route'`, and consumers keep the full frame.
+
 ### Status semantics
 
 | Artifact result | IPS outcome | Downstream effect |
@@ -745,10 +750,10 @@ convergence without changing downstream results.
 | detector disabled | `skipped` with versioned reason | enabling invalidates the skip |
 | retryable detector/runtime error | `failed` with backoff | repair lane retries; core phases continue |
 
-The localization run stage remains failed when it contains retryable per-image failures, while the
-orchestrator continues independent core stages and exposes the auxiliary failure in diagnostics.
-It must not rewrite failed image outcomes as successful localization or report the entire run as
-unconditionally successful.
+A localization job with retryable per-image failures ends `completed`, with the failures in its
+summary (S4-4, decided 2026-10-05; see [Open questions](#open-questions)). The per-image rows stay
+`failed` and the repair lane re-attempts them. The job must not rewrite failed image outcomes as
+successful localization.
 
 ### Convergence work
 
@@ -763,6 +768,11 @@ unconditionally successful.
   an explicit retry or a changed source/detector/configuration/rendition identity.
 - Reuse the image×phase claim across normal and repair submissions. Admit at most one repair job
   while core work is idle so repair cannot starve ingestion.
+
+**As built (#527):** a detector outage (`detector_unavailable`) holds the whole lane instead of
+spending per-image attempts: 1 min after the first outage job, 5 min after the second, then until
+the process restarts (`modules/localization_lane.py`). The permanent hold is not yet visible in
+diagnostics (#639).
 
 ### Exit gate
 
@@ -816,6 +826,11 @@ Select the union of:
 This processes detector-positive images even if keyword scoring misses `birds`, while preserving
 the existing full-frame fallback for keyword-positive detector misses.
 
+**As built (G-2, 2026-10-16):** the scope stays the `birds` keyword (`get_images_with_keyword`), and
+the `keywords` → `bird_species` edge is kept. Most current bird runs are unpromoted shadow runs, so
+a region-based scope would use boxes that no gate has passed. Revisit when species eligibility stops
+reading the `birds` keyword (see [Open questions](#open-questions)).
+
 ### Inference behavior
 
 - Classify the primary region first.
@@ -835,6 +850,28 @@ the existing full-frame fallback for keyword-positive detector misses.
   mode, region/rendition identity, crop policy, and model identity on new predictions so later
   changes can identify stale results. Treat existing mixed-input BioCLIP embeddings as legacy.
 
+**As built (#484, #592, #593, #422; live 2026-10-15):** the flag trio above was replaced by
+*selections*.
+
+- **Selections as authority.** A selection (`image_localization_selections`, migration 0038) is a
+  revocable decision that one stored region is the production answer. It records who decided (rule
+  version and hash) and why (evidence). It is the only writer of the `bird_bbox` projection
+  (`modules/localization_selection.py`). The legacy species detector's write is refused, in the same
+  transaction, while a selection is active. No `dual_write_bird_bbox` flag exists.
+- **Region input.** With `bird_species.use_regions`, species classifies a padded crop of the active
+  selection. It does not read the current run, because most current runs are unpromoted shadow runs.
+  - With no selection, a failed lookup, or a selected area under 0.005 (unpadded, #593), species
+    falls back to the legacy embedded-detector path. The small stratum stays in shadow.
+  - Region predictions are written with keyword source `bioclip_region`.
+- **Abstention (#422).** When the top-1 probability is at or below `bird_species.min_confidence`
+  (default 0.5), no species is stored and the image takes `no_species_match`. The 0.5 floor was
+  calibrated on 199 judge-panel frames.
+- **Not built yet:**
+  - `bird_species.multi_region_enabled`;
+  - targeted relocalization of keyword-positive `no_detection` images;
+  - separate full-frame and region BioCLIP embedding spaces. The current code writes every input
+    mode into one space, which breaks the invariant above (#641).
+
 ### Exit gate
 
 - With `bird_species.use_regions=false`, outputs match the legacy path.
@@ -846,6 +883,11 @@ the existing full-frame fallback for keyword-positive detector misses.
   candidate scope.
 - Human/expert evaluation covers species accuracy, calibration, small-subject images, and multiple
   subjects before multi-region results become authoritative.
+
+  **As built:** promotions so far used a pre-declared rule (`v1_regate_rule/3`, then rule/4)
+  gated by blind multi-vendor vision-CLI panels, with Jev on species-blind text for split frames.
+  A frozen manifest was then applied by `scripts/maintenance/promote_localization_selections.py`.
+  These are *agent-panel* labels, not owner labels, so this gate is still open (#422).
 - The legacy detector-only bbox repair path is no longer needed for new work.
 
 ### Rollback
