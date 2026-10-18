@@ -21,6 +21,9 @@ CLIP_IMAGE_DIM = 512
 BIOCLIP_IMAGE_SPACE_CODE = "bioclip_2_image"
 # BioCLIP 2 uses ViT-L/14 (768-d), not ViT-B/32 (512-d).
 BIOCLIP_IMAGE_DIM = 768
+# Same tower on a crop (selected region or embedded-detector box). Kept apart from the full-frame
+# space because the rollout invariant forbids sharing an identity across input modes (#641).
+BIOCLIP_CROP_SPACE_CODE = "bioclip_2_crop"
 BLIP_IMAGE_SPACE_CODE = "blip_vit_b16_image"
 BLIP_IMAGE_DIM = 768
 
@@ -40,6 +43,7 @@ SPACE_DIMS: dict[str, int] = {
     DEFAULT_EMBEDDING_SPACE_CODE: DEFAULT_EMBEDDING_MODEL_DIM,
     CLIP_IMAGE_SPACE_CODE: CLIP_IMAGE_DIM,
     BIOCLIP_IMAGE_SPACE_CODE: BIOCLIP_IMAGE_DIM,
+    BIOCLIP_CROP_SPACE_CODE: BIOCLIP_IMAGE_DIM,
     BLIP_IMAGE_SPACE_CODE: BLIP_IMAGE_DIM,
     OPENCLIP_L14_IMAGE_SPACE_CODE: CULLING_TOWER_IMAGE_DIM,
     OPENAI_CLIP_L14_IMAGE_SPACE_CODE: CULLING_TOWER_IMAGE_DIM,
