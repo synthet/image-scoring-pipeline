@@ -2641,37 +2641,15 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
 
 
 def update_image_bird_bbox(image_id: int, bbox: dict) -> bool:
-    """Store the detected bird bounding box for an image in ``images.bird_bbox`` (JSONB).
+    """Write a legacy bird box only while no active selection owns the image.
 
-    ``bbox`` is a dict such as ``{"x1","y1","x2","y2","conf","img_w","img_h"}`` (see
-    ``modules/bird_detection.BirdDetector.detect_best_box``). Passing ``None`` clears the
-    column. Serialized with ``json.dumps`` and cast to ``jsonb``. Returns True on success.
+    ``None`` clears an unselected box. Return False for a missing image,
+    an active selection, or a failed transaction. The shared guard locks the
+    image before checking ownership and invalidates folder rollups after writes.
     """
-    try:
-        payload = json.dumps(bbox) if bbox is not None else None
-        get_connector().execute(
-            "UPDATE images SET bird_bbox = ?::jsonb WHERE id = ?", (payload, image_id)
-        )
-        # The folder rollup counts a missing box as outstanding bird_species work, so a
-        # box write changes the aggregate. Without this the cached ``phase_agg_json``
-        # would keep the folder in ``awaiting_bird_species`` after the repair and
-        # auto-drive would re-enqueue it until the loop guard fires.
-        try:
-            row = get_connector().query_one(
-                "SELECT folder_id FROM images WHERE id = ?", (image_id,)
-            )
-            if row and row.get("folder_id"):
-                invalidate_folder_phase_aggregates(folder_id=row["folder_id"])
-        except Exception:
-            logging.debug(
-                "bird_bbox: folder aggregate invalidation failed for image %s",
-                image_id,
-                exc_info=True,
-            )
-        return True
-    except Exception as e:
-        logging.error(f"Failed to update bird_bbox for image {image_id}: {e}")
-        return False
+    from modules.localization_selection import write_legacy_bird_bbox
+
+    return write_legacy_bird_bbox(image_id, bbox)
 
 
 def update_image_path(image_hash, new_path, hash_version=None):
