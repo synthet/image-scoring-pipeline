@@ -4,7 +4,7 @@ title: Database Schema
 description: Routing catalog for the PostgreSQL + pgvector schema — table inventory by area, pgvector notes, and where the authoritative DDL lives.
 resource: technical/DB_SCHEMA.md
 tags: [database, postgres, pgvector, schema, migrations]
-timestamp: 2026-10-09T00:00:00Z
+timestamp: 2026-10-21T03:58:38Z
 okf_version: 0.2
 ---
 
@@ -41,6 +41,14 @@ The current PostgreSQL initializer creates or maintains these application tables
 | Localization selections | `image_localization_selections` (migration 0038, #484): the revocable decision that one `image_regions` row is the production answer for an image and detector — `selected_by` (rule version and hash), `evidence` (JSONB), `selected_at` / `revoked_at`. At most one active selection per (image, detector). For a selected image `images.bird_bbox` is a projection written only by `modules/localization_selection.py`; the row keeps `projected_bird_bbox` and the `previous_bird_bbox` it replaced so revocation restores it exactly |
 | Localization enablement | `localization_enablement` (migration 0039, #527): one row per `detector_key` with `enabled_at`, the boundary for `localization.new_images_only`. Images with `images.registered_at >= enabled_at` are new and auto-selected; older images are selected only when their source identity changed since their current run, or by an explicit image selection. Not seeded by the migration; `modules/localization_policy.py` inserts it on first enabled use |
 | Scene route | `image_scene_labels` (migration 0037, #412): one row per image and `scene_version` (prompt set + backend + prompt hash) with the resolved `top_label`, `top_prob`, every label's `probs` / `cosines` (JSONB) and the localization `rendition_hash`. Written by the scene-route benchmark and, when `scene_route.enabled`, by the `localization` runner |
+
+Legacy bbox writes through `db.update_image_bird_bbox`, including the standalone
+backfill, use `localization_selection.write_legacy_bird_bbox` (#646). The guard
+locks the image row before checking active selection ownership, so a selection
+promoted during detection is preserved. A suppressed write returns `False` and
+does not invalidate the folder rollup. NULL-only candidate selection is not a
+substitute for this transaction guard. The legacy backfill still produces no
+normalized run; its retirement or routing remains a separate rollout gate.
 
 ## Delegated culling runs (#368, revision 0040)
 
