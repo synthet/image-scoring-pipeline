@@ -18,6 +18,10 @@ The local compatibility-release implementation batches normalized reads for imag
 
 The generic writer now uses the transactional ownership guard locally. Forty-two unit/adjacent tests and three real PostgreSQL interleaving tests pass. The issue is assigned, but the Project board claim is blocked by token permissions; no deployment or Stage 8 activation occurred.
 
+## [2026-10-21] update | Expose localization outage holds through status and diagnostics
+
+`GET /api/runs/drive/status` and `get_drive_diagnostics` report the process-local localization lane state and a `detector_outage_hold` anomaly; a parked lane reports `restart_required` (#639).
+
 ## [2026-10-20] update | Prepare selection-aware compatibility reader with regression coverage
 
 `read_bird_bbox` projects the active production selection's region and source-run dimensions when `localization.read_normalized_first` is enabled, and falls back to `images.bird_bbox` otherwise (#638).
