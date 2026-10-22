@@ -8001,6 +8001,54 @@ components:
       properties:
         state:
           $ref: '#/components/schemas/RunsDriveState'
+        localization_lane:
+          type: object
+          description: Process-local localization repair state; an indefinite hold requires restart and uses null durations.
+          additionalProperties: false
+          required:
+          - source
+          - last_tick_at
+          - last_job_id
+          - outage_streak
+          - hold_until
+          - backlog
+          - hold_reason
+          - hold_seconds_remaining
+          - restart_required
+          properties:
+            source:
+              type: string
+              const: process_local
+            last_tick_at:
+              type: number
+            last_job_id:
+              anyOf:
+              - type: integer
+              - type: 'null'
+            outage_streak:
+              type: integer
+            hold_until:
+              anyOf:
+              - type: number
+              - type: 'null'
+            backlog:
+              anyOf:
+              - type: object
+                additionalProperties:
+                  type: integer
+              - type: 'null'
+            hold_reason:
+              anyOf:
+              - type: string
+                enum:
+                - detector_outage_hold
+              - type: 'null'
+            hold_seconds_remaining:
+              anyOf:
+              - type: number
+              - type: 'null'
+            restart_required:
+              type: boolean
         outstanding:
           type: object
           properties:
