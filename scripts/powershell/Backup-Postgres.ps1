@@ -229,7 +229,7 @@ try {
             "--no-password",
             "--file=$containerTmp"
         )
-        Write-Host "    docker $($dumpArgs -join ' ')"
+        Write-Host "    docker exec image-scoring-postgres pg_dump (connection credentials redacted)"
         & docker @dumpArgs
         if ($LASTEXITCODE -ne 0) {
             throw "docker exec pg_dump exited with code $LASTEXITCODE"

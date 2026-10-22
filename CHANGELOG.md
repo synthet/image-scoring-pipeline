@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.1.2] - 2026-10-21
+
+### Fixed
+- **Localization selection ownership** (#646): legacy bbox backfill writes and clears respect active production selections, including a selection promoted while detection is in flight.
+
+## [9.1.1] - 2026-10-20
+
+### Added
+- **Near-duplicate maintenance** (#597, #600): manifest-based deletion with dry-run, backups, and recovery, separate from scoring.
+
+### Changed
+- **Migration `0042`** registers the `bioclip_2_crop` embedding space. Run `alembic upgrade head` before writing crop embeddings. Historical mixed BioCLIP vectors still need a separate operator repair.
+
+### Fixed
+- **Keyword ownership** (#586): tagging replaces only its own keyword rows, preserving species labels and hand-entered keywords; species writes preserve other keyword sources.
+- **BioCLIP embedding spaces** (#641, #643): selected-region and detector crops use `bioclip_2_crop`; full-frame inputs use `bioclip_2_image`. Unknown input modes do not persist vectors.
+- **Near-duplicate recovery** (#600): human-labelled frames are protected, stack review history is retained, and file recovery supports backups on another volume.
+
+### Documentation
+- Refreshed localization rollout decisions and completion records, the 379-species walkthrough, and the orientation re-tag recovery report.
+
 ## [9.1.0] - 2026-10-16
 
 ### Added
