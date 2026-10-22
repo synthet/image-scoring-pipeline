@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-22] update | Record localization rollout status through 2026-10-22 (#655)
+
+The rollout status of record now carries the 2026-10-18 to 2026-10-21 continuation text and reports, plus a 2026-10-22 summary. Merged: #646 (v9.1.2), #652 reader and view 0043, #651, #653. Not deployed: live revision 0042. The BioCLIP repair has 23,836 repair images remaining after the 8 missing-original records were removed.
+
 ## [2026-10-21] edit | Normalized bbox SQL compatibility groundwork
 
 Added the local compatibility view 0043 and coordinated default-off gallery SQL consumers. Contract: docs/technical/NORMALIZED_BBOX_COMPATIBILITY.md; schema catalog: docs/technical/DB_SCHEMA.md. Isolated PostgreSQL migration checks and gallery consumer/type checks pass. No live schema, runtime flag or release delivery changed.
@@ -25,6 +29,55 @@ The generic writer now uses the transactional ownership guard locally. Forty-two
 ## [2026-10-20] update | Prepare selection-aware compatibility reader with regression coverage
 
 `read_bird_bbox` projects the active production selection's region and source-run dimensions when `localization.read_normalized_first` is enabled, and falls back to `images.bird_bbox` otherwise (#638).
+## [2026-10-21] update | Verify owner-approved bbox ownership guard with PostgreSQL interleavings
+
+Issue #646 local fix passes 42 unit/adjacent and three real PostgreSQL cases. Disposable test instance removed; Project board claim unavailable due to token permission. The embedding resume and Stage 8 remain gated.
+
+## [2026-10-21] update | Reproduce legacy backfill ownership race and prepare unapplied fix
+
+Current helper fails the promotion-during-detection regression. A private candidate passes five cases; production source and Stage 8 readiness remain unchanged pending focused tracking signoff.
+
+## [2026-10-21] update | Bound historical selection drift and document fresh backup admission
+
+Read-only October 5/10 backup comparisons bound all 31 legacy projection disagreements. Current state is unchanged; resume checkpoint/runtime approval and full backup-to-proof execution remain pending.
+
+## [2026-10-21] update | Record outage visibility fix and pending execution gates
+
+## [2026-10-20] update | Prepare culling-preserving checkpoint and verified resume approval package
+
+## [2026-10-20] update | Verify local reader fix and identify culling-only resume drift
+
+## [2026-10-20] update | Audit selection-aware normalized-reader readiness
+
+## [2026-10-20] update | Diagnose stopped cascade pilot source identities
+
+## [2026-10-20] edit | Reconcile interrupted BioCLIP rebuild and restore WebUI
+
+Windows restart at 02:21 UTC interrupted the rebuild and prevented automatic application restart. Read-only reconciliation verified 2,000 valid surviving vectors, 31,764 missing IDs and unchanged pilot/non-target/protected state. WebUI was restored and health returned HTTP 200; the stale running receipt was corrected with its original preserved. A fresh backup and controlled-resume preflight passed, as did 13 resume/backfill and 12 timing tests. New proposed 14-hour budget remains unapproved.
+
+## [2026-10-20] edit | Launch approved bounded BioCLIP rebuild remainder
+
+After a fresh verified local backup and exact-ID preservation preflight, launched the approved 33,564-image remainder at 01:39:52 UTC on October 20. WebUI is paused; a hidden host controller restores it after success or failure. Single batch-8 process, offline cached weights, 12-hour watchdog ending 13:39:52 UTC, hourly preservation checks and no automatic retries. Final data-repair verification remains pending.
+
+## [2026-10-20] edit | Verify successful 200-image BioCLIP rebuild pilot
+
+The approved pilot completed 200/200 exact frozen IDs with valid normalized 768-dimensional vectors, zero decode failures and unchanged protected/non-target state. Backfill took 199.71 seconds; sampled GPU peak was 2,619 MiB and child peak RSS 4.04 GiB. WebUI restarted and health returned HTTP 200. Remaining 33,564 rebuilds need approval for the proposed 12-hour budget; 9.31 hours is a pilot-based planning proxy.
+
+## [2026-10-19] edit | Complete approved deletion of mixed BioCLIP vectors
+
+After a fresh verified local backup, deleted exactly the 33,764 frozen mixed vectors. All 149,288 non-target embedding rows and crop payloads were preserved; independent postflight found 40,371 full-frame and 4,029 crop vectors. WebUI restarted. The 200-image rebuild selector dry run passed; recomputation awaits separate approval.
+
+## [2026-10-19] edit | Complete approved BioCLIP crop-space move
+
+Moved exactly 4,029 frozen proven-crop vectors into bioclip_2_crop; 74,135 full-frame vectors remain. Selected payload equality and all 179,023 non-target row fingerprints passed before and after commit. WebUI restarted and health returned HTTP 200. No deletion or rebuild ran.
+
+## [2026-10-19] edit | Record stopped localization cascade pilot and BioCLIP repair preflight
+
+Added the October 19 continuation report and updated rollout status: the pilot stopped at 38/200 after three retryable errors, protected state matched, full replay is blocked, and the embedding repair remains pending operator confirmation.
+
+## [2026-10-18] created | Localization timing baseline and routing control
+
+Added the #416 three-repeat timing report, sanitized measurement artifacts, a local YOLO/PNG/keypoint control and explicit unsupported-provider and VRAM limits.
 
 ## [2026-10-17] ingest | #418 re-tag recovery session
 

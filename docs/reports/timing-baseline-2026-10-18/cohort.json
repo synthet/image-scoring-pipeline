@@ -1,0 +1,690 @@
+{
+  "seed": 416,
+  "quotas": {
+    "raw_bird": 100,
+    "raw_none": 50,
+    "jpeg": 20
+  },
+  "images": [
+    {
+      "image_id": 244145,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 233621,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 233643,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 233689,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 233530,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 244123,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 244194,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 244223,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 244105,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 244167,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 243955,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 244083,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 233446,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 244029,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 233696,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 244204,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 243808,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 233545,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 243867,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 243793,
+      "stratum": "jpeg"
+    },
+    {
+      "image_id": 6043,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 23432,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 235995,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 167703,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 214785,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 9421,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 21858,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 44843,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 906,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 190538,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 5464,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 147036,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 234239,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 13517,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 21069,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 10903,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 163218,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 18928,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 192404,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 14055,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 17861,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 45624,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 36466,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 135568,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 192591,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 20550,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 211143,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 22713,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 50677,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 214549,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 236280,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 17439,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 162595,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 32019,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 208588,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 14485,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 208323,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 66427,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 14333,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 209235,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 13932,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 1946,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 6322,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 11253,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 42995,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 16823,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 35462,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 23457,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 162751,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 6456,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 36322,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 210636,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 38069,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 235971,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 40872,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 70439,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 194824,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 71012,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 213144,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 190534,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 211339,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 38088,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 869,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 7098,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 208333,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 5246,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 41308,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 7233,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 211221,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 163377,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 210623,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 11318,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 4661,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 31375,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 211067,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 70727,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 71974,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 212169,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 16932,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 43609,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 15579,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 208917,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 147156,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 68309,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 208156,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 15436,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 50574,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 13271,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 71841,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 22708,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 67685,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 211289,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 146888,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 16802,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 235949,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 13987,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 70661,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 209236,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 135129,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 47356,
+      "stratum": "raw_bird"
+    },
+    {
+      "image_id": 162472,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 212127,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 2281,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 215411,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 31114,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 9157,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 10379,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 6324,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 74911,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 26706,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 22098,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 24188,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 9204,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 15259,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 32424,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 31191,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 32063,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 10052,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 13810,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 50822,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 24159,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 32535,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 207999,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 216031,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 25563,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 27695,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 31770,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 167512,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 177004,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 15184,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 154750,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 24540,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 215745,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 26770,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 14670,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 29009,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 207461,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 70396,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 24986,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 146931,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 67804,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 1641,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 30413,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 26939,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 50262,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 209370,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 29732,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 215834,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 33226,
+      "stratum": "raw_none"
+    },
+    {
+      "image_id": 8486,
+      "stratum": "raw_none"
+    }
+  ]
+}
