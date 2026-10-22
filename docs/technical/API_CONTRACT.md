@@ -4,7 +4,7 @@ title: API Contract Summary
 description: "REST contract for the Vexlum Scoring FastAPI backend: endpoints, request/response models and error codes."
 resource: docs/technical/API_CONTRACT.md
 tags: [api, rest, contract]
-timestamp: 2026-10-07T00:00:00Z
+timestamp: 2026-10-20T23:00:00Z
 okf_version: 0.2
 ---
 
@@ -233,6 +233,24 @@ augmented from the `image_model_scores` table:
   }
   ```
 - **`{name}_score`** — flat convenience field (e.g. `topiq_score`) added for
+### Bird-box compatibility reads
+
+Image list/detail responses, their `/public/api` equivalents and UUID/hash detail
+lookups use the shared `localization.read_normalized_first` flag (default `false`).
+When enabled, `bird_bbox` projects the active production selection, including a
+selected noncurrent run or nonzero-rank region. Without a selection, an imported
+legacy payload is used when available; unselected native shadow outcomes leave
+the legacy value unchanged. Lookup failures retain the existing legacy value.
+
+The evidence endpoint `/api/images/{id}/evidence` applies the same authority to
+`region_bbox` before building its region mask. Paginated image reads use one
+normalized lookup per 500 distinct IDs. Disabling the flag performs no normalized
+lookups and preserves existing response values and absent fields.
+
+This compatibility path does not activate the flag or complete Stage 8. Gallery
+SQL consumer migration, historical disagreement review, rollback observation and
+a delivered compatibility release remain separate rollout requirements.
+
   **production** (non-shadow) models that do not already have a legacy
   `score_{name}` column. Value is `normalized` (falls back to `raw_score`).
   Shadow engines (`cursor`, `claude`) appear **only** in `model_scores`, never as

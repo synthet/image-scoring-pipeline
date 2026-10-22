@@ -370,3 +370,27 @@ def initialize_review_schema(cur, *, conn) -> None:
         "CREATE INDEX IF NOT EXISTS ix_isl_version_label "
         "ON image_scene_labels (scene_version, top_label);"
     )
+    cur.execute(BIRD_BBOX_COMPAT_VIEW_SQL)
+
+# Keep identical to migration 0043; migration history must not import mutable app code.
+BIRD_BBOX_COMPAT_VIEW_SQL = """
+CREATE OR REPLACE VIEW image_bird_bbox_compat AS
+SELECT i.id AS image_id,
+       CASE WHEN s.id IS NOT NULL THEN
+           CASE WHEN r.id IS NOT NULL AND selected_run.display_width > 0
+                     AND selected_run.display_height > 0
+                THEN s.projected_bird_bbox ELSE i.bird_bbox END
+       ELSE COALESCE(NULLIF(imported.legacy_payload, 'null'::jsonb), i.bird_bbox)
+       END AS bird_bbox
+FROM images i
+LEFT JOIN image_localization_selections s
+    ON s.image_id = i.id AND s.detector_key = 'bird' AND s.revoked_at IS NULL
+LEFT JOIN image_regions r
+    ON r.id = s.region_id AND r.localization_run_id = s.localization_run_id
+LEFT JOIN image_localization_runs selected_run
+    ON selected_run.id = s.localization_run_id AND selected_run.image_id = s.image_id
+    AND selected_run.detector_key = s.detector_key
+LEFT JOIN image_localization_runs imported
+    ON imported.image_id = i.id AND imported.detector_key = 'bird' AND imported.is_current
+    AND imported.legacy_payload IS NOT NULL
+"""
