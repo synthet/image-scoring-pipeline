@@ -4,7 +4,7 @@ title: Reports index
 description: Index of historical reports, research, reviews, and debugging sessions under docs/reports/.
 resource: docs/reports/INDEX.md
 tags: [docs, reports, index]
-timestamp: 2026-10-13T00:58:42Z
+timestamp: 2026-10-21T02:56:24Z
 okf_version: 0.2
 ---
 
@@ -130,5 +130,7 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | [bird-species-list-379-gate-2026-10-16](bird-species-list-379-gate-2026-10-16.md) | Agent-panel gate adopting a 379-name Austin-ordered species list; three proposed additions rejected. |
 | [retag-418-session-2026-10-17](retag-418-session-2026-10-17.md) | #418 re-tag (job 6945) recovered after host sleep failed it; restart vs resume, progress timeline, verification and follow-up decisions. |
 | [jev-1.14-image-inputs-assessment-2026-10-16](jev-1.14-image-inputs-assessment-2026-10-16.md) | Jev 1.14 image inputs: verified claims, tooling gaps, gate use cases and conditions before use; research only. |
+| [timing-baseline-2026-10-18](timing-baseline-2026-10-18.md) | Three-repeat decode and model timing baseline, routed-versus-local control, memory limits and rollout cost gates. |
+| [localization-continuation-2026-10-19](localization-continuation-2026-10-19.md) | Interrupted repair, historical box drift, local reader/outage fixes and fresh-backup admission preparation awaiting checkpoint/runtime acceptance. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)
