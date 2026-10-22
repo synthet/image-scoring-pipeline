@@ -1,0 +1,67 @@
+{
+  "started_at": "2026-10-18T20:53:18.302892+00:00",
+  "repeats": [
+    3
+  ],
+  "images": 170,
+  "nvidia_smi_start": "NVIDIA GeForce RTX 4060 Laptop GPU, 3871 MiB, 8188 MiB",
+  "warmup": 3,
+  "alt_decode_limit": 30,
+  "models": [
+    {
+      "repeat": 3,
+      "model": "pass_a_loaded_together",
+      "peak_alloc_mib": 3073.7
+    },
+    {
+      "repeat": 3,
+      "model": "pass_a_after_cohort",
+      "peak_alloc_mib": 3101.8
+    },
+    {
+      "repeat": 3,
+      "model": "liqe",
+      "load_ok": true,
+      "peak_alloc_mib": 1523.9
+    },
+    {
+      "repeat": 3,
+      "model": "topiq",
+      "load_ok": true,
+      "peak_alloc_mib": 1298.9
+    },
+    {
+      "repeat": 3,
+      "model": "arniqa",
+      "load_ok": true,
+      "peak_alloc_mib": 1091.8
+    },
+    {
+      "repeat": 3,
+      "model": "clip_b32_keywords",
+      "load_ok": true,
+      "peak_alloc_mib": 707.3
+    },
+    {
+      "repeat": 3,
+      "model": "blip_caption",
+      "load_ok": true,
+      "peak_alloc_mib": 1204.7
+    },
+    {
+      "repeat": 3,
+      "model": "musiq_spaq",
+      "load_ok": true,
+      "tf_peak_mib": 1009.7
+    },
+    {
+      "repeat": 3,
+      "model": "musiq_ava",
+      "load_ok": true,
+      "tf_peak_mib": 1009.7
+    }
+  ],
+  "finished_at": "2026-10-18T21:47:36.330946+00:00",
+  "nvidia_smi_end": "NVIDIA GeForce RTX 4060 Laptop GPU, 4871 MiB, 8188 MiB",
+  "concurrent_jobs": []
+}
