@@ -10,6 +10,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 The generic writer now uses the transactional ownership guard locally. Forty-two unit/adjacent tests and three real PostgreSQL interleaving tests pass. The issue is assigned, but the Project board claim is blocked by token permissions; no deployment or Stage 8 activation occurred.
 
+## [2026-10-21] update | Expose localization outage holds through status and diagnostics
+
+`GET /api/runs/drive/status` and `get_drive_diagnostics` report the process-local localization lane state and a `detector_outage_hold` anomaly; a parked lane reports `restart_required` (#639).
+
 ## [2026-10-17] ingest | #418 re-tag recovery session
 
 Saved the [session summary](reports/retag-418-session-2026-10-17.md) from a gitignored Claude Code export: host sleep failed job 6945 through a bind-mount I/O error, `jobs/{id}/restart` recovered it in place, and the re-tag completed with 0 failed actions and verified keyword preservation. Linked from the reports index and the session digest router.

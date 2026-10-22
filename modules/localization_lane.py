@@ -23,6 +23,7 @@ the first outage job, 5 min after the second, then until the process restarts.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from typing import Any
@@ -62,6 +63,25 @@ def reset_state() -> None:
 def get_state() -> dict[str, Any]:
     with _LOCK:
         return dict(_STATE)
+
+
+def get_diagnostic_state(now: float | None = None) -> dict[str, Any]:
+    """JSON-safe, process-local snapshot; never tick or clear an outage hold."""
+    state = get_state()
+    now = time.time() if now is None else now
+    until = state["hold_until"]
+    indefinite = math.isinf(until)
+    held = now < until
+    state.update(
+        source="process_local",
+        hold_until=None if indefinite else until,
+        hold_reason="detector_outage_hold" if held else None,
+        hold_seconds_remaining=None if indefinite else max(0.0, until - now),
+        restart_required=held and indefinite,
+    )
+    if state["backlog"] is not None:
+        state["backlog"] = dict(state["backlog"])
+    return state
 
 
 def lane_enabled() -> bool:

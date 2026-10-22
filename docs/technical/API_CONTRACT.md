@@ -44,6 +44,20 @@ reconciliation and duplicate completion callbacks; use a fresh Retry for that ru
 
 **Runs submit mode:** [RUN_OPTIONS_MODE_MATRIX.md](RUN_OPTIONS_MODE_MATRIX.md) documents the single canonical `run_mode` (`process_stale_or_missing`) for `POST /api/runs/submit`, JIT planner behavior, and removed legacy options.
 
+**Localization repair diagnostics (#639):** `GET /api/runs/drive/status` adds
+`localization_lane` alongside the existing `state` and `outstanding` fields.
+It reports process-local lane state, including `outage_streak`, `last_job_id`,
+cached `backlog`, `hold_reason`, `hold_until`, `hold_seconds_remaining` and
+`restart_required`. A parked lane reports `hold_reason: detector_outage_hold`,
+`restart_required: true`, and null hold deadline/remaining duration rather than
+non-finite JSON numbers. Finite outage backoff reports its Unix-time deadline
+and remaining seconds; expired holds have no hold reason. Reading diagnostics
+does not advance or reset the lane, query candidates, or block core auto-drive.
+The existing `get_drive_diagnostics` result includes the same status and a scoped
+`detector_outage_hold` anomaly. Use the WebUI HTTP endpoint or its live MCP
+context to inspect the running service; a separate stdio worker has its own
+process-local state.
+
 **Run/job manifest (`jobs.queue_payload`):** Parsed on `GET /api/runs/{id}` and related job endpoints. New enqueues include a structured **`reason`** object explaining why the run was queued:
 
 | Field | Type | Description |

@@ -6,6 +6,7 @@ Candidate SQL and the end-to-end enqueue are in
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -129,6 +130,77 @@ def test_a_clean_job_clears_the_outage_streak(fake_db, lane_on):
     assert lane.maybe_enqueue(now=1122.0)["enqueued"] == 102
     lane.maybe_enqueue(now=1183.0)                 # clean job: streak reset
     assert lane.get_state()["outage_streak"] == 0
+
+
+def test_parked_lane_is_visible_through_status_and_diagnostics(fake_db, lane_on, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from modules import runs_autodrive as drive
+    from modules.api.routers.electron_runs_plan import create_electron_runs_plan_router
+
+    fake_db.get_connector.return_value.query_one.return_value = {"n": 1}
+    for now in (1000.0, 1061.0, 1122.0, 1183.0, 1544.0, 1605.0):
+        lane.maybe_enqueue(now=now)
+    fake_db.get_connector.return_value.query_one.return_value = {"n": 0}  # detector recovers
+    assert lane.maybe_enqueue(now=1605.0 + 86_400)["skipped"] == "detector_outage_hold"
+    before = lane.get_state()
+    core_state = {"enabled": True, "last_result": {"total_outstanding": 1,
+                  "bucket_counts": {"awaiting_scoring": 1}, "health": {"schedulable_folders": 1}}}
+    monkeypatch.setattr(drive, "get_drive_state", lambda: core_state)
+    monkeypatch.setattr(drive, "_recent_auto_drive_jobs", lambda **kw: [])
+    app = FastAPI()
+    app.include_router(create_electron_runs_plan_router(), prefix="/api")
+    with TestClient(app) as client:
+        response = client.get("/api/runs/drive/status")
+    assert response.status_code == 200
+    status = response.json()
+    assert status["localization_lane"]["hold_reason"] == "detector_outage_hold"
+    assert status["localization_lane"]["restart_required"] is True
+    assert status["localization_lane"]["hold_until"] is None
+    assert status["localization_lane"]["hold_seconds_remaining"] is None
+    assert status["state"] == core_state and status["outstanding"]["total_outstanding"] == 1
+    diagnostics = drive.get_drive_diagnostics()
+    assert any(row["code"] == "detector_outage_hold" and row["scope"] == "localization_lane"
+               for row in diagnostics["anomalies"])
+    json.dumps(diagnostics, allow_nan=False)
+    from modules.mcp.tools import jobs as mcp_jobs
+
+    mcp_diagnostics = mcp_jobs.get_drive_diagnostics()
+    assert mcp_diagnostics["status"]["localization_lane"] == status["localization_lane"]
+    json.dumps(mcp_diagnostics, allow_nan=False)
+    assert lane.get_state() == before and len(lane_on) == 3
+
+
+@pytest.mark.parametrize("now,remaining,reason", [
+    (1061.0, 60.0, "detector_outage_hold"),
+    (1120.0, 1.0, "detector_outage_hold"),
+    (1121.0, 0.0, None),
+    (1122.0, 0.0, None),
+])
+def test_diagnostics_describe_backoff_without_advancing_lane(fake_db, lane_on, now, remaining, reason):
+    fake_db.get_connector.return_value.query_one.return_value = {"n": 1}
+    lane.maybe_enqueue(now=1000.0)
+    lane.maybe_enqueue(now=1061.0)
+    before = lane.get_state()
+    status = lane.get_diagnostic_state(now=now)
+    assert status["hold_until"] == 1121.0
+    assert status["hold_seconds_remaining"] == remaining
+    assert status["hold_reason"] == reason
+    assert status["restart_required"] is False
+    json.dumps(status, allow_nan=False)
+    status["backlog"]["pending"] = 999
+    assert lane.get_state() == before and len(lane_on) == 1
+
+
+def test_no_outage_has_no_diagnostic_hold(monkeypatch):
+    candidates = MagicMock(side_effect=AssertionError("diagnostics must not scan candidates"))
+    monkeypatch.setattr(lane, "select_candidates", candidates)
+    status = lane.get_diagnostic_state(now=1000.0)
+    assert status["hold_reason"] is None and status["restart_required"] is False
+    assert status["hold_seconds_remaining"] == 0.0
+    assert status["source"] == "process_local"
+    candidates.assert_not_called()
 
 
 def test_lane_errors_never_escape(monkeypatch):
