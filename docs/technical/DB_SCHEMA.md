@@ -4,7 +4,7 @@ title: Database Schema
 description: Routing catalog for the PostgreSQL + pgvector schema — table inventory by area, pgvector notes, and where the authoritative DDL lives.
 resource: technical/DB_SCHEMA.md
 tags: [database, postgres, pgvector, schema, migrations]
-timestamp: 2026-10-21T03:58:38Z
+timestamp: 2026-10-21T03:51:29Z
 okf_version: 0.2
 ---
 
@@ -37,10 +37,29 @@ The current PostgreSQL initializer creates or maintains these application tables
 | Culling and stacks | `stacks`, `sub_stacks`, `stack_cache`, `cluster_progress`, `culling_sessions`, `culling_picks`, `agent_cull_review_groups`, `agent_cull_recommendations` |
 | Keywords | `keywords_dim`, `image_keywords`, legacy keyword text fields where retained for compatibility |
 | Embeddings | `embedding_spaces`, `image_embeddings`, `image_embeddings_512`, `image_embeddings_768` (legacy `images.image_embedding` dropped in migration 0024) |
-| Localization | `image_localization_runs`, `image_regions` (migration 0034; `image_localization_runs.decode_route` added in 0035 — which decode produced the detector's pixels, e.g. `raw_jpgfromraw` / `raw_preview` / `raw_rawpy` / `direct`). Written by the shadow `localization` phase (#387); legacy `images.bird_bbox` remains the authority until `localization.read_normalized_first` is enabled |
+| Localization | `image_localization_runs`, `image_regions` (migration 0034; `image_localization_runs.decode_route` added in 0035 — which decode produced the detector's pixels, e.g. `raw_jpgfromraw` / `raw_preview` / `raw_rawpy` / `direct`). Native current runs can be shadow results; production authority comes from an active selection, not `is_current` alone |
 | Localization selections | `image_localization_selections` (migration 0038, #484): the revocable decision that one `image_regions` row is the production answer for an image and detector — `selected_by` (rule version and hash), `evidence` (JSONB), `selected_at` / `revoked_at`. At most one active selection per (image, detector). For a selected image `images.bird_bbox` is a projection written only by `modules/localization_selection.py`; the row keeps `projected_bird_bbox` and the `previous_bird_bbox` it replaced so revocation restores it exactly |
 | Localization enablement | `localization_enablement` (migration 0039, #527): one row per `detector_key` with `enabled_at`, the boundary for `localization.new_images_only`. Images with `images.registered_at >= enabled_at` are new and auto-selected; older images are selected only when their source identity changed since their current run, or by an explicit image selection. Not seeded by the migration; `modules/localization_policy.py` inserts it on first enabled use |
 | Scene route | `image_scene_labels` (migration 0037, #412): one row per image and `scene_version` (prompt set + backend + prompt hash) with the resolved `top_label`, `top_prob`, every label's `probs` / `cosines` (JSONB) and the localization `rendition_hash`. Written by the scene-route benchmark and, when `scene_route.enabled`, by the `localization` runner |
+
+The opt-in compatibility reader `modules.localization_legacy.read_bird_bbox`
+projects the active selection's exact region and its source run's dimensions.
+The selected run need not be current, and the selected region need not be rank
+zero. Without a selection, an imported legacy payload can be replayed; a native
+unselected outcome falls back to `images.bird_bbox`, including negative and
+error outcomes. A lookup failure also falls back to the column. With
+`localization.read_normalized_first` disabled, the reader only reads the column.
+The batch companion `overlay_bird_bboxes` applies these authority rules to copied
+API list/detail rows and the visual-evidence region box, with one set-based query
+per 500 distinct image IDs. Flag off leaves supplied values unchanged and performs
+no normalized lookup. The coordinated gallery reader uses the additive
+`image_bird_bbox_compat` view (revision 0043), exposing the active selection
+ledger's projection or imported/legacy fallback with the same nullable JSON
+shape. Fresh bootstrap creates the same view. Both consumer switches remain
+default-off; deploy the view before enabling gallery reads. See the
+[compatibility contract](NORMALIZED_BBOX_COMPATIBILITY.md) for authority,
+ledger/geometry parity, role checks, migration prerequisites and rollback.
+These local reader paths do not complete the Stage 8 compatibility-release gate.
 
 Legacy bbox writes through `db.update_image_bird_bbox`, including the standalone
 backfill, use `localization_selection.write_legacy_bird_bbox` (#646). The guard

@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from fastapi.responses import Response
 
 from modules import db
+from modules.localization_legacy import overlay_bird_bboxes
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,7 @@ def _image_detail_payload(image_id: int) -> dict:
             raise HTTPException(status_code=404, detail=f"Image not found: id={image_id}")
 
         data = _row_to_dict(row, exclude_keys={"image_embedding"})
+        overlay_bird_bboxes([data])
         legacy_kw = (data.get("keywords") or "").strip()
         resolved_kw = db.get_resolved_image_keywords(image_id, legacy_fallback=legacy_kw).strip()
         data["keywords"] = resolved_kw or None
@@ -404,6 +406,8 @@ def _images_list_payload(
         for img in images:
             d = _row_to_dict(img, exclude_keys={"image_embedding"})
             payload_images.append(d)
+
+        overlay_bird_bboxes(payload_images)
 
         img_ids = [d.get("id") or d.get("ID") for d in payload_images if (d.get("id") or d.get("ID"))]
         phase_map = db.get_batch_image_phase_statuses(img_ids)

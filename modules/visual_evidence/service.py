@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from modules import db
+from modules.localization_legacy import overlay_bird_bboxes
 from modules.visual_evidence import grids, rle
 from modules.visual_evidence.schema import (
     CriterionBand,
@@ -102,6 +103,9 @@ def build_evidence_for_image(image_id: int) -> EvidencePayload:
         raise KeyError(image_id)
 
     thumbnail_path, bird_bbox_raw = row[0], row[1]
+    image_row = {"id": image_id, "bird_bbox": bird_bbox_raw}
+    overlay_bird_bboxes([image_row])
+    bird_bbox_raw = image_row["bird_bbox"]
     bbox: dict[str, Any] | None = None
     if bird_bbox_raw:
         try:

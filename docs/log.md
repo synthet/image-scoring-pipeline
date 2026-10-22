@@ -6,9 +6,21 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-21] edit | Normalized bbox SQL compatibility groundwork
+
+Added the local compatibility view 0043 and coordinated default-off gallery SQL consumers. Contract: docs/technical/NORMALIZED_BBOX_COMPATIBILITY.md; schema catalog: docs/technical/DB_SCHEMA.md. Isolated PostgreSQL migration checks and gallery consumer/type checks pass. No live schema, runtime flag or release delivery changed.
+
+## [2026-10-21] update | Route API and evidence boxes through the opt-in normalized reader
+
+The local compatibility-release implementation batches normalized reads for image list/detail and public/UUID/hash variants, and uses the same selection authority for evidence overlays. The flag remains disabled by default; no activation, deployment or Stage 8 completion is claimed. Gallery SQL consumers and the compatibility/rollback gates remain outstanding.
+
 ## [2026-10-21] update | Protect production selections from legacy bbox backfill writes (#646)
 
 The generic writer now uses the transactional ownership guard locally. Forty-two unit/adjacent tests and three real PostgreSQL interleaving tests pass. The issue is assigned, but the Project board claim is blocked by token permissions; no deployment or Stage 8 activation occurred.
+
+## [2026-10-20] update | Prepare selection-aware compatibility reader with regression coverage
+
+`read_bird_bbox` projects the active production selection's region and source-run dimensions when `localization.read_normalized_first` is enabled, and falls back to `images.bird_bbox` otherwise (#638).
 
 ## [2026-10-17] ingest | #418 re-tag recovery session
 

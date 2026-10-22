@@ -254,14 +254,17 @@ class _FakeConn:
     is the whole behavioural contract of a normalized-first reader with fallback.
     """
 
-    def __init__(self, *, legacy=None, run=None, regions=None, fail_on=()):
+    def __init__(self, *, legacy=None, run=None, regions=None, selection=None, fail_on=()):
         self.legacy = legacy
         self.run = run
         self.regions = regions or []
+        self.selection = selection
         self.fail_on = fail_on
         self.queries: list[str] = []
 
     def _tag(self, sql: str) -> str:
+        if "image_localization_selections" in sql:
+            return "selection"
         if "image_localization_runs" in sql:
             return "run"
         if "image_regions" in sql:
@@ -273,6 +276,8 @@ class _FakeConn:
         self.queries.append(tag)
         if tag in self.fail_on:
             raise RuntimeError("boom")
+        if tag == "selection":
+            return dict(self.selection) if self.selection else None
         if tag == "run":
             return dict(self.run) if self.run else None
         return {"bird_bbox": self.legacy}
@@ -291,10 +296,53 @@ def _read(conn, **kw):
     return read_bird_bbox(conn, 42, **kw)
 
 
+def _selected_region():
+    return {
+        "x1": 4460 / 8256, "y1": 934 / 5504,
+        "x2": 7709 / 8256, "y2": 3959 / 5504, "confidence": 0.6913,
+        "display_width": 8256, "display_height": 5504,
+    }
+
+
+def test_reader_prefers_selected_region_over_current_shadow_run():
+    conn = _FakeConn(
+        legacy={"detected": False}, selection=_selected_region(),
+        run={"id": 7, "status": "detected", "legacy_payload": None,
+             "display_width": 8256, "display_height": 5504},
+        regions=[{"rank": 0, "x1": 0.1, "y1": 0.1,
+                  "x2": 0.2, "y2": 0.2, "confidence": 0.99}],
+    )
+    # The historical fixture's area_frac is not the area of its rounded pixel box.
+    assert _read(conn, prefer_normalized=True) == dict(REAL_BOX, area_frac=0.216285)
+    assert conn.queries == ["selection"]
+
+
+@pytest.mark.parametrize("status", ["detected", "no_detection", "retryable_error", "terminal_error"])
+def test_reader_does_not_promote_unselected_native_shadow_run(status):
+    conn = _FakeConn(
+        legacy=REAL_BOX,
+        run={"id": 7, "status": status, "legacy_payload": None,
+             "display_width": 100, "display_height": 100},
+        regions=[{"rank": 0, "x1": 0.1, "y1": 0.1,
+                  "x2": 0.2, "y2": 0.2, "confidence": 0.99}],
+    )
+    assert _read(conn, prefer_normalized=True) == REAL_BOX
+    assert "regions" not in conn.queries
+
+
+def test_reader_selection_lookup_failure_uses_legacy_instead_of_shadow():
+    conn = _FakeConn(
+        legacy=REAL_BOX, fail_on=("selection",),
+        run={"id": 7, "status": "no_detection", "legacy_payload": None},
+    )
+    assert _read(conn, prefer_normalized=True) == REAL_BOX
+    assert conn.queries == ["selection", "legacy"]
+
+
 def test_reader_is_a_plain_column_read_when_disabled():
     """Flag off must be indistinguishable from today's SELECT -- that is what makes it
     safe to land before anything writes the normalized tables."""
-    conn = _FakeConn(legacy=REAL_BOX, run={"id": 1, "status": "detected"})
+    conn = _FakeConn(legacy=REAL_BOX, run={"id": 1, "status": "detected"}, selection=_selected_region())
     assert _read(conn, prefer_normalized=False) == REAL_BOX
     assert conn.queries == ["legacy"], "normalized tables must not be touched"
 
@@ -315,18 +363,24 @@ def test_reader_prefers_an_imported_run_and_replays_its_payload():
     assert "regions" not in conn.queries, "an imported run replays its payload, no region read"
 
 
-def test_reader_synthesizes_from_regions_for_a_native_run():
+def test_reader_prefers_selection_over_an_imported_run():
     conn = _FakeConn(
-        legacy=None,
-        run={"id": 7, "status": "detected", "legacy_payload": None,
-             "display_width": 8256, "display_height": 5504, "error_code": None},
-        regions=[{"object_class": "bird", "rank": 0,
-                  "x1": 4460 / 8256, "y1": 934 / 5504,
-                  "x2": 7709 / 8256, "y2": 3959 / 5504, "confidence": 0.6913}],
+        legacy=None, selection=_selected_region(),
+        run={"id": 7, "status": "no_detection", "legacy_payload": {"detected": False}},
     )
     out = _read(conn, prefer_normalized=True)
-    assert (out["x1"], out["y1"], out["x2"], out["y2"]) == (4460, 934, 7709, 3959)
-    assert conn.queries == ["run", "regions"]
+    assert out == dict(REAL_BOX, area_frac=0.216285)
+    assert conn.queries == ["selection"]
+
+
+@pytest.mark.parametrize("dimension", [None, 0, -1])
+def test_reader_invalid_selected_dimensions_fall_back_to_legacy(dimension):
+    conn = _FakeConn(
+        legacy=REAL_BOX, selection=dict(_selected_region(), display_width=dimension),
+        run={"id": 7, "status": "no_detection", "legacy_payload": {"detected": False}},
+    )
+    assert _read(conn, prefer_normalized=True) == REAL_BOX
+    assert conn.queries == ["selection", "legacy"]
 
 
 def test_reader_falls_back_to_the_column_when_no_current_run():
@@ -334,7 +388,7 @@ def test_reader_falls_back_to_the_column_when_no_current_run():
     source. A missing run must not read as 'no bird'."""
     conn = _FakeConn(legacy=REAL_BOX, run=None)
     assert _read(conn, prefer_normalized=True) == REAL_BOX
-    assert conn.queries == ["run", "legacy"]
+    assert conn.queries == ["selection", "run", "legacy"]
 
 
 def test_missing_run_is_distinguished_from_a_run_projecting_to_none():
@@ -342,7 +396,7 @@ def test_missing_run_is_distinguished_from_a_run_projecting_to_none():
     conflated, or the legacy fallback silently stops firing."""
     conn = _FakeConn(legacy=None, run=None)
     assert _read(conn, prefer_normalized=True) is None
-    assert conn.queries == ["run", "legacy"], "fallback must still be attempted"
+    assert conn.queries == ["selection", "run", "legacy"], "fallback must still be attempted"
 
 
 def test_reader_projects_no_detection_without_consulting_the_column():
@@ -356,8 +410,8 @@ def test_reader_projects_no_detection_without_consulting_the_column():
 
 
 @pytest.mark.parametrize("fail_on,expected_tail", [
-    (("run",), ["run", "legacy"]),
-    (("regions",), ["run", "regions", "legacy"]),
+    (("selection",), ["selection", "legacy"]),
+    (("run",), ["selection", "run", "legacy"]),
 ])
 def test_a_normalized_lookup_failure_falls_back_instead_of_raising(fail_on, expected_tail):
     """A reader must never take down a caller that has a working legacy column."""
@@ -394,4 +448,4 @@ def test_reader_consults_the_flag_when_not_overridden(monkeypatch):
     conn = _FakeConn(legacy=REAL_BOX, run=None)
     mod.read_bird_bbox(conn, 42)
     assert seen["key"] == mod.READ_NORMALIZED_FIRST_KEY
-    assert conn.queries == ["run", "legacy"], "flag on => normalized consulted first"
+    assert conn.queries == ["selection", "run", "legacy"], "flag on => normalized consulted first"
