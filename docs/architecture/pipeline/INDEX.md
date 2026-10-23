@@ -44,7 +44,7 @@ in a **Known gaps** section.
 | [control-plane.md](control-plane.md) | `JobDispatcher`, `PipelineOrchestrator`, the JIT run planner, auto-drive, and the heal/reconcile catalog. |
 | [persistence.md](persistence.md) | Tables, columns, constraints, and the folder aggregate cache. |
 | [terminology-map.md](terminology-map.md) | The one-row-per-phase traversal table across every naming system. |
-| [localization-rollout.md](localization-rollout.md) | Eight-stage design and next tasks: #594 merged, cascade gates pass, small-crop species fails; activation, consumer exclusion and production retry timing remain. |
+| [localization-rollout.md](localization-rollout.md) | Eight-stage design and status of record: Stage 5 live, 0043 compatibility view deployed with the flag off, #660 repair running; [one-page summary](../../reports/localization-rollout-summary-2026-10-22.md). |
 | [localization-rollout-supplement-2026-09-08.md](localization-rollout-supplement-2026-09-08.md) | Review evidence, implementation snapshot, and fixed defaults supporting the localization rollout. |
 
 ## Per-phase pages
