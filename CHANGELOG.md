@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.2.0] - 2026-10-22
+
+### Added
+- **Selection-aware bird-box compatibility reads** (#638, #652): with `localization.read_normalized_first` (default `false`), image list/detail, public/UUID/hash details and evidence region boxes follow the active production selection. Migration **`0043`** adds the additive `image_bird_bbox_compat` view; run `alembic upgrade head`. The flag stays off.
+- **Localization lane diagnostics** (#639, #653): `GET /api/runs/drive/status` reports `localization_lane`, and `get_drive_diagnostics` adds a `detector_outage_hold` anomaly. An indefinite hold still needs a restart.
+
+### Fixed
+- **Masked focus-grid evidence** (#649, #651): masked evidence requests no longer raise `IndexError`.
+
+### Security
+- **Backup logging** (#650, #654): `Backup-Postgres.ps1` no longer echoes `pg_dump` connection arguments.
+
+### Documentation
+- Localization rollout status through 2026-10-22 (#655, #657) and API contract section order (#656, #658).
+
 ## [9.1.2] - 2026-10-21
 
 ### Fixed
