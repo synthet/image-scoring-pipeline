@@ -8,14 +8,19 @@ Example::
     source ~/.venvs/tf/bin/activate
     python -m scripts.backfill_bioclip_embeddings --dry-run
     python -m scripts.backfill_bioclip_embeddings --batch-size 32
+
+For a bounded repair, ``--image-ids-file ids.json`` restricts the missing-row
+selector to a frozen JSON array of image IDs, before applying ``--limit``.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 import time
+from pathlib import Path
 from typing import List, Tuple
 
 from modules.embedding_spaces import BIOCLIP_IMAGE_SPACE_CODE
@@ -25,7 +30,25 @@ logger = logging.getLogger("backfill_bioclip_embeddings")
 MODEL_ID = "hf-hub:imageomics/bioclip-2"
 
 
-def _missing_rows(folder_id: int | None, limit: int | None) -> List[Tuple[int, str, str]]:
+def _load_image_ids(path: str) -> list[int]:
+    try:
+        ids = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(
+            "expected a JSON array of distinct positive image IDs"
+        ) from exc
+    if (not isinstance(ids, list)
+            or any(type(value) is not int or value <= 0 for value in ids)
+            or len(ids) != len(set(ids))):
+        raise argparse.ArgumentTypeError("expected a JSON array of distinct positive image IDs")
+    return ids
+
+
+def _missing_rows(
+    folder_id: int | None, limit: int | None, *, image_ids: list[int] | None = None,
+) -> List[Tuple[int, str, str]]:
+    if image_ids == []:
+        return []
     from modules import db_postgres
     from modules.embedding_spaces import get_embedding_space_id
 
@@ -46,6 +69,9 @@ def _missing_rows(folder_id: int | None, limit: int | None) -> List[Tuple[int, s
     if folder_id is not None:
         sql += " AND i.folder_id = %s"
         params.append(folder_id)
+    if image_ids is not None:
+        sql += " AND i.id = ANY(%s)"
+        params.append(image_ids)
     sql += " ORDER BY i.id"
     if limit is not None:
         sql += " LIMIT %s"
@@ -180,6 +206,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--folder-id", type=int, default=None)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--image-ids-file", type=_load_image_ids, default=None,
+        help="Frozen JSON array of distinct positive image IDs; restricts selection before --limit",
+    )
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device", default=None, help="cuda | cpu (default: auto)")
     parser.add_argument("--no-fp16", action="store_true")
@@ -200,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Backfill requires database.engine = 'postgres'.")
         return 2
 
-    rows = _missing_rows(args.folder_id, args.limit)
+    rows = _missing_rows(args.folder_id, args.limit, image_ids=args.image_ids_file)
     logger.info("Images missing %s: %d", BIOCLIP_IMAGE_SPACE_CODE, len(rows))
     if args.dry_run or not rows:
         return 0
