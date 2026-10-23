@@ -42,7 +42,7 @@ Stage 4+ shadow localization explicitly must **not** change production scores un
 
 **Operational today:** detector-only backfill, not crop IQA:
 
-- `scripts/backfill_bird_bbox.py` — YOLO only, writes `bird_bbox` (or sentinel), no BioCLIP, no scoring on crops ([BIRD_SPECIES_WALKTHROUGH](../technical/BIRD_SPECIES_WALKTHROUGH.md)).
+- `scripts/backfill_bird_bbox.py` — queues localization jobs for `bird_bbox IS NULL` rows; no detector, no `bird_bbox` write, no BioCLIP, no scoring on crops (#638; [BIRD_SPECIES_WALKTHROUGH](../technical/BIRD_SPECIES_WALKTHROUGH.md)).
 
 ### Region / crop IQA scores (no production backfill plan yet)
 
