@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-23] update | Add localization rollout summary and record the 0043 deploy (#661)
+
+Added a one-page rollout summary, indexed it, and updated the status of record: 0043 deployed with verified view parity, v9.2.0 released, #660 repair running. Corrected `status: proposed`, the "What is left" order and the timing-baseline blocker.
+
 ## [2026-10-22] update | Record localization rollout status through 2026-10-22 (#655)
 
 The rollout status of record now carries the 2026-10-18 to 2026-10-21 continuation text and reports, plus a 2026-10-22 summary. Merged: #646 (v9.1.2), #652 reader and view 0043, #651, #653. Not deployed: live revision 0042. The BioCLIP repair has 23,836 repair images remaining after the 8 missing-original records were removed.
