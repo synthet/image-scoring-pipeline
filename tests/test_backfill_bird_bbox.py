@@ -1,7 +1,7 @@
 """
-Tests for scripts/backfill_bird_bbox.py — detector-only bird_bbox backfill.
+Tests for scripts/backfill_bird_bbox.py — queues localization instead of writing bird_bbox (#638).
 
-No GPU/ML: stubs replace decode and BirdDetector.detect_best_box.
+No GPU/ML and no database: job creation and the connector are stubbed.
 """
 
 from __future__ import annotations
@@ -11,8 +11,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
-from modules.bird_detection import BBOX_NOT_DETECTED
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "backfill_bird_bbox.py"
 
@@ -33,166 +31,86 @@ def backfill():
     return _load_script()
 
 
-class _FakeDetector:
-    def __init__(self, boxes_by_id: dict):
-        self.boxes_by_id = boxes_by_id
-        self.calls = []
-
-    def detect_best_box(self, img):
-        image_id = getattr(img, "image_id", None)
-        self.calls.append(image_id)
-        return self.boxes_by_id.get(image_id)
-
-
-class _FakeImg:
-    def __init__(self, image_id: int):
-        self.image_id = image_id
-        self.closed = False
-
-    def close(self):
-        self.closed = True
-
-
-def test_bbox_not_detected_sentinel_shape():
-    assert BBOX_NOT_DETECTED == {"detected": False}
-    assert "img_w" not in BBOX_NOT_DETECTED
-    assert "x1" not in BBOX_NOT_DETECTED
-
-
-def test_apply_detection_result_writes_box(backfill):
-    writes = []
-
-    def update_fn(image_id, payload):
-        writes.append((image_id, payload))
-        return True
-
-    box = {"x1": 1, "y1": 2, "x2": 3, "y2": 4, "conf": 0.9, "img_w": 10, "img_h": 10}
-    assert backfill.apply_detection_result(7, box, dry_run=False, update_fn=update_fn) == "detected"
-    assert writes == [(7, box)]
-
-
-def test_apply_detection_result_writes_sentinel(backfill):
-    writes = []
-
-    def update_fn(image_id, payload):
-        writes.append((image_id, payload))
-        return True
-
-    assert (
-        backfill.apply_detection_result(8, None, dry_run=False, update_fn=update_fn)
-        == "not_detected"
-    )
-    assert writes == [(8, BBOX_NOT_DETECTED)]
-
-
-def test_apply_detection_result_dry_run_skips_write(backfill):
-    writes = []
-
-    def update_fn(image_id, payload):
-        writes.append((image_id, payload))
-        return True
-
-    assert backfill.apply_detection_result(9, None, dry_run=True, update_fn=update_fn) == "not_detected"
-    assert writes == []
-
-
-def test_process_batch_detected_not_detected_and_skip(backfill):
-    writes = []
-
-    def update_fn(image_id, payload):
-        writes.append((image_id, payload))
-        return True
-
-    box = {
-        "x1": 10,
-        "y1": 10,
-        "x2": 50,
-        "y2": 50,
-        "conf": 0.88,
-        "img_w": 100,
-        "img_h": 100,
-        "area_frac": 0.16,
-    }
-    detector = _FakeDetector({1: box, 2: None})
-
-    def decode_fn(row):
-        image_id = int(row["id"])
-        if image_id == 3:
-            return image_id, None, "file_missing"
-        return image_id, _FakeImg(image_id), None
-
-    rows = [
-        {"id": 1, "file_path": "/a.NEF"},
-        {"id": 2, "file_path": "/b.NEF"},
-        {"id": 3, "file_path": "/missing.NEF"},
-    ]
-    summary = backfill.process_batch(
-        rows,
-        detector=detector,
-        dry_run=False,
-        workers=2,
-        progress_every=0,
-        decode_fn=decode_fn,
-        update_fn=update_fn,
-    )
-
-    assert summary["detected"] == 1
-    assert summary["not_detected"] == 1
-    assert summary["skipped"] == 1
-    assert summary["errors"] == 0
-    assert summary["written"] == 3
-    assert writes == [
-        (1, box),
-        (2, BBOX_NOT_DETECTED),
-        (3, {"detected": False, "error": "file_missing"}),
-    ]
-
-
-def test_apply_detection_result_writes_scan_failed(backfill):
-    from modules.bird_detection import bbox_scan_failed
-
-    writes = []
-
-    def update_fn(image_id, payload):
-        writes.append((image_id, payload))
-        return True
-
-    assert (
-        backfill.apply_detection_result(
-            11, None, dry_run=False, update_fn=update_fn, error="decode_error: bad"
-        )
-        == "scan_failed"
-    )
-    assert writes == [(11, bbox_scan_failed("decode_error: bad"))]
-
-
-def test_process_batch_dry_run_does_not_write(backfill):
-    writes = []
-
-    def update_fn(image_id, payload):
-        writes.append((image_id, payload))
-        return True
-
-    detector = _FakeDetector({1: None})
-
-    def decode_fn(row):
-        return int(row["id"]), _FakeImg(int(row["id"])), None
-
-    summary = backfill.process_batch(
-        [{"id": 1, "file_path": "/a.NEF"}],
-        detector=detector,
-        dry_run=True,
-        workers=1,
-        progress_every=0,
-        decode_fn=decode_fn,
-        update_fn=update_fn,
-    )
-    assert summary["not_detected"] == 1
-    assert summary["written"] == 0
-    assert writes == []
-
-
 def test_all_null_sql_omits_keyword_gate(backfill):
     assert "keyword_norm" in backfill._SQL_MISSING_BBOX
     assert "keyword_norm" not in backfill._SQL_MISSING_BBOX_ALL
     assert "bird_bbox IS NULL" in backfill._SQL_MISSING_BBOX_ALL
+
+
+def test_script_has_no_detector_or_bbox_write_path():
+    source = _SCRIPT.read_text(encoding="utf-8")
+    for legacy in ("BirdDetector", "update_image_bird_bbox", "write_legacy_bird_bbox", "detect_best_box"):
+        assert legacy not in source
+
+
+def test_enqueue_queues_explicit_id_scoped_localization_jobs(backfill, monkeypatch):
+    from modules import db
+
+    calls = []
+
+    def enqueue(input_path, **kwargs):
+        calls.append((input_path, kwargs))
+        return 100 + len(calls), len(calls)
+
+    monkeypatch.setattr(db, "enqueue_job_with_phases", enqueue)
+    assert backfill.enqueue_localization([1, 2, 3, 4, 5], chunk_size=2) == [101, 102, 103]
+
+    assert [kwargs["queue_payload"]["resolved_image_ids"] for _, kwargs in calls] == [[1, 2], [3, 4], [5]]
+    input_path, kwargs = calls[0]
+    assert input_path == "SELECTOR_LOCALIZATION_BACKFILL"
+    assert kwargs["phase_code"] == "localization"
+    assert kwargs["phase_codes"] == ["localization"]
+    assert kwargs["queue_payload"]["resolved_image_ids_by_stage"] == {"localization": [1, 2]}
+    # Not the automatic lane: no bounded-repair limit and no lane outage accounting.
+    assert "localization_lane" not in kwargs["queue_payload"]
+
+
+def test_enqueue_failure_raises(backfill, monkeypatch):
+    from modules import db
+
+    monkeypatch.setattr(db, "enqueue_job_with_phases", lambda *a, **k: (None, 0))
+    with pytest.raises(RuntimeError, match="failed to enqueue"):
+        backfill.enqueue_localization([7], chunk_size=10)
+
+
+def test_drop_already_localized_keeps_images_without_a_current_run(backfill, monkeypatch):
+    from modules import db
+
+    seen = []
+
+    class Connector:
+        def query(self, sql, params):
+            seen.append((sql, params))
+            return [{"image_id": 2}]
+
+    monkeypatch.setattr(db, "get_connector", lambda: Connector())
+    assert backfill.drop_already_localized([1, 2, 3]) == [1, 3]
+    sql, params = seen[0]
+    assert "is_current" in sql and "detector_key = 'bird'" in sql
+    assert params == (1, 2, 3)
+
+
+def test_dry_run_enqueues_nothing(backfill, monkeypatch, capsys):
+    monkeypatch.setattr(backfill, "fetch_candidates", lambda **kw: [{"id": 5, "file_path": "a.nef"}])
+    monkeypatch.setattr(backfill, "drop_already_localized", lambda ids: ids)
+    monkeypatch.setattr(backfill, "enqueue_localization",
+                        lambda *a, **k: pytest.fail("dry run must not enqueue"))
+    assert backfill.main(["--dry-run", "--all-null"]) == 0
+    assert "5\ta.nef" in capsys.readouterr().out
+
+
+def test_main_queues_remaining_candidates(backfill, monkeypatch):
+    monkeypatch.setattr(backfill, "fetch_candidates",
+                        lambda **kw: [{"id": 5, "file_path": "a"}, {"id": 6, "file_path": "b"}])
+    monkeypatch.setattr(backfill, "drop_already_localized", lambda ids: [6])
+    queued = []
+    monkeypatch.setattr(backfill, "enqueue_localization",
+                        lambda ids, chunk_size: queued.append((ids, chunk_size)) or [42])
+    assert backfill.main(["--chunk-size", "50"]) == 0
+    assert queued == [([6], 50)]
+
+
+def test_nothing_to_queue_returns_one(backfill, monkeypatch):
+    monkeypatch.setattr(backfill, "fetch_candidates", lambda **kw: [{"id": 5, "file_path": "a"}])
+    monkeypatch.setattr(backfill, "drop_already_localized", lambda ids: [])
+    assert backfill.main([]) == 1

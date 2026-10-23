@@ -1230,9 +1230,9 @@ remaining (`docs/reports/BIRD_BBOX_CROP_STUDY_2026-08-01.md:62-70`). The stage 2
 and 320 NULLs (see the stage 2 status above). Those outcomes should be imported, not recomputed
 blindly.
 
-`scripts/backfill_bird_bbox.py`, the detector-only backfill in use today, writes `images.bird_bbox`
-alone. Once normalized regions become the authority it would bypass them, so this stage either
-retires it or reroutes it through the localization phase and its claims.
+`scripts/backfill_bird_bbox.py` was a detector-only backfill that wrote `images.bird_bbox` alone,
+bypassing normalized regions. It is rerouted (#638): it now queues ID-scoped localization jobs for
+the same candidates and never writes `bird_bbox`, which only the selection projection writes.
 
 This stage backfills **boxes**, not scores. There is no plan to backfill region IQA into production
 tables; that remains Stage 6 shadow work behind its own gates.
