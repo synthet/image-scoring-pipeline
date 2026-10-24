@@ -100,7 +100,7 @@ def assert_prod() -> None:
     if boxed == 0:
         raise RuntimeError(
             f"{db_name!r} has {n} images but 0 with a bird_bbox; nothing to study. "
-            "Run scripts/backfill_bird_bbox.py first."
+            "Localize first; bird_bbox is set when a localization run is promoted."
         )
     logger.info("Read-only on %s: %d images, %d with a bird box.", db_name, n, boxed)
 
