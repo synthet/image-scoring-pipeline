@@ -3,7 +3,7 @@ type: Plan
 title: Subject-evidence model roles
 description: Functional requirements (inputs, outputs, failure behaviour) for the detector, keypoint, mask and embedding models behind subject-aware culling evidence; open candidates and our own assets.
 resource: docs/planning/models/subject-evidence-model-roles.md
-tags: [planning, models, localization, keypoints, saliency, clean-room]
+tags: [planning, models, localization, keypoints, saliency]
 timestamp: 2026-09-24T00:00:00Z
 okf_version: 0.2
 status: proposed
@@ -13,7 +13,7 @@ status: proposed
 
 Parent plan: [subject-aware-culling-evidence.md](../subject-aware-culling-evidence.md).
 
-This page is clean-room: each role is defined by **what the model must do**, not by any product's
+each role is defined by **what the model must do**, not by any product's
 implementation. Candidates are open-licence models or our own. Each role plugs into the localization
 epic as a versioned provider or consumer. Provider/detector key, version and config hash are
 persisted with every output.

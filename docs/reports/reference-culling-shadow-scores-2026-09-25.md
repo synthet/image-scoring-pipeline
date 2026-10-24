@@ -3,7 +3,7 @@ type: Report
 title: Reference culling scores as shadow models — library-wide backfill and agreement analysis
 description: A behavioural reimplementation of a reference wildlife-culling design scored all 76,822 on-disk library images. The 7 headline scores went into image_model_scores as shadow models; 93 scalar dimensions, structured records, bursts and embeddings went into a separate refcull schema. Its composite agrees with score_general at ρ 0.30 (existing models inter-correlate at a median of 0.40), eye evidence is the strongest link (ρ 0.41), and no-subject frames diverge. No human labels, so these are agreement measures only.
 resource: docs/reports/reference-culling-shadow-scores-2026-09-25.md
-tags: [research, culling, shadow-models, score-analytics, evidence, clean-room]
+tags: [research, culling, shadow-models, score-analytics, evidence]
 timestamp: 2026-09-25T00:00:00Z
 okf_version: 0.2
 ---
