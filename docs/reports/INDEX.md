@@ -131,6 +131,7 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | [retag-418-session-2026-10-17](retag-418-session-2026-10-17.md) | #418 re-tag (job 6945) recovered after host sleep failed it; restart vs resume, progress timeline, verification and follow-up decisions. |
 | [jev-1.14-image-inputs-assessment-2026-10-16](jev-1.14-image-inputs-assessment-2026-10-16.md) | Jev 1.14 image inputs: verified claims, tooling gaps, gate use cases and conditions before use; research only. |
 | [timing-baseline-2026-10-18](timing-baseline-2026-10-18.md) | Three-repeat decode and model timing baseline, routed-versus-local control, memory limits and rollout cost gates. |
+| [localization-stage8-readiness-2026-10-23](localization-stage8-readiness-2026-10-23.md) | #660 repair close-out, WebUI on v9.2.0, read_normalized_first rollback drill, 43 legacy/view bbox disagreements, backfill reroute and remaining #638 gates. |
 | [localization-rollout-summary-2026-10-22](localization-rollout-summary-2026-10-22.md) | One-page summary of the eight-stage localization rollout: goal, timeline, stage status, gates, deployment, open work and documentation drift. |
 | [localization-continuation-2026-10-19](localization-continuation-2026-10-19.md) | Interrupted repair, historical box drift, local reader/outage fixes and fresh-backup admission preparation awaiting checkpoint/runtime acceptance. |
 

@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-10-23T00:30:00Z
+timestamp: 2026-10-23T21:30:00Z
 okf_version: 0.2
 status: stable
 ---
@@ -35,6 +35,26 @@ are folded into the table, not into a second rollout:
 - [blockers and decision register](../../specs/pipeline-streamlining/07-blockers-and-decisions.md)
   (historical snapshot 2026-09-25, with a 2026-10-04 delta at the top)
 - [subject-aware culling evidence](../../planning/subject-aware-culling-evidence.md)
+
+**Status 2026-10-23 ([Stage 8 readiness report](../../reports/localization-stage8-readiness-2026-10-23.md)):**
+
+- **#660 repair complete** at 19:09 UTC: 33,753 of 33,753 target full-frame vectors, with
+  preservation checks unchanged. Three originals (71048, 71062, 71135) are zero-filled on disk
+  and were excluded with their rows unchanged.
+- **WebUI is running v9.2.0** since 20:32 UTC. The #653 lane-hold field is live, and #639 is
+  closed.
+- **Gallery.** The normalized consumer merged as gallery #185 (default off), after contract sync
+  #187.
+- **Rollback drill passed.** `read_normalized_first` on → off against the running service: 143
+  images checked per phase, 0 mismatches, 0.04 s switch each way, and `config.json` restored
+  byte-identical. The flag stays false.
+- **Disagreements: 43, not 31.** The 31 selected images differ materially, not by 1 px; two are
+  on different birds. 12 unselected images would replay a stale imported payload. Owner review is
+  pending.
+- **`scripts/backfill_bird_bbox.py` rerouted** to queue localization jobs (#664).
+- **Still gating #638.** A full compatibility release; owner review of the 43; and BioCLIP's
+  embedded detector, which still crops species for about 33.8k bird-tagged images with no
+  selection.
 
 **Status 2026-10-22 (#655):**
 
@@ -293,10 +313,10 @@ See the
 | 2. Normalized persistence | **Done.** Legacy import 2026-09-27: 76,475 current runs. Reader exists; `localization.read_normalized_first` stays off, so `bird_bbox` is still the production read. | Mask artifacts and a second keypoint pass (#426). | Region-linked keypoints landed in shadow (migration 0036, eye-pose backfill, [spot check](../../reports/eye-keypoint-spot-check-2026-09-27.md)). |
 | 3. Rendition and crops | **Code complete** (#375). Detector benchmark done (#377). Default weights are `bird_detect_v1.pt` (#462), still `imgsz=640`. Upright ML inputs are deployed (#418); the 80-image re-embed check matched upright pixels. The portrait re-tag (job 6945) completed on 2026-10-17 and #418 is closed. | Shared decode-once for every phase (#406). Slice 1 cache/pruner landed (#446). | One ~2048 px inference rendition for every phase (spec 01), not only localization. |
 | 4. Shadow localization | **Slice 1 + M0 done** (#395, #414); lane code and registration boundary delivered (#527, #585). Live admission/completion observed October 9. Cascade persistence merged in #594; AC-17/AC-18 pass at fallback 0.60 without retry; AC-15 holds (zero cascade runs). | Production retry timing remains. Cascade **enabled 2026-10-15** (`localization.cascade.enabled: true`, `onnxruntime` in the image via #613). Live `subject_cascade` runs were observed on 2026-10-16 on all three paths, and #408 is closed. Cascade consumer-source adoption needs its own rule and gate. #639: an indefinite outage hold still needs a restart; its visibility merged in #653 but no running service has it yet. | `subject_cascade` stays a shadow provider; production YOLO remains `bird_detect_v1` at 640. Scene route can skip detection (#412). |
-| 5. BioCLIP on regions | **Live 2026-10-15.** `use_regions` on, floor 0.5. All 4,401 large/medium selections were refreshed and verified (3,948 labels and 453 abstentions under the 369-name list, matching the frozen comparison; 4,029 and 372 after the 379-name relabel on 2026-10-16, #619). Small selections (< 0.005 area) are excluded from region species (#598). | Small-crop species stays failed (0.8123 < 0.85) and needs new pre-registered evidence. Other #422/#413/multi-region work remains. #641 full-frame vector repair: 9,920 rebuilt, 23,836 remaining (2026-10-22). | Species reads active production selections, not current shadow runs. `read_normalized_first` stays off; `bird_bbox` projections preserve compatibility. |
+| 5. BioCLIP on regions | **Live 2026-10-15.** `use_regions` on, floor 0.5. All 4,401 large/medium selections were refreshed and verified (3,948 labels and 453 abstentions under the 369-name list, matching the frozen comparison; 4,029 and 372 after the 379-name relabel on 2026-10-16, #619). Small selections (< 0.005 area) are excluded from region species (#598). | Small-crop species stays failed (0.8123 < 0.85) and needs new pre-registered evidence. Other #422/#413/multi-region work remains. #641 full-frame vector repair complete 2026-10-23 (#660): 33,753 rebuilt; 3 zero-filled originals excluded. | Species reads active production selections, not current shadow runs. `read_normalized_first` stays off; `bird_bbox` projections preserve compatibility. |
 | 6. Crop / fusion | **Moved to research epic #645; not started.** | #409 (crop score storage + fusion), #423 (evidence JSONL), #415 (~300 labelled bursts), gallery #176. | Region IQA is scoring design, gated on those bursts, not a global crop switch. Captions, accessibility, and Jev stay shadow. Stage 8 close-out is tracked separately from this research. |
-| 7. Repair and backfill | **Split.** Legacy import is done (stage 2). v1 rescan of 35,209 legacy misses is done and stays shadow unless a selection says otherwise. Bounded repair and the dispatcher-idle repair lane are merged as stage 4 work (#559, #561). Live lane cycles were observed on 2026-10-09. | Production retry timing remains unobserved. Crop-score backfill waits on #409. `scripts/backfill_bird_bbox.py` still writes the JSON column (selection-guarded since #646) and must be retired or rerouted before normalized authority. | No unbenchmarked full-library rescan. The v1 rescan was an explicit, resumable job, not an automatic scan of every new image. |
-| 8. Retire `bird_bbox` | **Compatibility view deployed, flag off** (#484, #646, #652). 4,675 selections (4,401 rule/3 + 274 rule/4) project `bird_bbox`. The selection-aware reader shipped in v9.2.0; migration 0043 was applied on 2026-10-22 with verified view parity. | Column stays. Gallery still reads it; its normalized consumer is local only. `read_normalized_first` stays false. No compatibility release, rollback drill or review of the 31 legacy/selection disagreements yet (#638). | `image_localization_selections` (migration 0038) is the revocable production decision. For a selected image, `bird_bbox` is a projection written only by `modules/localization_selection.py`. |
+| 7. Repair and backfill | **Split.** Legacy import is done (stage 2). v1 rescan of 35,209 legacy misses is done and stays shadow unless a selection says otherwise. Bounded repair and the dispatcher-idle repair lane are merged as stage 4 work (#559, #561). Live lane cycles were observed on 2026-10-09. | Production retry timing remains unobserved. Crop-score backfill waits on #409. `scripts/backfill_bird_bbox.py` is rerouted to queue localization jobs and no longer writes the JSON column (#664). | No unbenchmarked full-library rescan. The v1 rescan was an explicit, resumable job, not an automatic scan of every new image. |
+| 8. Retire `bird_bbox` | **Compatibility view deployed, flag off** (#484, #646, #652). 4,675 selections (4,401 rule/3 + 274 rule/4) project `bird_bbox`. The selection-aware reader shipped in v9.2.0; migration 0043 was applied on 2026-10-22 with verified view parity. | Column stays. Gallery's normalized consumer is merged, default off (gallery #185). `read_normalized_first` stays false; its rollback drill passed on 2026-10-23. Waiting on a full compatibility release and owner review of the 43 legacy/view disagreements (#638). | `image_localization_selections` (migration 0038) is the revocable production decision. For a selected image, `bird_bbox` is a projection written only by `modules/localization_selection.py`. |
 
 **Beside the stages**
 
@@ -336,12 +356,18 @@ geometry-only: small-crop species failed its gate, so their species stays legacy
 
 ### What is left
 
-**Current order (2026-10-23):** finish the #660 rebuild; start WebUI on v9.2.0 and
-confirm the #653 hold field; Stage 8 compatibility period (#638: commit the gallery
-consumer, rollback drill, review the 31 disagreements, retire or reroute
-`scripts/backfill_bird_bbox.py`); then the lane gaps (retry timing, #639 hold,
-cascade pilot recovery policy). Evidence work (#610, #422, #413, #416) can proceed
-alongside; Stage 6 stays in #645.
+**Current order (2026-10-23, evening):**
+
+1. Run the v9.2.0 compatibility release.
+2. Owner review of the 43 legacy/view disagreements (overlay sheet in the
+   [Stage 8 readiness report](../../reports/localization-stage8-readiness-2026-10-23.md)).
+3. Land the writer reroute (#664).
+4. Then the lane gaps: retry timing and the cascade pilot recovery policy.
+
+The #660 rebuild, the WebUI start on v9.2.0, the #653 hold field, the gallery consumer and the
+rollback drill are done. BioCLIP detector removal waits until selections cover the bird-tagged
+images that still use it. Evidence work (#610, #422, #413, #416) can proceed alongside; Stage 6
+stays in #645.
 
 Rows 1–5 below are completed history and do not block that order. Rows 6–7 remain.
 
@@ -404,9 +430,11 @@ Rows 1–5 below are completed history and do not block that order. Rows 6–7 r
    feed region species. Other #422 list/routing follow-ups stay open.
 6. **Stage 6** waits on #415 labels, then #409 storage (prefer a sibling score table over
    changing the `image_model_scores` primary key; see the decision register) and #423.
-7. **Stage 8 (#638)**: the reader and view are on `master` since 2026-10-22. It still waits on a release where selections, region reads, and rollback of
-   `read_normalized_first` have all been exercised. Physical drop of `bird_bbox` stays out
-   of this rollout.
+7. **Stage 8 (#638)**: the reader and view are on `master` since 2026-10-22.
+   - Rollback of `read_normalized_first` was exercised on the running service on 2026-10-23.
+   - It still waits on a complete compatibility release, owner review of the 43
+     disagreements, and selection coverage before BioCLIP's embedded detector can go.
+   - Physical drop of `bird_bbox` stays out of this rollout.
 
 ### Open questions
 
