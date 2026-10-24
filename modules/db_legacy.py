@@ -6825,9 +6825,9 @@ def upsert_image_exif(image_id: int, data: dict) -> bool:
                 exposure_compensation, image_width, image_height, orientation, flash,
                 image_unique_id, shutter_count, sub_sec_time_original,
                 gps_latitude, gps_longitude, gps_altitude, gps_position_source,
-                location_resolved, geocoded_at, geocode_provider, extracted_at
+                location_resolved, geocoded_at, geocode_provider, af_metadata, extracted_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?, ?, ?)
             MATCHING (image_id)''',
             (
                 image_id,
@@ -6856,6 +6856,7 @@ def upsert_image_exif(image_id: int, data: dict) -> bool:
                 _exif_location_resolved_param(data.get('location_resolved')),
                 _parse_exif_timestamp(data.get('geocoded_at')),
                 _str_or_none(data.get('geocode_provider'), max_len=50),
+                _exif_location_resolved_param(data.get('af_metadata')),
                 extracted_at,
             ),
         )
@@ -6922,6 +6923,12 @@ def get_image_exif(image_id: int) -> dict | None:
     if isinstance(lr, str) and lr.strip():
         try:
             d["location_resolved"] = json.loads(lr)
+        except json.JSONDecodeError:
+            pass
+    af = d.get("af_metadata")
+    if isinstance(af, str) and af.strip():
+        try:
+            d["af_metadata"] = json.loads(af)
         except json.JSONDecodeError:
             pass
     return d

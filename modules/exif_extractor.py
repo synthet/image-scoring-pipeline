@@ -78,6 +78,145 @@ _EXIF_TAG_MAP = {
 }
 
 
+_NIKON_AF_AREA_MODES = {
+    0: "Pinpoint",
+    1: "Single",
+    2: "Dynamic Area",
+    3: "Wide (S)",
+    4: "Wide (L)",
+    5: "Auto",
+    6: "3D-tracking",
+    7: "Group-area",
+    128: "Single",
+    129: "Auto (41 points)",
+    192: "Pinpoint",
+    193: "Single",
+    194: "Dynamic Area",
+    195: "Wide (S)",
+    196: "Wide (L)",
+    197: "Auto",
+    204: "Dynamic Area (S)",
+    205: "Dynamic Area (M)",
+    206: "Dynamic Area (L)",
+    207: "3D-tracking",
+    208: "Wide (C1/C2)",
+}
+
+
+def _parse_crop_area(val: Any) -> list[int] | None:
+    if not val:
+        return None
+    if isinstance(val, (list, tuple)):
+        try:
+            return [int(x) for x in val]
+        except (ValueError, TypeError):
+            return None
+    parts = str(val).replace(",", " ").split()
+    try:
+        res = [int(x) for x in parts if x.strip()]
+        return res if len(res) == 4 else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_af_metadata(raw: dict) -> dict | None:
+    """Parse autofocus MakerNote metadata (Nikon AFInfo2 tag 0x00B7, CropArea, and lock state)."""
+    af_img_w = raw.get("AFImageWidth")
+    af_img_h = raw.get("AFImageHeight")
+    area_x = raw.get("AFAreaXPosition")
+    area_y = raw.get("AFAreaYPosition")
+    area_w = raw.get("AFAreaWidth")
+    area_h = raw.get("AFAreaHeight")
+
+    if not (af_img_w and af_img_h and area_x is not None and area_y is not None and area_w and area_h):
+        return None
+
+    try:
+        af_img_w_f = float(af_img_w)
+        af_img_h_f = float(af_img_h)
+        area_x_f = float(area_x)
+        area_y_f = float(area_y)
+        area_w_f = float(area_w)
+        area_h_f = float(area_h)
+    except (ValueError, TypeError):
+        return None
+
+    if af_img_w_f <= 0 or af_img_h_f <= 0 or area_w_f <= 0 or area_h_f <= 0:
+        return None
+
+    norm_left = (area_x_f - area_w_f / 2.0) / af_img_w_f
+    norm_top = (area_y_f - area_h_f / 2.0) / af_img_h_f
+    norm_width = area_w_f / af_img_w_f
+    norm_height = area_h_f / af_img_h_f
+
+    mode_val = raw.get("AFAreaMode")
+    if isinstance(mode_val, str) and not mode_val.isdigit():
+        mode_str = mode_val
+    elif isinstance(mode_val, (int, float)) or (isinstance(mode_val, str) and mode_val.isdigit()):
+        try:
+            code = int(mode_val)
+            mode_str = _NIKON_AF_AREA_MODES.get(code, f"Mode {code}")
+        except (ValueError, TypeError):
+            mode_str = str(mode_val)
+    else:
+        mode_str = "Unknown"
+
+    focus_res = raw.get("FocusResult")
+    if focus_res is None:
+        focus_res = raw.get("ContrastDetectAFInFocus")
+    in_focus = (focus_res == 1 or str(focus_res).strip().lower() in ("focus", "in focus", "true", "1"))
+
+    crop_area = _parse_crop_area(raw.get("CropArea"))
+
+    focus_dist = None
+    if raw.get("FocusDistance") is not None:
+        try:
+            focus_dist = float(raw.get("FocusDistance"))
+        except (ValueError, TypeError):
+            pass
+
+    out = {
+        "version": str(raw.get("AFInfo2Version") or ""),
+        "mode": mode_str,
+        "mode_code": mode_val if isinstance(mode_val, (int, str)) else None,
+        "in_focus": in_focus,
+        "focus_distance_m": focus_dist,
+        "area_x": int(area_x_f),
+        "area_y": int(area_y_f),
+        "area_w": int(area_w_f),
+        "area_h": int(area_h_f),
+        "af_image_w": int(af_img_w_f),
+        "af_image_h": int(af_img_h_f),
+        "crop_area": crop_area,
+        "box": {
+            "left": round(norm_left, 5),
+            "top": round(norm_top, 5),
+            "width": round(norm_width, 5),
+            "height": round(norm_height, 5),
+            "center_x": round(area_x_f / af_img_w_f, 5),
+            "center_y": round(area_y_f / af_img_h_f, 5),
+        },
+    }
+
+    if crop_area and len(crop_area) == 4:
+        cx0, cy0, cw, ch = crop_area
+        if cw > 0 and ch > 0 and (cw < af_img_w_f * 0.95 or ch < af_img_h_f * 0.95):
+            crop_left = (area_x_f - area_w_f / 2.0 - cx0) / float(cw)
+            crop_top = (area_y_f - area_h_f / 2.0 - cy0) / float(ch)
+            crop_width = area_w_f / float(cw)
+            crop_height = area_h_f / float(ch)
+            out["crop_box"] = {
+                "left": round(crop_left, 5),
+                "top": round(crop_top, 5),
+                "width": round(crop_width, 5),
+                "height": round(crop_height, 5),
+                "center_x": round((area_x_f - cx0) / float(cw), 5),
+                "center_y": round((area_y_f - cy0) / float(ch), 5),
+            }
+
+    return out
+
+
 def extract_exif(image_path: str, image_id: int = None) -> dict | None:
     """
     Extract EXIF metadata from an image file using exiftool.
@@ -110,6 +249,10 @@ def extract_exif(image_path: str, image_id: int = None) -> dict | None:
         "ImageWidth", "ImageHeight", "Orientation", "Flash",
         "ImageUniqueID", "ShutterCount", "SubSecTimeOriginal",
         "GPSLatitude", "GPSLongitude", "GPSAltitude",
+        "AFInfo2Version", "AFAreaMode",
+        "AFAreaXPosition", "AFAreaYPosition", "AFAreaWidth", "AFAreaHeight",
+        "AFImageWidth", "AFImageHeight", "CropArea",
+        "FocusResult", "ContrastDetectAFInFocus", "FocusDistance",
     ]
 
     try:
@@ -159,6 +302,10 @@ def extract_exif(image_path: str, image_id: int = None) -> dict | None:
                 if v and str(v).strip() not in ("-", ""):
                     out["lens_model"] = v
                     break
+
+        af_meta = _parse_af_metadata(raw)
+        if af_meta:
+            out["af_metadata"] = af_meta
 
         return out if out else None
 
@@ -308,6 +455,7 @@ _IMAGE_EXIF_UPSERT_KEYS = (
     "location_resolved",
     "geocoded_at",
     "geocode_provider",
+    "af_metadata",
 )
 
 
