@@ -28,7 +28,7 @@ export const STAGE_PREREQUISITES: Record<StageCode, StageCode[]> = {
   metadata: ['indexing'],
   scoring: ['metadata'],
   culling: ['scoring'],
-  keywords: ['scoring'],
+  keywords: ['metadata'],
   bird_species: ['keywords'],
   maintenance: [],
 }

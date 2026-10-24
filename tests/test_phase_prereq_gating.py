@@ -196,9 +196,9 @@ def test_prereq_earlier_in_plan_satisfies():
 
 
 def test_prereq_later_in_plan_does_not_satisfy():
-    """``["tag", "score"]`` schedules scoring after the phase that needs it."""
-    assert phases.missing_prerequisites(["keywords", "scoring"], {"indexing", "metadata"}) == {
-        "keywords": ["scoring"],
+    """``["cluster", "score"]`` schedules scoring after the phase that needs it."""
+    assert phases.missing_prerequisites(["culling", "scoring"], {"indexing", "metadata"}) == {
+        "culling": ["scoring"],
     }
 
 
@@ -210,7 +210,7 @@ def test_prereq_later_in_plan_does_not_satisfy():
     ],
 )
 def test_siblings_sharing_a_prereq_pass_in_either_order(plan):
-    """``culling`` and ``keywords`` both hang off ``scoring``; neither precedes the other."""
+    """No edge joins ``culling`` and ``keywords``; neither precedes the other."""
     assert phases.missing_prerequisites(plan, {"indexing", "metadata", "scoring"}) == {}
 
 
@@ -229,7 +229,7 @@ def test_fully_reversed_plan_reports_every_non_root_phase():
     plan = list(reversed([p.value for p in phases.PIPELINE_PHASE_ORDER]))
     assert phases.missing_prerequisites(plan, set()) == {
         "bird_species": ["keywords"],
-        "keywords": ["scoring"],
+        "keywords": ["metadata"],
         "culling": ["scoring"],
         "scoring": ["metadata"],
         "localization": ["metadata"],
@@ -253,12 +253,12 @@ def test_unknown_phase_is_not_gated():
 
 def test_pipeline_prefix_through_keywords():
     assert phases.pipeline_prefix_through("keywords") == [
-        "indexing", "metadata", "scoring", "keywords",
+        "indexing", "metadata", "keywords",
     ]
 
 
 def test_pipeline_prefix_through_culling():
-    # culling and keywords are siblings under scoring: keywords must NOT appear.
+    # No edge joins culling and keywords: keywords must NOT appear.
     prefix = phases.pipeline_prefix_through("culling")
     assert prefix == ["indexing", "metadata", "scoring", "culling"]
     assert "keywords" not in prefix

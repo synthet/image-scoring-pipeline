@@ -57,7 +57,7 @@ def test_tagging_start_enqueues_full_prefix(monkeypatch):
 
     assert response.status_code == 200, response.text
     assert captured["phase_code"] == "keywords"
-    assert captured["phases"] == ["indexing", "metadata", "scoring", "keywords"]
+    assert captured["phases"] == ["indexing", "metadata", "keywords"]
 
 
 def test_clustering_start_enqueues_full_prefix(monkeypatch):
@@ -105,5 +105,5 @@ def test_bird_species_start_enqueues_full_prefix(monkeypatch):
     assert response.status_code == 200, response.text
     assert captured["phase_code"] == "bird_species"
     assert captured["phases"] == [
-        "indexing", "metadata", "scoring", "keywords", "bird_species",
+        "indexing", "metadata", "keywords", "bird_species",
     ]

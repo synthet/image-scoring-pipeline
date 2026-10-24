@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-24] edit | keywords depends on metadata, not scoring (#407, spec 02 AC-1/AC-2)
+
+Updated [phase graph](architecture/pipeline/phase-graph.md): the `keywords` hard prerequisite is now `metadata`, and `pipeline_prefix_through("keywords")` no longer includes `scoring`.
+
 ## [2026-10-23] update | Record Stage 8 readiness: repair complete, rollback drill, 43 disagreements
 
 Added the [Stage 8 readiness report](reports/localization-stage8-readiness-2026-10-23.md) and indexed it. Updated the rollout status of record: #660 complete, WebUI on v9.2.0, #639 closed, gallery #185 merged, rollback drill passed, 43 (not 31) legacy/view disagreements, backfill reroute (#664), and the remaining #638 gates.
