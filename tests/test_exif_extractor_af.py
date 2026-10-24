@@ -55,6 +55,39 @@ def test_parse_af_metadata_mock():
     assert 0 < af["box"]["height"] < 1
 
 
+def test_missing_focus_result_is_unknown_not_a_miss():
+    """#672: Z6ii (AFInfo2 0301) writes no FocusResult; that is unknown, not ``in_focus=False``."""
+    raw = {
+        "AFInfo2Version": "0301",
+        "AFAreaXPosition": 1404,
+        "AFAreaYPosition": 1300,
+        "AFAreaWidth": 285,
+        "AFAreaHeight": 285,
+        "AFImageWidth": 6048,
+        "AFImageHeight": 4024,
+    }
+    assert _parse_af_metadata(raw)["in_focus"] is None
+    assert _parse_af_metadata({**raw, "FocusResult": 0})["in_focus"] is False
+    assert _parse_af_metadata({**raw, "ContrastDetectAFInFocus": "1"})["in_focus"] is True
+
+
+def test_exiftool_version_is_cached(monkeypatch):
+    from modules import exif_extractor
+
+    calls = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd)
+        return type("R", (), {"stdout": "13.52\n"})()
+
+    monkeypatch.setattr(exif_extractor, "_EXIFTOOL_VERSION", None)
+    monkeypatch.setattr(exif_extractor, "_get_exiftool_path", lambda: "/usr/local/bin/exiftool")
+    monkeypatch.setattr(exif_extractor.subprocess, "run", fake_run)
+    assert exif_extractor.get_exiftool_version() == "13.52"
+    assert exif_extractor.get_exiftool_version() == "13.52"
+    assert calls == [["/usr/local/bin/exiftool", "-ver"]]
+
+
 def test_parse_af_metadata_dx_crop():
     raw = {
         "AFInfo2Version": "0400",
@@ -109,6 +142,6 @@ def test_extract_exif_z6ii_af():
     af = exif["af_metadata"]
     assert af["version"] == "0301"
     assert af["mode"] == "Wide (L)"
-    assert af["in_focus"] is False
+    assert af["in_focus"] is None  # the body writes no FocusResult (#672)
     assert af["box"]["width"] > 0
     assert af["box"]["height"] > 0
