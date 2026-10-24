@@ -1,10 +1,9 @@
-"""A legacy backfill must not overwrite a selection promoted during detection."""
+"""A legacy bird_bbox write must not overwrite a selection promoted during detection."""
 import json
 
 import pytest
 
 from modules import db
-from scripts.backfill_bird_bbox import apply_detection_result, fetch_candidates
 
 
 SELECTED = {"x1": 20, "y1": 20, "x2": 60, "y2": 60,
@@ -54,23 +53,19 @@ class MemoryDatabase:
         return {"folder_id": 8} if self.image_exists else None
 
 
-def test_backfill_preserves_selection_created_after_candidate_fetch(monkeypatch):
+def test_legacy_write_preserves_active_selection(monkeypatch):
     memory = MemoryDatabase()
     invalidations = []
-    monkeypatch.setattr(db, "get_db", lambda: memory)
     monkeypatch.setattr(db, "get_connector", lambda: memory)
     monkeypatch.setattr(db, "invalidate_folder_phase_aggregates", lambda **kw: invalidations.append(kw))
-    candidates = fetch_candidates(all_null=True, limit=1)
-    assert [row["id"] for row in candidates] == [3]
 
     memory.selected = True
     memory.bbox = dict(SELECTED)
-    outcome = apply_detection_result(candidates[0]["id"], DETECTED, dry_run=False)
 
+    assert db.update_image_bird_bbox(3, DETECTED) is False
     assert memory.bbox == SELECTED
     assert memory.writes == []
     assert invalidations == []
-    assert outcome == "write_error"
 
 
 @pytest.mark.parametrize("bbox", [DETECTED, None])
