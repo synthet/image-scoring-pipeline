@@ -10,6 +10,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 Recorded the blind judge panel and the Jev decision for the 43 legacy/view bbox disagreements in the [Stage 8 readiness report](reports/localization-stage8-readiness-2026-10-23.md): 25 selected images were resolved through the selection module, 6 held; the unselected images wait for the skills backfill; the zero-filled originals are kept.
 
+## [2026-10-23] updated | As-built architecture and contract review
+
+Added source-derived specs for execution/scoring, localization/consumer ownership and model inventory; kept proposed changes and historical evidence separate.
+
 ## [2026-10-23] update | Record Stage 8 readiness: repair complete, rollback drill, 43 disagreements
 
 Added the [Stage 8 readiness report](reports/localization-stage8-readiness-2026-10-23.md) and indexed it. Updated the rollout status of record: #660 complete, WebUI on v9.2.0, #639 closed, gallery #185 merged, rollback drill passed, 43 (not 31) legacy/view disagreements, backfill reroute (#664), and the remaining #638 gates.
@@ -878,7 +882,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 
 - 2026-09-24: created — [score analytics and model suitability](features/implemented/11-score-analytics-and-model-suitability.md) for #393; updated [API_CONTRACT.md](technical/API_CONTRACT.md) (score analytics endpoints), [features/implemented/INDEX.md](features/implemented/INDEX.md), [FRONTEND_VISUAL_SPEC.md](design/FRONTEND_VISUAL_SPEC.md) (chart palette exception) and [scripts/README.md](../scripts/README.md).
 
-## [2026-09-24] created | Subject-aware culling evidence (clean-room proposal)
+## [2026-09-24] created | Subject-aware culling evidence (proposal)
 
 - 2026-09-24: created — [subject-aware culling evidence](planning/subject-aware-culling-evidence.md) and [subject-evidence model roles](planning/models/subject-evidence-model-roles.md): region/keypoint/mask-conditioned evidence, code-owned within-burst ranker, 0.5 s burst sub-segmentation, determinism lessons; consolidated stage-by-stage with the [localization rollout](architecture/pipeline/localization-rollout.md) (Related pages link added). Updated [planning/INDEX.md](planning/INDEX.md).
 - 2026-09-24: created — [subject-evidence probe](reports/subject-evidence-probe-2026-09-24.md): Arm A vs subject-evidence probe on the 236-frame bird-crop set; B ≈ A overall, B leads best-vs-reject, small subjects at chance, `pick_status` found circular; roadmap step 0 (human label set) added to [subject-aware culling evidence](planning/subject-aware-culling-evidence.md); row in [reports/INDEX.md](reports/INDEX.md).
@@ -924,7 +928,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 
 ## [2026-09-25] created | Evidence-driven scoring and culling improvement candidates
 
-- 2026-09-25: created — [evidence-driven scoring and culling improvement candidates](planning/reference-workflow-improvement-candidates.md): clean-room behavior proposal covering versioned evidence, deterministic reranking, uncertainty, editable sequence boundaries, close-call review, project-owned calibration, caches, diagnostics, and additive cross-project contracts; indexed in [planning/INDEX.md](planning/INDEX.md) and [INDEX.md](INDEX.md).
+- 2026-09-25: created — [evidence-driven scoring and culling improvement candidates](planning/reference-workflow-improvement-candidates.md): behavior proposal covering versioned evidence, deterministic reranking, uncertainty, editable sequence boundaries, close-call review, project-owned calibration, caches, diagnostics, and additive cross-project contracts; indexed in [planning/INDEX.md](planning/INDEX.md) and [INDEX.md](INDEX.md).
 
 ## [2026-09-25] created | Reference culling shadow scores and human culling label set
 
@@ -1012,3 +1016,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-09] edit | Localization boundary uses images.registered_at (#584)
 
 - 2026-10-09: updated — [DB schema](technical/DB_SCHEMA.md): migration 0041 adds `images.registered_at`, set on insert and never updated, backfilled from `created_at`. The localization new-image boundary now uses it instead of `created_at`, which indexing fills with the capture date. A photo captured before 2026-10-04 and imported later is now new to the lane.
+
+## [2026-10-24] created | Nikon autofocus MakerNote parsing and EXIF schema
+
+- 2026-10-24: created - migration 0044 (`0044_image_exif_af_metadata.py`) adds `image_exif.af_metadata` (`JSONB`). `modules/exif_extractor.py` extracts Nikon `AFInfo2` (tag `0x00B7`), `CropArea` (tag `0x0045`), and focus status into normalized coordinates (`box` [0-1], `crop_box` for DX crops, focus mode, and lock state). `modules/db_legacy.py` persists and deserializes `af_metadata`. Unit tests in `tests/test_exif_extractor_af.py` verify extraction against real Z8 and Z6 II NEF fixtures.

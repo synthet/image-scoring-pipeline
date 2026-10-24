@@ -111,7 +111,7 @@ def _reset_dir(path: Path) -> None:
 def _copy_tree(src: Path, dst: Path) -> None:
     for child in sorted(src.iterdir()):
         if child.is_dir():
-            shutil.copytree(child, dst / child.name)
+            shutil.copytree(child, dst / child.name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
         else:
             shutil.copy2(child, dst / child.name)
 
@@ -242,7 +242,7 @@ def _diff(src: Path, dst: Path, mode: str, dst_label: str, rules_ext: str = ".md
             d = dst / name
             if s.is_dir() and d.is_dir():
                 for sub in sorted(s.rglob("*")):
-                    if sub.is_file():
+                    if sub.is_file() and "__pycache__" not in sub.parts and sub.suffix not in {".pyc", ".pyo"}:
                         rel = sub.relative_to(s)
                         mirror = d / rel
                         if not mirror.exists():

@@ -77,7 +77,7 @@ throughput benchmark or evidence to change scoring defaults.
 
 ## Compatible tools
 
-The extracted BurstPick Windows tools require their adjacent `libraw.dll`.
+The extracted Windows tools require their adjacent `libraw.dll`.
 Their `dcraw_emu` stdout flag is `-Z -`; it cannot replace `dcraw -e -c` for
 embedded JPEG extraction. The bundled Linux binary requires GLIBC 2.38 and
 external `libraw.so.23`; it cannot run on this repository's Ubuntu 22.04 base.

@@ -180,6 +180,7 @@ GET /api/raw-preview?path=<url-encoded-file-path>
 |--------|------|---------|
 | GET | `/api/images` | Paginated image query with filters |
 | GET | `/api/images/{image_id}` | Single image details |
+| GET | `/api/images/{image_id}/exif` | Cached EXIF row (`image_exif`), including `af_metadata` JSONB when MakerNote autofocus data is present |
 | GET | `/api/images/by-uuid/{image_uuid}` | Single image details by `images.image_uuid` |
 | GET | `/api/images/by-hash/{image_hash}` | Single image details by `images.image_hash` (optional `hash_version`) |
 

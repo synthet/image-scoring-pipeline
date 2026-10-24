@@ -32,7 +32,7 @@ The current PostgreSQL initializer creates or maintains these application tables
 |---|---|
 | Library and folders | `folders`, `images`, `file_paths`, `deleted_images`, `pipeline_tool_folder_last_touch` |
 | Runs, jobs, and execution trail | `jobs`, `job_phases`, `job_steps`, `job_image_actions`, `pipeline_phases`, `image_phase_status`, `image_incidents` |
-| Metadata | `image_exif`, `image_xmp`, image identity fields on `images`. `images.created_at` holds the capture time (indexing writes EXIF DateTimeOriginal; the gallery sorts by it); `images.registered_at` (migration 0041, #584) is when the row was inserted and is never updated |
+| Metadata | `image_exif`, `image_xmp`, image identity fields on `images`. `images.created_at` holds the capture time (indexing writes EXIF DateTimeOriginal; the gallery sorts by it); `images.registered_at` (migration 0041, #584) is when the row was inserted and is never updated; `image_exif.af_metadata` (migration 0044, JSONB) stores normalized autofocus coordinates, mode, crop area, and in-focus lock state from MakerNotes |
 | Scoring | composite scores on `images` (`score_general`, `score_technical`, `score_aesthetic`); per-model scores in `image_model_scores` |
 | Culling and stacks | `stacks`, `sub_stacks`, `stack_cache`, `cluster_progress`, `culling_sessions`, `culling_picks`, `agent_cull_review_groups`, `agent_cull_recommendations` |
 | Keywords | `keywords_dim`, `image_keywords`, legacy keyword text fields where retained for compatibility |
