@@ -9,7 +9,7 @@ describe('stagePrerequisitesMet / pruneStageSelection', () => {
     expect(stagePrerequisitesMet('scoring', satisfied, selected)).toBe(true)
   })
 
-  it('pruneStageSelection removes keywords when scoring is absent from scope and selection', () => {
+  it('pruneStageSelection removes keywords when metadata is absent from scope and selection', () => {
     const satisfied = new Set<StageCode>()
     const sel = new Set<StageCode>(['keywords'])
     expect(pruneStageSelection(sel, satisfied).size).toBe(0)
