@@ -7654,11 +7654,13 @@ def _sql_bird_bbox_needs_scan(table_alias: str = "") -> str:
     Mirrors :func:`modules.bird_detection.bbox_needs_scan` in SQL so the folder-level
     predicate and the per-image policy check agree. ``bird_bbox`` is a Postgres-only
     JSONB column and ``->>`` is not translated for Firebird, so this yields ``1=0``
-    on any other engine.
+    on any other engine. It also yields ``1=0`` once the embedded detector is retired
+    (#638): the box then comes from localization and is no longer bird_species work.
     """
-    if _get_db_engine() != "postgres":
+    from modules.bird_detection import RETRYABLE_BBOX_ERRORS, embedded_detector_enabled
+
+    if _get_db_engine() != "postgres" or not embedded_detector_enabled():
         return "1=0"
-    from modules.bird_detection import RETRYABLE_BBOX_ERRORS
 
     prefix = f"{table_alias}." if table_alias else ""
     retryable = ", ".join(f"'{err}'" for err in sorted(RETRYABLE_BBOX_ERRORS))

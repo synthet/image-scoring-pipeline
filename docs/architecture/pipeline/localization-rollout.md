@@ -565,6 +565,7 @@ Use flags with explicit defaults so each stage is independently deployable:
 | `localization.read_normalized_first` | `false` | Prefer normalized regions over `bird_bbox`. |
 | `localization.repair.enabled` | `false` | Enable bounded retry and the independent repair lane. |
 | `bird_species.use_regions` | `false` | Remove detection ownership from BioCLIP. |
+| `bird_species.embedded_detector` | `true` | `false` retires BioCLIP's embedded detector (#638): unselected images crop to the stored compatibility box (or the full frame), the bbox-only pass is off, and bird-species completion no longer waits on `bird_bbox`. |
 | `bird_species.multi_region_enabled` | `false` | Classify more than the primary bird region. |
 | `scoring.subject_crop_shadow` | `false` | Compute non-authoritative crop IQA metrics. |
 | `tagging.crop_fusion_shadow` | `false` | Evaluate full-frame plus region keyword/caption signals. |
