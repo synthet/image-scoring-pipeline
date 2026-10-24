@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-23] update | Resolve bbox disagreements with swarm judges and Jev (#638)
+
+Recorded the blind judge panel and the Jev decision for the 43 legacy/view bbox disagreements in the [Stage 8 readiness report](reports/localization-stage8-readiness-2026-10-23.md): 25 selected images were resolved through the selection module, 6 held; the unselected images wait for the skills backfill; the zero-filled originals are kept.
+
 ## [2026-10-23] updated | As-built architecture and contract review
 
 Added source-derived specs for execution/scoring, localization/consumer ownership and model inventory; kept proposed changes and historical evidence separate.

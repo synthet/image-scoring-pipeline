@@ -48,6 +48,7 @@ are folded into the table, not into a second rollout:
 - **Rollback drill passed.** `read_normalized_first` on → off against the running service: 143
   images checked per phase, 0 mismatches, 0.04 s switch each way, and `config.json` restored
   byte-identical. The flag stays false.
+- **Disagreements reviewed without human labels** (swarm judges + Jev, late 2026-10-23): 25 of the 31 selected images were resolved (19 re-projected, 6 revoked), leaving 6 selected and 7 unselected. Zero-filled originals: Jev chose keep.
 - **Disagreements: 43, not 31.** The 31 selected images differ materially, not by 1 px; two are
   on different birds. 12 unselected images would replay a stale imported payload. Owner review is
   pending.
