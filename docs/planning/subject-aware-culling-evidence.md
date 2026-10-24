@@ -1,9 +1,9 @@
 ---
 type: Plan
 title: Subject-aware culling evidence — consolidated with the localization rollout
-description: Clean-room plan for region-, keypoint- and mask-conditioned quality evidence, a code-owned within-burst ranker, and burst sub-segmentation, mapped stage by stage onto the eight-stage localization rollout.
+description: plan for region-, keypoint- and mask-conditioned quality evidence, a code-owned within-burst ranker, and burst sub-segmentation, mapped stage by stage onto the eight-stage localization rollout.
 resource: docs/planning/subject-aware-culling-evidence.md
-tags: [planning, culling, localization, evidence, scoring, keypoints, saliency, bursts, clean-room]
+tags: [planning, culling, localization, evidence, scoring, keypoints, saliency, bursts]
 timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 status: proposed
@@ -89,7 +89,7 @@ hash and extractor version, like crop scores in spec 04 (AC-14). A new rendition
 detector version (#408) therefore invalidates evidence without a library rescan, and the recompute
 is crop-local.
 
-## Provenance (clean-room)
+## Provenance 
 
 This page comes from a competitive analysis of a commercial wildlife burst-culling application. The
 sources were its user documentation and its observable input/output behaviour (scores and

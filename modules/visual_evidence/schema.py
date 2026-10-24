@@ -1,4 +1,4 @@
-"""Pydantic-shaped evidence payload (clean-room; not vendor JSON layout)."""
+"""Pydantic-shaped evidence payload ."""
 
 from __future__ import annotations
 

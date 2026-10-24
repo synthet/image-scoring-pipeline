@@ -1,4 +1,4 @@
-"""PostgreSQL file, metadata, pipeline-state, stack-cache, and keyword schema."""
+﻿"""PostgreSQL file, metadata, pipeline-state, stack-cache, and keyword schema."""
 
 import logging
 
@@ -125,6 +125,7 @@ def initialize_pipeline_schema(cur) -> None:
         location_resolved       JSONB,
         geocoded_at             TIMESTAMP,
         geocode_provider        VARCHAR(50),
+        af_metadata             JSONB,
         extracted_at            TIMESTAMP
     );
     """)
@@ -157,6 +158,9 @@ def initialize_pipeline_schema(cur) -> None:
     )
     cur.execute(
         "ALTER TABLE image_exif ADD COLUMN IF NOT EXISTS geocode_provider VARCHAR(50);"
+    )
+    cur.execute(
+        "ALTER TABLE image_exif ADD COLUMN IF NOT EXISTS af_metadata JSONB;"
     )
 
     # ------------------------------------------------------------------

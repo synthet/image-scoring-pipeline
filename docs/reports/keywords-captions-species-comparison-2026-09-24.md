@@ -3,7 +3,7 @@ type: Report
 title: Keyword, caption and species models — comparison on the #377 cohort
 description: Production CLIP B/32 keywords, BLIP captions and BioCLIP 2 species vs a reference design's OpenCLIP B/32 (LAION) scene/species approach and the roadmap candidates (SigLIP2, OpenCLIP L/14, Florence-2), on 339 owner-labelled frames; species disagreements judged by a 4-agent vision panel plus Jev on blind descriptions.
 resource: docs/reports/keywords-captions-species-comparison-2026-09-24.md
-tags: [research, keywords, captions, species, clip, siglip2, florence2, bioclip, clean-room]
+tags: [research, keywords, captions, species, clip, siglip2, florence2, bioclip]
 timestamp: 2026-09-24T00:00:00Z
 okf_version: 0.2
 ---
@@ -19,7 +19,7 @@ okf_version: 0.2
 > - [model roadmap](../MODEL_RECOMMENDATIONS_PIPELINES.md)
 > - [subject detector comparison](subject-detector-comparison-2026-09-24.md), same cohort
 
-## Provenance (clean-room)
+## Provenance 
 
 One arm reproduces the *approach* of a reference wildlife-culling design, as observed from its
 behaviour:

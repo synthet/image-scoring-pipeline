@@ -3,7 +3,7 @@ type: Report
 title: Subject-evidence probe — within-burst ranking on the bird-crop label set
 description: Arm A (existing whole-frame scores) vs an Arm B probe (six subject-conditioned criteria + composite) on 236 agent-labelled frames in 54 bursts. B matches A overall and leads on best-vs-reject pairs; nothing works on small subjects; the label set is too small to decide.
 resource: docs/reports/subject-evidence-probe-2026-09-24.md
-tags: [research, culling, evidence, localization, bird-crop, clean-room]
+tags: [research, culling, evidence, localization, bird-crop]
 timestamp: 2026-09-24T00:00:00Z
 okf_version: 0.2
 ---
