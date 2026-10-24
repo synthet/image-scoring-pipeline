@@ -97,7 +97,7 @@ per-judge agreement with the human (exact agreement plus Cohen's kappa), not jus
   verdicts **only on items the human has already finished** (never before they label — that anchors them), read the
   panel's raw/jev files live so hints appear mid-run, fall back to a provisional judge majority until Jev lands, and
   record "reviewed" separately from the labels. Reference: `PanelReview` in
-  `burstpick/research/refcull_labeler.py` and the ⚑/☆/✓ hints in `research/labeler/index.html`.
+  `culling/research/refcull_labeler.py` and the ⚑/☆/✓ hints in `research/labeler/index.html`.
 
 ## Agent pitfalls (learned)
 
