@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-24] edit | keywords depends on metadata, not scoring (#407, spec 02 AC-1/AC-2)
+
+Updated [phase graph](architecture/pipeline/phase-graph.md): the `keywords` hard prerequisite is now `metadata`, and `pipeline_prefix_through("keywords")` no longer includes `scoring`.
+
 ## [2026-10-23] updated | As-built architecture and contract review
 
 Added source-derived specs for execution/scoring, localization/consumer ownership and model inventory; kept proposed changes and historical evidence separate.
