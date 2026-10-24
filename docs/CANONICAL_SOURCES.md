@@ -45,3 +45,7 @@ For API, schema, phase, or terminology changes:
 3. Update gallery integration code and docs second.
 4. Append entries to both repositories' `docs/log.md`.
 5. List backend and gallery checks in the PR or handoff.
+
+## As-built behavior (2026-10-23 review)
+
+[As-built specifications](specs/as-built/INDEX.md) bind implementation observations to source revisions and regression tests. Existing API/schema contracts remain authoritative; the specs identify discrepancies and evaluation gaps without silently changing intended requirements.

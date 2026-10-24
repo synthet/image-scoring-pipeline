@@ -1,86 +1,46 @@
 ---
 name: subagent-review
-description: Runs detect_subagents then run_subagent (codex/gemini) in review mode via subagent-orchestrator MCP, reads .agent-runs outputs, and summarizes findings. Use when the user asks for external CLI review, codex/gemini review, subagent panel, tie-breaker, or invokes /check-subagents, /run-codex-review, /run-gemini-review, /run-subagent-review.
+description: Runs swarm_search, swarm_run, or run_judge_panel via the synthet-agent-swarm MCP server. Use for a read-only external review, a judge panel, harness selection, or /swarm.
+capability: "Run swarm_search, swarm_run, or run_judge_panel through the synthet-agent-swarm MCP server."
+side_effect_level: external_export
+approval_required: true
+requires_tools: "MCP server synthet-agent-swarm: swarm_search, swarm_run, run_judge_panel"
+output_schema: "Markdown summary of harness results and agreement."
+risk_class: high
 ---
 
 # Subagent review (MCP)
 
-Run external CLI coding agents **through the subagent-orchestrator MCP server** — not by spawning `codex` / `gemini` / `claude` directly in the terminal.
+Run external judges **through the synthet-agent-swarm MCP server**. Do not spawn `codex`, `agy`, `claude`, or `agent` in the terminal.
+
+Writes stay off. Never set `allowWrites: true`.
 
 ## Prerequisites
 
-- Sibling checkout: `../subagent-orchestrator/agent-orchestrator` built (`npm install && npm run build` there once)
-- MCP server enabled in [`.cursor/mcp.json`](../../.cursor/mcp.json) as **`cli-review`** (or user-level **`subagent-orchestrator`**) and reloaded in Cursor
+- The `synthet-agent-swarm` package is built: `npm run build` in `agent-orchestrator/` of that checkout. The launch file is `agent-orchestrator/dist/index.js`.
+- The user MCP server named `synthet-agent-swarm` is enabled and the client has been reloaded.
 
-## Step 1 — Resolve MCP server
+## Steps
 
-Before `CallMcpTool`, find the enabled server where `serverName` is `subagent-orchestrator` (project key **`cli-review`**; user-level keys may also appear). Read tool schemas from `mcps/*/tools/detect_subagents.json` and `run_subagent.json`. Prefer the **project** server so `WORKSPACE_ROOT` is this repo.
+1. Resolve the MCP server whose `serverName` is `synthet-agent-swarm`. Read the schemas for `swarm_search`, `swarm_run`, and `run_judge_panel`. The field contract is `docs/api.md` in the synthet-agent-swarm checkout. This skill's [references/mcp-tools.md](references/mcp-tools.md) is the short form.
+2. Call `swarm_search`. Show id, command, available, and transports. A query of `gemini` also returns `agy`. `agent` is the cursor row.
+3. Call `swarm_run` for a review or one judgement. Omit `harnesses` for every available harness. Pass `model` only when the user names one. Set `dryRun: true` when the user says dry run or you are checking setup.
+4. Call `run_judge_panel` for a frozen manifest. Blind panels reject `extraContext`. The tool does not call Jev.
+5. Read `.agent-runs/` and summarize. Code-review findings use severity blocker, high, medium, low, or nit. Agreement is not a human label. Do not apply patches unless the user asks.
 
-## Step 2 — Detect
-
-Call **`detect_subagents`** (no arguments). Present a short table:
-
-| Agent | Available | Mode | Notes |
-|-------|-----------|------|-------|
-
-Note: **Claude** is detection-only in v0.1 — do not rely on it for live `run_subagent`.
-
-## Step 3 — Build request
-
-- **task** — clear review goal (from user or slash command text)
-- **files** — workspace-relative paths from `@` mentions (max 20; no `.env`, keys, binaries)
-- **shared context** — for change reviews, build the retrieval once and give every reviewer the same file:
-  `python scripts/agent_harness/cli.py bundle` → `.agent-runs/bundle-<sha>.md` (reused while HEAD and the
-  diff are unchanged; restricted files are excluded). Pass that path in `files` instead of re-searching.
-- The Jev harness `PreToolUse` hook denies `run_subagent` calls that include restricted files or
-  secret-looking text in `task`/`extraContext`. When that hook did not run, ask Jev the sensitivity
-  of those files (public / application code / proprietary / secrets) before `run_subagent`.
-  Restricted files and secret-looking text stay out. Protocol: [jev-mcp](../jev-mcp/SKILL.md).
-- **mode** — `review` (default) or `tie-breaker` when comparing opinions
-- **allowWrites** — always `false`
-- **dryRun** — `true` when user says “dry run” or you are validating setup
-
-## Step 4 — Run
-
-Call **`run_subagent`** with JSON per [references/mcp-tools.md](references/mcp-tools.md).
-
-For a “panel” (user wants both agents): run **sequentially** — codex then gemini (or vice versa) with the same `task` and `files`. There is no `run_subagent_panel` tool in v0.1.
-
-## Step 5 — Read results
-
-1. Parse MCP response (`outputFile`, `summary`, `ok`, `error`).
-2. Read `.agent-runs/.../stdout.md` at the returned path.
-3. Summarize for the user:
-
-```markdown
-## External review summary
-
-### Verdict
-### Findings (blocker | high | medium | low | nit)
-### Suggested changes
-### Agent agreement (if multiple runs)
-### Next steps
-```
-
-Do **not** apply patches unless the user explicitly asks.
-
-## image-scoring-pipeline
-
-- Suggest **files** from `git diff --name-only` under `modules/`, `tests/`, `migrations/`, `frontend/src/` when the user did not `@` paths.
-- Cross-repo changes: review **this workspace only**; open **image-scoring-gallery** separately for gallery diffs (v0.1 cannot span both roots in one MCP call).
-- Safety: [.agent/SAFETY.md](../../../.agent/SAFETY.md)
+Old names `detect_subagents`, `run_subagent`, and `run_judge_swarm` still work and return the previous JSON shape. New calls use `swarm_search` and `swarm_run`.
 
 ## Errors
 
 | Situation | Action |
-|-----------|--------|
-| Agent not on PATH | Report `detect_subagents` notes; suggest install/auth |
-| `allowWrites` rejected | Explain v0.1 is review-only |
-| Claude run requested | Use Codex or Gemini instead |
-| MCP server missing | [docs/technical/EXTERNAL_CLI_REVIEWS.md](../../../docs/technical/EXTERNAL_CLI_REVIEWS.md); build sibling orchestrator |
+|---|---|
+| `unknown_harness` | Show `next_steps` from `swarm_search` |
+| `model_unsupported` | Retry with the harness ids in `next_steps`, or omit `model` |
+| `harness_unavailable` | Report the search row. Do not install adapters with `npx` |
+| MCP server missing | Build `agent-orchestrator` and reload the user MCP entry |
 
 ## Related
 
-- Rule: `external-cli-subagents.mdc`
-- Commands: `/check-subagents`, `/run-codex-review`, `/run-gemini-review`, `/run-subagent-review`
-- Orchestrator package: `../subagent-orchestrator/agent-orchestrator/README.md`
+- Command: `/swarm`
+- Subagent: `external-swarm`
+- Reference: [references/mcp-tools.md](references/mcp-tools.md)

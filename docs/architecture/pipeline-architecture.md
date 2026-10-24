@@ -22,6 +22,7 @@ remains the product-naming authority.
 |---|---|---|---|---|
 | `indexing` | `indexing` | Discovery | no | Scan and register files; compute identity hash. |
 | `metadata` | `metadata` | Inspection | no | EXIF/XMP, image UUID, thumbnails. |
+| `localization` | `localization` | Localization | yes, config-gated | Versioned regions/keypoints; production selection is separate. |
 | `scoring` | `score` | Quality Analysis | no | Run quality models and persist scores. |
 | `culling` | `cluster` | Similarity Clustering | yes | Build stacks; assign pick/reject. |
 | `keywords` | `tag` | Tagging | yes | Generate keywords and captions; sync metadata. |
@@ -104,3 +105,7 @@ Note `/api/runs/submit` validates phase prerequisites; `/api/pipeline/submit` do
 - [../IMAGE_PIPELINE.md](../IMAGE_PIPELINE.md)
 - [../features/implemented/01-pipeline-and-runs.md](../features/implemented/01-pipeline-and-runs.md)
 - [../technical/PIPELINE_PHASE_RUNNERS.md](../technical/PIPELINE_PHASE_RUNNERS.md)
+
+## Code-derived contract additions (2026-10-23)
+
+The phase graph also contains metadata → localization. Localization is preferred before scoring, keywords and species, but is not their hard prerequisite. See [execution and scoring as built](../specs/as-built/execution-and-scoring.md) and [localization/consumer ownership](../specs/as-built/localization-and-consumers.md). The latter traces rendition identity, YOLO/RTMDet fallback, selected-region transactions, species fallback and repair gates.

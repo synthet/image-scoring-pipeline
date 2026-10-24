@@ -6,7 +6,7 @@ import math
 
 import numpy as np
 
-# Starting points — re-fit on corpus (clean-room planning).
+# Starting points — re-fit on corpus (planning).
 DEFAULT_FOCUS_CELL_PX = 16
 DEFAULT_NOISE_CELL_PX = 20
 

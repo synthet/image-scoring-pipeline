@@ -3,7 +3,7 @@ type: Plan
 title: Human culling label set — sampling design, label semantics, storage and evaluation
 description: "Protocol for the ~300-group human culling label set (#415): stratified, weighted sample of backend stacks and 0.5 s bursts; blind per-frame pick/keep/reject plus one best frame; stored in a dedicated human_labels schema; evaluation metrics and gates. 302 groups sampled, 20 labelled as of 2026-09-25."
 resource: docs/planning/human-culling-labels.md
-tags: [planning, culling, labels, evaluation, bursts, stacks, clean-room]
+tags: [planning, culling, labels, evaluation, bursts, stacks]
 timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 status: in-progress
