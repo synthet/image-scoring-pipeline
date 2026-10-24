@@ -3,7 +3,7 @@ type: Report
 title: Subject detector comparison — bird YOLO vs an open COCO detector on the #377 cohort
 description: On the owner-labelled #377 cohort, an open COCO detector (RTMDet-tiny) at 640 input matches the bird YOLO's 1280 recall on 640-misses with ~1/16 of the false positives, rejects most of the YOLO's false boxes, and agrees on box geometry (median IoU 0.82).
 resource: docs/reports/subject-detector-comparison-2026-09-24.md
-tags: [research, localization, detector, bird-detection, benchmark, clean-room]
+tags: [research, localization, detector, bird-detection, benchmark]
 timestamp: 2026-09-24T00:00:00Z
 okf_version: 0.2
 ---
@@ -16,7 +16,7 @@ okf_version: 0.2
 > [localization rollout](../architecture/pipeline/localization-rollout.md) Stages 3–4 and to the
 > detector role in [subject-evidence model roles](../planning/models/subject-evidence-model-roles.md).
 
-## Provenance (clean-room)
+## Provenance 
 
 The new arm reproduces the subject-detection **policy** of a reference wildlife-culling design, as
 observed from its behaviour:
