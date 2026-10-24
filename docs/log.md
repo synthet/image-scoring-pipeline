@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-23] update | Record Stage 8 readiness: repair complete, rollback drill, 43 disagreements
+
+Added the [Stage 8 readiness report](reports/localization-stage8-readiness-2026-10-23.md) and indexed it. Updated the rollout status of record: #660 complete, WebUI on v9.2.0, #639 closed, gallery #185 merged, rollback drill passed, 43 (not 31) legacy/view disagreements, backfill reroute (#664), and the remaining #638 gates.
+
 ## [2026-10-23] update | Add localization rollout summary and record the 0043 deploy (#661)
 
 Added a one-page rollout summary, indexed it, and updated the status of record: 0043 deployed with verified view parity, v9.2.0 released, #660 repair running. Corrected `status: proposed`, the "What is left" order and the timing-baseline blocker.
