@@ -1,105 +1,81 @@
-# MCP tool reference — subagent-orchestrator
+# MCP tool reference - synthet-agent-swarm
 
-Server display name: **subagent-orchestrator**
+Server display name: **synthet-agent-swarm**. The field contract is `docs/api.md` in the synthet-agent-swarm checkout.
 
-Project MCP key (either repo): **`cli-review`**. User-level: **`subagent-orchestrator`**.
+Tools are read-only. `swarm_search` lists harnesses. `swarm_run` runs one task. `run_judge_panel` runs a frozen manifest. The server does not call Jev or render images.
 
-## detect_subagents
+## swarm_search
 
-No parameters.
-
-**Example response (shape):**
+Optional `query` matches id, title, command, transport, and notes.
 
 ```json
-{
-  "agents": {
-    "codex": {
-      "available": true,
-      "command": "codex",
-      "mode": "exec",
-      "version": "…",
-      "notes": []
-    },
-    "gemini": {
-      "available": true,
-      "command": "gemini",
-      "mode": "prompt",
-      "version": "…",
-      "notes": []
-    },
-    "claude": {
-      "available": true,
-      "command": "claude",
-      "mode": "print",
-      "version": "…",
-      "notes": []
-    }
-  },
-  "detectedAt": "2026-05-27T…"
-}
+{ "query": "cursor" }
 ```
 
-## run_subagent
+Each row has `id`, `title`, `command`, `available`, `transports`, `modelFlag`, and `notes`.
 
-| Field | Type | Required | Default | Notes |
-|-------|------|----------|---------|-------|
-| `agent` | `"codex"` \| `"gemini"` \| `"claude"` | yes | — | Prefer codex/gemini for live runs |
-| `task` | string | yes | — | Max 8000 chars |
-| `files` | string[] | no | — | Workspace-relative; max 20 |
-| `mode` | `review` \| `implement` \| `explain` \| `test` \| `tie-breaker` | no | `review` | |
-| `timeoutMs` | number | no | 300000 | Max 900000 |
-| `allowWrites` | boolean | no | `false` | **Rejected in v0.1** |
-| `dryRun` | boolean | no | `false` | Command preview only |
-| `extraContext` | string | no | — | Max 4000 chars |
+## swarm_run
 
-**Example — dry run (backend):**
+| Field | Required | Notes |
+|---|---|---|
+| `task` | yes | Max 8000 characters |
+| `files` | no | Workspace-relative. Max 20 |
+| `harnesses` | no | Omit for every available harness. `antigravity` is `agy`. `agent` is `cursor` |
+| `model` | no | Fails the whole call with `model_unsupported` when a selected harness has no `--model` flag |
+| `transport` | no | `auto` (default), `cli`, or `acp` |
+| `mode` | no | `review` by default. `judge` is one blind vote |
+| `timeoutMs` | no | Clamped to the configured maximum |
+| `dryRun` | no | Does not spawn. Omits `agreement` |
+| `extraContext` | no | Max 4000 characters |
+
+One harness omits `agreement`. Two or more include strict-majority agreement. `ok` is true when at least one harness succeeds.
 
 ```json
 {
-  "agent": "codex",
-  "task": "Review modules/api.py changes for REST contract drift",
-  "files": ["modules/api.py"],
-  "mode": "review",
-  "allowWrites": false,
+  "task": "Review the sandbox flags",
+  "files": ["agent-orchestrator/src/runners/codex.ts"],
+  "harnesses": ["codex", "agy"],
   "dryRun": true
 }
 ```
 
-**Example — live review (gallery):**
+Failure envelope:
 
 ```json
 {
-  "agent": "gemini",
-  "task": "Review electron/db.ts IPC exposure for renderer safety",
-  "files": ["electron/db.ts", "electron/preload.ts"],
-  "mode": "review",
-  "allowWrites": false
+  "ok": false,
+  "error": {
+    "code": "model_unsupported",
+    "message": "",
+    "details": {},
+    "retryable": false,
+    "next_steps": ["codex"]
+  },
+  "harnesses": []
 }
 ```
 
-**Example response (shape):**
+## run_judge_panel
+
+Same manifest as before, plus optional `harnesses`, `model`, and `transport`. Blind is the default and rejects `extraContext`. `stages.jev.called` and `stages.rules.applied` stay false.
 
 ```json
 {
-  "ok": true,
-  "agent": "codex",
-  "exitCode": 0,
-  "durationMs": 18422,
-  "outputFile": ".agent-runs/20260526-203012-codex-review-api/stdout.md",
-  "outputDir": ".agent-runs/20260526-203012-codex-review-api",
-  "summary": "…",
-  "commandPreview": "codex exec --sandbox read-only …"
+  "task": "Choose A or B for each item.",
+  "items": [{ "id": "a", "files": ["blind/a.jpg"] }],
+  "harnesses": ["codex", "agy"],
+  "dryRun": true
 }
 ```
+
+## Aliases
+
+`detect_subagents`, `run_subagent`, and `run_judge_swarm` call the same functions and return the previous JSON shape. `antigravity` in those responses is the `agy` harness.
 
 ## On-disk artifacts
 
 ```text
-.agent-runs/YYYYMMDD-HHMMSS-<agent>-<slug>/
-  request.json
-  stdout.md
-  stderr.log
-  result.json
+.agent-runs/YYYYMMDD-HHMMSS-<harness>-<slug>/
+.agent-runs/YYYYMMDD-HHMMSS-swarm-<slug>/swarm.json
+.agent-runs/YYYYMMDD-HHMMSS-panel-<slug>/panel.json
 ```
-
-Written under the **active workspace** (backend or gallery), not under `subagent-orchestrator`.

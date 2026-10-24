@@ -59,6 +59,18 @@ When **`is-be-mcp`** fails live discovery, probe the WebUI REST API directly (pr
 
 Completed scoring / culling / keywords jobs alone are **not** enough — folders can remain at `awaiting_bird_species` afterward. Full-pipeline `target_phases` include `bird_species` (indexing → metadata → scoring → culling → keywords → bird_species).
 
+## Auto-drive & Drive to Complete triage
+
+When investigating auto-drive ticks (e.g. dashboard showing "Last tick: queued 0, skipped N" or badge `in flight cap: N`):
+
+1. **Deferral vs Failure**:
+   - `last_tick_reason == 'waiting_in_flight'` and skip reason `in_flight_cap` mean candidate folders are deferred by concurrency throttling (`auto_drive.max_in_flight_jobs`, default 1). These are **not** errors or dropped folders; they will be considered on the next idle tick once the running job finishes.
+   - The UI badge `{reason.replace(/_/g, ' ')}: {count}` renders as `in flight cap: N`—this indicates *N folders deferred due to the in-flight cap*, not that the cap is N.
+2. **Locating Active Runs**:
+   - Check `GET /api/jobs/recent` or `db.count_running_pipeline_jobs()` to identify the in-flight job.
+   - Folder bucket sorting assigns `in_flight` items order `99` (below `awaiting_*` buckets). An active folder may not appear at the top of the dashboard table.
+   - Distinguish camera subdirectories sharing the same date (e.g. `Z8/.../2026-10-17` vs `Z6ii/.../2026-10-17`).
+
 ## References
 
 - [AGENTS.md](../../../AGENTS.md)

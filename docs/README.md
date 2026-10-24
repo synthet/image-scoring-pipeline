@@ -60,3 +60,7 @@ The desktop app lives in **image-scoring-gallery** and consumes backend-owned AP
 | Integration backlog | [image-scoring-gallery docs/integration/TODO.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/integration/TODO.md) |
 
 Cross-project rule: update backend canonical docs first for API, schema, phase, or terminology changes, then update gallery code/docs, and append entries to both `docs/log.md` files.
+
+## As-built behavior
+
+[2026-10-23 code-derived specifications](specs/as-built/INDEX.md) — architecture, algorithms, formulas, gates, consumers and explicit validation gaps.
