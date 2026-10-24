@@ -251,6 +251,24 @@ same-scale noise estimates. Include original and synthetically blurred/noisy ver
 frames. Fix and test geometry in a separate behaviour-change task before interpreting alignment as
 evidence across cameras. Runtime flags and production ranking stay at their current values.
 
+**First run (2026-10-24, same eleven frames, `probe_eye_robustness.py` in the scratch directory).**
+Every frame had exactly one current `bird_head_pose` keypoint run and decoded at 8256 × 5504; eye
+windows were 384–470 px.
+
+- **Noise scale does not change this ordering.** Quarter-frame, native-scale and crop-local sigma give
+  identical ranks (Spearman 1.0). Sigma is small throughout (0.08–0.52), so the v1 mismatch is not what
+  drives the §1 table here; it still needs fixing before noisier renditions.
+- **Blur controls behave.** Sharpness falls monotonically on all 11 frames from original to Gaussian
+  blur 1.5 to 3.0; ranks hold at 1.5 (Spearman 0.97) and loosen at 3.0 (0.66).
+- **Added noise is the weak point.** With Gaussian noise σ 6 and the crop's own sigma estimate, readings
+  rise by a median 41 above the original and ranks drop to 0.92; at σ 12 they drop to 0.48. The
+  estimator removes most but not all added noise, which matches the earlier "fooled by noise" claim.
+- **The §1 disagreement holds under every control.** 0062 ranks first; the saved picks 0060 and 0061
+  rank 10th and 11th of 11.
+
+This supports eye-window ranking within one clean, high-resolution burst only. High-ISO groups need a
+stronger noise model before §5 can use it.
+
 ## Sources and verification limits
 
 - Local evidence: `af-13.52.json`, `af-eye-probe.json`, `probe_af_eye.py` and `eye-sheet.jpg` under the
