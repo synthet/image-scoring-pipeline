@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-24] update | Draft AF metadata and eye-focus evidence plan
+
+Added [the focus-evidence proposal](planning/af-focus-evidence.md), grounded in the saved eleven-frame Nikon probe. Separated measured observations from camera-semantics and decode uncertainties, and added shadow evaluation and acceptance criteria. Runtime scores and selections were not changed.
+
 ## [2026-10-23] updated | As-built architecture and contract review
 
 Added source-derived specs for execution/scoring, localization/consumer ownership and model inventory; kept proposed changes and historical evidence separate.
