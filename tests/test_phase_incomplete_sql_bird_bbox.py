@@ -114,3 +114,37 @@ def test_folder_rollup_leaves_firebird_untouched(monkeypatch):
     sql = _aggregate_sql(monkeypatch, "firebird")
     assert "bird_bbox" not in sql
     assert "SELECT id FROM images" in sql
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Embedded detector retired (#638): the box is localization's product, so neither the
+# predicate, the folder rollup nor the per-image check may wait on it.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_detector_off_drops_the_bbox_gap_from_the_predicate(monkeypatch):
+    monkeypatch.setattr("modules.bird_detection.embedded_detector_enabled", lambda: False)
+    sql = _sql("postgres")
+    assert "bird_bbox" not in sql
+    assert "species:%" in sql and "no_species_match" in sql
+    with patch.object(db, "_get_db_engine", return_value="postgres"):
+        assert db._sql_bird_bbox_needs_scan("i") == "1=0"  # the folder rollup's gap source
+
+
+def test_detector_off_species_complete_ignores_the_box(monkeypatch):
+    """The per-image mirror must agree with the predicate, or auto-drive stalls."""
+    from modules import db as facade
+
+    class _Conn:
+        def query_one(self, sql, params=None):
+            if "LIKE '%birds%'" in sql:
+                return {"c": 1}
+            if "bird_bbox" in sql:
+                return {"bird_bbox": None}
+            return {"x": 1}  # species-exhausted marker present
+
+    monkeypatch.setattr(facade, "get_connector", lambda: _Conn(), raising=False)
+    monkeypatch.setattr(facade, "_images_table_has_legacy_keywords_column", lambda: False, raising=False)
+    monkeypatch.setattr(facade, "_get_db_engine", lambda: "postgres", raising=False)
+    assert facade.is_image_bird_species_complete(1) is False  # detector on: NULL box is backlog
+    monkeypatch.setattr("modules.bird_detection.embedded_detector_enabled", lambda: False)
+    assert facade.is_image_bird_species_complete(1) is True
