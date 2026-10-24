@@ -541,7 +541,7 @@ def _enqueue_heal_run(folder_path: str, phase_code: str):
     interpret a dict in slot 1 as a structured "skipped, missing prereqs"
     result rather than a real queue position.
     """
-    from modules.phases import assert_prereqs_for_scope
+    from modules.phases import assert_prereqs_for_scope, insert_attempt_before
 
     resolved, _candidates = utils.resolve_scope_input_path(folder_path)
     if not resolved or not os.path.isdir(resolved):
@@ -569,6 +569,9 @@ def _enqueue_heal_run(folder_path: str, phase_code: str):
     # gating the unsorted ["culling", "metadata"] built above would check an order
     # this run never executes.
     phase_values = sort_phase_value_strings(phase_values)
+
+    # Attempt-before edges (#407 AC-4): same insertion as the submit routes (AC-13).
+    phase_values = insert_attempt_before(phase_values, [folder_path])
 
     # Prereq gate: skip folders whose phases-of-interest can't run yet.
     prereq_miss = assert_prereqs_for_scope(phase_values, [folder_path])

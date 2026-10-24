@@ -85,6 +85,15 @@ PHASE_PREFERRED_BEFORE: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Attempt-before edges (#407, spec 02 AC-3): when a run plan requests a listed consumer, the
+# key is inserted ahead of it if any in-scope image still lacks a current *attempt*
+# (``detected``, ``no_detection``, ``terminal_error`` or ``disabled``).  It waits for an attempt,
+# not a success: a ``retryable_error`` leaves the consumer on its full-frame fallback.  Like
+# ``PHASE_PREFERRED_BEFORE`` it never blocks -- ``missing_prerequisites`` does not read it.
+PHASE_ATTEMPT_BEFORE: dict[str, tuple[str, ...]] = {
+    PhaseCode.LOCALIZATION.value: (PhaseCode.SCORING.value,),
+}
+
 # Phases that are registered but gated by a config flag.  While the flag is false the
 # phase is omitted from public phase lists and any submission naming it is rejected
 # (#387 decision 1).  Registering it anyway keeps the vocabulary, executor and schema in
@@ -288,6 +297,59 @@ def assert_prereqs_for_scope(
     """
     satisfied = compute_satisfied_phases_for_scope(scope_paths)
     return missing_prerequisites(phase_values or [], satisfied)
+
+
+def attempt_pending(producer: str, scope_paths: Iterable[str]) -> bool:
+    """True when running ``producer`` over ``scope_paths`` would claim at least one image.
+
+    Uses the dispatcher's own selection -- a dry-run ``plan_phase`` plus, for localization,
+    the ``new_images_only`` scope -- so an inserted stage is never a no-op that planning
+    would re-insert on every tick.
+    """
+    from modules.run_phase_planner import plan_phase
+
+    planned = plan_phase([str(p) for p in scope_paths if p], producer, dry_run=True)
+    if planned and producer == PhaseCode.LOCALIZATION.value:
+        from modules.localization_policy import auto_scope
+
+        planned = auto_scope(planned)
+    return bool(planned)
+
+
+def insert_attempt_before(
+    phase_values: Iterable[str],
+    scope_paths: Iterable[str],
+    *,
+    pending: Callable[[str, list[str]], bool] | None = None,
+) -> list[str]:
+    """Return ``phase_values`` with attempt-before producers inserted (spec 02 AC-4 to AC-6).
+
+    A producer from :data:`PHASE_ATTEMPT_BEFORE` goes immediately ahead of the first
+    requested consumer when it is enabled (AC-5), not already planned, and some image in
+    ``scope_paths`` lacks a current attempt (``pending``, default :func:`attempt_pending`).
+    Without scope paths (image-id selectors) the plan is returned unchanged, matching the
+    prerequisite gate.  ``/api/runs/submit``, ``/api/pipeline/submit`` and heal call this before
+    ``assert_prereqs_for_scope`` so identical requests produce identical plans (AC-13).
+    Auto-drive does not: its folders get localization from the idle-path lane (#527).
+    """
+    plan: list[str] = []
+    for raw in phase_values or []:
+        code = str(raw or "").strip().lower()
+        if code and code not in plan:
+            plan.append(code)
+    paths = [str(p) for p in scope_paths or [] if p]
+    if not paths:
+        return plan
+    check = pending or attempt_pending
+    for producer, consumers in PHASE_ATTEMPT_BEFORE.items():
+        if producer in plan:
+            continue
+        index = next((i for i, code in enumerate(plan) if code in consumers), None)
+        if index is None or not is_phase_enabled(producer):
+            continue
+        if check(producer, paths):
+            plan.insert(index, producer)
+    return plan
 
 
 def sort_phase_codes_canonical(phases: list[PhaseCode]) -> list[PhaseCode]:
