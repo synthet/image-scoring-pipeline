@@ -94,6 +94,50 @@ for every image (packet `bbox-disagreements-20261023.json`; overlays in
 Which box is right is an owner decision, made per image from the overlay sheet. It has to happen
 before the flag is left on. The drill doesn't depend on it.
 
+### Review outcome: swarm judges and Jev, no human labels (late 2026-10-23)
+
+The user asked for no human judgment. The review follows the image-scoring-skills pattern:
+vision judges supply evidence, Jev decides, and deterministic rules apply the result.
+
+1. **Blind sheets.** Each of the 43 images got one sheet: the full frame plus close crops, with
+   the boxes labelled A and B in a seeded random order. The answer key stayed outside the judges'
+   workspace (`render_blind_bbox_panel_20261023.py`).
+2. **Judges.** A blind `run_judge_panel` ran over synthet-agent-swarm with codex, claude and agy.
+   gemini (exit 41) and grok (an ACP error) failed. claude returned empty output on some chunks.
+   39 items got three votes and 4 got two (`aggregate_bbox_panel_20261023.py`).
+3. **Jev.** One `jev_system_one` call (jev-1.14.0) with a five-way Choice per item. The state held
+   only the votes, the judges' reasons and IoU. Detector confidence was left out because it
+   reveals which source a box came from.
+4. **Rule.** A pick is applied only when Jev chose A or B with confidence above 0.5.
+
+| Group | Selection box right | Legacy box right | Held |
+|---|---|---|---|
+| 31 selected | 19 | 6 | 6 (uncertain or ≤ 0.5) |
+| 12 unselected | 5 | 5 | 2 (d37/d38: the box is on people) |
+
+**Applied to the 31 selected images** (`apply_bbox_review_20261023.py`, receipt
+`bbox-review-apply-20261023.json`):
+
+- **Backup first.** The `image_localization_selections` dump read back completely, and
+  `images.bird_bbox` was saved for all 31 images.
+- **Selection box right (19).** Each was revoked and the same region re-selected, so the column
+  now holds the projection. `selected_by` is `bbox_review_20261023/jev`, and the replaced
+  selection is kept in `evidence`.
+- **Legacy box right (6).** Each selection was revoked with a review reason; the column keeps its
+  value.
+- **Result.** All 25 resolved, with column and view equal. Selected disagreements went from
+  **31 to 6**, the 6 held items, which keep serving the selection's box when the flag is on.
+  Active selections went from 4,675 to 4,669.
+
+**Unselected images: no writes.** The image-scoring-skills localization backfill (running
+2026-10-23 to 2026-10-24) replaces the imported current runs. That makes the view fall back to the
+column, and the group has already shrunk from 12 to 7. Recount after the backfill finishes; Jev's
+picks for this group are kept for whatever disagreements remain.
+
+**Zero-filled originals (71048, 71062, 71135).** Jev chose **keep** (0.79). The records carry
+ratings, labels, picks and stack membership; keeping them loses no curation if a copy of the files
+turns up. They are not deleted, and decode-based phases will log decode errors for them.
+
 ## Writer reroute (#664)
 
 `scripts/backfill_bird_bbox.py` now queues ID-scoped localization jobs. It no longer runs a
@@ -111,5 +155,6 @@ already have a current run. The bird-tagged default finds 0 candidates.
    - Removing it now would move them to full-frame classification on their next classify.
    - It waits until normalized selections cover those images (Stage 5 exit and Stage 7
      relocalization), not only on the calendar.
-3. **Owner review of the 43 disagreements** before `read_normalized_first` is left on.
-4. **Owner decision on the three zero-filled originals.**
+3. ~~Owner review of the 43 disagreements~~: done by swarm judges and Jev (see above). The 6 held
+   selected items default to the selection. Recount the unselected ones after the skills backfill.
+4. ~~Owner decision on the three zero-filled originals~~: Jev chose keep (0.79).
