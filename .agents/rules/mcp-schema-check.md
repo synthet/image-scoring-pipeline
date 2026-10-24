@@ -1,0 +1,52 @@
+---
+trigger: always_on
+description: "Check MCP tool schema before calling to ensure correct parameters and reduce failed calls"
+---
+
+# MCP Schema Check
+
+**Before calling any MCP tool** via `call_mcp_tool`, check the tool schema/descriptor for required parameters and types.
+
+## Where to Find Schemas
+
+Tool descriptors live in the `mcps` folder. Path pattern:
+
+```
+mcps/<server>/tools/<tool>.json
+```
+
+Examples:
+
+- `mcps/project-0-image-scoring-pipeline-is-be-mcp/tools/search.json`
+- `mcps/project-0-image-scoring-pipeline-is-be-mcp/tools/dispatch.json`
+- `mcps/project-1-image-scoring-gallery-is-ui-mcp/tools/search.json`
+
+## What to Check
+
+1. **Required parameters** — `required` array in the schema
+2. **Parameter types** — `properties.<name>.type` or `anyOf`
+3. **Optional parameters** — Use when they improve results (e.g. `limit`, `folder_path`)
+
+## Applies To
+
+**Backend** (project `.cursor/mcp.json` defaults):
+
+- **`is-be-mcp`** (`search`, `dispatch`, `sse_status`)
+- Optional **`is-be-live`** (SSE when WebUI is running)
+- Optional **`fff-be`**, **`graphify-be`**
+
+Legacy split keys (`is-be-router`, `is-be-diag`, `is-be-jobs`, `is-be-data`, `is-be-maint`, `is-be-pg`) are **debug-only** — not in default `mcp.example.json`.
+
+**Gallery** (project `.cursor/mcp.json` defaults):
+
+- **`is-ui-mcp`** (`search`, `dispatch`, `sse_status`)
+- Optional **`is-ui-live`**
+- Optional **`fff-gallery`**, **`graphify-gallery`**
+
+Debug-only (not default): `is-ui-router`, `is-ui-local`, `is-ui-api`.
+
+User-level: **`github`**, **`subagent-orchestrator`**, etc.
+
+## Why
+
+Reduces failed tool calls due to wrong or missing parameters. Schema files are the source of truth for tool signatures.

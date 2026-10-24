@@ -3,7 +3,7 @@ type: Planned Feature
 title: Visual evidence — Stage 6 persistence and invalidation
 description: Persist evidence artifacts at inference time, version with rendition hash, and invalidate on detector or rendition changes (#423, #426).
 resource: docs/features/planned/visual-evidence-stage6-persistence.md
-tags: [features, planned, evidence, localization, clean-room]
+tags: [features, planned, evidence, localization]
 timestamp: 2026-09-30T00:00:00Z
 okf_version: 0.2
 ---
@@ -27,7 +27,7 @@ Move from **on-demand thumbnail grids** to **cached sidecars** written during lo
 
 - Golden grids on synthetic renditions in CI (orientation 1–8).
 - Gallery vitest consumes `tests/fixtures/evidence/*.json` unchanged across persistence rollout.
-- Leakage grep clean on all clean-room commits.
+- Leakage grep clean on all commits.
 
 ## Authority
 

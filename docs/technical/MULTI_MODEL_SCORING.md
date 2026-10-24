@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Multi Model Scoring
+description: Scoring models, ranges, activation and runtime contracts.
+resource: technical/MULTI_MODEL_SCORING.md
+tags: [docs, models, scoring]
+timestamp: 2026-10-23T00:00:00Z
+okf_version: 0.2
+---
+
 # MUSIQ Multi-Model Image Quality Assessment
 
 > **Note:** This document describes the standalone `run_all_musiq_models.py` script (the
@@ -33,9 +43,9 @@ This script runs all available MUSIQ (Multi-scale Image Quality Transformer) mod
 
 | Model | Framework | Score Range | Role |
 |-------|-----------|-------------|------|
-| LIQE | PyTorch | 0.0 - 1.0 | CLIP-based semantic quality (fused) |
+| LIQE | PyTorch | native 1.0–5.0; normalized 0–1 | CLIP-based semantic quality; fusion depends on config |
 | TOPIQ | PyTorch (pyiqa) | 0.0 - 1.0 | No-reference top-down quality (fused) |
-| cursor / claude | LLM-judge | 0.0 - 1.0 | Optional LLM-as-judge engines (disabled by default) |
+| cursor / claude | LLM-judge | 0.0 - 100.0 (native; normalized before fusion) | Optional LLM-as-judge engines (disabled by default) |
 
 **QPT V2** (WIP) is implemented under `modules/qpt_v2*.py` but **not registered** in the
 live registry until validation/calibration (#185).
@@ -73,8 +83,8 @@ The script generates a JSON file with the following structure:
   "models": {
     "spaq": {
       "score": 71.14,
-      "score_range": "1.0-5.0",
-      "normalized_score": 17.535,
+      "score_range": "0.0-100.0",
+      "normalized_score": 0.7114,
       "status": "success"
     },
     "ava": {
@@ -90,8 +100,8 @@ The script generates a JSON file with the following structure:
     },
     "paq2piq": {
       "score": 78.95,
-      "score_range": "1.0-5.0",
-      "normalized_score": 19.489,
+      "score_range": "0.0-100.0",
+      "normalized_score": 0.7895,
       "status": "success"
     }
   },
@@ -167,6 +177,6 @@ The normalized scores allow comparison across models:
 - [Docs index](../README.md)
 - [Model weights](../reference/models/MODEL_WEIGHTS.md)
 - [Weighted scoring strategy](WEIGHTED_SCORING_STRATEGY.md)
-- [Model fallback mechanism](MODEL_FALLBACK_MECHANISM.md)
+- [Historical model fallback mechanism](../archive/MODEL_FALLBACK_MECHANISM.md)
 - [Model source testing](MODEL_SOURCE_TESTING.md)
 

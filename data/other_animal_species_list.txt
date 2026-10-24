@@ -1,0 +1,72 @@
+# Other animal species from user-provided iNaturalist other animals list (2026-10-09)
+# One candidate name per line; genus-only observations are excluded.
+# This list is reference data. The current BioCLIP species job reads bird_species_list.txt only.
+# Common English names are used except Tigrosa annexa, which has no distinct English name.
+
+# Mammals
+White-tailed Deer
+Eastern Fox Squirrel
+Striped Skunk
+Gray Fox
+Eastern Cottontail
+Common Raccoon
+Ringtail
+Harbor Seal
+Virginia Opossum
+Hispid Cotton Rat
+Eastern Gray Squirrel
+Mexican Long-nosed Armadillo
+
+# Reptiles
+Green Anole
+Texas Spiny Lizard
+Common Spotted Whiptail
+Western Ratsnake
+American Alligator
+Rough Earthsnake
+Mediterranean House Gecko
+Common Snapping Turtle
+Pond Slider
+Texas Cooter
+Little Brown Skink
+
+# Amphibians
+Gulf Coast Toad
+Rio Grande Chirping Frog
+
+# Insects
+Transcaucasian Giant Mantis
+Resh Cicada
+Western Honey Bee
+Widow Skimmer
+Common Buckeye
+Monarch
+Red Admiral
+Gulf Fritillary
+Queen
+Gray Bird Grasshopper
+Eastern Leaf-footed Bug
+Obscure Bird Grasshopper
+Two-tailed Swallowtail
+Needham's Skimmer
+Sedge Darner
+Kiowa Dancer
+Checkered Setwing
+Red Saddlebags
+Fall Webworm Moth
+Guinea Paper Wasp
+Glassy-winged Sharpshooter
+Central Texas Leaf-Katydid
+
+# Arachnids
+Southern Black Widow
+Cross Orbweaver
+Bold Jumping Spider
+Yellow Garden Spider
+Rabid Wolf Spider
+Tigrosa annexa
+
+# Mollusks
+Milk Snail
+Prairie Rabdotus
+Island Apple Snail

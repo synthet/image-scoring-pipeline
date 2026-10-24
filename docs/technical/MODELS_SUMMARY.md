@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Models Summary
+description: Scoring models, ranges, activation and runtime contracts.
+resource: technical/MODELS_SUMMARY.md
+tags: [docs, models, scoring]
+timestamp: 2026-10-23T00:00:00Z
+okf_version: 0.2
+---
+
 # Model Summary
 
 This project uses a hybrid ensemble of models to assess image quality from multiple
@@ -29,8 +39,8 @@ only so historical `image_model_scores` rows still normalize.
 **Status: Active (fused — production)**
 A state-of-the-art model (2023) that uses CLIP (Contrastive Language-Image Pre-training) to understand the *content* of an image, not just its pixels. Carries the largest `general` weight; see [Weighted scoring strategy](WEIGHTED_SCORING_STRATEGY.md) for current weights.
 - **Strengths**: Understands "semantic" quality (e.g., a "good photo of a dog" vs just "sharp pixels").
-- **Range**: 0.0 - 1.0
-- **Speed**: Moderate (runs as subprocess).
+- **Native range**: 1.0–5.0; wrapper normalization maps this to 0–1.
+- **Runtime**: Persistent PyTorch/pyiqa scorer; CUDA when available, otherwise CPU. It is not a per-image subprocess.
 
 ## 3. TOPIQ (Top-down Image Quality)
 *PyTorch Implementation (via `pyiqa`)*
@@ -98,3 +108,7 @@ plus an optional multi-dimensional rubric carried in `scores_json`.
 **Status: DISABLED (v2.5.1+)** — Replaced by LIQE.
 
 Originally integrated for semantic scoring, but removed due to persistent instability with TensorFlow Hub loading and dependencies. Documentation preserved in [docs/archive/vila/](../archive/vila/).
+
+## Code-derived lifecycle clarification (2026-10-23)
+
+Registration, enabled inference, shadow storage and fusion membership are separate. Configuration overrides lifecycle descriptions above; ARNIQA is not intrinsically shadow. See [model catalog](../specs/as-built/model-catalog.md) and [execution and scoring](../specs/as-built/execution-and-scoring.md) for exact defaults, native ranges, profiles, student registration and evidence gaps. TOPIQ default weights are general 0.13 / technical 0.30 / aesthetic 0 in current code; earlier narrative weights above are historical.
