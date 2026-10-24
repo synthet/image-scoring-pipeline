@@ -21,6 +21,7 @@ from modules.culling_embeddings import (
 from modules.embedding_extractors import is_supported
 from modules.embedding_spaces import OPENCLIP_L14_IMAGE_SPACE_CODE
 from modules.indexing_policy import filter_image_rows_for_nef_policy
+from modules.phases import culling_requires_scoring
 from modules.quality_ranking import parse_tie_tolerance, quality_tiebreak_sort_key_best_first
 from modules.selection_metadata import write_selection_metadata
 from modules.selection_policy import POLICY_VERSION, classify_sorted_ids
@@ -264,6 +265,30 @@ def apply_dedicated_rank(
     return n
 
 
+def split_pending_stacks(by_stack: dict) -> list[dict]:
+    """Remove stacks that must wait for scoring from ``by_stack`` and return their images.
+
+    A stack with any member lacking ``score_general`` waits whole (#407 spec 02 AC-11). The
+    ``None`` key holds unstacked images, which are not one burst, so only its unscored
+    images wait.  Emptied keys are dropped.
+    """
+    pending: list[dict] = []
+    for sid in list(by_stack):
+        group = by_stack[sid]
+        unscored = [img for img in group if img.get("score_general") is None]
+        if not unscored:
+            continue
+        if sid is None:
+            pending.extend(unscored)
+            by_stack[sid] = [img for img in group if img.get("score_general") is not None]
+        else:
+            pending.extend(group)
+            by_stack[sid] = []
+        if not by_stack[sid]:
+            del by_stack[sid]
+    return pending
+
+
 @dataclass
 class SelectionSummary:
     total_images: int
@@ -274,6 +299,7 @@ class SelectionSummary:
     sidecar_written: int
     sidecar_errors: int
     status: str
+    pending: int = 0  # images whose stack waits for scoring (#407 AC-11)
 
 
 class SelectionService:
@@ -356,6 +382,7 @@ class SelectionService:
             total_picked = 0
             total_rejected = 0
             total_neutral = 0
+            total_pending = 0
             total_written = 0
             total_errors = 0
             
@@ -432,6 +459,11 @@ class SelectionService:
                     len(real_stack_ids),
                     unstacked_n,
                 )
+
+                # #407 AC-11: with pipeline.culling_requires_scoring off, a stack with any
+                # unscored member keeps its picks pending (cull_decision NULL, pick_status
+                # untouched, no sidecar) until scoring completes and culling re-runs (AC-12).
+                pending = [] if culling_requires_scoring() else split_pending_stacks(by_stack)
                     
                 # Auxiliary CLIP prompt-quality signal (default-off). When enabled, the
                 # clip_quality_v0 score (0–1) is generated just-in-time for stacked
@@ -616,6 +648,9 @@ class SelectionService:
                             folder_decisions, clip_map, stack_of, thr
                         )
 
+                # Pending rows go in after the CLIP guard, which would turn a non-pick into reject.
+                folder_decisions.extend((img["id"], None, img.get("file_path") or "") for img in pending)
+
                 # 5. Persist DB
                 db.batch_update_cull_decisions(folder_decisions, policy_version=policy_version)
                 
@@ -625,7 +660,7 @@ class SelectionService:
                 for img_id, decision, file_path in folder_decisions:
                     if self._check_stop():
                         break
-                    if not file_path:
+                    if not file_path or decision is None:
                         continue
                     try:
                         sid = stack_id_by_img.get(img_id)
@@ -644,6 +679,7 @@ class SelectionService:
                 total_picked += sum(1 for _, d, _ in folder_decisions if d == "pick")
                 total_rejected += sum(1 for _, d, _ in folder_decisions if d == "reject")
                 total_neutral += sum(1 for _, d, _ in folder_decisions if d == "neutral")
+                total_pending += len(pending)
                 
             # --- End Loop ---
             
@@ -660,6 +696,7 @@ class SelectionService:
                 sidecar_written=total_written,
                 sidecar_errors=total_errors,
                 status=status,
+                pending=total_pending,
             )
 
         except Exception as e:
@@ -668,3 +705,61 @@ class SelectionService:
                 0, 0, 0, 0, 0, 0, 0,
                 status=f"error: {e}",
             )
+
+
+def enqueue_pending_pick_runs(
+    job_id: int | None, scope_path: str | None = None, image_ids: list[int] | None = None,
+) -> list[int]:
+    """Queue culling for folders whose picks wait on scoring (#407 spec 02 AC-12).
+
+    Called when a scoring job completes.  Inert while ``pipeline.culling_requires_scoring``
+    is on.  A pending image has ``cull_decision`` NULL with a policy version stamped by
+    ``batch_update_cull_decisions``; never-culled images have no version.  Skipped when the
+    same job still plans culling, or a job is already active on the folder.
+    """
+    if culling_requires_scoring():
+        return []
+    from modules.workflow_healing import _enqueue_heal_run, _get_active_jobs_snapshot
+
+    if job_id is not None:
+        for phase in db.get_job_phases(job_id) or []:
+            if phase.get("phase_code") == "culling" and str(phase.get("state") or "").lower() in (
+                "pending", "queued", "running",
+            ):
+                return []
+    pending_sql = (
+        "SELECT DISTINCT f.path FROM images i JOIN folders f ON f.id = i.folder_id "
+        "WHERE i.cull_decision IS NULL AND i.cull_policy_version IS NOT NULL AND "
+    )
+    if image_ids:
+        ids = [int(i) for i in image_ids]
+        # Pending stacks span the folder, not just the scored ids.
+        folder_rows = db.get_connector().query(
+            "SELECT DISTINCT folder_id FROM images WHERE id IN (" + ",".join("?" * len(ids)) + ")",
+            tuple(ids),
+        )
+        folder_ids = [r["folder_id"] for r in folder_rows or [] if r.get("folder_id") is not None]
+        if not folder_ids:
+            return []
+        rows = db.get_connector().query(
+            pending_sql + "f.id IN (" + ",".join("?" * len(folder_ids)) + ")", tuple(folder_ids)
+        )
+    else:
+        local = utils.convert_path_to_local((scope_path or "").strip())
+        folder_paths = db.list_folder_paths_under_scope(local) if local and os.path.isdir(local) else []
+        if not folder_paths:
+            return []
+        rows = db.get_connector().query(
+            pending_sql + "f.path IN (" + ",".join("?" * len(folder_paths)) + ")", tuple(folder_paths)
+        )
+    active = {str(j.get("input_path") or "") for j in _get_active_jobs_snapshot()}
+    queued: list[int] = []
+    for row in rows or []:
+        folder = row.get("path")
+        if not folder or folder in active:
+            continue
+        new_job_id, _pos = _enqueue_heal_run(folder, "culling")
+        if new_job_id:
+            logger.info("Pending picks: queued culling job %s for %s", new_job_id, folder)
+            queued.append(new_job_id)
+    return queued
