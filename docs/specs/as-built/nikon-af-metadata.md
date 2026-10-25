@@ -96,7 +96,8 @@ write. Existing cached rows change only when an explicitly invoked extraction/up
 - Version support, all eight EXIF orientations, source/rendition identity, geometric bounds and complete
   crop-transform conformance are not established by the finite-value tests.
 - When `AFCoordinatesAvailable` is 0 the whole AF object is null, so a reported `FocusResult` is not kept
-  either (seen on three Z8 fixtures with AF area mode 197).
+  either (seen on three Z8 fixtures with AF area mode 197). The planned `af_state` observation covers this
+  case ([AF focus evidence plan](../../planning/af-focus-evidence.md), §4 and step 3).
 - No optical focus accuracy, bird-eye localization, suppression safety or ranking benefit was measured.
 
 ## Acceptance and verification
