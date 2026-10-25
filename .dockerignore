@@ -47,6 +47,8 @@ dumps/
 .obsidian/
 .serena/
 .ruff_cache/
+# Agent scratch, worktrees and workspaces (compose bind-mounts what runtime needs)
+.agent/
 image-scoring-pipeline.code-workspace
 secrets.json
 webui.lock
