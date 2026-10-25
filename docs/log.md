@@ -1040,3 +1040,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-25] created | Model suitability export audit
 
 - 2026-10-25: created - `reports/model-suitability-audit-2026-10-25.md`: external audit of the 2026-10-25 model-suitability export, with a code-verification table. Three defects filed: #685 (global evaluation set chosen from the culling test split), #686 (composites in partial correlation), #687 (`tie_fraction` naming). Indexed in `reports/INDEX.md`.
+
+## [2026-10-25] updated | Localization rollout status (#638)
+
+- 2026-10-25: updated - `architecture/pipeline/localization-rollout.md`: 2026-10-25 status block (disagreement recount 6 selected / 0 unselected, #407 closed with follow-ups #681–#684, remaining #638 gates) and a new "What is left" order. `reports/localization-stage8-readiness-2026-10-23.md`: dated recount note.
