@@ -1036,3 +1036,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-24] created | Nikon autofocus MakerNote parsing and EXIF schema
 
 - 2026-10-24: created - migration 0044 (`0044_image_exif_af_metadata.py`) adds `image_exif.af_metadata` (`JSONB`). `modules/exif_extractor.py` extracts Nikon `AFInfo2` (tag `0x00B7`), `CropArea` (tag `0x0045`), and focus status into normalized coordinates (`box` [0-1], `crop_box` for DX crops, focus mode, and lock state). `modules/db_legacy.py` persists and deserializes `af_metadata`. Unit tests in `tests/test_exif_extractor_af.py` verify extraction against real Z8 and Z6 II NEF fixtures.
+
+## [2026-10-25] updated | Localization rollout status (#638)
+
+- 2026-10-25: updated - `architecture/pipeline/localization-rollout.md`: 2026-10-25 status block (disagreement recount 6 selected / 0 unselected, #407 closed with follow-ups #681–#684, remaining #638 gates) and a new "What is left" order. `reports/localization-stage8-readiness-2026-10-23.md`: dated recount note.
