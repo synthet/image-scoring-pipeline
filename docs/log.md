@@ -10,6 +10,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 Required AF geometry is finite with positive integral dimensions; explicit unavailable coordinates clear cached AF while preserving other EXIF. Focused regressions, legacy merge tests and an eleven-record metadata replay passed. No photo writes or policy activation.
 
+## [2026-10-24] update | Draft AF metadata and eye-focus evidence plan
+
+Added [the focus-evidence proposal](planning/af-focus-evidence.md), grounded in the saved eleven-frame Nikon probe. Separated measured observations from camera-semantics and decode uncertainties, and added shadow evaluation and acceptance criteria. Runtime scores and selections were not changed.
+
 ## [2026-10-23] update | Resolve bbox disagreements with swarm judges and Jev (#638)
 
 Recorded the blind judge panel and the Jev decision for the 43 legacy/view bbox disagreements in the [Stage 8 readiness report](reports/localization-stage8-readiness-2026-10-23.md): 25 selected images were resolved through the selection module, 6 held; the unselected images wait for the skills backfill; the zero-filled originals are kept.
