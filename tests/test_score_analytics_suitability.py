@@ -221,6 +221,22 @@ def test_build_report_recovers_roles_on_synthetic_library():
     assert man["read_only"] and len(man["query_hash"]) == 40
 
 
+def test_build_report_picks_evaluation_sets_per_task():
+    # No culling labels, plenty of global labels: global must still use the test split (#685).
+    series, stack, grades, label = _synthetic(n_clusters=400, n_solo=800)
+    m = _matrix(series, stack, grades)
+    ids = m.image_ids.tolist()
+    rows = {"xmp": [(ids[i], int(label[i]), None, None) for i in range(len(ids))], "score_rating": []}
+    bundle = labels.assemble(m, rows, trust_xmp_ratings=True)
+    rep = sr.build_report(m, bundle, bootstrap=40, min_test_clusters=30)
+    sets = rep["suitability"]["evaluation_sets"]
+    assert sets == {"global": "untouched test split", "culling": "all labelled data (test split too small)"}
+    by = {r["dimension"]: r for r in rep["suitability"]["map"]}
+    for k, g in rep["global"]["test"].items():
+        assert by[k]["G_ci"] == list(g["spearman_weighted_ci"])
+        assert by[k]["in_Nb"] is None and "insufficient culling labels" in by[k]["caveats"]
+
+
 def test_split_is_deterministic():
     ids = np.arange(1, 1001)
     s1, s2 = sr.split_of(ids, 0.2, 0.2), sr.split_of(ids, 0.2, 0.2)

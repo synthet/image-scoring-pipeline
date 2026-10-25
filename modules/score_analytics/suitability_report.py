@@ -43,6 +43,8 @@ DEFAULTS: dict[str, Any] = {
     "top_cameras": 5,
 }
 
+EVALUATION_SETS = {"test": "untouched test split", "all": "all labelled data (test split too small)"}
+
 
 def split_of(ids: np.ndarray, test_frac: float, val_frac: float) -> np.ndarray:
     """Deterministic split by id hash: 0 = train, 1 = validation, 2 = test."""
@@ -185,13 +187,19 @@ def build_report(
         else {},
     }
 
-    # 10. suitability map
-    test_clusters = max((v.get("clusters") or 0) for v in report["culling"]["test"].values()) if keys else 0
-    use_test = test_clusters >= o["min_test_clusters"]
-    cul = report["culling"]["test" if use_test else "all"]
-    glob = report["global"]["test" if use_test else "all"]
+    # 10. suitability map — each task picks its own evaluation set (#685)
+    def _eval_split(task: str) -> str:
+        test_clusters = max(((v.get("clusters") or 0) for v in report[task]["test"].values()), default=0)
+        return "test" if test_clusters >= o["min_test_clusters"] else "all"
+
+    split = {task: _eval_split(task) for task in ("global", "culling")}
+    sets = {task: EVALUATION_SETS[s] for task, s in split.items()}
+    cul = report["culling"][split["culling"]]
+    glob = report["global"][split["global"]]
     report["suitability"] = {
-        "evaluation_set": "untouched test split" if use_test else "all labelled data (test split too small)",
+        "evaluation_sets": sets,
+        "evaluation_set": sets["global"] if sets["global"] == sets["culling"]
+        else f"global: {sets['global']}; culling: {sets['culling']}",
         "thresholds": {
             "global": f"lower 95% CI of burst-weighted Spearman(score, global label) ≥ {o['global_min']}",
             "culling": f"lower 95% CI of macro pairwise accuracy within clusters ≥ {o['culling_min']}",
@@ -345,7 +353,7 @@ def to_markdown(report: dict[str, Any], man: dict[str, Any] | None = None) -> st
     L += [
         "## Suitability map Uⱼ = (Gⱼ, Cⱼ)",
         "",
-        f"Evaluation set: {su_['evaluation_set']}. Thresholds: {su_['thresholds']['global']}; {su_['thresholds']['culling']}.",
+        f"Evaluation set — global: {su_['evaluation_sets']['global']}; culling: {su_['evaluation_sets']['culling']}. Thresholds: {su_['thresholds']['global']}; {su_['thresholds']['culling']}.",
         "",
         "| Dimension | Kind | Gⱼ | Gⱼ 95% CI | Cⱼ | Cⱼ 95% CI | In Nₐ | In Nᵦ | Role | Caveats |",
         "|---|---|---|---|---|---|---|---|---|---|",
@@ -371,7 +379,7 @@ def to_markdown(report: dict[str, Any], man: dict[str, Any] | None = None) -> st
     L += ["## Within-cluster culling metrics (evaluation set)", "",
           "| Dimension | Pairwise acc (macro) | CI | Top-1 | NDCG@3 | τ-b | Score tie rate | Clusters |",
           "|---|---|---|---|---|---|---|---|"]
-    cul = report["culling"]["test" if su_["evaluation_set"].startswith("untouched") else "all"]
+    cul = report["culling"]["test" if su_["evaluation_sets"]["culling"].startswith("untouched") else "all"]
     for k, v in cul.items():
         L.append(
             f"| {k} | {_fmt(v.get('pairwise_accuracy_macro'))} | {_fmt(v.get('pairwise_accuracy_macro_ci'))} | "
