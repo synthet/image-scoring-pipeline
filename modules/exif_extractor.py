@@ -32,6 +32,24 @@ def get_exiftool_path():
     return _get_exiftool_path()
 
 
+_EXIFTOOL_VERSION = None
+
+
+def get_exiftool_version() -> str | None:
+    """``exiftool -ver`` (cached). AF decoding depends on it: 12.40 drops Z8 AF geometry (#672)."""
+    global _EXIFTOOL_VERSION
+    if _EXIFTOOL_VERSION is None:
+        exiftool = _get_exiftool_path()
+        if not exiftool:
+            return None
+        try:
+            result = subprocess.run([exiftool, "-ver"], capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        _EXIFTOOL_VERSION = result.stdout.strip() or None
+    return _EXIFTOOL_VERSION
+
+
 def get_exiftool_timeout_seconds(*, write: bool = False) -> int:
     """
     Subprocess timeout for exiftool. Writes (especially large RAW on slow mounts)
@@ -178,7 +196,10 @@ def _parse_af_metadata(raw: dict) -> dict | None:
     focus_res = raw.get("FocusResult")
     if focus_res is None:
         focus_res = raw.get("ContrastDetectAFInFocus")
-    in_focus = (focus_res == 1 or str(focus_res).strip().lower() in ("focus", "in focus", "true", "1"))
+    # Unknown when the body writes neither tag (Z6ii AFInfo2 0301), not a reported miss (#672).
+    in_focus = None if focus_res is None else (
+        focus_res == 1 or str(focus_res).strip().lower() in ("focus", "in focus", "true", "1")
+    )
 
     crop_area = _parse_crop_area(raw.get("CropArea"))
 
@@ -321,6 +342,8 @@ def extract_exif(image_path: str, image_id: int = None) -> dict | None:
         ))
         if af_meta is not None or af_tags_present:
             # Explicitly invalidate cached geometry; omission means an unrelated partial update.
+            if af_meta is not None:
+                af_meta["exiftool_version"] = get_exiftool_version()
             out["af_metadata"] = af_meta
 
         return out if out else None
