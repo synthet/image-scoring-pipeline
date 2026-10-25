@@ -62,6 +62,39 @@ def test_profile_flags_bounds_ties_and_saturation():
     assert p["mean_ci"][0] <= p["mean"] <= p["mean_ci"][1]
 
 
+def test_profile_reports_duplicate_fraction_and_pair_tie_rate():
+    # #687: 1 - unique/n counts duplicate values; the pair tie rate is sum n_v(n_v-1) / n(n-1).
+    x = np.array([0.1, 0.1, 0.1, 0.2, 0.2, 0.3])
+    p = su.profile(x, b=20)
+    assert p["duplicate_value_fraction"] == pytest.approx(0.5)
+    assert p["tie_fraction"] == p["duplicate_value_fraction"]  # deprecated alias
+    assert p["exact_pair_tie_rate"] == pytest.approx((3 * 2 + 2 * 1) / (6 * 5))
+
+
+def test_variance_decomposition_reports_within_stack_pair_tie_rate():
+    # Stack 1: values a, a, b -> 1 tied pair of 3; stack 2: c, c -> 1 of 1. Pair-weighted: 2 / 4.
+    x = np.array([0.5, 0.5, 0.7, 0.9, 0.9, 0.4])
+    clusters = np.array([1, 1, 1, 2, 2, 0])
+    v = su.variance_decomposition(x, clusters, b=20)
+    assert v["within_exact_pair_tie_rate"] == pytest.approx(2 / 4)
+
+
+def test_partial_correlation_can_exclude_derived_columns():
+    # #686: conditioning on a composite of a and b forces a spurious negative a-b partial.
+    rng = np.random.default_rng(0)
+    common = rng.normal(size=4000)
+    a = common + rng.normal(size=4000)
+    b = common + rng.normal(size=4000)
+    series = {"a": a, "b": b, "comp": a + b + rng.normal(scale=0.3, size=4000)}
+    clusters = np.zeros(4000, dtype=np.int64)
+    with_comp = su.correlation_suite(series, ["a", "b", "comp"], clusters)["partial_pearson"]
+    assert with_comp["r"][0][1] < -0.5
+    models = su.correlation_suite(series, ["a", "b", "comp"], clusters, partial_keys=["a", "b"])["partial_pearson"]
+    assert models["keys"] == ["a", "b"]
+    assert models["r"][0][1] > 0.3
+    assert models["r"][0][2] is None and models["r"][2][2] is None
+
+
 def test_variance_decomposition_separates_scene_and_frame():
     series, stack, _, _ = _synthetic()
     scene = su.variance_decomposition(series["scene_model"], stack, b=50)
