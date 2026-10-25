@@ -248,3 +248,4 @@ Full categorized index for **image-scoring-pipeline**. Prefer small linked pages
 ## As-built behavior
 
 - [Source-derived specifications](specs/as-built/INDEX.md) — observed behavior, contracts, regression evidence and gaps.
+- [Nikon AF metadata](specs/as-built/nikon-af-metadata.md) — implemented AF extraction, missing evidence and cache contract.
