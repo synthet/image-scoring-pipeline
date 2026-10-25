@@ -13,10 +13,10 @@ import logging
 
 from modules.phases import (
     PHASE_PREFERRED_BEFORE,
-    PHASE_PREREQUISITES,
     PhaseCode,
     PhaseExecutor,
     PhaseRegistry,
+    phase_prerequisites,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 def _prereqs(code: PhaseCode) -> list[str]:
     """Hard prerequisites for ``code``, read from the one authoritative table.
 
-    ``PHASE_PREREQUISITES`` is what ``assert_prereqs_for_scope`` actually enforces;
+    ``phase_prerequisites`` is what ``assert_prereqs_for_scope`` actually enforces;
     deriving ``depends_on`` from it makes the two structurally impossible to drift.
     """
-    return list(PHASE_PREREQUISITES[code.value])
+    return list(phase_prerequisites(code.value))
 
 
 def _preferred(code: PhaseCode) -> list[str]:

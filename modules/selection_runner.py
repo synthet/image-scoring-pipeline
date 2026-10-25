@@ -11,7 +11,7 @@ import threading
 from modules import db, utils
 from modules.events import event_manager
 from modules.job_description import augment_queue_payload_for_audit
-from modules.phases import PhaseCode, PhaseStatus
+from modules.phases import PhaseCode, PhaseStatus, culling_requires_scoring
 from modules.phases_policy import explain_phase_run_decision
 from modules.run_log import runner_emit
 from modules.run_manifest import REASON_SOURCE_PHASE_FOLLOWUP, attach_run_reason
@@ -111,24 +111,27 @@ class SelectionRunner:
             images = [img for img in images if int(img.get("id") or 0) in target_ids]
             if not target_ids:
                 return "empty_queue", images, images_for_phase
+        # #407 AC-10: with pipeline.culling_requires_scoring off, unscored images stay in
+        # scope; SelectionService leaves their stacks' picks pending (AC-11).
         if images:
-            # score_general == 0 is a legitimate composite (issue #162); only NULL
-            # means finalize/scoring never wrote the aggregate.
-            valid_images = [
-                img for img in images
-                if img.get("score_general") is not None
-            ]
-            missing_scores = len(images) - len(valid_images)
-            if missing_scores > 0:
-                log(
-                    f"Warning: {missing_scores} images are missing score_general "
-                    "(NULL composite). They will be skipped. Run scoring finalize "
-                    "or re-score before culling.",
-                    "WARNING",
-                )
-            images = valid_images
-            if not images:
-                return "missing_prerequisites", images, images_for_phase
+            if culling_requires_scoring():
+                # score_general == 0 is a legitimate composite (issue #162); only NULL
+                # means finalize/scoring never wrote the aggregate.
+                valid_images = [
+                    img for img in images
+                    if img.get("score_general") is not None
+                ]
+                missing_scores = len(images) - len(valid_images)
+                if missing_scores > 0:
+                    log(
+                        f"Warning: {missing_scores} images are missing score_general "
+                        "(NULL composite). They will be skipped. Run scoring finalize "
+                        "or re-score before culling.",
+                        "WARNING",
+                    )
+                images = valid_images
+                if not images:
+                    return "missing_prerequisites", images, images_for_phase
             if force_rescan:
                 images_for_phase = images
             else:
