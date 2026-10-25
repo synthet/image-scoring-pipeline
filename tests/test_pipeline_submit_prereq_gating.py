@@ -198,15 +198,15 @@ def test_co_requested_prerequisite_after_its_consumer_is_rejected(api_client, tm
     """BREAKING (issue #351): accepted before, when the gate only checked membership.
 
     This router resolves ``stage_codes`` one token at a time to preserve the client's
-    order, so ``["tag", "score"]`` really would run ``keywords`` first.
+    order, so ``["cluster", "score"]`` really would run ``culling`` first.
     """
     satisfied.update({"indexing", "metadata"})  # scoring NOT satisfied
-    r = _submit(api_client, _folder(tmp_path), ["tag", "score"])
+    r = _submit(api_client, _folder(tmp_path), ["cluster", "score"])
 
     body = r.json()
     assert body["success"] is False
     assert body["data"]["code"] == "missing_prerequisites"
-    assert body["data"]["missing"] == {"keywords": ["scoring"]}
+    assert body["data"]["missing"] == {"culling": ["scoring"]}
     assert enqueued == []
 
 
@@ -222,7 +222,7 @@ def test_the_same_stages_in_canonical_order_are_accepted(api_client, tmp_path, s
 
 @pytest.mark.parametrize("stages", [("cluster", "tag"), ("tag", "cluster")])
 def test_sibling_stages_are_accepted_in_either_order(api_client, tmp_path, satisfied, enqueued, stages):
-    """``culling`` and ``keywords`` are siblings under ``scoring``, not ordered pairwise."""
+    """No edge joins ``culling`` and ``keywords``, so they are not ordered pairwise."""
     satisfied.update({"indexing", "metadata", "scoring"})
     r = _submit(api_client, _folder(tmp_path), list(stages))
 
@@ -283,10 +283,10 @@ def test_folder_ids_selector_gates_stage_order(api_client, satisfied, enqueued, 
     satisfied.update({"indexing", "metadata"})
     r = api_client.post(
         "/api/pipeline/submit",
-        json={"folder_ids": [12], "stage_codes": ["tag", "score"]},
+        json={"folder_ids": [12], "stage_codes": ["cluster", "score"]},
     )
 
-    assert r.json()["data"]["missing"] == {"keywords": ["scoring"]}
+    assert r.json()["data"]["missing"] == {"culling": ["scoring"]}
     assert enqueued == []
 
 
