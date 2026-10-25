@@ -111,6 +111,8 @@ dumps/
 .agent/tmp/
 .agent/study/runs/
 debug_*.py
+# Library module, not a scratch script (#673).
+!modules/debug_bundle_export.py
 debug_*.txt
 debug_*.html
 debug.log
@@ -326,6 +328,7 @@ reports/gallery-visual-review/
 
 # Operator-local docs tree (gitignored; public wiki must not link here).
 docs/private/
+.docs/private/
 # Agent session transcripts. These capture pasted session content, including
 # credentials. Dated Claude exports (YYYY-MM-DD-HHMMSS-slug.txt/.md) and Codex
 # dumps stay local. The dated .md rule is root-only so docs/raw/YYYY-MM-DD-*.md
