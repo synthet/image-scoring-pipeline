@@ -111,6 +111,8 @@ dumps/
 .agent/tmp/
 .agent/study/runs/
 debug_*.py
+# Library module, not a scratch script (#673).
+!modules/debug_bundle_export.py
 debug_*.txt
 debug_*.html
 debug.log
