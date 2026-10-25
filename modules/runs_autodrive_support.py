@@ -10,9 +10,9 @@ from typing import Any
 
 from modules import utils
 from modules.phases import (
-    PHASE_PREREQUISITES,
     PhaseCode,
     job_type_for_phase,
+    phase_prerequisites,
     sort_phase_value_strings,
 )
 
@@ -310,7 +310,7 @@ def _phase_prereq_blockers(
     for code in phase_values:
         missing = [
             pre
-            for pre in PHASE_PREREQUISITES.get(code, ())
+            for pre in phase_prerequisites(code)
             if pre not in satisfied and pre not in requested
         ]
         if missing:
