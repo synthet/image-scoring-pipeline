@@ -82,7 +82,7 @@ Two things in this table matter more than the rest:
 |---|---|---|---|
 | F1 | **Centre semantics fit this sample and its overlays.** | 0060/0061 report (4128, 2752), the centre of the 8256 × 5504 AF frame, with a 2363 × 1487 area. The saved sheet aligns the other rectangles with the visible eyes under centre semantics. | The research helper `scripts/research/bird_crop/af_metadata.py:af_box_in_display_space` uses top-left semantics. Its derived centres are displaced; rerun the historical agreement figure after correcting and testing geometry. The production extractor (`modules/exif_extractor.py:_parse_af_metadata`, `3b1000c1`) already uses centre semantics. Verify other bodies/modes separately. |
 | F2 | **The large Wide-L rectangles provide coarse location evidence.** | 0060/0061 have area fraction 0.077 against about 0.002 for neighbouring small rectangles. This does not prove that the camera had no focus point. | Use proposed states `point`, `area`, `none`, `unavailable`; treat these two as `area` conservatively. Classify by validated camera/mode semantics, not a universal area threshold. |
-| F3 | **The container decoder drops Z8 AF geometry.** | Reproduced 2026-10-24 (#672): both images ship ExifTool 12.40. On Z8 (AFInfo2 `0400`, DSC_0066) it returns `AFInfo2Version`, `AFAreaMode` and FocusDistance 6.31 m but no area fields or `FocusResult`; host 13.52 returns all of them and 6.71 m. On Z6ii (`0301`) 12.40 returns geometry but no `FocusResult`. `extract_exif` in the containers therefore stores no `af_metadata` for Z8. | Reproduce both extractions, then pin an exact tested ExifTool version in both Docker images. A broad ≥13.x requirement is not a verified compatibility boundary. Record the version with every observation. This now affects production: `_parse_af_metadata` stores nothing when the area fields are missing, so an older container decoder would leave Z8 rows without `af_metadata`, and the stored record has no decoder version. |
+| F3 | **The container decoder drops Z8 AF geometry.** | Reproduced 2026-10-24 (#672): both images ship ExifTool 12.40. On Z8 (AFInfo2 `0400`, DSC_0066) it returns `AFInfo2Version`, `AFAreaMode` and FocusDistance 6.31 m but no area fields or `FocusResult`; host 13.52 returns all of them and 6.71 m. On Z6ii (`0301`) 12.40 returns geometry but no `FocusResult`. `extract_exif` in the containers therefore stores no `af_metadata` for Z8. | Reproduce both extractions, then pin an exact tested ExifTool version in both Docker images. A broad ≥13.x requirement is not a verified compatibility boundary. Record the version with every observation. This now affects production: `_parse_af_metadata` stores nothing when the area fields are missing, so an older container decoder would leave Z8 rows without `af_metadata`, and the stored record has no decoder version. **Fixed by #675:** the shared `Dockerfile` pins ExifTool 13.52 and records `exiftool_version`; running containers keep 12.40 until rebuilt. |
 | F4 | **`FocusResult` is constant and uninformative here** (Focus on all 11, including the AF misses). | Probe. | Store it; never use it as evidence of sharpness. |
 | F5 | **The saved probe used existing eye and beak keypoints.** | `image_region_keypoints` joined through current bird regions and keypoint runs; the session attributed them to `bird_head_pose`. | Prototype with these providers. The probe did not filter a provider or retain keypoint-run identity, so a rerun must pin both, reject ambiguous/missing eyes, and avoid treating model confidence as calibrated accuracy. |
 
@@ -130,13 +130,19 @@ never imputed as zero.
 `image_exif.af_metadata` (JSONB, exposed by `GET /api/images/{image_id}/exif`). It holds the raw AFInfo2
 rectangle, AF image size, mode, focus distance, `in_focus`, `CropArea`, and a normalized box (plus
 `crop_box` for DX crops) in **AF-image space**, centre semantics. Rows extracted before 0044 have no value
-until EXIF is re-extracted. Gaps against this plan:
+until EXIF is re-extracted. Closed since this plan was drafted:
+
+- #675: a missing `FocusResult` is stored as `in_focus: null` (unknown), not `false` (F4), and each
+  record carries `exiftool_version`;
+- `322decec`: `AFCoordinatesAvailable` is read; unavailable coordinates, non-finite values or non-positive
+  or non-integral dimensions yield no record, and when AF tags are present but invalid, re-extraction
+  clears a previously stored `af_metadata` instead of keeping stale geometry.
+
+Gaps that remain against this plan:
 
 - no orientation or display-space transform, so the box cannot yet be compared with keypoints;
-- no `af_state`: missing coordinates and parse failure both yield no record, so `none` and
-  `unavailable` are indistinguishable;
-- `in_focus` is `false` when `FocusResult` is absent, conflating unknown with a reported miss (F4);
-- no `AFCoordinatesAvailable` or ExifTool version.
+- no `af_state`: a stored `null` and a missing value do not say whether the camera reported no AF
+  point or the data was unavailable, so `none` and `unavailable` are still indistinguishable.
 
 AF coordinates go from AFImage space to display space through the same orientation transform
 localization uses, including the active-area/crop transform, so they meet the keypoints in one frame.
@@ -226,10 +232,11 @@ proposes no Kestrel change.
    active-area transforms. Re-run the historical AF/bird-box agreement with a pinned decoder.
 2. **Reproduce F3 and pin an exact tested ExifTool release** in the gpu-shell and WebUI image recipes;
    verify representative Z8 and Z6ii AF geometry rather than relying on a major-version check. Check
-   `af_metadata` coverage on Z8/Z6ii rows extracted in each container.
+   `af_metadata` coverage on Z8/Z6ii rows extracted in each container. *Pin and fixture checks done in
+   #675; the coverage check waits for rebuilt containers and an explicit re-extraction.*
 3. **Close the gaps in the stored AF record** (§4). Raw extraction already exists; derive `af_state` and a
-   display-space box from `af_metadata` plus orientation, keep unknown `FocusResult` distinct from a miss,
-   and record the decoder version. Write the derived values as observations (research JSONL first); any
+   display-space box from `af_metadata` plus orientation. (Unknown `FocusResult` and the decoder
+   version are already handled; see §4.) Write the derived values as observations (research JSONL first); any
    further schema change waits for the gate.
 4. **AF-to-eye and eye sharpness** from existing keypoints and `focus_quality`, written per frame.
 5. **Within-group ranking** in the culling selection policy behind a flag, plus the §7 evaluation.

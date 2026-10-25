@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-24] update | Sync AF focus-evidence plan with merged extraction fixes
+
+Marked the gaps closed by #675 (unknown `FocusResult`, `exiftool_version`, ExifTool 13.52 pin) and `322decec` (coordinate availability, invalid-geometry handling) in [the focus-evidence plan](planning/af-focus-evidence.md) §4, F3 and §9 steps 2–3. Remaining gaps: display-space transform and `af_state`.
+
 ## [2026-10-24] updated | Nikon AF evidence validation and cache semantics
 
 Required AF geometry is finite with positive integral dimensions; explicit unavailable coordinates clear cached AF while preserving other EXIF. Focused regressions, legacy merge tests and an eleven-record metadata replay passed. No photo writes or policy activation.
