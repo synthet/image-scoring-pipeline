@@ -67,6 +67,28 @@ PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
     PhaseCode.BIRD_SPECIES.value: (PhaseCode.KEYWORDS.value,),
 }
 
+CULLING_REQUIRES_SCORING_KEY = "pipeline.culling_requires_scoring"
+
+
+def culling_requires_scoring() -> bool:
+    """``pipeline.culling_requires_scoring`` (default true).  False lets culling group bursts
+    before scoring and leave their picks pending (#407, spec 02 AC-10 to AC-12)."""
+    from modules import config
+
+    return bool(config.get_config_value(CULLING_REQUIRES_SCORING_KEY, True))
+
+
+def phase_prerequisites(code: str) -> tuple[str, ...]:
+    """Effective hard prerequisites of ``code``: :data:`PHASE_PREREQUISITES` plus the culling flag.
+
+    Every reader of the table goes through this so gating, plan prefixes, auto-drive and the
+    phase catalog agree.  Unknown codes have none.
+    """
+    if code == PhaseCode.CULLING.value and not culling_requires_scoring():
+        return (PhaseCode.METADATA.value,)
+    return PHASE_PREREQUISITES.get(code, ())
+
+
 # Advisory ("preferred-before") edges: the key SHOULD be attempted before each listed
 # consumer when both are co-requested, but its artifact is a *preferred input, not a hard
 # prerequisite*.  A missing, negative, stale or failed result must never suppress the
@@ -213,9 +235,9 @@ def missing_prerequisites(
 
     missing_map: dict[str, list[str]] = {}
     for phase in requested_norm:
-        prereqs = PHASE_PREREQUISITES.get(phase)
-        if prereqs is None:
+        if phase not in PHASE_PREREQUISITES:
             continue
+        prereqs = phase_prerequisites(phase)
         missing_list = [
             pre for pre in prereqs
             if pre not in satisfied_set
@@ -335,7 +357,7 @@ def pipeline_prefix_through(phase: str) -> list[str]:
         if cur in collected:
             continue
         collected.add(cur)
-        for pre in PHASE_PREREQUISITES.get(cur, ()):
+        for pre in phase_prerequisites(cur):
             if pre not in collected:
                 stack.append(pre)
     return sort_phase_value_strings(list(collected))

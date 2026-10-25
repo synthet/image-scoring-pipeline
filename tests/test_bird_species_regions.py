@@ -192,3 +192,58 @@ def test_refresh_keeps_species_when_classify_failed(monkeypatch, tmp_path):
 def test_abstention_without_refresh_preserves_species(monkeypatch, tmp_path):
     writes, _ = _abstain_row(monkeypatch, tmp_path, refresh=False, last_error=None)
     assert writes == []
+
+
+def _detector_off(monkeypatch):
+    monkeypatch.setattr("modules.bird_detection.embedded_detector_enabled", lambda: False)
+
+
+def test_detector_off_crops_to_stored_box_without_yolo_or_bbox_write(monkeypatch, tmp_path):
+    """#638: no selection and the embedded detector retired -> crop to the stored box."""
+    _detector_off(monkeypatch)
+    stored = {"x1": 10, "y1": 20, "x2": 50, "y2": 60, "conf": 0.9, "img_w": 100, "img_h": 100}
+    call, writes = _run_row(monkeypatch, tmp_path, use_regions=True, choice={"mode": "legacy"},
+                            projection=stored)
+    assert call == {"region": (0.1, 0.2, 0.5, 0.6), "use_detector": False}
+    assert writes["bbox"] == []  # nothing writes bird_bbox without a normalized run
+    assert writes["sources"] == [{"species:carolina wren": "bioclip"}]
+
+
+@pytest.mark.parametrize("stored", [None, {"detected": False}, {"detected": False, "error": "file_missing"}])
+def test_detector_off_without_a_real_box_classifies_full_frame(monkeypatch, tmp_path, stored):
+    _detector_off(monkeypatch)
+    call, writes = _run_row(monkeypatch, tmp_path, use_regions=True, choice={"mode": "legacy"},
+                            projection=stored)
+    assert call == {"region": None, "use_detector": False}
+    assert writes["bbox"] == []
+
+
+def test_detector_off_small_selection_stays_full_frame(monkeypatch, tmp_path):
+    """The small-crop species gate failed (#598): its stored box is that crop, so do not use it."""
+    _detector_off(monkeypatch)
+    choice = {"mode": "legacy", "region": None, "run_id": 7, "region_id": 9,
+              "exclusion_reason": "selected_area_below_0.005"}
+    small = {"x1": 0, "y1": 0, "x2": 2, "y2": 2, "conf": 0.9, "img_w": 100, "img_h": 100}
+    call, writes = _run_row(monkeypatch, tmp_path, use_regions=True, choice=choice, projection=small)
+    assert call == {"region": None, "use_detector": False}
+    assert writes["bbox"] == []
+
+
+def test_detector_off_keeps_selected_regions(monkeypatch, tmp_path):
+    _detector_off(monkeypatch)
+    call, _ = _run_row(monkeypatch, tmp_path, use_regions=True,
+                       choice={"mode": "region", "region": (0.1, 0.2, 0.5, 0.6)})
+    assert call == {"region": (0.1, 0.2, 0.5, 0.6), "use_detector": False}
+
+
+def test_detector_off_lookup_failure_falls_back_to_full_frame(monkeypatch, tmp_path):
+    _detector_off(monkeypatch)
+
+    def boom(conn, image_id, prefer_normalized=None):
+        raise RuntimeError("db down")
+
+    img = tmp_path / "a.jpg"
+    img.write_bytes(b"x")
+    monkeypatch.setattr("modules.localization_legacy.read_bird_bbox", boom)
+    monkeypatch.setattr(bs.db, "get_connector", lambda: object())
+    assert bs.stored_box_input(3, {"mode": "legacy"})["mode"] == "full_frame"

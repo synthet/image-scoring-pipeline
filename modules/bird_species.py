@@ -110,6 +110,26 @@ def species_input_for_image(image_id: int) -> dict:
     return {"mode": "region", "region": region, **identity}
 
 
+def stored_box_input(image_id: int, choice: dict) -> dict:
+    """BioCLIP input when the embedded detector is retired (#638): no YOLO run.
+
+    Crops to the stored compatibility box (``read_bird_bbox``, which follows
+    ``localization.read_normalized_first``) as ``"stored_box"``, or classifies the whole frame as
+    ``"full_frame"`` when there is no real box, the lookup fails, or a small selection was
+    excluded from region species (its stored box is that same small crop, #598).
+    """
+    region = None
+    if not choice.get("exclusion_reason"):
+        from modules.bird_detection import stored_box_region
+        from modules.localization_legacy import read_bird_bbox
+
+        try:
+            region = stored_box_region(read_bird_bbox(db.get_connector(), int(image_id)))
+        except Exception:  # noqa: BLE001 -- a lookup failure must not cost the image its species
+            logger.warning("bird_species: stored box lookup failed for image_id=%s", image_id, exc_info=True)
+    return {**choice, "mode": "stored_box" if region else "full_frame", "region": region}
+
+
 # Default candidate species list (common North American names)
 _DEFAULT_SPECIES_LIST_PATH = Path(__file__).resolve().parent.parent / "data" / "bird_species_list.txt"
 
@@ -604,6 +624,10 @@ class BirdSpeciesRunner:
             return 0, 1
 
         choice = species_input_for_image(int(row["id"])) if use_regions_enabled() else {"mode": "legacy"}
+        from modules.bird_detection import embedded_detector_enabled
+
+        if choice["mode"] == "legacy" and not embedded_detector_enabled():
+            choice = stored_box_input(int(row["id"]), choice)
         if choice.get("exclusion_reason"):
             logger.info("bird_species: legacy inference image_id=%s run_id=%s region_id=%s exclusion=%s",
                         row["id"], choice.get("run_id"), choice.get("region_id"), choice["exclusion_reason"])
@@ -885,14 +909,16 @@ class BirdSpeciesRunner:
         # unrepairable while ``get_phase_incomplete_sql`` kept advertising them as work.
         bbox_only: list = []
         if not overwrite:
-            from modules.bird_detection import bbox_needs_scan
+            from modules.bird_detection import bbox_needs_scan, embedded_detector_enabled
             from modules.phases import PhaseCode
             from modules.phases_policy import explain_phase_run_decision
 
             filtered = []
             skipped_policy = 0
+            # With the embedded detector retired (#638) a missing box is localization's work, not ours.
+            rescan_boxes = embedded_detector_enabled()
             for row in all_images:
-                if bbox_needs_scan(row.get("bird_bbox")) and db.is_image_bird_species_complete(
+                if rescan_boxes and bbox_needs_scan(row.get("bird_bbox")) and db.is_image_bird_species_complete(
                     int(row["id"]), include_bbox=False
                 ):
                     bbox_only.append(row)

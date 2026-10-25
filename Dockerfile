@@ -63,6 +63,19 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install --retries 10 --timeout 120 --upgrade pip \
     && python3 -m pip install --retries 10 --timeout 120 -r /tmp/requirements.txt
 
+# Pinned ExifTool. Ubuntu 22.04's libimage-exiftool-perl is 12.40, which drops Nikon Z8
+# (AFInfo2 0400) AF geometry and FocusResult (#672). The symlink resolves to the bundled lib/.
+ARG EXIFTOOL_VERSION=13.52
+ARG EXIFTOOL_SHA256=38f77bd6d4e98c32995ff9815699daea909a1205888bceec55faa89d92a14463
+RUN curl -fsSL -o /tmp/exiftool.tar.gz \
+        "https://github.com/exiftool/exiftool/archive/refs/tags/${EXIFTOOL_VERSION}.tar.gz" \
+    && echo "${EXIFTOOL_SHA256}  /tmp/exiftool.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/exiftool \
+    && tar -xzf /tmp/exiftool.tar.gz -C /opt/exiftool --strip-components=1 \
+    && rm /tmp/exiftool.tar.gz \
+    && ln -sf /opt/exiftool/exiftool /usr/local/bin/exiftool \
+    && test "$(exiftool -ver)" = "${EXIFTOOL_VERSION}"
+
 # Copy source code
 COPY . .
 
