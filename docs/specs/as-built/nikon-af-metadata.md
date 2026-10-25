@@ -11,9 +11,23 @@ okf_version: 0.2
 # Nikon AF metadata extraction
 
 Observed source: pipeline commit `d887d47a4541e9c5fcc1600d9535cc5b6315aa09` plus the scoped
-validation correction in `modules/exif_extractor.py`. Before/after hashes and failing/passing receipts
+validation correction in `modules/exif_extractor.py` (`322decec`), plus the ExifTool pin and
+nullable focus result from #672 (`e9c4ae00`). Before/after hashes and failing/passing receipts
 are in the hub's `docs/reports/focus-af-validation-2026-10-24/evidence/`. This is implemented behavior;
 camera-to-preview calibration and quality-policy integration remain proposed work.
+
+## Decoder version
+
+AF decoding depends on the ExifTool release. Ubuntu 22.04's `libimage-exiftool-perl` (12.40) drops Nikon Z8
+AFInfo2 `0400` geometry and `FocusResult`, so the [`Dockerfile`](../../../Dockerfile) installs a pinned,
+checksum-verified ExifTool **13.52** and fails the build if `exiftool -ver` differs. Each successful AF
+object records `exiftool_version` from `get_exiftool_version()` (cached per process; null if the tool
+cannot be run). Rows extracted earlier carry no version and are not backfilled.
+
+Fixture check (2026-10-24, repo `tests/fixtures/testing_samples/public`): with 12.40, 0 of 8 Z8 files yield
+`af_metadata`; with 13.52, 5 of 8 do (AFInfo2 `0400`, `in_focus` from `FocusResult`). The other three report
+`AFCoordinatesAvailable` 0 and correctly yield none. All 9 Z6ii files (`0301`) yield a box with `in_focus`
+null under both versions.
 
 ## Entry point and output
 
@@ -24,7 +38,8 @@ values plus optional `af_metadata`, consumed by the existing nullable `image_exi
 column through `extract_and_upsert_exif` / `_merge_exif_for_upsert`.
 
 The AF object retains its existing keys: version, mode/mode_code, in_focus, focus_distance_m,
-area_x/area_y/area_w/area_h, af_image_w/af_image_h, crop_area, box and optional crop_box.
+area_x/area_y/area_w/area_h, af_image_w/af_image_h, crop_area, box and optional crop_box, plus
+`exiftool_version` (see above).
 No schema, scoring weight, selection gate or localization ownership changed.
 
 ## Numeric and availability contract
@@ -73,13 +88,15 @@ write. Existing cached rows change only when an explicitly invoked extraction/up
 
 ## Observed requirement gaps
 
-- `in_focus` retains its legacy Boolean interpretation; missing/unknown FocusResult currently becomes
-  false. It is not a calibrated eye-quality label. A nullable camera-result contract and consumer audit
-  remain separate work.
+- `in_focus` is true/false only when the body writes `FocusResult` (or `ContrastDetectAFInFocus`);
+  when neither tag is present (for example Z6ii AFInfo2 `0301`) it is null, meaning unknown, not a miss.
+  It is not a calibrated eye-quality label, and consumers that treat a falsy value as a miss still need an audit.
 - Unqualified extraction still lacks a complete namespace/provenance contract. Standard and Nikon ISO
   values must not silently be treated as identical evidence in a future adapter.
 - Version support, all eight EXIF orientations, source/rendition identity, geometric bounds and complete
   crop-transform conformance are not established by the finite-value tests.
+- When `AFCoordinatesAvailable` is 0 the whole AF object is null, so a reported `FocusResult` is not kept
+  either (seen on three Z8 fixtures with AF area mode 197).
 - No optical focus accuracy, bird-eye localization, suppression safety or ranking benefit was measured.
 
 ## Acceptance and verification
@@ -92,11 +109,14 @@ write. Existing cached rows change only when an explicitly invoked extraction/up
 | Invalid optional distance/mode/crop | Other valid evidence retained and serializable in covered cases | Corresponding invalid optional-field tests |
 | Invalid AF alongside ISO/model/time | Standard EXIF retained; explicit AF null clears old box on merge | `test_extract_preserves_standard_exif_with_invalid_af` |
 | Unrelated partial EXIF update | Existing AF and other columns retained | `test_unrelated_partial_extraction_preserves_cached_af` |
+| No FocusResult tag | `in_focus` null (unknown) | `test_missing_focus_result_is_unknown_not_a_miss` |
+| Decoder version lookup | `exiftool -ver` cached once per process | `test_exiftool_version_is_cached` |
 
 Tests live in [`test_exif_af_validation.py`](../../../tests/test_exif_af_validation.py), alongside
 [`test_exif_extractor_af.py`](../../../tests/test_exif_extractor_af.py) and
 [`test_exif_extractor_camera_lens_unit.py`](../../../tests/test_exif_extractor_camera_lens_unit.py).
 The final focused run passed **95 tests**, with three sample-data tests explicitly deselected. Ruff passed.
+After the #672 merge the same selection passes **97 tests**.
 
 A frozen replay of the eleven previously extracted Z8 numeric records produced **11/11 identical AF
 objects** between the baseline and corrected parsers, with strict JSON serialization. This used recorded
