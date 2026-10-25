@@ -326,6 +326,13 @@ class ScoringRunner:
                 self._finalize_report(job_id, report_collector)
                 db.update_job_status(job_id, "completed", "\n".join(self.log_history))
                 event_manager.broadcast_threadsafe("job_completed", {"job_id": job_id, "status": "completed"})
+                try:
+                    # #407 AC-12: picks left pending by culling before scoring run now.
+                    from modules.selection import enqueue_pending_pick_runs
+
+                    enqueue_pending_pick_runs(job_id, scope_path=input_path, image_ids=resolved_image_ids)
+                except Exception:
+                    logger.exception("scoring: pending-picks follow-up failed (job_id=%s)", job_id)
 
         except Exception as e:
             log(f"Error: {e}", "ERROR")

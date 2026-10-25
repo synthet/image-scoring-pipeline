@@ -17,3 +17,4 @@ These pages describe the reviewed code and distinguish intended changes from obs
 | [execution-and-scoring.md](execution-and-scoring.md) | Phase DAG, registry, normalization and remote contract |
 | [localization-and-consumers.md](localization-and-consumers.md) | Renditions, ownership, species and repair |
 | [model-catalog.md](model-catalog.md) | Model identities, embedding spaces and culling algorithms |
+| [nikon-af-metadata.md](nikon-af-metadata.md) | Nikon AF numeric validity, camera-grid geometry and stale-cache invalidation |
