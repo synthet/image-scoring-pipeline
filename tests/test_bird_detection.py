@@ -313,3 +313,28 @@ def test_ensure_detector_enabled_and_cached(monkeypatch):
     assert det1 is det2
     assert clf._detector_state == "enabled"
     assert len(load_calls) == 1  # resolved once, not per call
+
+
+@pytest.mark.parametrize("bbox,region", [
+    ({"x1": 10, "y1": 20, "x2": 50, "y2": 60, "img_w": 100, "img_h": 200}, (0.1, 0.1, 0.5, 0.3)),
+    ('{"x1": 0, "y1": 0, "x2": 4, "y2": 4, "img_w": 4, "img_h": 4}', (0.0, 0.0, 1.0, 1.0)),
+    (None, None),
+    ({"detected": False}, None),
+    ({"detected": False, "error": "decode_error: x"}, None),
+    ({"x1": 10, "y1": 20, "x2": 5, "y2": 60, "img_w": 100, "img_h": 100}, None),
+    ({"x1": 10, "y1": 20, "x2": 500, "y2": 60, "img_w": 100, "img_h": 100}, None),
+    ({"x1": 10, "y1": 20, "x2": 50, "y2": 60}, None),
+    ("not json", None),
+])
+def test_stored_box_region_normalizes_real_boxes_only(bbox, region):
+    from modules.bird_detection import stored_box_region
+
+    assert stored_box_region(bbox) == region
+
+
+def test_embedded_detector_defaults_on(monkeypatch):
+    from modules import config
+    from modules.bird_detection import embedded_detector_enabled
+
+    monkeypatch.setattr(config, "get_config_value", lambda key, default=None: default)
+    assert embedded_detector_enabled() is True
