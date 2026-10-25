@@ -7,6 +7,7 @@ to IMAGE_EXIF column names. Requires exiftool in PATH.
 
 import json
 import logging
+import math
 import os
 import subprocess
 from collections.abc import Callable
@@ -121,24 +122,34 @@ _NIKON_AF_AREA_MODES = {
 }
 
 
+def _finite_af_number(value: Any) -> float | None:
+    """Read a numeric AF tag without admitting booleans, NaN or infinity."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _parse_crop_area(val: Any) -> list[int] | None:
     if not val:
         return None
-    if isinstance(val, (list, tuple)):
-        try:
-            return [int(x) for x in val]
-        except (ValueError, TypeError):
-            return None
-    parts = str(val).replace(",", " ").split()
-    try:
-        res = [int(x) for x in parts if x.strip()]
-        return res if len(res) == 4 else None
-    except (ValueError, TypeError):
+    parts = val if isinstance(val, (list, tuple)) else str(val).replace(",", " ").split()
+    if len(parts) != 4:
         return None
+    numbers = [_finite_af_number(value) for value in parts]
+    if any(value is None or not value.is_integer() for value in numbers):
+        return None
+    return [int(value) for value in numbers]
 
 
 def _parse_af_metadata(raw: dict) -> dict | None:
     """Parse autofocus MakerNote metadata (Nikon AFInfo2 tag 0x00B7, CropArea, and lock state)."""
+    if "AFCoordinatesAvailable" in raw and _finite_af_number(raw["AFCoordinatesAvailable"]) != 1:
+        return None
+
     af_img_w = raw.get("AFImageWidth")
     af_img_h = raw.get("AFImageHeight")
     area_x = raw.get("AFAreaXPosition")
@@ -149,33 +160,36 @@ def _parse_af_metadata(raw: dict) -> dict | None:
     if not (af_img_w and af_img_h and area_x is not None and area_y is not None and area_w and area_h):
         return None
 
-    try:
-        af_img_w_f = float(af_img_w)
-        af_img_h_f = float(af_img_h)
-        area_x_f = float(area_x)
-        area_y_f = float(area_y)
-        area_w_f = float(area_w)
-        area_h_f = float(area_h)
-    except (ValueError, TypeError):
+    values = [_finite_af_number(value) for value in
+              (af_img_w, af_img_h, area_x, area_y, area_w, area_h)]
+    if any(value is None for value in values):
         return None
+    af_img_w_f, af_img_h_f, area_x_f, area_y_f, area_w_f, area_h_f = values
 
-    if af_img_w_f <= 0 or af_img_h_f <= 0 or area_w_f <= 0 or area_h_f <= 0:
+    dimensions = (af_img_w_f, af_img_h_f, area_w_f, area_h_f)
+    if any(value <= 0 or not value.is_integer() for value in dimensions):
         return None
 
     norm_left = (area_x_f - area_w_f / 2.0) / af_img_w_f
     norm_top = (area_y_f - area_h_f / 2.0) / af_img_h_f
     norm_width = area_w_f / af_img_w_f
     norm_height = area_h_f / af_img_h_f
+    if not all(math.isfinite(value) for value in (norm_left, norm_top, norm_width, norm_height)):
+        return None
 
     mode_val = raw.get("AFAreaMode")
+    mode_code = None
     if isinstance(mode_val, str) and not mode_val.isdigit():
         mode_str = mode_val
-    elif isinstance(mode_val, (int, float)) or (isinstance(mode_val, str) and mode_val.isdigit()):
-        try:
-            code = int(mode_val)
+        mode_code = mode_val
+    elif isinstance(mode_val, (int, float, str)):
+        number = _finite_af_number(mode_val)
+        if number is None:
+            mode_str = "Unknown"
+        else:
+            code = int(number)
             mode_str = _NIKON_AF_AREA_MODES.get(code, f"Mode {code}")
-        except (ValueError, TypeError):
-            mode_str = str(mode_val)
+            mode_code = mode_val if isinstance(mode_val, (int, str)) else None
     else:
         mode_str = "Unknown"
 
@@ -189,17 +203,14 @@ def _parse_af_metadata(raw: dict) -> dict | None:
 
     crop_area = _parse_crop_area(raw.get("CropArea"))
 
-    focus_dist = None
-    if raw.get("FocusDistance") is not None:
-        try:
-            focus_dist = float(raw.get("FocusDistance"))
-        except (ValueError, TypeError):
-            pass
+    focus_dist = _finite_af_number(raw.get("FocusDistance"))
+    if focus_dist is not None and focus_dist < 0:
+        focus_dist = None
 
     out = {
         "version": str(raw.get("AFInfo2Version") or ""),
         "mode": mode_str,
-        "mode_code": mode_val if isinstance(mode_val, (int, str)) else None,
+        "mode_code": mode_code,
         "in_focus": in_focus,
         "focus_distance_m": focus_dist,
         "area_x": int(area_x_f),
@@ -270,7 +281,7 @@ def extract_exif(image_path: str, image_id: int = None) -> dict | None:
         "ImageWidth", "ImageHeight", "Orientation", "Flash",
         "ImageUniqueID", "ShutterCount", "SubSecTimeOriginal",
         "GPSLatitude", "GPSLongitude", "GPSAltitude",
-        "AFInfo2Version", "AFAreaMode",
+        "AFInfo2Version", "AFCoordinatesAvailable", "AFAreaMode",
         "AFAreaXPosition", "AFAreaYPosition", "AFAreaWidth", "AFAreaHeight",
         "AFImageWidth", "AFImageHeight", "CropArea",
         "FocusResult", "ContrastDetectAFInFocus", "FocusDistance",
@@ -325,8 +336,14 @@ def extract_exif(image_path: str, image_id: int = None) -> dict | None:
                     break
 
         af_meta = _parse_af_metadata(raw)
-        if af_meta:
-            af_meta["exiftool_version"] = get_exiftool_version()
+        af_tags_present = any(tag in raw for tag in (
+            "AFInfo2Version", "AFCoordinatesAvailable", "AFImageWidth", "AFImageHeight",
+            "AFAreaXPosition", "AFAreaYPosition", "AFAreaWidth", "AFAreaHeight",
+        ))
+        if af_meta is not None or af_tags_present:
+            # Explicitly invalidate cached geometry; omission means an unrelated partial update.
+            if af_meta is not None:
+                af_meta["exiftool_version"] = get_exiftool_version()
             out["af_metadata"] = af_meta
 
         return out if out else None
