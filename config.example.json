@@ -264,6 +264,7 @@
   },
   "bird_species": {
     "use_regions": false,
+    "embedded_detector": true,
     "min_confidence": 0.5
   },
   "scene_route": {
