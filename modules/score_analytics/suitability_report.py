@@ -149,7 +149,7 @@ def build_report(
     report["variance"] = {k: su.variance_decomposition(m.series[k], clusters, b=b, seed=seed) for k in keys}
 
     # 6. correlation structure
-    report["correlation"] = su.correlation_suite(m.series, keys, clusters, seed=seed)
+    report["correlation"] = su.correlation_suite(m.series, keys, clusters, seed=seed, partial_keys=models)
     report["pca"] = su.pca(m.series, models) if len(models) >= 2 else {}
 
     # 7. pairwise culling (Cⱼ)
