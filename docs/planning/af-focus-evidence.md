@@ -134,9 +134,10 @@ until EXIF is re-extracted. Gaps against this plan:
 
 - no orientation or display-space transform, so the box cannot yet be compared with keypoints;
 - no `af_state`: missing coordinates and parse failure both yield no record, so `none` and
-  `unavailable` are indistinguishable;
-- `in_focus` is `false` when `FocusResult` is absent, conflating unknown with a reported miss (F4);
-- no `AFCoordinatesAvailable` or ExifTool version.
+  `unavailable` are indistinguishable; a `FocusResult` reported alongside `AFCoordinatesAvailable` 0 is
+  dropped with the record;
+- ~~`in_focus` is `false` when `FocusResult` is absent (F4)~~: resolved in #672, absent is now null;
+- no `AFCoordinatesAvailable` value stored; the ExifTool version is stored as `exiftool_version` since #672.
 
 AF coordinates go from AFImage space to display space through the same orientation transform
 localization uses, including the active-area/crop transform, so they meet the keypoints in one frame.

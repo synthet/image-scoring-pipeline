@@ -26,7 +26,6 @@ from modules import db, xmp
 from modules.job_dispatcher import JobDispatcher
 from tests.support.testing_samples import (
     list_sample_image_files,
-    require_sample_files,
     testing_samples_root,
 )
 
