@@ -134,6 +134,11 @@ vision judges supply evidence, Jev decides, and deterministic rules apply the re
 column, and the group has already shrunk from 12 to 7. Recount after the backfill finishes; Jev's
 picks for this group are kept for whatever disagreements remain.
 
+> **Update 2026-10-25 (recount).** A read-only rerun of the audit
+> (`audit_bbox_disagreements_20261025.py`, packet `bbox-disagreements-20261025.json`) found
+> **0 unselected** disagreements and **6 selected**: 190411, 190538, 190892, 199976, 199986 and
+> 207846, exactly the held set. No writes were needed.
+
 **Zero-filled originals (71048, 71062, 71135).** Jev chose **keep** (0.79). The records carry
 ratings, labels, picks and stack membership; keeping them loses no curation if a copy of the files
 turns up. They are not deleted, and decode-based phases will log decode errors for them.
