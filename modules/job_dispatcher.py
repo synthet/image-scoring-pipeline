@@ -331,13 +331,9 @@ class JobDispatcher:
     @staticmethod
     def _localization_auto_scope(planned: list[int]) -> list[int]:
         """Apply ``localization.new_images_only`` to planned (folder-scoped) work (#527)."""
-        from modules.localization import localization_config, new_images_only
+        from modules.localization_policy import auto_scope
 
-        if not new_images_only(localization_config()):
-            return planned
-        from modules.localization_policy import filter_auto_eligible
-
-        return filter_auto_eligible(planned)
+        return auto_scope(planned)
 
     @staticmethod
     def _claim_explicit_ids(job_id: int, queue_key: str, image_ids: list[int]) -> list[int]:

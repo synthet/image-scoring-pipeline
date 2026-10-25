@@ -104,6 +104,18 @@ def filter_auto_eligible(image_ids: list[int]) -> list[int]:
     return [i for i in ids if i in keep]
 
 
+def auto_scope(planned: list[int]) -> list[int]:
+    """Apply ``localization.new_images_only`` to planned (folder-scoped) work (#527).
+
+    Shared by the dispatcher and the attempt-before planner (#407), so both see the same set.
+    """
+    from modules.localization import localization_config, new_images_only
+
+    if not new_images_only(localization_config()):
+        return planned
+    return filter_auto_eligible(planned)
+
+
 # ---------------------------------------------------------------------------
 # Bounded repair (#527)
 # ---------------------------------------------------------------------------
