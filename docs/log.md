@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-24] update | Phase graph review against data dependencies (#407)
+
+Added [the phase graph review](reports/phase-graph-review-2026-10-24.md): every edge checked against a live consumer and the timing baseline. AC-9 superseded (scoring reads no localization yet), `pipeline.culling_requires_scoring` stays on until the stack-cover gap and #678 are fixed, and changes C-1 to C-4 proposed (gate localization→scoring, drop localization→keywords, add localization→bird_species, refresh covers).
+
 ## [2026-10-24] updated | Nikon AF evidence validation and cache semantics
 
 Required AF geometry is finite with positive integral dimensions; explicit unavailable coordinates clear cached AF while preserving other EXIF. Focused regressions, legacy merge tests and an eleven-record metadata replay passed. No photo writes or policy activation.
