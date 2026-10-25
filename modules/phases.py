@@ -62,7 +62,8 @@ PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
     PhaseCode.LOCALIZATION.value: (PhaseCode.METADATA.value,),
     PhaseCode.SCORING.value: (PhaseCode.METADATA.value,),
     PhaseCode.CULLING.value: (PhaseCode.SCORING.value,),
-    PhaseCode.KEYWORDS.value: (PhaseCode.SCORING.value,),
+    # Tagging reads the thumbnail and the stored CLIP vector, never a score (#407).
+    PhaseCode.KEYWORDS.value: (PhaseCode.METADATA.value,),
     PhaseCode.BIRD_SPECIES.value: (PhaseCode.KEYWORDS.value,),
 }
 
@@ -209,10 +210,10 @@ def missing_prerequisites(
 
     Co-request is judged by plan position, not set membership: ``requested`` is an
     execution order, so a prerequisite scheduled after the phase that needs it does
-    not satisfy it. ``["keywords", "scoring"]`` is rejected while
-    ``["scoring", "keywords"]`` is accepted. Siblings that share a prerequisite
-    (``culling`` and ``keywords``, both under ``scoring``) are unordered relative to
-    each other and pass either way.
+    not satisfy it. ``["culling", "scoring"]`` is rejected while
+    ``["scoring", "culling"]`` is accepted. Siblings that share a prerequisite
+    (``localization``, ``scoring`` and ``keywords``, all under ``metadata``) are
+    unordered relative to each other and pass either way.
 
     Callers that ``sort_phase_value_strings`` before gating are unaffected —
     canonical order already places every prerequisite first. ``/api/pipeline/submit``
@@ -336,10 +337,10 @@ def pipeline_prefix_through(phase: str) -> list[str]:
     """Return the canonical contiguous prefix of required phases up to and
     including ``phase`` (transitive closure over :data:`PHASE_PREREQUISITES`).
 
-    ``keywords`` and ``culling`` are siblings under ``scoring``, so this walks
-    the dependency DAG rather than slicing a linear order::
+    ``keywords`` hangs off ``metadata`` while ``culling`` hangs off ``scoring``, so this
+    walks the dependency DAG rather than slicing a linear order::
 
-        pipeline_prefix_through("keywords") -> ["indexing", "metadata", "scoring", "keywords"]
+        pipeline_prefix_through("keywords") -> ["indexing", "metadata", "keywords"]
         pipeline_prefix_through("culling")  -> ["indexing", "metadata", "scoring", "culling"]
 
     Used by the legacy single-phase ``/start`` endpoints so a downstream phase

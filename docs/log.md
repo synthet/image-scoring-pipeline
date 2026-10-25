@@ -14,6 +14,10 @@ Required AF geometry is finite with positive integral dimensions; explicit unava
 
 Added [the focus-evidence proposal](planning/af-focus-evidence.md), grounded in the saved eleven-frame Nikon probe. Separated measured observations from camera-semantics and decode uncertainties, and added shadow evaluation and acceptance criteria. Runtime scores and selections were not changed.
 
+## [2026-10-24] edit | keywords depends on metadata, not scoring (#407, spec 02 AC-1/AC-2)
+
+Updated [phase graph](architecture/pipeline/phase-graph.md): the `keywords` hard prerequisite is now `metadata`, and `pipeline_prefix_through("keywords")` no longer includes `scoring`.
+
 ## [2026-10-23] update | Resolve bbox disagreements with swarm judges and Jev (#638)
 
 Recorded the blind judge panel and the Jev decision for the 43 legacy/view bbox disagreements in the [Stage 8 readiness report](reports/localization-stage8-readiness-2026-10-23.md): 25 selected images were resolved through the selection module, 6 held; the unselected images wait for the skills backfill; the zero-filled originals are kept.
