@@ -6,9 +6,21 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-26] update | Shared hook repaired; localization calibration stops at one qualified judge (#694)
+
+Applied the owner-approved shared Jev hook repair with 11 installed tests and 40 completed Claude image reads. Recorded the completed backfill, frozen 390-frame sample and restored WebUI. Antigravity scores 19/20; Codex and Claude score 17/20, so the unchanged three-judge prerequisite prevents fresh validation and promotion.
+
+## [2026-10-26] update | Localization promotion gate continuation (#694, #638)
+
+Recorded the frozen R2 rule, verified local backup, incomplete calibration and final backfill dependency in reports/localization-promotion-gate-2026-10-26.md. Updated the rollout order: #694 supersedes #683. No selection promotion or flag activation.
+
+## [2026-10-24] update | Phase graph review against data dependencies (#407)
+
+Added [the phase graph review](reports/phase-graph-review-2026-10-24.md): every edge checked against a live consumer and the timing baseline. AC-9 superseded (scoring reads no localization yet), `pipeline.culling_requires_scoring` stays on until the stack-cover gap and #678 are fixed, and changes C-1 to C-4 proposed (gate localization→scoring, drop localization→keywords, add localization→bird_species, refresh covers).
+
 ## [2026-10-24] update | Sync AF focus-evidence plan with merged extraction fixes
 
-Marked the gaps closed by #675 (unknown `FocusResult`, `exiftool_version`, ExifTool 13.52 pin) and `322decec` (coordinate availability, invalid-geometry handling) in [the focus-evidence plan](planning/af-focus-evidence.md) §4, F3 and §9 steps 2–3. Remaining gaps: display-space transform and `af_state`.
+Marked the gaps closed by #675 (unknown `FocusResult`, `exiftool_version`, ExifTool 13.52 pin) and `322decec` (coordinate availability, invalid-geometry handling) in [the focus-evidence plan](planning/af-focus-evidence.md) §4, F3 and §9 steps 2–3. Remaining gaps: display-space transform, `af_state`, raw coordinate availability and a focus result when coordinates are absent.
 
 ## [2026-10-24] updated | Nikon AF evidence validation and cache semantics
 
@@ -1036,3 +1048,11 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-24] created | Nikon autofocus MakerNote parsing and EXIF schema
 
 - 2026-10-24: created - migration 0044 (`0044_image_exif_af_metadata.py`) adds `image_exif.af_metadata` (`JSONB`). `modules/exif_extractor.py` extracts Nikon `AFInfo2` (tag `0x00B7`), `CropArea` (tag `0x0045`), and focus status into normalized coordinates (`box` [0-1], `crop_box` for DX crops, focus mode, and lock state). `modules/db_legacy.py` persists and deserializes `af_metadata`. Unit tests in `tests/test_exif_extractor_af.py` verify extraction against real Z8 and Z6 II NEF fixtures.
+
+## [2026-10-25] created | Model suitability export audit
+
+- 2026-10-25: created - `reports/model-suitability-audit-2026-10-25.md`: external audit of the 2026-10-25 model-suitability export, with a code-verification table. Three defects filed: #685 (global evaluation set chosen from the culling test split), #686 (composites in partial correlation), #687 (`tie_fraction` naming). Indexed in `reports/INDEX.md`.
+
+## [2026-10-25] updated | Localization rollout status (#638)
+
+- 2026-10-25: updated - `architecture/pipeline/localization-rollout.md`: 2026-10-25 status block (disagreement recount 6 selected / 0 unselected, #407 closed with follow-ups #681–#684, remaining #638 gates) and a new "What is left" order. `reports/localization-stage8-readiness-2026-10-23.md`: dated recount note.

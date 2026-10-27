@@ -133,6 +133,9 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | [timing-baseline-2026-10-18](timing-baseline-2026-10-18.md) | Three-repeat decode and model timing baseline, routed-versus-local control, memory limits and rollout cost gates. |
 | [localization-stage8-readiness-2026-10-23](localization-stage8-readiness-2026-10-23.md) | #660 repair close-out, WebUI on v9.2.0, read_normalized_first rollback drill, 43 legacy/view bbox disagreements, backfill reroute and remaining #638 gates. |
 | [localization-rollout-summary-2026-10-22](localization-rollout-summary-2026-10-22.md) | One-page summary of the eight-stage localization rollout: goal, timeline, stage status, gates, deployment, open work and documentation drift. |
+| [phase-graph-review-2026-10-24](phase-graph-review-2026-10-24.md) | Phase graph rebuilt from data dependencies and timing: #407 AC-9 superseded, culling flag stays on, changes C-1 to C-4. |
+| [model-suitability-audit-2026-10-25](model-suitability-audit-2026-10-25.md) | External audit of the model-suitability export: no independent culling labels, within-stack agreement collapse, composite-distorted partial correlation; defects #685–#687. |
 | [localization-continuation-2026-10-19](localization-continuation-2026-10-19.md) | Interrupted repair, historical box drift, local reader/outage fixes and fresh-backup admission preparation awaiting checkpoint/runtime acceptance. |
+| [localization-promotion-gate-2026-10-26](localization-promotion-gate-2026-10-26.md) | Hook repair verified, backfill/cohort freeze complete and WebUI restored; only Antigravity passes the 18/20 calibration threshold. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)

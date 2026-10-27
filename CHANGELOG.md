@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.2.1] - 2026-10-26
+
+### Added
+- **Configurable phase scheduling** (#407): metadata can feed keywords independently of scoring, localization can be attempted before scoring, and unscored stacks can keep their picks pending behind explicit flags.
+- **Stored-box species mode** (#638, #667): the default-on `bird_species.embedded_detector` flag permits a gated transition to existing boxes without removing the current detector fallback.
+- **Bounded BioCLIP repair**: embedding backfills accept a frozen image-ID manifest.
+- **Nikon autofocus evidence** (#672): extract MakerNote autofocus geometry, focus state and crop metadata.
+
+### Fixed
+- **Suitability evaluation sets** (#685): choose global and culling evaluation populations independently.
+- **Model partial correlations** (#686): condition on model scores only; derived composite rows and columns remain null.
+- **Culling tie metrics** (#687): report observed pair ties instead of a threshold-proximity proxy.
+- **Negative localization backfills** (#691): current no-detection runs skip unnecessary RAW decoding for keypoints.
+- **Nikon AF decoding** (#672): pin ExifTool 13.52, preserve unknown focus results and reject unavailable or invalid geometry.
+- **Stored-embedding CLIP keyword scoring**: accept projected text-feature tensors returned inside Transformers model-output objects, matching the other CLIP consumers.
+- **Test isolation**: local CLIP/scorer unit tests use their mocked local paths regardless of workstation remote-GPU configuration; integration NEFs are processed as temporary copies.
+- **Support and remote-GPU test hygiene**: track the debug-bundle helper and refresh runner test stubs.
+
+### Changed
+- `backfill_bird_bbox.py` queues normalized localization jobs instead of writing legacy boxes directly (#638, #664).
+- Docker builds exclude agent scratch artifacts from the build context.
+
+### Documentation
+- Record the completed localization backfill, frozen #694 cohort/sample and restored WebUI. Calibration qualifies only one of the required three judges; no new region promotions or detector-retirement activation occurred.
+
 ## [9.2.0] - 2026-10-22
 
 ### Added
