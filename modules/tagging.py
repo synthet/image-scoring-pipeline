@@ -276,6 +276,11 @@ class KeywordScorer:
         text_inputs = {k: v.to(self.device) for k, v in text_inputs.items()}
         with torch.no_grad():
             text_feats = self.model.get_text_features(**text_inputs)
+            if not hasattr(text_feats, "cpu"):
+                if getattr(text_feats, "text_embeds", None) is not None:
+                    text_feats = text_feats.text_embeds
+                elif getattr(text_feats, "pooler_output", None) is not None:
+                    text_feats = text_feats.pooler_output
             text_feats = text_feats / text_feats.norm(dim=-1, keepdim=True)
         text_np = text_feats.float().cpu().numpy()  # (T, d)
         if text_np.shape[1] != emb.shape[0]:

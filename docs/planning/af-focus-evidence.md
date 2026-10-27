@@ -141,8 +141,11 @@ until EXIF is re-extracted. Closed since this plan was drafted:
 Gaps that remain against this plan:
 
 - no orientation or display-space transform, so the box cannot yet be compared with keypoints;
-- no `af_state`: a stored `null` and a missing value do not say whether the camera reported no AF
-  point or the data was unavailable, so `none` and `unavailable` are still indistinguishable.
+- no `af_state`: missing coordinates and parse failure both yield no record, so `none` and
+  `unavailable` are indistinguishable; a `FocusResult` reported alongside `AFCoordinatesAvailable` 0 is
+  dropped with the record;
+- no raw `AFCoordinatesAvailable` value stored, even though the parser reads it to decide whether
+  geometry is available.
 
 AF coordinates go from AFImage space to display space through the same orientation transform
 localization uses, including the active-area/crop transform, so they meet the keypoints in one frame.

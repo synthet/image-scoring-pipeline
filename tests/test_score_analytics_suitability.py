@@ -62,6 +62,39 @@ def test_profile_flags_bounds_ties_and_saturation():
     assert p["mean_ci"][0] <= p["mean"] <= p["mean_ci"][1]
 
 
+def test_profile_reports_duplicate_fraction_and_pair_tie_rate():
+    # #687: 1 - unique/n counts duplicate values; the pair tie rate is sum n_v(n_v-1) / n(n-1).
+    x = np.array([0.1, 0.1, 0.1, 0.2, 0.2, 0.3])
+    p = su.profile(x, b=20)
+    assert p["duplicate_value_fraction"] == pytest.approx(0.5)
+    assert p["tie_fraction"] == p["duplicate_value_fraction"]  # deprecated alias
+    assert p["exact_pair_tie_rate"] == pytest.approx((3 * 2 + 2 * 1) / (6 * 5))
+
+
+def test_variance_decomposition_reports_within_stack_pair_tie_rate():
+    # Stack 1: values a, a, b -> 1 tied pair of 3; stack 2: c, c -> 1 of 1. Pair-weighted: 2 / 4.
+    x = np.array([0.5, 0.5, 0.7, 0.9, 0.9, 0.4])
+    clusters = np.array([1, 1, 1, 2, 2, 0])
+    v = su.variance_decomposition(x, clusters, b=20)
+    assert v["within_exact_pair_tie_rate"] == pytest.approx(2 / 4)
+
+
+def test_partial_correlation_can_exclude_derived_columns():
+    # #686: conditioning on a composite of a and b forces a spurious negative a-b partial.
+    rng = np.random.default_rng(0)
+    common = rng.normal(size=4000)
+    a = common + rng.normal(size=4000)
+    b = common + rng.normal(size=4000)
+    series = {"a": a, "b": b, "comp": a + b + rng.normal(scale=0.3, size=4000)}
+    clusters = np.zeros(4000, dtype=np.int64)
+    with_comp = su.correlation_suite(series, ["a", "b", "comp"], clusters)["partial_pearson"]
+    assert with_comp["r"][0][1] < -0.5
+    models = su.correlation_suite(series, ["a", "b", "comp"], clusters, partial_keys=["a", "b"])["partial_pearson"]
+    assert models["keys"] == ["a", "b"]
+    assert models["r"][0][1] > 0.3
+    assert models["r"][0][2] is None and models["r"][2][2] is None
+
+
 def test_variance_decomposition_separates_scene_and_frame():
     series, stack, _, _ = _synthetic()
     scene = su.variance_decomposition(series["scene_model"], stack, b=50)
@@ -219,6 +252,22 @@ def test_build_report_recovers_roles_on_synthetic_library():
     json.dumps(rep, allow_nan=False)  # API/JSON-safe (no numpy scalars, no NaN)
     man = sr.manifest(m, {"bootstrap": 60})
     assert man["read_only"] and len(man["query_hash"]) == 40
+
+
+def test_build_report_picks_evaluation_sets_per_task():
+    # No culling labels, plenty of global labels: global must still use the test split (#685).
+    series, stack, grades, label = _synthetic(n_clusters=400, n_solo=800)
+    m = _matrix(series, stack, grades)
+    ids = m.image_ids.tolist()
+    rows = {"xmp": [(ids[i], int(label[i]), None, None) for i in range(len(ids))], "score_rating": []}
+    bundle = labels.assemble(m, rows, trust_xmp_ratings=True)
+    rep = sr.build_report(m, bundle, bootstrap=40, min_test_clusters=30)
+    sets = rep["suitability"]["evaluation_sets"]
+    assert sets == {"global": "untouched test split", "culling": "all labelled data (test split too small)"}
+    by = {r["dimension"]: r for r in rep["suitability"]["map"]}
+    for k, g in rep["global"]["test"].items():
+        assert by[k]["G_ci"] == list(g["spearman_weighted_ci"])
+        assert by[k]["in_Nb"] is None and "insufficient culling labels" in by[k]["caveats"]
 
 
 def test_split_is_deterministic():

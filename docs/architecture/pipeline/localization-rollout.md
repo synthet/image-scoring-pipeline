@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-10-23T21:30:00Z
+timestamp: 2026-10-26T00:00:00Z
 okf_version: 0.2
 status: stable
 ---
@@ -22,7 +22,7 @@ current graph and its implementation are documented in [phase-graph.md](phase-gr
 
 ## Consolidated status (2026-10-04)
 
-This page is the status of record, with operational updates through 2026-10-23 00:30 UTC.
+This page is the status of record, with operational updates through 2026-10-26.
 Epic #345's issue body still describes September 2026
 (the live import "not yet run", stage 4 "open questions pending"). Replacing that body
 needs a token that can edit issues; this page and #527 are the update.
@@ -35,6 +35,39 @@ are folded into the table, not into a second rollout:
 - [blockers and decision register](../../specs/pipeline-streamlining/07-blockers-and-decisions.md)
   (historical snapshot 2026-09-25, with a 2026-10-04 delta at the top)
 - [subject-aware culling evidence](../../planning/subject-aware-culling-evidence.md)
+
+**Status 2026-10-26 ([promotion-gate continuation](../../reports/localization-promotion-gate-2026-10-26.md)):**
+
+- **#683 superseded by #694.** Extra shadow runs do not become species inputs without selections.
+  #694 pre-registers a fresh promotion gate over the existing unselected runs.
+- **R2 frozen; calibration fails its prerequisite.** Confidence >= 0.70, at most three regions;
+  small remains geometry-only. Antigravity scores 19/20; Codex and Claude each score 17/20.
+  Only one judge meets the frozen 18/20 requirement; three must qualify. No fresh validation,
+  promotion or flag activation occurred. Claude's deferred-read hook defect was repaired with
+  owner approval; 11 installed tests and 40 actual image reads verify it.
+- **Backfill and freeze complete.** The separate worker completed chunk 024 at 14:20 UTC. All
+  24 driver markers match their input checksums. The cohort has 30,046 runs; the fresh sample
+  has 390 frames (130 per size band), excluding 1,467 prior sample/control IDs.
+- **WebUI restored.** Health is 200, job 7049 is interrupted after recovery, and the localization
+  lane has no hold. The live suitability API verifies independent global/culling evaluation sets
+  and null composite partial correlations; browser rendering was not re-tested.
+- **Backup.** A fresh local archive passed a complete archive read, with no pruning or mirror.
+  #638's full compatibility-release and selection-coverage gates remain open.
+
+**Status 2026-10-25:**
+
+- **Disagreement recount (read-only).** Legacy/view disagreements are now **6 selected, 0
+  unselected**. The image-scoring-skills backfill replaced the imported runs, so the view falls back
+  to the column for those images. The 6 are exactly the review's held items (Jev confidence ≤ 0.5);
+  they keep serving the selection's box when the flag is on. The 43-disagreement gate is closed.
+- **#407 closed.** Phase graph follow-ups from the
+  [review](../../reports/phase-graph-review-2026-10-24.md) are filed as #681 (C-1), #682 (C-2),
+  #683 (C-3: localization attempt-before `bird_species`, which cuts embedded-detector use) and #684
+  (C-4).
+- **Still gating #638.** A full v9.2.0 compatibility release, and BioCLIP detector removal, which
+  waits until selections cover about 33.8k bird-tagged images. The stored-box parity probe
+  (2026-10-24, 40 images) agreed on top-1 species for 37 but on the box for only 9, so the
+  `bird_species.embedded_detector` flag stays `true`.
 
 **Status 2026-10-23 ([Stage 8 readiness report](../../reports/localization-stage8-readiness-2026-10-23.md)):**
 
@@ -357,16 +390,18 @@ geometry-only: small-crop species failed its gate, so their species stays legacy
 
 ### What is left
 
-**Current order (2026-10-23, evening):**
+**Current order (2026-10-26):**
 
-1. Run the v9.2.0 compatibility release.
-2. Owner review of the 43 legacy/view disagreements (overlay sheet in the
-   [Stage 8 readiness report](../../reports/localization-stage8-readiness-2026-10-23.md)).
-3. Land the writer reroute (#664).
-4. Then the lane gaps: retry timing and the cascade pilot recovery policy.
+1. Complete the v9.2.0 compatibility release observation; WebUI is restored and recovery verified,
+   but its earlier live start alone does not establish the full gate.
+2. Raise selection coverage through **#694**, which supersedes closed #683: two more vision judges
+   must meet the unchanged 18/20 calibration threshold before the frozen fresh sample can be judged.
+   No promotion or BioCLIP detector removal can proceed from the current one-qualified-judge pilot.
+3. Then the lane gaps: retry timing and the cascade pilot recovery policy.
 
-The #660 rebuild, the WebUI start on v9.2.0, the #653 hold field, the gallery consumer and the
-rollback drill are done. BioCLIP detector removal waits until selections cover the bird-tagged
+The #660 rebuild, the WebUI start on v9.2.0, the #653 hold field, the gallery consumer, the
+rollback drill, the disagreement review (6 held, 0 unselected after the 2026-10-25 recount) and
+the writer reroute (#664) are done. BioCLIP detector removal waits until selections cover the bird-tagged
 images that still use it. Evidence work (#610, #422, #413, #416) can proceed alongside; Stage 6
 stays in #645.
 

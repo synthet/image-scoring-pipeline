@@ -276,7 +276,12 @@ export interface ScoreSuitability {
     }
     holdout: { skipped?: string; temperature?: number; test_calibrated?: LogitEval; test_uncalibrated?: LogitEval }
   }
-  suitability: { evaluation_set: string; thresholds: { global: string; culling: string }; map: SuitabilityRow[] }
+  suitability: {
+    evaluation_sets: { global: string; culling: string }
+    evaluation_set: string
+    thresholds: { global: string; culling: string }
+    map: SuitabilityRow[]
+  }
   subgroups: ({ stratum: string; value: string; clusters: number; note?: string } & Record<string, unknown>)[]
   findings: string[]
 }
