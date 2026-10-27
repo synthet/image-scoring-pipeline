@@ -8,7 +8,8 @@ from modules.scoring import ScoringRunner
 
 
 @patch("modules.scoring._musiq_import_error", None)
-def test_init_shared_scorer_builds_host():
+def test_init_shared_scorer_builds_host(monkeypatch):
+    monkeypatch.setattr("modules.remote_gpu.client.phase_is_remote", lambda _phase: False)
     runner = ScoringRunner()
     host = MagicMock()
     host.VERSION = "host-test"
