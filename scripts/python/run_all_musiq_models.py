@@ -19,9 +19,6 @@ from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
 import numpy as np
-import tensorflow as tf
-import tensorflow_hub as hub
-import kagglehub
 from PIL import Image, ImageOps
 import rawpy
 
@@ -927,6 +924,8 @@ class MultiModelMUSIQ:
     
     def _setup_gpu(self):
         """Setup GPU configuration."""
+        import tensorflow as tf
+
         gpus = tf.config.experimental.list_physical_devices('GPU')
         if gpus:
             try:
@@ -985,6 +984,12 @@ class MultiModelMUSIQ:
                 logging.getLogger(__name__).error(f"✗ Failed to load {model_name.upper()}: {e}")
                 return False
         
+        # TensorFlow loads with the first model, not at import, so RAW prep and
+        # remote scoring hosts (skip_gpu=True) never pay for it.
+        import kagglehub
+        import tensorflow as tf
+        import tensorflow_hub as hub
+
         # Try TensorFlow Hub first (preferred - no auth needed, usually faster)
         if tfhub_url:
             try:
@@ -1085,6 +1090,8 @@ class MultiModelMUSIQ:
             with open(image_path, 'rb') as f:
                 image_bytes = f.read()
             
+            import tensorflow as tf
+
             # Ensure tensor is on correct device
             with tf.device(self.device):
                 # TensorFlow Hub/Kaggle models expect image bytes as string tensor
