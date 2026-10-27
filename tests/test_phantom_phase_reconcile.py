@@ -180,3 +180,73 @@ def test_scope_has_unattempted_work_guards_empty_input(monkeypatch):
     monkeypatch.setattr(db_legacy, "get_connector", lambda: (_ for _ in ()).throw(AssertionError("called")))
     assert db_legacy.scope_has_unattempted_phase_work("", "keywords") is False
     assert db_legacy.scope_has_unattempted_phase_work("/x", "") is False
+
+
+# ---------------------------------------------------------------------------
+# localization (#527): reconciled from the current terminal run
+# ---------------------------------------------------------------------------
+
+def test_localization_maps_run_status_to_ips(monkeypatch):
+    fake = _patch(monkeypatch, [
+        {"id": 1, "status": "detected"},
+        {"id": 2, "status": "no_detection"},
+        {"id": 3, "status": "terminal_error"},
+    ])
+    monkeypatch.setattr(
+        db_legacy, "get_phase_incomplete_sql",
+        lambda code, alias="": (_ for _ in ()).throw(AssertionError("localization has no predicate")),
+    )
+    captured = []
+    monkeypatch.setattr(
+        db_legacy, "set_image_phase_status",
+        lambda iid, code, status, **k: captured.append((iid, code, status, k.get("skip_reason"))),
+    )
+
+    out = db_legacy.reconcile_phantom_complete_image_phases(("localization",), dry_run=False)
+
+    assert out == {"localization": 3}
+    assert captured == [
+        (1, "localization", "done", None),
+        (2, "localization", "done", None),
+        (3, "localization", "skipped", "terminal_error"),
+    ]
+    sql = fake.queries[0][0]
+    # Retryable and disabled runs are never proof of completion; legacy imports were no attempt.
+    assert "r.status IN ('detected', 'no_detection', 'terminal_error')" in sql
+    assert "r.is_current" in sql and "r.legacy_payload IS NULL" in sql
+
+
+def test_localization_dry_run_writes_nothing(monkeypatch):
+    _patch(monkeypatch, [{"id": 1, "status": "detected"}])
+    monkeypatch.setattr(
+        db_legacy, "set_image_phase_status",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("dry run wrote")),
+    )
+    assert db_legacy.reconcile_phantom_complete_image_phases(("localization",), dry_run=True) == {
+        "localization": 1,
+    }
+
+
+def test_auto_drive_preflight_adds_localization_only_when_enabled(monkeypatch):
+    from modules import runs_autodrive
+
+    calls = []
+    monkeypatch.setattr(
+        runs_autodrive.db, "reconcile_phantom_complete_image_phases",
+        lambda phases, **k: calls.append(tuple(phases)), raising=False,
+    )
+    for name in (
+        "reconcile_stale_running_phases_for_terminal_jobs", "reconcile_stale_running_image_phases",
+        "reset_false_complete_metadata_phases", "reset_false_complete_culling_phases",
+        "reset_retryable_stale_phase_failures",
+    ):
+        monkeypatch.setattr(runs_autodrive.db, name, lambda **k: 0, raising=False)
+
+    for enabled in (False, True):
+        monkeypatch.setattr("modules.phases.is_phase_enabled", lambda code, _on=enabled: _on)
+        runs_autodrive._reconcile_stale_ips_for_drive()
+
+    assert calls == [
+        ("indexing", "metadata", "scoring", "keywords"),
+        ("indexing", "metadata", "scoring", "keywords", "localization"),
+    ]

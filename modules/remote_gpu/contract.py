@@ -13,7 +13,8 @@ import io
 import json
 from typing import Any
 
-API_VERSION = 1
+API_VERSION = 2  # Prepared per-model scoring inputs; upgrade client and runner together.
+SCORING_INPUTS_VERSION = 1
 
 HEALTHZ = "/healthz"
 HEALTH = "/v1/health"

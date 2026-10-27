@@ -56,7 +56,7 @@ ORDER BY f.path, i.id
 """
 
 _SQL_PRIMARY_REGION = """
-SELECT r.id AS run_id, r.rendition_hash, r.coord_space, g.id AS region_id,
+SELECT r.id AS run_id, r.rendition_hash, r.coord_space, r.status, g.id AS region_id,
        g.x1, g.y1, g.x2, g.y2
 FROM image_localization_runs r
 LEFT JOIN image_regions g ON g.localization_run_id = r.id AND g.rank = 0
@@ -112,6 +112,15 @@ def primary_region(image_id: int, selected_by: str = "") -> dict | None:
     if selected_by:
         return conn.query_one(_SQL_SELECTED_REGION, (int(image_id), DETECTOR_KEY, selected_by))
     return conn.query_one(_SQL_PRIMARY_REGION, (int(image_id), DETECTOR_KEY))
+
+
+def is_current_no_detection(cur: dict | None) -> bool:
+    """True when the current display-space run found no bird, so there is no region to infer on (#691)."""
+    from modules.localization import STATUS_NO_DETECTION
+    from modules.rendition import COORD_SPACE_DISPLAY
+
+    return bool(cur) and cur.get("region_id") is None and cur.get("coord_space") == COORD_SPACE_DISPLAY \
+        and cur.get("status") == STATUS_NO_DETECTION
 
 
 def main() -> int:
@@ -185,6 +194,10 @@ def main() -> int:
                 and cur.get("coord_space") == COORD_SPACE_DISPLAY
                 and is_unchanged(get_current_keypoint_run(int(cur["region_id"])), kctx.config_hash)):
             counts["unchanged"] += 1
+            continue
+        # Same assumption for a current run that found no bird: decoding would only re-prove it.
+        if not a.force and not selected_by and is_current_no_detection(cur):
+            counts["no_region"] += 1
             continue
         try:
             decoded = decode_for_localization(path)

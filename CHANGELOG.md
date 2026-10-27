@@ -9,6 +9,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.2.1] - 2026-10-26
+
+### Added
+- **Configurable phase scheduling** (#407): metadata can feed keywords independently of scoring, localization can be attempted before scoring, and unscored stacks can keep their picks pending behind explicit flags.
+- **Stored-box species mode** (#638, #667): the default-on `bird_species.embedded_detector` flag permits a gated transition to existing boxes without removing the current detector fallback.
+- **Bounded BioCLIP repair**: embedding backfills accept a frozen image-ID manifest.
+- **Nikon autofocus evidence** (#672): extract MakerNote autofocus geometry, focus state and crop metadata.
+
+### Fixed
+- **Suitability evaluation sets** (#685): choose global and culling evaluation populations independently.
+- **Model partial correlations** (#686): condition on model scores only; derived composite rows and columns remain null.
+- **Culling tie metrics** (#687): report observed pair ties instead of a threshold-proximity proxy.
+- **Negative localization backfills** (#691): current no-detection runs skip unnecessary RAW decoding for keypoints.
+- **Nikon AF decoding** (#672): pin ExifTool 13.52, preserve unknown focus results and reject unavailable or invalid geometry.
+- **Stored-embedding CLIP keyword scoring**: accept projected text-feature tensors returned inside Transformers model-output objects, matching the other CLIP consumers.
+- **Test isolation**: local CLIP/scorer unit tests use their mocked local paths regardless of workstation remote-GPU configuration; integration NEFs are processed as temporary copies.
+- **Support and remote-GPU test hygiene**: track the debug-bundle helper and refresh runner test stubs.
+
+### Changed
+- `backfill_bird_bbox.py` queues normalized localization jobs instead of writing legacy boxes directly (#638, #664).
+- Docker builds exclude agent scratch artifacts from the build context.
+
+### Documentation
+- Record the completed localization backfill, frozen #694 cohort/sample and restored WebUI. Calibration qualifies only one of the required three judges; no new region promotions or detector-retirement activation occurred.
+
+## [9.2.0] - 2026-10-22
+
+### Added
+- **Selection-aware bird-box compatibility reads** (#638, #652): with `localization.read_normalized_first` (default `false`), image list/detail, public/UUID/hash details and evidence region boxes follow the active production selection. Migration **`0043`** adds the additive `image_bird_bbox_compat` view; run `alembic upgrade head`. The flag stays off.
+- **Localization lane diagnostics** (#639, #653): `GET /api/runs/drive/status` reports `localization_lane`, and `get_drive_diagnostics` adds a `detector_outage_hold` anomaly. An indefinite hold still needs a restart.
+
+### Fixed
+- **Masked focus-grid evidence** (#649, #651): masked evidence requests no longer raise `IndexError`.
+
+### Security
+- **Backup logging** (#650, #654): `Backup-Postgres.ps1` no longer echoes `pg_dump` connection arguments.
+
+### Documentation
+- Localization rollout status through 2026-10-22 (#655, #657) and API contract section order (#656, #658).
+
+## [9.1.2] - 2026-10-21
+
+### Fixed
+- **Localization selection ownership** (#646): legacy bbox backfill writes and clears respect active production selections, including a selection promoted while detection is in flight.
+
+## [9.1.1] - 2026-10-20
+
+### Added
+- **Near-duplicate maintenance** (#597, #600): manifest-based deletion with dry-run, backups, and recovery, separate from scoring.
+
+### Changed
+- **Migration `0042`** registers the `bioclip_2_crop` embedding space. Run `alembic upgrade head` before writing crop embeddings. Historical mixed BioCLIP vectors still need a separate operator repair.
+
+### Fixed
+- **Keyword ownership** (#586): tagging replaces only its own keyword rows, preserving species labels and hand-entered keywords; species writes preserve other keyword sources.
+- **BioCLIP embedding spaces** (#641, #643): selected-region and detector crops use `bioclip_2_crop`; full-frame inputs use `bioclip_2_image`. Unknown input modes do not persist vectors.
+- **Near-duplicate recovery** (#600): human-labelled frames are protected, stack review history is retained, and file recovery supports backups on another volume.
+
+### Documentation
+- Refreshed localization rollout decisions and completion records, the 379-species walkthrough, and the orientation re-tag recovery report.
+
+## [9.1.0] - 2026-10-16
+
+### Added
+- **379-name bird species list** (#616): the bundled list grows from 369 to 379 names, reordered by an Austin-area frequency proxy. An agent-panel gate (agent-panel labels, not owner labels) passed on the 118 resolved frames whose label changes: right 110 / wrong 4, against 5 / 29 for the 369-name list. Boat-tailed Grackle, Eurasian Jackdaw and American Herring Gull were not adopted. Report: `docs/reports/bird-species-list-379-gate-2026-10-16.md`.
+- **`refresh_region_species.py --profile 379`** (#620): refreshes a cohort under the gated 379-name list against its own frozen predictions artifact. The default profile stays `369`. Used for the #619 relabel of 124 images; all 4,401 cohort images verify against the 379 predictions.
+
+### Fixed
+- **Remote GPU species abstention** (#621): `RemoteBioCLIPClassifier` now sets `last_error` the way a local run does: `None` on an abstention, the error text on a failure. Before, a refresh that abstained through the GPU runner kept the image's stale `species:*` keyword.
+
+### Documentation
+- Jev 1.14 image-input assessment for gate judging (#617), and the rollout docs record the live #408 cascade runs and the 379 relabel (#622).
+
+## [9.0.0] - 2026-10-15
+
+### Breaking
+- **Remote GPU transport API v2** (#568–#570): scoring sends independently prepared, upright per-model inputs with provenance. Upgrade the backend and the GPU runner together. Endpoint paths stay `/v1`.
+- **Migrations `0039`–`0041` need `alembic upgrade head`:**
+  - `localization_enablement` boundary (0039);
+  - delegated culling lifecycle (0040, #368);
+  - `images.registered_at` (0041, #584). It is backfilled from `created_at` before its default is set, so existing rows keep their new-image classification.
+
+### Added
+- **Localization Stage 4 exit-gate code** (#527): new-images-only boundary with claimed selector submits; bounded repair from run history (3 attempts, 1 min / 5 min); phantom reconciliation from the current terminal run; and an automatic repair lane on the dispatcher idle path.
+- **Bird species abstention** (#422): `bird_species.min_confidence` (default 0.5) is the threshold for jobs that do not pass one. Below it, no species is stored and the image takes the `no_species_match` path. Nine missing species were added to the bundled list. Calibration report: `docs/reports/bird-species-abstention-2026-10-08.md`.
+- **Remote GPU local fallback** (#529): an ordered fallback chain of configured runner, same-machine HTTP runner, then embedded inference.
+- **RAW diagnostics**: opt-in RAW decode diagnostics and a decode-comparison tool (#571).
+- **Keypoints**: `backfill_region_keypoints.py --selected-by <rule>` targets promoted selected regions (#492). There is also a read-only species shadow re-run harness for promoted selections (#493).
+- **Stage 5 region species** (#592, #594, #598): with `bird_species.use_regions`, BioCLIP classifies the active production selection region (`image_localization_selections`) instead of the current shadow run. Images without a selection keep the legacy path. Selections smaller than 0.005 normalized area stay legacy (geometry-only), and a row lock protects selected boxes in every species box-write path.
+- **Shadow detector cascade persistence** (#408, #594): with `localization.cascade.enabled` (default false), the localization runner also persists `coco` and `subject_cascade` runs (RTMDet fallback at 0.60, small-box refine). It is shadow only and needs `onnxruntime`.
+- **Region-species refresh operator** `scripts/maintenance/refresh_region_species.py` (#598, #599, #608): bounded refresh of an explicit frozen cohort with keyword-preservation snapshots, per-image verified completion receipts and prediction checks.
+- **Research**: blind multi-CLI judge panels for species and box gates (`scripts/research/judges/`, #594).
+
+### Changed
+- **Scoring preparation**: scoring bakes EXIF rotation and reflection before inference, rejects failed preparation, versions cache identity, and records input provenance in run snapshots. Cached scores computed on unrotated inputs become stale.
+- **ML inputs are upright** (#418): `open_image_for_ml` returns oriented RGB, so CLIP keywords, BLIP captions, MobileNet clustering and the embedding extractors now see portrait RAWs upright.
+- **Species threshold**: `threshold` is optional on `POST /api/bird-species/start` and the MCP tool; when omitted, the config floor applies.
+- **Species floor is strict** (#422, #594): a species is stored only when its probability is above `bird_species.min_confidence`. An explicit refresh (`overwrite`) that abstains removes the stale `species:*` keyword.
+- **Dependency**: `onnxruntime==1.22.1` is now in `requirements/requirements_wsl_gpu.txt` for the cascade's RTMDet fallback (#613). Rebuild the image or install it into existing containers.
+
+### Fixed
+- **Remote scoring host** (#588): it now includes models registered at import time (TOPIQ, ARNIQA). Previously every image failed with `Missing prepared input for topiq`.
+- **Tagging overwrite**: `POST /api/tagging/start` with `overwrite: true` now forces a re-tag. The dispatcher had ignored the payload flag.
+- **Selector-mode metadata**: `convert_path_to_local` passes a `None` path through instead of crashing.
+- **Localization boundary** (#584): new images are judged by registration time, not capture time. Photos captured before the boundary but imported later now enter the lane.
+- **Localization retries**: recovered retries re-enter `running` before their outcome is recorded, so strict phase-transition checking accepts them (#576).
+- **Delegated culling lifecycle** is persisted (#368).
+- **Thumbnails**: `rawpy` thumbnails no longer get a copied Orientation tag, which rotated them a second time.
+- **BLIP captions** no longer loop on repeated tokens (#546). `log_line` broadcasts are no longer DEBUG-logged (#544).
+- **Runs**: canceled maintenance jobs release the runner so queued runs start.
+- **Tooling**: MCP stdio servers run in gpu-shell and reach the WebUI over the compose network. The image-scoring container image installs alembic.
+- **Tests**: PostgreSQL test skips name the host, port and database they tried (#379).
+- **JPEG thumbnail orientation:** Apply EXIF transpose before saving raster thumbnails so portrait sources keep upright pixels when Pillow drops the EXIF tag. RAW thumbnail handling is unchanged; existing affected JPEG thumbnails require regeneration. See the companion gallery's [orientation solution and verification](https://github.com/synthet/image-scoring-gallery/blob/main/docs/features/implemented/05-jpeg-export-exif-orientation.md), including preserved image 240203.
+- **RAW embedded previews** (#594): an ExifTool timeout is retried once with a longer timeout (10 s, then 60 s), and a `JpgFromRaw` timeout still falls through to `PreviewImage`.
+- **Region-species refresh preservation** (#599, #608): restore puts back non-species keywords that a refresh removed, with their original metadata and `created_at`. It also removes non-species keywords a refresh added, such as a parent `birds` tag.
+- **Study tooling** (#611): `agent_cull_vision_smoke.sh` passes Codex `--ask-for-approval` before `exec` and uses a valid sandbox mode.
+
 ## [8.18.0] - 2026-10-03
 
 ### Added

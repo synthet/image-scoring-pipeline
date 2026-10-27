@@ -140,7 +140,7 @@ def profile(values: np.ndarray, *, total: int | None = None, bounds=(0.0, 1.0), 
     lo_b, hi_b = bounds
     q = np.percentile(finite, PERCENTILES)
     median = float(np.median(finite))
-    uniq = np.unique(finite)
+    uniq, uniq_counts = np.unique(finite, return_counts=True)
     std = float(finite.std(ddof=1)) if n > 1 else 0.0
     skew = float(sps.skew(finite)) if n > 2 and std > 0 else None
     kurt = float(sps.kurtosis(finite)) if n > 3 and std > 0 else None
@@ -184,7 +184,11 @@ def profile(values: np.ndarray, *, total: int | None = None, bounds=(0.0, 1.0), 
             "bimodality_coefficient": _f(bimod),
             "bimodal_hint": bool(bimod is not None and bimod > 5 / 9),
             "unique": int(uniq.size),
-            "tie_fraction": float(1 - uniq.size / n),
+            # Share of observations that repeat an earlier value — not a tie probability (#687).
+            "duplicate_value_fraction": float(1 - uniq.size / n),
+            "tie_fraction": float(1 - uniq.size / n),  # deprecated alias of duplicate_value_fraction
+            # P(two distinct observations have exactly equal scores) = Σ n_v(n_v−1) / n(n−1).
+            "exact_pair_tie_rate": _f((uniq_counts * (uniq_counts - 1)).sum() / (n * (n - 1))) if n > 1 else None,
             "floor_pct": float(100 * np.mean(finite <= lo_b)),
             "ceiling_pct": float(100 * np.mean(finite >= hi_b)),
             "near_bound_pct": float(100 * np.mean((finite < lo_b + NEAR_BOUND) | (finite > hi_b - NEAR_BOUND))),
@@ -263,8 +267,12 @@ def variance_decomposition(
         s1, s2 = shares(W[i][codes], W[i])
         boot_img[i], boot_clu[i] = s1, s2
     tot = x.var()
+    # Same-stack pairs with exactly equal scores, pooled over every within-stack pair (#687).
+    _, tie_counts = np.unique(np.column_stack([codes, x]), axis=0, return_counts=True)
+    within_pairs = (sizes * (sizes - 1)).sum()
     return {
         "clusters": int(k),
+        "within_exact_pair_tie_rate": _f((tie_counts * (tie_counts - 1)).sum() / within_pairs) if within_pairs else None,
         "images": int(n),
         "total_var": _f(tot),
         "between_var": _f(tot * (1 - s_img)),
@@ -389,7 +397,16 @@ def distance_correlation(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.sqrt(max(dcov, 0) / np.sqrt(dvx * dvy))) if dvx > 0 and dvy > 0 else float("nan")
 
 
-def correlation_suite(series: dict[str, np.ndarray], keys: list[str], clusters: np.ndarray, *, seed: int = 0) -> dict[str, Any]:
+def correlation_suite(
+    series: dict[str, np.ndarray],
+    keys: list[str],
+    clusters: np.ndarray,
+    *,
+    seed: int = 0,
+    partial_keys: list[str] | None = None,
+) -> dict[str, Any]:
+    """``partial_keys`` limits the partial correlation to those columns (pass the models: conditioning
+    on a composite of its own inputs forces spurious negative partials, #686); other cells stay None."""
     cols = [series[k] for k in keys]
     rng = np.random.default_rng(seed)
     out: dict[str, Any] = {"keys": keys}
@@ -416,8 +433,14 @@ def correlation_suite(series: dict[str, np.ndarray], keys: list[str], clusters: 
     r, p, n = _pairwise_matrix(ranked, lambda a, b: tuple(sps.pearsonr(a, b)))
     out["within_spearman"] = {"r": r, "p": p, "p_bh": _bh_matrix(p), "n": n}
 
-    pc, n_complete = partial_correlation(cols)
-    out["partial_pearson"] = {"r": pc, "n_complete": n_complete}
+    pkeys = list(keys) if partial_keys is None else [k for k in keys if k in set(partial_keys)]
+    sub, n_complete = partial_correlation([series[k] for k in pkeys])
+    pos = [keys.index(k) for k in pkeys]
+    pc: list[list[float | None]] = [[None] * len(keys) for _ in keys]
+    for a, i in enumerate(pos):
+        for b, j in enumerate(pos):
+            pc[i][j] = sub[a][b]
+    out["partial_pearson"] = {"r": pc, "n_complete": n_complete, "keys": pkeys}
 
     k = len(keys)
     dc = [[None] * k for _ in range(k)]

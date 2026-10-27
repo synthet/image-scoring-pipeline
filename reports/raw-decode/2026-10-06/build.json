@@ -1,0 +1,39 @@
+{
+  "source_url": "https://www.libraw.org/data/LibRaw-0.22.0.tar.gz",
+  "source_sha256": "1071e6e8011593c366ffdadc3d3513f57c90202d526e133174945ec1dd53f2a1",
+  "native_libraw_version": "0.22.0",
+  "configure_flags": [
+    "--disable-shared",
+    "--disable-openmp"
+  ],
+  "make_targets": [
+    "bin/raw-identify",
+    "bin/dcraw_emu"
+  ],
+  "native_optional_features": {
+    "jpeg": true,
+    "zlib": true,
+    "lcms": false,
+    "openmp": false
+  },
+  "rawpy_version": "0.26.1",
+  "rawpy_libraw_version": [
+    0,
+    22,
+    0
+  ],
+  "rawpy_flags": {
+    "DNGLOSSYCODEC": true,
+    "DNGDEFLATECODEC": true,
+    "OPENMP": true,
+    "LCMS": true,
+    "REDCINECODEC": true,
+    "RAWSPEED": false,
+    "DEMOSAIC_PACK_GPL2": false,
+    "DEMOSAIC_PACK_GPL3": false,
+    "X3FTOOLS": true,
+    "6BY9RPI": true
+  },
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+  "notes": "Tools built in test container tmp directory; no binaries committed or production image changed."
+}

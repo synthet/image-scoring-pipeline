@@ -164,7 +164,7 @@ def count_running_pipeline_jobs(
 ) -> int:
     """Count jobs with status=running (optionally excluding maintenance)."""
     try:
-        sql = "SELECT COUNT(*) AS cnt FROM jobs WHERE status = 'running'"
+        sql = "SELECT COUNT(*) AS cnt FROM jobs WHERE status = 'running' AND COALESCE(runner_state, '') != 'waiting_child'"
         if exclude_maintenance:
             sql += " AND COALESCE(job_type, '') != 'maintenance'"
         row = get_connector().query_one(sql)
@@ -212,6 +212,8 @@ def requeue_job(
     *,
     get_connector: Callable[[], Any],
     allowed_transitions: dict[str, set[str]],
+    tx=None,
+    resume_job_phases=None,
 ):
     """Reset an existing job row to queued status (in-place resume).
 
@@ -220,9 +222,14 @@ def requeue_job(
     Returns (job_id, display_position).
     """
     now = datetime.datetime.now()
+    from modules.db_operations import job_delegation
+
+    changes = []
+    owns_transaction = tx is None
 
     def _tx(tx):
-        row = tx.query_one("SELECT status FROM jobs WHERE id = ?", (job_id,))
+        job_delegation.lock_chain(tx, job_id)
+        row = tx.query_one("SELECT status, parent_job_id FROM jobs WHERE id = ?", (job_id,))
         if not row:
             raise ValueError(f"Job {job_id} not found")
         old_status = (row["status"] or "").strip().lower()
@@ -254,11 +261,20 @@ def requeue_job(
         display_position = int(
             (pos_row.get("count") or pos_row.get("COUNT(*)") or 0) if pos_row else 0
         )
+        if row.get("parent_job_id") is not None and resume_job_phases is not None:
+            resume_job_phases(job_id, tx=tx)
+            if owns_transaction:
+                changes.extend(job_delegation.propagate(tx, job_id))
         return job_id, display_position
 
     try:
-        return get_connector().run_transaction(_tx)
+        result = _tx(tx) if tx is not None else get_connector().run_transaction(_tx)
+        if tx is None:
+            job_delegation.publish(changes)
+        return result
     except RuntimeError:
+        if tx is not None:
+            raise
         return None, 0
 
 
@@ -453,11 +469,23 @@ def set_job_priority(job_id, priority, *, get_connector: Callable[[], Any]):
 
 def pause_queue_job(job_id, *, get_connector: Callable[[], Any]):
     """Pause a queued job so it is temporarily skipped by dequeue."""
+    from modules.db_operations import job_delegation
+
     now = datetime.datetime.now()
-    rowcount = get_connector().execute(
-        "UPDATE jobs SET status = 'paused', paused_at = ? WHERE id = ? AND status = 'queued'",
-        (now, job_id),
-    )
+    changes = []
+
+    def pause(tx):
+        job_delegation.lock_chain(tx, job_id)
+        rowcount = tx.execute(
+            "UPDATE jobs SET status = 'paused', paused_at = ? WHERE id = ? AND status = 'queued'",
+            (now, job_id),
+        )
+        if rowcount:
+            changes.extend(job_delegation.propagate(tx, job_id))
+        return rowcount
+
+    rowcount = get_connector().run_transaction(pause)
+    job_delegation.publish(changes)
     return {"success": rowcount > 0}
 
 
@@ -487,9 +515,13 @@ def restart_failed_job(
 
 
 def request_cancel_job(job_id, *, get_connector: Callable[[], Any]):
+    from modules.db_operations import job_delegation
+
     now = datetime.datetime.now()
+    changes = []
 
     def _tx(tx):
+        job_delegation.lock_chain(tx, job_id)
         row = tx.query_one("SELECT status FROM jobs WHERE id = ?", (job_id,))
         if not row:
             return {"success": False, "reason": "not_found"}
@@ -541,6 +573,13 @@ def request_cancel_job(job_id, *, get_connector: Callable[[], Any]):
                 "reason": "cancel_failed",
                 "status": latest_status,
             }
+        tx.execute(
+            "UPDATE job_phases SET state = 'cancelled', completed_at = ? "
+            "WHERE job_id = ? AND state NOT IN ('completed', 'skipped')", (now, job_id),
+        )
+        changes.extend(job_delegation.propagate(tx, job_id))
         return {"success": True, "reason": "cancelled", "status": status}
 
-    return get_connector().run_transaction(_tx)
+    result = get_connector().run_transaction(_tx)
+    job_delegation.publish(changes)
+    return result

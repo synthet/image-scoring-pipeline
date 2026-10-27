@@ -201,5 +201,5 @@ def strip_legacy_exhausted_keyword_csv(image_id: int, *, dry_run: bool = False) 
         return False
     if dry_run:
         return True
-    db.update_image_keywords_for_image(int(image_id), ",".join(cleaned), source="auto")
+    db.update_image_keywords_for_image(int(image_id), ",".join(cleaned), source="auto", scope="species")
     return True

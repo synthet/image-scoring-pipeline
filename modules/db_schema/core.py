@@ -141,10 +141,17 @@ def initialize_core_schema(cur) -> None:
         image_uuid          VARCHAR(36),
         bird_bbox           JSONB,
         created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at          TIMESTAMP
+        updated_at          TIMESTAMP,
+        registered_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
     cur.execute("ALTER TABLE images ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;")
+    # Registration time for the localization new-image boundary (#584). Mirrors
+    # migrations/versions/0041_images_registered_at.py: backfill before the default, or
+    # every existing row would be stamped "now" and count as new.
+    cur.execute("ALTER TABLE images ADD COLUMN IF NOT EXISTS registered_at TIMESTAMP;")
+    cur.execute("UPDATE images SET registered_at = created_at WHERE registered_at IS NULL;")
+    cur.execute("ALTER TABLE images ALTER COLUMN registered_at SET DEFAULT CURRENT_TIMESTAMP;")
     cur.execute(
         "ALTER TABLE images ADD COLUMN IF NOT EXISTS hash_version INTEGER NOT NULL DEFAULT 1;"
     )
@@ -203,6 +210,18 @@ def initialize_core_schema(cur) -> None:
     )
     cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS description TEXT;")
     cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS report_json JSONB;")
+    cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS parent_job_id INTEGER REFERENCES jobs(id);")
+    cur.execute("ALTER TABLE job_phases ADD COLUMN IF NOT EXISTS delegated_job_id INTEGER REFERENCES jobs(id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_parent_job_id ON jobs(parent_job_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_job_phases_delegated_job_id ON job_phases(delegated_job_id);")
+    cur.execute("""DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_jobs_parent_older' AND conrelid = 'jobs'::regclass) THEN
+            ALTER TABLE jobs ADD CONSTRAINT ck_jobs_parent_older CHECK (parent_job_id < id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_job_phases_child_newer' AND conrelid = 'job_phases'::regclass) THEN
+            ALTER TABLE job_phases ADD CONSTRAINT ck_job_phases_child_newer CHECK (delegated_job_id > job_id);
+        END IF;
+    END $$""")
 
     # job_phases counter columns
     cur.execute(

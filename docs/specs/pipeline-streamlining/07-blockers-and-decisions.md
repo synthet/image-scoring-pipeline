@@ -4,7 +4,7 @@ title: "Pipeline streamlining: blockers, decisions and suggestions"
 description: Status snapshot, blockers with unblock actions, a decision register covering every open question in specs 01–06 and rollout stage 4, a cost model, GPU sequencing, risks and prioritised suggestions.
 resource: docs/specs/pipeline-streamlining/07-blockers-and-decisions.md
 tags: [specs, pipeline, localization, scoring, blockers, decisions, risks]
-timestamp: 2026-10-04T00:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 
@@ -16,7 +16,27 @@ This page collects what the specs leave open: blockers, decisions, numbers and r
 recommends; you decide. Figures cite their source. Anything marked **estimate** is arithmetic on
 stated assumptions, not a measurement.
 
-## Update 2026-10-04
+## Current update after #594 (2026-10-12)
+
+The [gate report](../../reports/localization-agent-panel-gates-2026-10-12.md)
+and [current handoff](../../../NEXT_STEPS.md) supersede the dated blocker tables.
+
+| Track | Delivered evidence | Remaining unblock action |
+|---|---|---|
+| Legacy import / M0 | 76,475 current runs imported/reconciled September 27; decisions and #399 fix delivered. | Do not rerun the import; production retry timing remains unobserved. |
+| Delegated lifecycle / test target | #575/revision 0040 and #580 merged. | Verify deployed environment when running operational checks; no new full-suite claim here. |
+| Cascade (#408) | Persistence/wiring merged in #594; AC-17/AC-18 pass. | Verify runtime, back up before a flag write, enable/observe shadow runs. Consumer-source adoption needs a separate gate. |
+| Large/medium species | Active-selection reader, strict floor and passing existing-cohort gate/parity merged. #592 closed on merge. | Code delivery is complete; running-code verification, keyword preservation, backup and approved refresh remain. |
+| Small selections (#593) | Geometry passes; species lower bound 0.8123 fails 0.85. | Implement/test species exclusion before geometry-only promotion, or collect new independently reviewed evidence under a preregistered gate. |
+| Human burst evidence / scores | Species/box panels are agent-derived evidence. | Reconcile current #415 owner labels; #409 storage/fusion and #423 evidence remain separate. |
+| Portrait / gallery | Upright fixes delivered; scoring/input implementation merged in #573. | Job 6945 and keyword/species restoration remain; #568/gallery #176 representative acceptance is open. |
+
+C-4's current cascade setting is **0.60, no retry** from the pre-registered
+production-v1 re-collection. C-1/C-2 consumer/multi-subject choices remain separate.
+Do not apply September B1/B3/B6 instructions as new tasks. No production flag,
+selection or species keyword changed in the #594 gate continuation.
+
+## Historical update 2026-10-04
 
 The sections below are the September snapshot. These facts supersede them:
 
@@ -31,7 +51,7 @@ The sections below are the September snapshot. These facts supersede them:
 #379, #415, #416, #418, #368, and gallery #176 are still open. The current ordered list of
 remaining localization work is [What is left](../../architecture/pipeline/localization-rollout.md#what-is-left).
 
-## 1. Status snapshot
+## 1. September status snapshot (historical)
 
 | Item | State |
 |---|---|
@@ -48,7 +68,7 @@ remaining localization work is [What is left](../../architecture/pipeline/locali
 - #368: parent/child lifecycle for delegated culling runs.
 - #109 / #110: Lightroom recognition of pick/reject flags and ratings.
 
-## 2. Blockers
+## 2. September blockers (historical)
 
 | ID | Blocks | Evidence | Unblock action | Who | Issue |
 |---|---|---|---|---|---|
@@ -78,7 +98,7 @@ on `feat/414-localization-m0`; S4-1, S4-4 and S4-5 keep the current behavior.
 | S4-1 | Accept migration 0035 (`image_localization_runs.decode_route`)? | accept / move the route into `legacy_payload` | **Accept.** It's nullable, additive, already merged, and the route is part of rendition identity. | M0 |
 | S4-2 | Is a `rawpy` failure caused by the environment (module missing) retryable? | terminal / retryable | **Retryable** with `error_code = environment_missing`. An operator can fix it without the source changing. A genuine decode failure stays terminal. | M0 |
 | S4-3 | Should AC-14's reuse rule also cover `terminal_error`? | yes / no | **Yes, keyed on source hash.** Store the source hash on terminal runs (it's cheap, from `rendition.source_identity`), so an unchanged broken file isn't retried on every run. | M0 |
-| S4-4 | Should a job with retryable per-image failures end `failed`? | failed / completed with failures reported | **Completed, with failures in the summary**, until the stage 7 repair lane exists. Failing the job now would make every detector outage look like a pipeline failure, with no repair path. Revisit with the repair lane. | M0 |
+| S4-4 | Should a job with retryable per-image failures end `failed`? | failed / completed with failures reported | **Completed, with failures in the summary**, until the stage 7 repair lane exists. Failing the job now would make every detector outage look like a pipeline failure, with no repair path. Revisit with the repair lane. **Revisited 2026-10-05 (#541): kept.** The repair lane (#561) now re-attempts these images. | M0 |
 | S4-5 | Keep the 2048 px embedded-JPEG threshold? | keep / lower | **Keep for now.** #416 measures decode cost per route. The RTMDet arm ran on an ~800 px preview, so re-check once a cascade exists. | M2 |
 
 ### 3.2 Spec 01: rendition (#406)

@@ -9,12 +9,13 @@ Construction is the only branch point; see the ``new_*`` factories in each runne
 from __future__ import annotations
 
 import logging
+import base64
 import math
 import os
 from typing import Any
 
 from modules.bird_detection import BirdDetector
-from modules.bird_species import BioCLIPClassifier
+from modules.bird_species import BioCLIPClassifier, bioclip_input_mode
 from modules.engines.host import MultiModelHost
 from modules.remote_gpu.client import GpuRunnerClient, ready_client
 from modules.remote_gpu.contract import (
@@ -26,12 +27,14 @@ from modules.remote_gpu.contract import (
     KEYWORDS,
     SCENE,
     SCORING,
+    SCORING_INPUTS_VERSION,
     RemoteGpuError,
     as_vector,
     encode_array,
     encode_png,
 )
 from modules.scene_route import PROMPT_SET_VERSION, SceneClassifier, score
+from modules.scoring_inputs import validate_input
 from modules.tagging import CaptionGenerator, KeywordScorer
 
 logger = logging.getLogger(__name__)
@@ -91,17 +94,39 @@ class RemoteScoringHost(MultiModelHost):
         external_scores: dict[str, Any] | None = None,
         logger=print,
         write_metadata: bool = True,
+        model_inputs: dict[str, dict] | None = None,
     ) -> dict[str, Any]:
         is_raw = self.is_raw_file(image_path)
-        processing_path = self._resolve_processing_path(image_path, is_raw, logger)
+        processing_path = self._resolve_processing_path(image_path, is_raw, logger,
+                                                       prepared=model_inputs is not None)
         if processing_path is None:
-            return self._raw_failure_result(image_path)
+            return self._raw_failure_result(image_path, is_raw=is_raw)
 
         data, filename = _read(processing_path)
-        results = self._client.call(
-            SCORING, {"external_scores": external_scores or {}}, data, filename=filename,
-        )
+        # Private host paths are transport metadata, never model scores.
+        params = {"external_scores": {key: value for key, value in (external_scores or {}).items()
+                                      if not key.startswith("_")}}
+        if model_inputs is not None:
+            for model in self.registry.all_active():
+                if model.name not in params["external_scores"] and model.name not in model_inputs:
+                    raise ValueError(f"Missing prepared input for {model.name}")
+            params["scoring_inputs_version"] = SCORING_INPUTS_VERSION
+            params["model_inputs"] = {}
+            for name, spec in model_inputs.items():
+                validate_input(spec)
+                contents, _ = _read(spec["path"])
+                params["model_inputs"][name] = {
+                    "data": base64.b64encode(contents).decode("ascii"),
+                    "metadata": spec["metadata"],
+                }
+        results = self._client.call(SCORING, params, data, filename=filename)
         _validate_scoring_result(results)
+        if model_inputs is not None:
+            for name, spec in model_inputs.items():
+                if name in params["external_scores"]:
+                    continue
+                if (results["models"].get(name) or {}).get("input") != spec["metadata"]:
+                    raise RemoteGpuError(f"GPU runner did not attest selected input for {name}")
         # The runner scored a temp copy; report the host's paths, as a local run would.
         identity = self._init_result(image_path, is_raw, processing_path, [])
         results.pop("raw_conversion", None)
@@ -127,13 +152,18 @@ class RemoteScoringHost(MultiModelHost):
 def create_remote_scoring_host() -> RemoteScoringHost:
     """Scoring host for ``gpu_runner.phases.scoring = remote``. Raises RemoteGpuError when not ready."""
     from modules.engines.factory import ensure_production_registry
-    from modules.engines.registry import ModelRegistry
+    from modules.engines.registry import ModelRegistry, get_registry
     from scripts.python.run_all_musiq_models import MultiModelMUSIQ
 
     client = ready_client("scoring")
     backend = MultiModelMUSIQ(skip_gpu=True)
     # A private registry: the process-wide one keeps the GPU-backed wrappers a local run registers.
     registry = ensure_production_registry(backend, registry=ModelRegistry())
+    # The runner's host also scores the models registered at import time (topiq, arniqa, ...),
+    # so this host must prepare inputs for them too (#588). They are never run here.
+    for model in get_registry().all_registered():
+        if registry.get(model.name) is None:
+            registry.register(model)
     return RemoteScoringHost(client, backend, registry)
 
 
@@ -361,11 +391,14 @@ class RemoteBioCLIPClassifier(BioCLIPClassifier):
         from modules.thumbnails import open_oriented_for_ml
 
         self.last_image_embedding = None
+        self.last_input_mode = None
         self.last_bbox = None
+        self.last_error = None  # as in a local run: set only when ``[]`` means failure, not abstention
         try:
             img = open_oriented_for_ml(image_path)
         except Exception as exc:  # noqa: BLE001 — same outcome as a local decode failure
             logger.error("BioCLIP classify error for %s: %s", image_path, exc)
+            self.last_error = str(exc)[:200]
             return []
         out = self._client.call(
             BIOCLIP,
@@ -382,4 +415,6 @@ class RemoteBioCLIPClassifier(BioCLIPClassifier):
         )
         self.last_bbox = out.get("last_bbox")
         self.last_image_embedding = as_vector(out.get("last_image_embedding"))
+        # Derived on the host from what the runner already returns, so the wire contract is unchanged (#641).
+        self.last_input_mode = bioclip_input_mode(region, self.last_bbox)
         return [(str(name), float(prob)) for name, prob in out.get("predictions") or []]

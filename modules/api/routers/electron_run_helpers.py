@@ -95,6 +95,9 @@ def create_retry_job(original_job: dict, source: str) -> tuple[int, int]:
     payload["skip_done"] = True
 
     orig_job_type = original_job.get("job_type", "scoring")
+    # Retrying creates an independent chain; the old link remains in run-reason history.
+    payload.pop("parent_job_id", None)
+    payload.pop("delegated_job_id", None)
     phase_code = phase_for_job_type(orig_job_type)
 
     prior = original_job.get("description")

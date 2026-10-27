@@ -1,12 +1,24 @@
+---
+type: Feature Spec
+title: 2D embedding map
+description: Delivered multi-space map API and gated persistence, clustering and atlas roadmap.
+resource: features/planned/embeddings/EMBEDDING_APP_05_2D_EMBEDDING_MAP.md
+tags: [docs, planning, next-steps]
+timestamp: 2026-10-13T00:58:42Z
+okf_version: 0.2
+---
+
 # 05 - 2D Embedding Map (Visual Collection Explorer)
 
 *Part of [Possible Applications of image_embedding](EMBEDDING_APPLICATIONS.md).*
 
-## Status (2026-04-24)
+## Status (refreshed 2026-10-12)
 
 **Phase 0 — done.** `modules/projections.py::compute_embedding_map` (UMAP / t-SNE, L2-normalize, min-max scale) and `GET /api/embedding_map` (folder, method, sample_limit, n_neighbors, min_dist, refresh, disk-cached) are implemented and live for the 1280-d MobileNet space.
 
-**Open work — see "Roadmap" below.** Multi-space support, optional PCA pre-step, HDBSCAN clustering, persistent projection storage, and a similar-image side panel are all phased follow-ups, not part of the original v1 scope.
+**Phase 1 — delivered.** Multi-space/PCA, similarity space selection and registry
+routes are implemented. **Remaining:** optional persistent storage/HDBSCAN,
+the bounded projection job and atlas UI. See [NEXT_STEPS](NEXT_STEPS.md).
 
 ## Goal
 
@@ -29,10 +41,10 @@ User capabilities:
 
 ## Integration points
 
-- `modules/api.py`
-  - Add endpoint: `GET /api/embedding_map`.
-- `modules/db.py`
-  - Reuse `get_embeddings_for_search(folder_path=...)`.
+- `modules/api/routers/embedding.py`
+  - Existing endpoints: `GET /api/embedding_map`, `GET /api/embedding_spaces`.
+- `modules/projections_db.py` and the `modules/db/` facade
+  - Reuse current normalized, registered-space readers.
 - UI layer
   - New tab or section in existing stacks workflow.
 
@@ -118,9 +130,9 @@ The original v1 above shipped for the default 1280-d MobileNet space only. With 
 
 Only ship if disk cache + recompute proves to be the bottleneck under real usage — disk cache already prevents per-request recompute.
 
-- **Alembic `0013_image_embedding_projections.py`** — `image_embedding_projections (image_id, embedding_space_id, projection_method, projection_version, x, y, z, cluster_id, updated_at)` with `UNIQUE(image_id, embedding_space_id, projection_method, projection_version)`. Mirror DDL in `db_postgres._init_db_transaction()`.
+- **New Alembic revision, not 0013** — proposed `image_embedding_projections` table with versioned identity. Revision 0013 is already GPS/location; allocate the next revision at implementation time and mirror DDL under `modules/db_schema/`.
 - **`projection_version` is a deterministic hash** of `(method, n_neighbors, min_dist, pca_dim, metric, source_count_bucket)`. Never write rows under the same version with different inputs.
-- **HDBSCAN** (`min_cluster_size=10`, configurable) computed over the **PCA-50 representation** (more robust than 2D coords). Add `hdbscan` to `requirements.txt`; verify install in `~/.venvs/tf` before merge.
+- **HDBSCAN** (`min_cluster_size=10`, configurable) over the **PCA-50 representation**. Verify dependencies in the documented GPU-shell environment before merge.
 - **`modules/projection_runner.py`** — one-shot job (not a pipeline phase) enqueued via `job_dispatcher`. Memory ceiling, batched fit/transform for >10k vectors, resume-safe via `job_phases`.
 - **Endpoint behavior:** `GET /api/embedding_map` reads from the table when `(space_code, method, version)` matches; falls back to compute-on-demand and writes back when `?persist=true`.
 
@@ -132,7 +144,7 @@ Belongs in [image-scoring-gallery](https://github.com/synthet/image-scoring-gall
 - Color-by selector wired to `score_general / score_aesthetic / cluster_id / embedding_space / model_version / camera`.
 - Side panel: selected image preview + metadata + thumbnail grid of `GET /api/images/{id}/similar`.
 - Filters: folder, score range, date, camera, model version, "show only cluster N", "hide noise (-1)".
-- Space selector sourced from a small new `GET /api/embedding_spaces` endpoint that surfaces the registry rows.
+- Space selector consumes the existing `GET /api/embedding_spaces` registry endpoint.
 
 ### Decisions called out (don't defer to implementation time)
 

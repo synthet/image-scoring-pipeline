@@ -4,7 +4,7 @@ title: Region scores, bbox backfill, and parallel full-frame vs crop storage
 description: Synthesis of planned backfill for bird regions vs region IQA scores, and how full-image and crop scores are stored today vs in the localization rollout.
 resource: docs/planning/localization-region-scores-and-backfill.md
 tags: [planning, localization, bird-detection, scoring, database, backfill]
-timestamp: 2026-09-23T00:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 ---
 
@@ -12,6 +12,18 @@ okf_version: 0.2
 
 Authoritative rollout design: [architecture/pipeline/localization-rollout.md](../architecture/pipeline/localization-rollout.md).  
 Current schema pointers: [technical/DB_SCHEMA.md](../technical/DB_SCHEMA.md), [architecture/pipeline/phases/scoring.md](../architecture/pipeline/phases/scoring.md).
+
+## Current next work after #594 (2026-10-12)
+
+Legacy localization import is complete; 4,401 active large/medium selections
+project `bird_bbox`. #594 merged the selection-based species reader and shadow
+cascade persistence. Cascade gates pass; small-crop species fails (0.8123 < 0.85).
+The next task is consumer exclusion or new independent evidence for small
+selections, plus runtime/preflight/backup checks before any approved activation.
+See [the current handoff](../../NEXT_STEPS.md) and
+[gate report](../reports/localization-agent-panel-gates-2026-10-12.md).
+Region IQA/storage/fusion remains a separate #409/#423/#415 track; no crop score
+or library backfill is authorized by the detector/species gate results.
 
 ## Backfill: boxes vs region scores
 
@@ -30,7 +42,7 @@ Stage 4+ shadow localization explicitly must **not** change production scores un
 
 **Operational today:** detector-only backfill, not crop IQA:
 
-- `scripts/backfill_bird_bbox.py` — YOLO only, writes `bird_bbox` (or sentinel), no BioCLIP, no scoring on crops ([BIRD_SPECIES_WALKTHROUGH](../technical/BIRD_SPECIES_WALKTHROUGH.md)).
+- `scripts/backfill_bird_bbox.py` — queues localization jobs for `bird_bbox IS NULL` rows; no detector, no `bird_bbox` write, no BioCLIP, no scoring on crops (#638; [BIRD_SPECIES_WALKTHROUGH](../technical/BIRD_SPECIES_WALKTHROUGH.md)).
 
 ### Region / crop IQA scores (no production backfill plan yet)
 
@@ -48,7 +60,7 @@ Stage 4+ shadow localization explicitly must **not** change production scores un
 
 | Concern | Storage |
 |--------|---------|
-| Box geometry | `images.bird_bbox` JSONB (authority); normalized `image_localization_runs` + `image_regions` (migration 0034) but **dormant** until `localization.read_normalized_first` |
+| Box geometry | Active `image_localization_selections` choose promoted `image_regions`; selected `images.bird_bbox` is their compatibility projection. Unselected normalized runs remain shadow; `read_normalized_first` stays off. |
 | Full-frame model scores | `image_model_scores` — PK **`(image_id, model_name)`**, plus aggregates on `images` (`score_general`, etc.) |
 | Experimental models | Same table, `is_shadow = true` (excluded from fusion / scoring completeness) |
 

@@ -3,7 +3,7 @@ type: Plan
 title: Visual evidence API and grid ownership
 description: REST contract, extractor versioning, and module ownership for focus/noise grids and mask RLE.
 resource: docs/planning/visual-evidence-api-and-grids.md
-tags: [planning, evidence, api, grids, clean-room]
+tags: [planning, evidence, api, grids]
 timestamp: 2026-09-30T00:00:00Z
 okf_version: 0.2
 status: in_progress

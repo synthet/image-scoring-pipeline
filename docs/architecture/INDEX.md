@@ -36,7 +36,7 @@ material see [../technical/INDEX.md](../technical/INDEX.md); for the source-of-t
 | [pipeline/control-plane.md](pipeline/control-plane.md) | Dispatcher, orchestrator, planner, auto-drive, heal sweeps. |
 | [pipeline/persistence.md](pipeline/persistence.md) | Phase tables, columns, constraints. |
 | [pipeline/terminology-map.md](pipeline/terminology-map.md) | Cross-naming traversal table. |
-| [pipeline/localization-rollout.md](pipeline/localization-rollout.md) | Proposed eight-stage rollout for early localization and reusable region artifacts. |
+| [pipeline/localization-rollout.md](pipeline/localization-rollout.md) | Eight-stage rollout for early localization and reusable region artifacts: status of record (Stages 1–5 live, Stage 8 compatibility view deployed). |
 | [pipeline-architecture.md](pipeline-architecture.md) | Short summary; routes into the set above. |
 
 ## Data layer

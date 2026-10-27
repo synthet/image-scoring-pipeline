@@ -67,6 +67,44 @@ def bbox_scan_failed(reason: str) -> dict:
 RETRYABLE_BBOX_ERRORS = frozenset({"detector_unavailable"})
 
 
+#: Stage 8 (#638): ``False`` retires the detector embedded in ``bird_species``. BioCLIP then crops
+#: to the stored compatibility box instead of running YOLO, the bbox-only repair pass is off, and
+#: bird-species completion no longer waits on ``images.bird_bbox``. Default ``True`` changes nothing.
+EMBEDDED_DETECTOR_KEY = "bird_species.embedded_detector"
+
+
+def embedded_detector_enabled() -> bool:
+    """``bird_species.embedded_detector``; default ``True`` keeps the embedded-detector path."""
+    from modules import config
+
+    return bool(config.get_config_value(EMBEDDED_DETECTOR_KEY, default=True))
+
+
+def stored_box_region(bbox) -> Optional[tuple]:
+    """Normalized display-space ``(x1, y1, x2, y2)`` of a stored real box, else ``None``.
+
+    ``None`` for NULL, the not-detected and scan-failed sentinels, and malformed payloads.
+    Stored boxes are in the display frame they record (``img_w`` x ``img_h``).
+    """
+    if isinstance(bbox, (str, bytes)):
+        import json
+
+        try:
+            bbox = json.loads(bbox)
+        except ValueError:
+            return None
+    if not isinstance(bbox, dict):
+        return None
+    try:
+        w, h = float(bbox["img_w"]), float(bbox["img_h"])
+        x1, y1, x2, y2 = (float(bbox[k]) for k in ("x1", "y1", "x2", "y2"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if w <= 0 or h <= 0 or not (0 <= x1 < x2 <= w and 0 <= y1 < y2 <= h):
+        return None
+    return (x1 / w, y1 / h, x2 / w, y2 / h)
+
+
 def bbox_needs_scan(bbox) -> bool:
     """True when ``images.bird_bbox`` should be (re)scanned.
 

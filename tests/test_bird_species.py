@@ -98,6 +98,44 @@ def test_runner_start_batch_spawns_thread(monkeypatch):
     assert threads_started == [True]
 
 
+def test_min_confidence_default_and_config(monkeypatch):
+    """Abstention floor (#422): 0.5 unless config sets bird_species.min_confidence."""
+    import modules.bird_species as bs
+    from modules import config
+
+    monkeypatch.setattr(config, "get_config_value", lambda key, default=None: default)
+    assert bs.min_confidence() == 0.5
+    monkeypatch.setattr(config, "get_config_value", lambda key, default=None: 0.7)
+    assert bs.min_confidence() == 0.7
+
+
+@pytest.mark.parametrize("passed, expected", [(None, 0.65), (0.2, 0.2)])
+def test_start_batch_threshold_falls_back_to_min_confidence(monkeypatch, passed, expected):
+    """An explicit job threshold wins; None uses the configured floor (#422)."""
+    import modules.bird_species as bs
+    import modules.pipeline as pipeline
+
+    runner = BirdSpeciesRunner()
+    seen = {}
+
+    class _InlineThread:
+        def __init__(self, target, name, daemon):
+            self._target = target
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(threading, "Thread", _InlineThread)
+    monkeypatch.setattr(pipeline, "safe_runner_thread", lambda r, job_id, fn: fn())
+    monkeypatch.setattr(bs, "min_confidence", lambda: 0.65)
+    monkeypatch.setattr(
+        runner, "_run_batch_internal",
+        lambda input_path, species, threshold, *a, **kw: seen.setdefault("threshold", threshold),
+    )
+
+    runner.start_batch(None, job_id=1, threshold=passed)
+    assert seen["threshold"] == expected
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # _resolve_inference_path — full RAW preview, not the 512px thumbnail
 # ──────────────────────────────────────────────────────────────────────────────
@@ -189,8 +227,6 @@ def test_bioclip_classifier_model_none_before_load(monkeypatch):
 @pytest.mark.ml
 def test_bioclip_text_feature_cache_hit():
     """Calling _get_text_features twice with the same list should reuse cached result."""
-    import torch
-
     clf = BioCLIPClassifier(device="cpu")
     clf.load_model()
 
@@ -204,8 +240,6 @@ def test_bioclip_text_feature_cache_hit():
 @pytest.mark.ml
 def test_bioclip_text_feature_cache_invalidated_on_new_list():
     """Changing the species list must invalidate the cache."""
-    import torch
-
     clf = BioCLIPClassifier(device="cpu")
     clf.load_model()
 
@@ -326,8 +360,8 @@ def test_runner_missing_file_marks_skipped_not_failed(monkeypatch):
     monkeypatch.setattr(_db, "set_image_phase_status", _fake_set_status)
     bbox_writes = []
     monkeypatch.setattr(
-        _db,
-        "update_image_bird_bbox",
+        bs,
+        "write_legacy_bird_bbox",
         lambda image_id, bbox: bbox_writes.append((image_id, bbox)) or True,
     )
     monkeypatch.setattr(bs, "_get_image_ids_with_species_keyword", lambda ids: set())
@@ -385,8 +419,8 @@ def test_runner_writes_bioclip_species_confidence_maps(monkeypatch):
     monkeypatch.setattr(_db, "update_image_keywords_for_image", lambda *args, **kw: helper_calls.append((args, kw)))
     monkeypatch.setattr(_db, "set_image_phase_status", lambda *args, **kw: status_calls.append((args, kw)))
     monkeypatch.setattr(
-        _db,
-        "update_image_bird_bbox",
+        bs,
+        "write_legacy_bird_bbox",
         lambda image_id, bbox: bbox_writes.append((image_id, bbox)) or True,
     )
 
@@ -453,7 +487,7 @@ def test_runner_preserves_birds_when_legacy_keywords_empty(monkeypatch):
     )
     monkeypatch.setattr(_db, "update_image_keywords_for_image", lambda *args, **kw: helper_calls.append((args, kw)))
     monkeypatch.setattr(_db, "set_image_phase_status", lambda *args, **kw: None)
-    monkeypatch.setattr(_db, "update_image_bird_bbox", lambda *a, **k: True)
+    monkeypatch.setattr(bs, "write_legacy_bird_bbox", lambda *a, **k: True)
 
     runner._run_batch_internal(
         input_path="/photos",
@@ -498,7 +532,7 @@ def test_runner_no_match_writes_ips_only(monkeypatch):
     }])
     monkeypatch.setattr(_db, "update_image_keywords_for_image", lambda *a, **k: kw_calls.append((a, k)))
     monkeypatch.setattr(_db, "set_image_phase_status", lambda *a, **k: status_calls.append((a, k)))
-    monkeypatch.setattr(_db, "update_image_bird_bbox", lambda *a, **k: True)
+    monkeypatch.setattr(bs, "write_legacy_bird_bbox", lambda *a, **k: True)
 
     runner._run_batch_internal(
         input_path="/photos",
@@ -547,8 +581,8 @@ def test_runner_persists_detector_unavailable_sentinel_with_species(monkeypatch)
     )
     monkeypatch.setattr(_db, "set_image_phase_status", lambda *a, **kw: None)
     monkeypatch.setattr(
-        _db,
-        "update_image_bird_bbox",
+        bs,
+        "write_legacy_bird_bbox",
         lambda image_id, bbox: bbox_writes.append((image_id, bbox)) or True,
     )
 
@@ -770,8 +804,8 @@ def _patch_bbox_only_batch(monkeypatch, rows, *, species_complete=True):
         _db, "is_image_bird_species_complete", lambda image_id, **kw: species_complete
     )
     monkeypatch.setattr(
-        _db,
-        "update_image_bird_bbox",
+        bs,
+        "write_legacy_bird_bbox",
         lambda image_id, bbox: writes["bbox"].append((image_id, bbox)) or True,
     )
     monkeypatch.setattr(

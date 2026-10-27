@@ -109,6 +109,16 @@ def bird_detector_enabled(cfg: dict[str, Any]) -> bool:
     return bool(bird.get("enabled", True))
 
 
+def new_images_only(cfg: dict[str, Any]) -> bool:
+    """``localization.new_images_only``: planned work skips unchanged legacy images (#527)."""
+    return bool(cfg.get("new_images_only", True))
+
+
+def repair_enabled(cfg: dict[str, Any]) -> bool:
+    """``localization.repair.enabled``: bounded retry and the auto repair lane (#527)."""
+    return bool((cfg.get("repair") or {}).get("enabled", False))
+
+
 # ---------------------------------------------------------------------------
 # Detector identity (AC-13)
 # ---------------------------------------------------------------------------
@@ -543,8 +553,10 @@ def localize_image(
             decoded = decode_for_localization(file_path)
     except DecodeEnvironmentError as exc:
         detail = redact_error_detail(str(exc))
+        # The source hash gives the attempt an artifact identity for bounded repair (#527).
         run.update(status=STATUS_RETRYABLE, is_retryable=True,
-                   error_code="environment_missing", error_detail=detail)
+                   error_code="environment_missing", error_detail=detail,
+                   source_hash=source_hash, source_hash_version=source_hash_version)
         _finish(run, [])
         return ImageOutcome(status=STATUS_RETRYABLE, error_detail=detail,
                             decode_seconds=time.perf_counter() - t0)

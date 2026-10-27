@@ -11051,11 +11051,17 @@
             ]
           },
           "threshold": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Threshold",
-            "description": "Minimum softmax probability to store a species prediction.",
-            "default": 0.1,
-            "example": 0.1
+            "description": "Minimum softmax probability to store a species prediction. Omit to use config bird_species.min_confidence (default 0.5); below it the image abstains (no_species_match).",
+            "example": 0.5
           },
           "top_k": {
             "type": "integer",

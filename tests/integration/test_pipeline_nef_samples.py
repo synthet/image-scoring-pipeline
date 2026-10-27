@@ -17,15 +17,15 @@ Env vars:
 from __future__ import annotations
 
 import os
+import shutil
 import time
 
 import pytest
 
-from modules import db
+from modules import db, xmp
 from modules.job_dispatcher import JobDispatcher
 from tests.support.testing_samples import (
     list_sample_image_files,
-    require_sample_files,
     testing_samples_root,
 )
 
@@ -44,15 +44,27 @@ def _postgres_clean(postgres_test_session, clean_postgres):
 
 
 @pytest.fixture(scope="module")
-def sample_root():
-    """Resolve and validate the sample images root directory."""
+def sample_root(tmp_path_factory):
+    """Copy up to MAX_IMAGES samples (with XMP sidecars) to a temp root.
+
+    The metadata runner rewrites sidecars next to each image, so the runners
+    must never point at the checked-in fixtures.
+    """
     root = testing_samples_root()
     if not os.path.isdir(root):
         pytest.skip(f"Testing samples root not found: {root}")
     files = list_sample_image_files(root)
     if len(files) < 1:
         pytest.skip(f"No sample images found under {root}")
-    return root
+    work_root = tmp_path_factory.mktemp("nef_samples")
+    for src in files[:MAX_IMAGES]:
+        dest = work_root / os.path.relpath(src, root)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        sidecar = xmp.get_xmp_path(src)
+        if os.path.isfile(sidecar):
+            shutil.copy2(sidecar, xmp.get_xmp_path(str(dest)))
+    return str(work_root)
 
 
 @pytest.fixture(scope="module")

@@ -111,6 +111,8 @@ class JobDispatcher:
             if self._any_runner_busy():
                 return
 
+            db.reconcile_delegated_jobs()
+
             busy_runner_keys: list[str] = []
             active_runner = self._get_active_runner()
             if active_runner:
@@ -162,6 +164,7 @@ class JobDispatcher:
         # dispatch lock because the bucket scan can be heavy on large libraries.
         if idle:
             self._maybe_drive_tick()
+            self._maybe_localization_lane()
 
         self._log_tick_summary(tick_continuation, tick_dequeued, tick_stale_demotions, start_tick)
 
@@ -236,6 +239,15 @@ class JobDispatcher:
         except Exception:
             logger.debug("Dispatcher: drive_tick failed", exc_info=True)
 
+    def _maybe_localization_lane(self) -> None:
+        """Admit one localization repair-lane job when core work is idle (#527). Never raises."""
+        try:
+            from modules import localization_lane
+
+            localization_lane.maybe_enqueue()
+        except Exception:
+            logger.debug("Dispatcher: localization lane tick failed", exc_info=True)
+
     @staticmethod
     def _parse_queue_payload(job: dict[str, Any]) -> dict[str, Any]:
         payload: dict[str, Any] = {}
@@ -306,6 +318,8 @@ class JobDispatcher:
         scope_paths = [str(p) for p in scope_paths if p]
 
         planned = plan_phase(scope_paths, queue_key, job_id=job_id, dry_run=False)
+        if queue_key == "localization":
+            planned = self._localization_auto_scope(planned)
         claim_result = claim_image_phases(job_id, queue_key, planned)
         scoped = list(claim_result.get("claimed") or [])
         if scoped:
@@ -313,6 +327,23 @@ class JobDispatcher:
         payload = self._persist_stage_queue(job_id, payload, queue_key, scoped)
         skip_phase = len(scoped) == 0
         return payload, scoped, skip_phase
+
+    @staticmethod
+    def _localization_auto_scope(planned: list[int]) -> list[int]:
+        """Apply ``localization.new_images_only`` to planned (folder-scoped) work (#527)."""
+        from modules.localization_policy import auto_scope
+
+        return auto_scope(planned)
+
+    @staticmethod
+    def _claim_explicit_ids(job_id: int, queue_key: str, image_ids: list[int]) -> list[int]:
+        """Claim selector-submitted IDs so duplicate submissions share one open claim (#527)."""
+        from modules.phase_work_claims import claim_image_phases, mark_claims_running
+
+        claimed = list(claim_image_phases(job_id, queue_key, image_ids).get("claimed") or [])
+        if claimed:
+            mark_claims_running(job_id, queue_key, claimed)
+        return claimed
 
     @staticmethod
     def _skip_empty_phase(job_id: int, phase_code: str) -> str:
@@ -521,6 +552,7 @@ class JobDispatcher:
         runner_name, runner = entry
         if not runner:
             return False, f"No runner available for '{phase}' (runner '{runner_name}' is not initialized)"
+        runner._dispatch_job_id = job_id
 
         logger.info(f"[DISPATCHER] Starting job {job_id} on {runner_name} (phase: {phase}, path: {input_path})")
         
@@ -573,6 +605,8 @@ class JobDispatcher:
             run_mode = CANONICAL_RUN_MODE
 
         explicit_ids = self._explicit_stage_resolved_ids(payload, queue_key)
+        if explicit_ids is not None and queue_key == "localization":
+            explicit_ids = self._claim_explicit_ids(job_id, queue_key, explicit_ids)
         if explicit_ids is not None:
             scoped_resolved = explicit_ids
             payload = self._persist_stage_queue(job_id, payload, queue_key, explicit_ids)
@@ -657,6 +691,8 @@ class JobDispatcher:
                 job_id=job_id,
                 resolved_image_ids=scoped_resolved,
                 report_collector=report_collector,
+                # Only the automatic repair lane is limited; an explicit submit is the retry (#527).
+                repair_limited=payload.get("localization_lane") == "auto",
             )
 
         if phase_key in ("score", "scoring"):
@@ -749,7 +785,8 @@ class JobDispatcher:
                 payload.get("input_path", input_path),
                 job_id=job_id,
                 custom_keywords=payload.get("custom_keywords"),
-                overwrite=bool(mode_flags["overwrite"]),
+                # /api/tagging/start puts overwrite on the payload; run_mode never sets it.
+                overwrite=bool(mode_flags["overwrite"]) or bool(payload.get("overwrite")),
                 generate_captions=bool(payload.get("generate_captions", False)),
                 generate_accessibility=bool(payload.get("generate_accessibility", False)),
                 resolved_image_ids=scoped_resolved,
@@ -793,7 +830,7 @@ class JobDispatcher:
                 payload.get("input_path", input_path),
                 job_id=job_id,
                 candidate_species=payload.get("candidate_species"),
-                threshold=float(payload.get("threshold", 0.1)),
+                threshold=None if payload.get("threshold") is None else float(payload["threshold"]),
                 top_k=int(payload.get("top_k", 1)),
                 overwrite=overwrite,
                 resolved_image_ids=scoped_resolved,

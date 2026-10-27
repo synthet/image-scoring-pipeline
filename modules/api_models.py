@@ -169,10 +169,12 @@ class BirdSpeciesStartRequest(SelectorRequest):
                     "If None, uses the bundled North American species list.",
         example=["American Robin", "Northern Cardinal", "Mallard"]
     )
-    threshold: float = Field(
-        0.1,
-        description="Minimum softmax probability to store a species prediction.",
-        example=0.1
+    threshold: float | None = Field(
+        None,
+        description="Minimum softmax probability to store a species prediction. "
+                    "Omit to use config bird_species.min_confidence (default 0.5); "
+                    "below it the image abstains (no_species_match).",
+        example=0.5
     )
     top_k: int = Field(
         1,

@@ -4,7 +4,7 @@ title: Technical — Index
 description: Index of stable technical reference and deep-dive feature documentation for image-scoring-pipeline.
 resource: technical/INDEX.md
 tags: [technical, index, reference, okf]
-timestamp: 2026-09-01T00:00:00Z
+timestamp: 2026-10-21T03:58:38Z
 okf_version: 0.2
 ---
 
@@ -31,7 +31,7 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 
 | Document | Description |
 |----------|-------------|
-| [DB_SCHEMA.md](DB_SCHEMA.md) | Firebird database schema (tables, columns, relationships) |
+| [DB_SCHEMA.md](DB_SCHEMA.md) | PostgreSQL schema catalog, selection-aware batch reads and bbox writer ownership contracts, durable delegated job links, and migrations |
 | [EMBEDDINGS.md](EMBEDDINGS.md) | MobileNetV2 `image_embedding`, pgvector, backfill scripts, multi-model notes |
 | [DB_RECOVERY_FROM_CORRUPTION.md](DB_RECOVERY_FROM_CORRUPTION.md) | Recovery procedures for database corruption |
 | [FIREBIRD_WINDOWS_TEMPDIR.md](FIREBIRD_WINDOWS_TEMPDIR.md) | Windows `TempDirectories` / `fb_sort_*` sort errors (335544675) |
@@ -67,6 +67,7 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 | [BIRD_SPECIES_WALKTHROUGH.md](BIRD_SPECIES_WALKTHROUGH.md) | Bird species classification via BioCLIP 2 — end-to-end walkthrough |
 | [KEYWORD_EXTRACTION_GUIDE.md](KEYWORD_EXTRACTION_GUIDE.md) | BLIP + CLIP keyword extraction tool |
 | [RAW_PROCESSING_GUIDE.md](RAW_PROCESSING_GUIDE.md) | RAW file processing pipeline |
+| [RAW_DIAGNOSTICS.md](RAW_DIAGNOSTICS.md) | Optional RAW failure probes and isolated CPU decode comparisons. |
 | [NEF_FORMAT_REFERENCE.md](NEF_FORMAT_REFERENCE.md) | Nikon NEF container, MakerNote, previews (reference notes) |
 | [NEF_IMPLEMENTATION_REVIEW.md](NEF_IMPLEMENTATION_REVIEW.md) | NEF handling code review: backend + image-scoring-gallery |
 | [INBROWSER_RAW_PREVIEW.md](INBROWSER_RAW_PREVIEW.md) | In-browser NEF preview (LibRaw/JS) |
@@ -78,8 +79,8 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 
 | Document | Description |
 |----------|-------------|
-| [API_CONTRACT.md](API_CONTRACT.md) | API contract summary (endpoints, response models) |
-| [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) | `jobs` queue persistence, `JobDispatcher`, and behavior on WebUI restart |
+| [API_CONTRACT.md](API_CONTRACT.md) | API contract summary, response models, opt-in normalized bbox reads and process-local localization-lane diagnostics |
+| [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) | Durable queue, delegated culling controls, restart recovery, and revision 0040 deployment |
 | [RUNS_WALKTHROUGH.md](RUNS_WALKTHROUGH.md) | End-to-end walkthrough: submit → dispatcher → runners, pause/resume/retry/force, UI tabs |
 | [RUN_OPTIONS_MODE_MATRIX.md](RUN_OPTIONS_MODE_MATRIX.md) | New Run four options vs `run_mode`, dispatcher wiring, audit findings (2026-05-07), known gaps |
 | [MCP_DEBUGGING_TOOLS.md](MCP_DEBUGGING_TOOLS.md) | MCP server tools for Cursor |
@@ -92,5 +93,6 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 | [AGENT_COORDINATION.md](AGENT_COORDINATION.md) | Integration protocols with **image-scoring-gallery** ([canonical on GitHub](https://github.com/synthet/image-scoring-pipeline/blob/main/docs/technical/AGENT_COORDINATION.md)) |
 | [ELECTRON_SYNC_IMPORT_AND_PHASES.md](ELECTRON_SYNC_IMPORT_AND_PHASES.md) | After **Sync from device**: `image_phase_status`, `jobs`, `indexing` vs Inspection, links to gallery workflow doc |
 | [CROSS_APP_INTEGRATION_AUDIT.md](../testing/CROSS_APP_INTEGRATION_AUDIT.md) | Automated integration coverage between backend and gallery |
+| [NORMALIZED BBOX COMPATIBILITY](NORMALIZED_BBOX_COMPATIBILITY.md) | Local normalized bird-box compatibility contract: view 0043, coordinated gallery reads, deployment gates and rollback |
 
 **See also:** [Main docs index](../INDEX.md) · [reference/models/](../reference/models/INDEX.md) · [reference/api/](../reference/api/INDEX.md) · [planning/](../planning/INDEX.md) · [image-scoring-gallery docs](https://github.com/synthet/image-scoring-gallery/blob/main/docs/README.md)

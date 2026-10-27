@@ -4,7 +4,7 @@ title: Reports index
 description: Index of historical reports, research, reviews, and debugging sessions under docs/reports/.
 resource: docs/reports/INDEX.md
 tags: [docs, reports, index]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-10-21T02:56:24Z
 okf_version: 0.2
 ---
 
@@ -17,6 +17,12 @@ Historical reports, research, reviews, and debugging sessions.
 | Document | Description |
 |----------|-------------|
 | [WORK_SUMMARY_2026-03-08.md](WORK_SUMMARY_2026-03-08.md) | Work summary |
+| [raw-decode-comparison-2026-10-06](raw-decode-comparison-2026-10-06.md) | Six Nikon fixtures: embedded previews versus rawpy and LibRaw CLI, with failure and pixel evidence. |
+| [localization-rollout-operations-2026-10-07](localization-rollout-operations-2026-10-07.md) | Revision 0040 deployment, a 34-image live batch, merged strict-retry fix with 103 cloud checks, and read-only preflight for the remaining production gate. |
+| [localization-rollout-continuation-2026-10-08](localization-rollout-continuation-2026-10-08.md) | Merged strict retry fix loaded, full selected-region keypoint coverage, species comparison, and pending production lane gate. |
+| [localization-stage4-live-nef-2026-10-09](localization-stage4-live-nef-2026-10-09.md) | Twelve live wildlife NEFs: two automatic lane jobs completed, ten detections, one no-detection, one scene-route skip; normal indexing timestamp mismatch remains. |
+| [localization-rollout-next-steps-2026-10-09](localization-rollout-next-steps-2026-10-09.md) | Historical October 9 handoff; supersession link routes to the merged #594 status and current operational tasks. |
+| [bird-species-abstention-2026-10-08](bird-species-abstention-2026-10-08.md) | BioCLIP 2 on the 213 panel crops: a 0.5 floor keeps 92% at 93.5% precision; nine list additions help in-sample but add confident look-alike errors; ships `bird_species.min_confidence` (#422). |
 | [WORK_SUMMARY_2026-05-26.md](WORK_SUMMARY_2026-05-26.md) | Auto-drive run 3245 investigation + empty composite scores dry-run |
 | [bird-species-keywords-2026-08-31/summary.md](bird-species-keywords-2026-08-31/summary.md) | Preserve `birds` on species writes; IPS-only no-match state (replaces `birds:species-exhausted` keyword) |
 | [DEEP_RESEARCH_REPORT.md](DEEP_RESEARCH_REPORT.md) | Deep research report |
@@ -38,6 +44,7 @@ Historical reports, research, reviews, and debugging sessions.
 | [scene-route-benchmark-2026-10-02](scene-route-benchmark-2026-10-02.md) | Owner-labelled scene benchmark: SigLIP2 zero-shot best (macro F1 0.75); bird route frozen at p >= 0.065, skipping 5/77 incidental-bird images and 75% of non-bird detector runs; filters 114/182 v1 false detections |
 | [model-selection-session-2026-10-01](model-selection-session-2026-10-01.md) | Cursor session: label-free `model_selection_report` implementation; links to live `reports/model_selection/latest/` and Codex study bundle |
 | [model-selection-codex-handoff-2026-10-02](model-selection-codex-handoff-2026-10-02.md) | Codex `_2` handoff — frozen snapshot/sample hashes, 900-unit blind review design, 300-stack exploratory audit, CLI commands |
+| [scoring-loop-ordering-2026-10-05](scoring-loop-ordering-2026-10-05.md) | Image-major vs model-major scoring: model-major frees no VRAM and breaks resume/XMP; recommend micro-batched image-major with resident models, decode-once first (NEF decode ≈ 3× the 5-model ensemble); reconciles an external generic analysis |
 | [model-selection-findings-2026-10-02](model-selection-findings-2026-10-02.md) | Wiki snapshot of label-free verdicts and deprecation hypotheses (statistical only) |
 | [model_evaluation_and_curation_plan](model_evaluation_and_curation_plan.md) | Phase 1–3 curation roadmap — canonical evidence-source table, promotion gates, proposed config/culling changes |
 | [deliver-master-runbook-2026-10-02](deliver-master-runbook-2026-10-02.md) | Finish PR #471 + consolidate model-selection commits; PowerShell `Consolidate-DeliverToMaster.ps1` |
@@ -115,5 +122,20 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 |----------|-------------|
 | [RELEASE_HANDOFF_2026-04-10_2026-04-11.md](RELEASE_HANDOFF_2026-04-10_2026-04-11.md) | Cross-repo release handoff (dated snapshot) |
 | [SESSION TRANSCRIPT DIGESTS](SESSION_TRANSCRIPT_DIGESTS.md) | Router for wiki digests distilled from gitignored session exports (public fact layer) |
+| [localization-species-policy-validation-2026-10-10](localization-species-policy-validation-2026-10-10.md) | Complete frozen 369-species/0.5 comparison: 4,401 distinct expected results, zero final skips; byte-identical staging bypassed shadow-run ExifTool timeouts; frozen inputs/baseline and production state unchanged. |
+| [localization-session-work-log-2026-10-10](localization-session-work-log-2026-10-10.md) | Complete 4,401-image frozen comparison, recovery provenance, mounted-source ExifTool diagnosis and requested Docker shutdown. |
+| [localization-agent-panel-gates-2026-10-12](localization-agent-panel-gates-2026-10-12.md) | Final gates and #594 merge receipt: cascade passes; small-crop species fails; live activation/refresh and small-selection exclusion remain. |
+| [localization-geometry-only-activation-2026-10-13](localization-geometry-only-activation-2026-10-13.md) | Geometry-only species exclusion, box ownership and stopped activation preflight for four changed production boxes. |
+| [localization-stage5-activation-2026-10-15](localization-stage5-activation-2026-10-15.md) | Stage 5 live: 4,401 large/medium images refreshed and verified with region BioCLIP; 274 rule/4 small selections geometry-only; cascade enablement held on missing onnxruntime. |
+| [bird-species-list-379-gate-2026-10-16](bird-species-list-379-gate-2026-10-16.md) | Agent-panel gate adopting a 379-name Austin-ordered species list; three proposed additions rejected. |
+| [retag-418-session-2026-10-17](retag-418-session-2026-10-17.md) | #418 re-tag (job 6945) recovered after host sleep failed it; restart vs resume, progress timeline, verification and follow-up decisions. |
+| [jev-1.14-image-inputs-assessment-2026-10-16](jev-1.14-image-inputs-assessment-2026-10-16.md) | Jev 1.14 image inputs: verified claims, tooling gaps, gate use cases and conditions before use; research only. |
+| [timing-baseline-2026-10-18](timing-baseline-2026-10-18.md) | Three-repeat decode and model timing baseline, routed-versus-local control, memory limits and rollout cost gates. |
+| [localization-stage8-readiness-2026-10-23](localization-stage8-readiness-2026-10-23.md) | #660 repair close-out, WebUI on v9.2.0, read_normalized_first rollback drill, 43 legacy/view bbox disagreements, backfill reroute and remaining #638 gates. |
+| [localization-rollout-summary-2026-10-22](localization-rollout-summary-2026-10-22.md) | One-page summary of the eight-stage localization rollout: goal, timeline, stage status, gates, deployment, open work and documentation drift. |
+| [phase-graph-review-2026-10-24](phase-graph-review-2026-10-24.md) | Phase graph rebuilt from data dependencies and timing: #407 AC-9 superseded, culling flag stays on, changes C-1 to C-4. |
+| [model-suitability-audit-2026-10-25](model-suitability-audit-2026-10-25.md) | External audit of the model-suitability export: no independent culling labels, within-stack agreement collapse, composite-distorted partial correlation; defects #685–#687. |
+| [localization-continuation-2026-10-19](localization-continuation-2026-10-19.md) | Interrupted repair, historical box drift, local reader/outage fixes and fresh-backup admission preparation awaiting checkpoint/runtime acceptance. |
+| [localization-promotion-gate-2026-10-26](localization-promotion-gate-2026-10-26.md) | Hook repair verified, backfill/cohort freeze complete and WebUI restored; only Antigravity passes the 18/20 calibration threshold. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)

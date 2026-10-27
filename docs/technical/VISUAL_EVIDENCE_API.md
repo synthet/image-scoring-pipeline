@@ -3,7 +3,7 @@ type: Technical Spec
 title: Visual evidence REST API and payload
 description: Canonical JSON contract for GET /api/images/{id}/evidence consumed by the gallery and operator tools.
 resource: docs/technical/VISUAL_EVIDENCE_API.md
-tags: [technical, api, evidence, overlays, clean-room]
+tags: [technical, api, evidence, overlays]
 timestamp: 2026-09-30T00:00:00Z
 okf_version: 0.2
 status: partial

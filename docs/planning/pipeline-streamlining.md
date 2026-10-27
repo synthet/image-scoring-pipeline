@@ -4,7 +4,7 @@ title: Pipeline streamlining with subject-aware scoring
 description: Reviewed target order for the image pipeline (decode once, scene route, localize, species on crop, subject-aware scoring, bursts, picks), built on the localization rollout, with evidence, costs and the issues that implement it.
 resource: docs/planning/pipeline-streamlining.md
 tags: [planning, pipeline, localization, scoring, culling, detection]
-timestamp: 2026-09-25T00:00:00Z
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 status: proposed
 ---
@@ -15,7 +15,8 @@ This plan gives a shorter path from import to pick/reject than the current pipel
 [localization rollout](../architecture/pipeline/localization-rollout.md) (#345), and it makes
 **scoring consume the localized subject** instead of running beside localization.
 
-**Status:** proposal, docs only. Tracked in #410. Implementation issues: #406 (rendition), #407
+**Status:** target design with partial implementation delivered; crop/fusion authority
+remains gated. Tracked in #410. Implementation issues: #406 (rendition), #407
 (phase graph), #408 (detector cascade), #409 (subject-aware scoring), #412 (scene route) and #413
 (species beyond birds). Detailed specs, roadmap and acceptance criteria:
 [spec hub](../specs/pipeline-streamlining/INDEX.md).
@@ -52,17 +53,39 @@ flowchart LR
 8. **Group bursts, then pick / keep / reject.** Grouping needs only embeddings and capture time.
    Picks need scores. Delete stays a human-approved action and is never automatic.
 
-## Where the localization rollout stands (2026-09-25)
+## Current next work (after PR #594, 2026-10-12)
+
+The implementation and gate report merged at `0e24a43`. Start with
+[the current handoff](../../NEXT_STEPS.md) and
+[the gate report](../reports/localization-agent-panel-gates-2026-10-12.md).
+
+1. Resolve the small-selection species exclusion or obtain new independently
+   reviewed evidence: its registered precision lower bound is 0.8123 < 0.85.
+2. Verify running code/frozen inputs, preserve keywords and take a verified DB
+   backup before enabling/refreshing region species on the existing approved cohort.
+3. Activate and observe the merged cascade in shadow at 0.60 without retry.
+   AC-17/AC-18 pass; making it the consumer source still needs its own selection gate.
+4. Keep portrait 6945, production retry timing and mounted-source diagnosis as
+   distinct operational tasks. Do not re-import or reclassify completed artifacts.
+5. Continue #406/#407 foundations and #415/#409/#423 evidence/storage gates
+   before authoritative crop scores or fusion. #592 closed on merge; activation
+   was not established by that closure.
+
+## Where the localization rollout stands (2026-10-12)
 
 | Stage | State |
 |---|---|
-| 1. Control plane | Done. The delegated parent/child lifecycle is deferred (#368). |
-| 2. Normalized persistence | Schema, import and reader landed. **The import of ~76k legacy `bird_bbox` outcomes has not been run**, and no production path reads the new tables. |
-| 3. Rendition and crop service | Code complete, with no production caller. The detector benchmark (#377) awaits review. |
-| 4. Shadow `localization` phase | Merged (#395), off by default, bird YOLO only. Five open questions and two blockers are listed in [localization-stage4-slice1-status.md](localization-stage4-slice1-status.md), including a test DB that is never actually truncated. |
-| 5–8 | Not started. |
+| 1. Control plane | Implemented; delegated lifecycle delivered through #575/revision 0040. |
+| 2. Normalized persistence | Legacy import completed September 27 (76,475 current runs). 4,401 large/medium production selections project `bird_bbox`; normalized-first reads remain gated. |
+| 3. Rendition and crop service | Shared service exists. Upright ML/scoring-input fixes are delivered; decode-once adoption and remaining gallery acceptance are separate. |
+| 4. Shadow `localization` phase | Live lane observed October 9; boundary fix #585 delivered. Cascade persistence and gate evidence merged in #594; live cascade activation and production retry timing remain. |
+| 5. Region species | Selection reader and strict floor merged; existing-cohort gate/parity pass. Small-crop species fails; live activation/refresh remains. |
+| 6–8 | Crop/fusion evidence, human labels, consumer authority and legacy-column retirement remain gated. |
 
-## Today against the target
+## September 25 baseline against the target (historical)
+
+The table below records the plan's original gap analysis. It is not the current
+task queue; use the current next-work section above before implementing an item.
 
 | Target step | Today |
 |---|---|
@@ -190,19 +213,19 @@ This section is the main change to the rollout. It is described in detail next.
 
 | Rollout stage | Change |
 |---|---|
-| 4 | Close it before starting new work: answer the open questions, fix the test-DB truncation bug, and run the stage 2 legacy import. Add the cascade provider (#408). |
-| 5 + 7 | Merge them. BioCLIP moves to regions and the legacy outcomes are imported instead of recomputed. |
+| 4 | Legacy import and stage-4 decisions are complete; cascade persistence/gates are merged. Remaining work is live shadow observation and production retry timing. |
+| 5 + 7 | Consume active gated selections; do not repeat the legacy import. Separate activation/refresh from the failed small-crop species gate and its exclusion requirement. |
 | 6 | Region IQA moves out of the shadow-only experiment and into the scoring design (#409), still behind a fusion version and the labelled-burst gate. Other consumers (captions, accessibility, Jev) stay shadow, as planned. |
 | New | #406 (rendition) and #407 (phase graph) help every phase, so they don't wait for localization gates. |
 
 The rollout's invariant that "no stage requires an unbenchmarked full-library rescan" still holds:
 the scoring backfill is crop-only and runs after the cascade is benchmarked.
 
-## Not yet measured
+## Remaining research measurements
 
 Blockers, decisions, cost estimates and risks: [07 — blockers and decisions](../specs/pipeline-streamlining/07-blockers-and-decisions.md) (#417). Timings are measured in #416, labelled bursts are collected in #415, and #418 covers unrotated thumbnail inputs.
 
-- Scene-route prompt accuracy.
+- Scene-route changes beyond the delivered #412 benchmark/route need their own validation.
 - BioCLIP accuracy outside birds.
 - Any open-vocabulary detector.
 - Per-step GPU timings on the production hardware.

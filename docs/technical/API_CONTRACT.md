@@ -4,7 +4,7 @@ title: API Contract Summary
 description: "REST contract for the Vexlum Scoring FastAPI backend: endpoints, request/response models and error codes."
 resource: docs/technical/API_CONTRACT.md
 tags: [api, rest, contract]
-timestamp: 2026-10-02T00:00:00Z
+timestamp: 2026-10-20T23:00:00Z
 okf_version: 0.2
 ---
 
@@ -29,7 +29,34 @@ REST API for the Vexlum Scoring Scoring WebUI. Base path: `/api`.
 
 **Runs queue & restart:** [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) describes how `GET /api/queue` and `JobDispatcher` relate to `jobs` rows and recovery on WebUI startup.
 
+**Delegated culling runs (#368):** Job list/detail responses expose nullable
+`parent_job_id`; phase detail and `/api/runs/{id}/stages` expose nullable
+`delegated_job_id`. Existing fields and status vocabulary remain compatible.
+A waiting parent reads `status: running`, `runner_state: waiting_child`, with no
+completion timestamp until its child finishes. Completed child stages stay completed
+when a later stage fails. Parent pause/resume/cancel forwards to linked child work;
+force-start and manual skip/retry of delegated parent stages return **409**. A fresh
+run-level retry is independent of the failed chain; an in-place child retry reopens
+its parent. Historical payload-only `parent_job_id` values are audit metadata.
+If the child has already finished, conflicting parent cancel/resume requests return
+**409**. A parent failed by its own post-run audit retains that outcome through
+reconciliation and duplicate completion callbacks; use a fresh Retry for that run.
+
 **Runs submit mode:** [RUN_OPTIONS_MODE_MATRIX.md](RUN_OPTIONS_MODE_MATRIX.md) documents the single canonical `run_mode` (`process_stale_or_missing`) for `POST /api/runs/submit`, JIT planner behavior, and removed legacy options.
+
+**Localization repair diagnostics (#639):** `GET /api/runs/drive/status` adds
+`localization_lane` alongside the existing `state` and `outstanding` fields.
+It reports process-local lane state, including `outage_streak`, `last_job_id`,
+cached `backlog`, `hold_reason`, `hold_until`, `hold_seconds_remaining` and
+`restart_required`. A parked lane reports `hold_reason: detector_outage_hold`,
+`restart_required: true`, and null hold deadline/remaining duration rather than
+non-finite JSON numbers. Finite outage backoff reports its Unix-time deadline
+and remaining seconds; expired holds have no hold reason. Reading diagnostics
+does not advance or reset the lane, query candidates, or block core auto-drive.
+The existing `get_drive_diagnostics` result includes the same status and a scoped
+`detector_outage_hold` anomaly. Use the WebUI HTTP endpoint or its live MCP
+context to inspect the running service; a separate stdio worker has its own
+process-local state.
 
 **Run/job manifest (`jobs.queue_payload`):** Parsed on `GET /api/runs/{id}` and related job endpoints. New enqueues include a structured **`reason`** object explaining why the run was queued:
 
@@ -153,11 +180,12 @@ GET /api/raw-preview?path=<url-encoded-file-path>
 |--------|------|---------|
 | GET | `/api/images` | Paginated image query with filters |
 | GET | `/api/images/{image_id}` | Single image details |
+| GET | `/api/images/{image_id}/exif` | Cached EXIF row (`image_exif`), including `af_metadata` JSONB when MakerNote autofocus data is present |
 | GET | `/api/images/by-uuid/{image_uuid}` | Single image details by `images.image_uuid` |
 | GET | `/api/images/by-hash/{image_hash}` | Single image details by `images.image_hash` (optional `hash_version`) |
 
 **Image detail optional fields** (additive; raw DB columns remain):
-- `embeddings_present` — same map as paginated `GET /api/images` (`mobilenet_v2_imagenet_gap`, `clip_vit_b32_image`, `bioclip_2_image`, `blip_vit_b16_image`).
+- `embeddings_present` — same map as paginated `GET /api/images`: one boolean per registered space in `modules/embedding_spaces.SPACE_DIMS` (for example `mobilenet_v2_imagenet_gap`, `clip_vit_b32_image`, `bioclip_2_image`, `bioclip_2_crop`, `blip_vit_b16_image`).
 - `indexing_metadata` — parsed `images.metadata` when valid JSON (indexing fingerprints).
 - `technical_failure_detection` — when technical failure detection has run: `version`, `technical_failure_score` (0–100), `primary_reject_reason`, nested `technical_failures` metrics. Table: `image_technical_failures`.
 | GET | `/api/folders` | Folder listing |
@@ -235,6 +263,24 @@ Firebird, or before the model has run). Backed by
 > `clip_quality_v0_score` (0–1) with **no endpoint change**. It is an auxiliary
 > culling tie-breaker, not a primary IQA score — see
 > [CULLING_ANALYTICS.md](CULLING_ANALYTICS.md#clip-prompt-quality-signal).
+
+### Bird-box compatibility reads
+
+Image list/detail responses, their `/public/api` equivalents and UUID/hash detail
+lookups use the shared `localization.read_normalized_first` flag (default `false`).
+When enabled, `bird_bbox` projects the active production selection, including a
+selected noncurrent run or nonzero-rank region. Without a selection, an imported
+legacy payload is used when available; unselected native shadow outcomes leave
+the legacy value unchanged. Lookup failures retain the existing legacy value.
+
+The evidence endpoint `/api/images/{id}/evidence` applies the same authority to
+`region_bbox` before building its region mask. Paginated image reads use one
+normalized lookup per 500 distinct IDs. Disabling the flag performs no normalized
+lookups and preserves existing response values and absent fields.
+
+This compatibility path does not activate the flag or complete Stage 8. Gallery
+SQL consumer migration, historical disagreement review, rollback observation and
+a delivered compatibility release remain separate rollout requirements.
 
 ### Image identity: `image_hash`, `hash_version`, and `image_uuid` (developer reference)
 

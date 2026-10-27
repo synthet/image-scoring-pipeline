@@ -24,6 +24,7 @@ from typing import Any
 
 from modules.engines.base import IScoringEngine, IScoringModel
 from modules.engines.registry import ModelRegistry, get_registry
+from modules.scoring_inputs import validate_input
 
 logger = logging.getLogger(__name__)
 
@@ -87,14 +88,23 @@ class MultiModelHost(IScoringEngine):
         external_scores: dict[str, Any] | None = None,
         logger: Callable[..., Any] = print,
         write_metadata: bool = True,
+        model_inputs: dict[str, dict] | None = None,
     ) -> dict[str, Any]:
         log = logger
         active = self._registry.all_active()
+        if model_inputs is not None:
+            for model in active:
+                if model.name in (external_scores or {}):
+                    continue
+                if model.name not in model_inputs:
+                    raise ValueError(f"Missing prepared input for {model.name}")
+                validate_input(model_inputs[model.name])
         is_raw = self.is_raw_file(image_path)
-        processing_path = self._resolve_processing_path(image_path, is_raw, log)
+        processing_path = self._resolve_processing_path(image_path, is_raw, log,
+                                                       prepared=model_inputs is not None)
 
         if processing_path is None:
-            return self._raw_failure_result(image_path)
+            return self._raw_failure_result(image_path, is_raw=is_raw)
 
         results = self._init_result(image_path, is_raw, processing_path, active)
         normalized: dict[str, float] = {}
@@ -105,20 +115,27 @@ class MultiModelHost(IScoringEngine):
         for model in active:
             if model.name in results["models"]:
                 continue
-            self._run_one(model, processing_path, results, normalized, log)
+            selected = model_inputs.get(model.name) if model_inputs is not None else None
+            self._run_one(model, selected["path"] if selected else processing_path,
+                          results, normalized, log)
+            if selected:
+                results["models"][model.name]["input"] = selected["metadata"]
 
         self._finalize_summary(results, normalized, image_path, write_metadata)
         return results
 
-    def _resolve_processing_path(self, image_path: str, is_raw: bool, log: Callable[..., Any]) -> str | None:
+    def _resolve_processing_path(self, image_path: str, is_raw: bool, log: Callable[..., Any],
+                                 *, prepared: bool = False) -> str | None:
+        if prepared:
+            return image_path
         if is_raw:
             log(f"RAW file detected: {image_path}")
-            return self.preprocess_image(image_path)
-        # Non-RAW: trust caller; PrepWorker may have preprocessed already.
-        return image_path
+        # Validated model descriptors already select prepared pixels. Direct
+        # single-input calls must normalize originals, including tagged squares.
+        return self.preprocess_image(image_path)
 
-    def _raw_failure_result(self, image_path: str) -> dict[str, Any]:
-        return {
+    def _raw_failure_result(self, image_path: str, *, is_raw: bool = True) -> dict[str, Any]:
+        result = {
             "version": self.VERSION,
             "image_path": self._wsl_to_windows(image_path),
             "image_name": os.path.basename(image_path),
@@ -132,12 +149,14 @@ class MultiModelHost(IScoringEngine):
                 "average_normalized_score": None,
                 "error": "RAW/Image preprocessing failed",
             },
-            "raw_conversion": {
+        }
+        if is_raw:
+            result["raw_conversion"] = {
                 "original_raw": image_path,
                 "temp_jpeg": None,
                 "conversion_success": False,
-            },
-        }
+            }
+        return result
 
     def _init_result(
         self,

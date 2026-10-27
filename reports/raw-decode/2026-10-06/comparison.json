@@ -1,0 +1,2948 @@
+{
+  "schema_version": 1,
+  "environment": {
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "python": "3.11.17 (main, Oct  1 2026, 15:41:06) [GCC 11.4.0]",
+    "omp_threads": "1",
+    "dcraw_emu": {
+      "path": "/tmp/vexlum-libraw-0.22/LibRaw-0.22.0/bin/dcraw_emu",
+      "sha256": "39f6f2ebbcb99d1f3cad1f1e1dff8a03b384b2322ebf91818ad0a4a7fb93a6fe"
+    },
+    "raw_identify": {
+      "path": "/tmp/vexlum-libraw-0.22/LibRaw-0.22.0/bin/raw-identify",
+      "sha256": "be75b64a284f88c8bc4d2cd2b6e75a88353779b964a2e5509c8ad5b5f668c39a"
+    }
+  },
+  "policy": {
+    "camera_wb": true,
+    "color_space": "sRGB",
+    "bits": 8,
+    "demosaic": "AHD",
+    "auto_bright": true,
+    "gamma": [
+      2.222,
+      4.5
+    ],
+    "decoder_rotation": false,
+    "orientation": "source EXIF applied once",
+    "embedded_preview": "camera-rendered pixels"
+  },
+  "repeats": 3,
+  "limitations": [
+    "Small warmed-cache CPU sample; no quality labels or model inference.",
+    "Decode time includes route setup; process wall includes Python startup and PNG output.",
+    "Pixel differences are whole-frame resized; crop offsets are not registered.",
+    "Python and decoder child peak RSS are separate, not combined concurrent memory."
+  ],
+  "images": [
+    {
+      "file": "/app/tests/fixtures/testing_samples/public/D90/RAW_NIKON_D90.NEF",
+      "sha256": "8f158f0858347fce6981ff50271a6015914732f82cfae252b59107b736cb16df",
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "ok",
+        "tool": "raw-identify",
+        "decode_support": "not_tested",
+        "camera": "Nikon D90",
+        "preview_size": [
+          4288,
+          2848
+        ],
+        "raw_size": [
+          4352,
+          2868
+        ],
+        "image_size": [
+          4310,
+          2868
+        ],
+        "output_size": [
+          4310,
+          2868
+        ],
+        "flip": 0,
+        "camera_white_balance": [
+          475.0,
+          256.0,
+          319.0,
+          256.0
+        ],
+        "decoder": "nikon_load_raw()",
+        "exit_codes": [
+          0,
+          0
+        ]
+      },
+      "routes": [
+        {
+          "route": "embedded_preview",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 0.285817,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.276608,
+              "dimensions": [
+                4288,
+                2848
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "2f741d08fd38450d9afe816e006d39d64694ac0cdf628670e1854a438b0e1489",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 197.7,
+              "decoder_child_peak_rss_mib": 34.75,
+              "process_wall_s": 3.242,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.318636,
+              "dimensions": [
+                4288,
+                2848
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "2f741d08fd38450d9afe816e006d39d64694ac0cdf628670e1854a438b0e1489",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 197.84,
+              "decoder_child_peak_rss_mib": 34.83,
+              "process_wall_s": 2.979409,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.285817,
+              "dimensions": [
+                4288,
+                2848
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "2f741d08fd38450d9afe816e006d39d64694ac0cdf628670e1854a438b0e1489",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 197.84,
+              "decoder_child_peak_rss_mib": 34.86,
+              "process_wall_s": 3.492702,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_half",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 2.649852,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 2.444528,
+              "dimensions": [
+                2155,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "9afa4aa70bd02f254bcce9436b95d23bab690c3e5e953cd6f410e4b7d69f435d",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 173.3,
+              "decoder_child_peak_rss_mib": 33.91,
+              "process_wall_s": 3.808162,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 2.649852,
+              "dimensions": [
+                2155,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "9afa4aa70bd02f254bcce9436b95d23bab690c3e5e953cd6f410e4b7d69f435d",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 173.3,
+              "decoder_child_peak_rss_mib": 34.86,
+              "process_wall_s": 3.64105,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 3.289479,
+              "dimensions": [
+                2155,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "9afa4aa70bd02f254bcce9436b95d23bab690c3e5e953cd6f410e4b7d69f435d",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 173.3,
+              "decoder_child_peak_rss_mib": 34.99,
+              "process_wall_s": 4.388221,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_half",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 3.270455,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 3.270455,
+              "dimensions": [
+                2155,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "d16720e844d49fea15c65c125b7a69480cf49b11a5efd9f9ef9c924a092f1ae2",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 9270827
+              },
+              "python_peak_rss_mib": 173.3,
+              "decoder_child_peak_rss_mib": 52.0,
+              "process_wall_s": 4.383277,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 3.73581,
+              "dimensions": [
+                2155,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "d16720e844d49fea15c65c125b7a69480cf49b11a5efd9f9ef9c924a092f1ae2",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 9270827
+              },
+              "python_peak_rss_mib": 173.3,
+              "decoder_child_peak_rss_mib": 51.75,
+              "process_wall_s": 4.775684,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 2.6549,
+              "dimensions": [
+                2155,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "d16720e844d49fea15c65c125b7a69480cf49b11a5efd9f9ef9c924a092f1ae2",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 9270827
+              },
+              "python_peak_rss_mib": 173.3,
+              "decoder_child_peak_rss_mib": 52.5,
+              "process_wall_s": 3.683098,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_full",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 4.049964,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 3.477755,
+              "dimensions": [
+                4310,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "a7733588c9dddb7cecaa06472975af4f1f3855e24f6c9e91c5c546f6d8da58d2",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 201.22,
+              "decoder_child_peak_rss_mib": 34.8,
+              "process_wall_s": 8.454098,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 4.885516,
+              "dimensions": [
+                4310,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "a7733588c9dddb7cecaa06472975af4f1f3855e24f6c9e91c5c546f6d8da58d2",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 235.62,
+              "decoder_child_peak_rss_mib": 34.86,
+              "process_wall_s": 9.81203,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 4.049964,
+              "dimensions": [
+                4310,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "a7733588c9dddb7cecaa06472975af4f1f3855e24f6c9e91c5c546f6d8da58d2",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 282.75,
+              "decoder_child_peak_rss_mib": 34.57,
+              "process_wall_s": 9.032237,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_full",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 3.779417,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 3.489755,
+              "dimensions": [
+                4310,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "85b7aa785305fd405e08c5946390a65e067f28ad4b4d931605dd58ec688ad351",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 37083257
+              },
+              "python_peak_rss_mib": 282.75,
+              "decoder_child_peak_rss_mib": 129.38,
+              "process_wall_s": 8.178482,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 3.779417,
+              "dimensions": [
+                4310,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "85b7aa785305fd405e08c5946390a65e067f28ad4b4d931605dd58ec688ad351",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 37083257
+              },
+              "python_peak_rss_mib": 282.79,
+              "decoder_child_peak_rss_mib": 129.25,
+              "process_wall_s": 8.680477,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 5.121831,
+              "dimensions": [
+                4310,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "85b7aa785305fd405e08c5946390a65e067f28ad4b4d931605dd58ec688ad351",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 37083257
+              },
+              "python_peak_rss_mib": 329.92,
+              "decoder_child_peak_rss_mib": 129.0,
+              "process_wall_s": 10.697504,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        }
+      ],
+      "pairs": [
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.002829,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 31.9443,
+          "rmse_8bit": 36.5864
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.002829,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 31.948,
+          "rmse_8bit": 36.5895
+        },
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.002829,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 32.5963,
+          "rmse_8bit": 37.2037
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.002829,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 32.5994,
+          "rmse_8bit": 37.2063
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.0079,
+          "rmse_8bit": 0.0888
+        },
+        {
+          "a": "rawpy_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 1.4156,
+          "rmse_8bit": 2.319
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 1.4175,
+          "rmse_8bit": 2.3201
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 1.413,
+          "rmse_8bit": 2.3176
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 1.4149,
+          "rmse_8bit": 2.3186
+        },
+        {
+          "a": "rawpy_full",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.0061,
+          "rmse_8bit": 0.0781
+        }
+      ]
+    },
+    {
+      "file": "/app/tests/fixtures/testing_samples/public/D300/RAW_NIKON_D300.NEF",
+      "sha256": "613371ce91681ceda630c26268557b4dadaa85e0d4f1b13a5c52b352f7fdd0e7",
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "ok",
+        "tool": "raw-identify",
+        "decode_support": "not_tested",
+        "camera": "Nikon D300",
+        "preview_size": [
+          4288,
+          2848
+        ],
+        "raw_size": [
+          4352,
+          2868
+        ],
+        "image_size": [
+          4320,
+          2868
+        ],
+        "output_size": [
+          4320,
+          2868
+        ],
+        "flip": 0,
+        "camera_white_balance": [
+          348.0,
+          256.0,
+          363.0,
+          256.0
+        ],
+        "decoder": "nikon_load_raw()",
+        "exit_codes": [
+          0,
+          0
+        ]
+      },
+      "routes": [
+        {
+          "route": "embedded_preview",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 0.318614,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.300791,
+              "dimensions": [
+                4288,
+                2848
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "ad7a411fe0696f091d43c88cc3bb27f1d6cdcfb14325a490a8dbf667882bc8c2",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 34.0,
+              "process_wall_s": 2.996614,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.361398,
+              "dimensions": [
+                4288,
+                2848
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "ad7a411fe0696f091d43c88cc3bb27f1d6cdcfb14325a490a8dbf667882bc8c2",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 34.73,
+              "process_wall_s": 2.998378,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.318614,
+              "dimensions": [
+                4288,
+                2848
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "ad7a411fe0696f091d43c88cc3bb27f1d6cdcfb14325a490a8dbf667882bc8c2",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 34.81,
+              "process_wall_s": 2.759034,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_half",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 4.173424,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 4.173424,
+              "dimensions": [
+                2160,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "7211223972a5e09d51d3212d8cc628ddfae7091ee59a9bd285a301b5f248ec4b",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 34.73,
+              "process_wall_s": 5.888941,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 4.306612,
+              "dimensions": [
+                2160,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "7211223972a5e09d51d3212d8cc628ddfae7091ee59a9bd285a301b5f248ec4b",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 34.98,
+              "process_wall_s": 6.032168,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 4.034204,
+              "dimensions": [
+                2160,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "7211223972a5e09d51d3212d8cc628ddfae7091ee59a9bd285a301b5f248ec4b",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 35.0,
+              "process_wall_s": 5.470738,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_half",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 3.31034,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 5.737014,
+              "dimensions": [
+                2160,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "eee852c982069e624127d05637ab1ae4bf6a9c8a8efd97ff77f3c8f456d774e4",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 9292337
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 51.75,
+              "process_wall_s": 7.439737,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 3.31034,
+              "dimensions": [
+                2160,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "eee852c982069e624127d05637ab1ae4bf6a9c8a8efd97ff77f3c8f456d774e4",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 9292337
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 52.12,
+              "process_wall_s": 4.729492,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 3.082226,
+              "dimensions": [
+                2160,
+                1434
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "eee852c982069e624127d05637ab1ae4bf6a9c8a8efd97ff77f3c8f456d774e4",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 9292337
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 52.25,
+              "process_wall_s": 4.479054,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_full",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 3.976494,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 3.348417,
+              "dimensions": [
+                4320,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "2ef898c9fa4f989ba8abdf7ef53ac594880cbfb59eceff5464e78c4ce232bbf3",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 34.96,
+              "process_wall_s": 7.585168,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 3.976494,
+              "dimensions": [
+                4320,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "2ef898c9fa4f989ba8abdf7ef53ac594880cbfb59eceff5464e78c4ce232bbf3",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 34.38,
+              "process_wall_s": 9.178905,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 4.538826,
+              "dimensions": [
+                4320,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "2ef898c9fa4f989ba8abdf7ef53ac594880cbfb59eceff5464e78c4ce232bbf3",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 35.12,
+              "process_wall_s": 9.04941,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_full",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 4.37681,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 3.975366,
+              "dimensions": [
+                4320,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bca43a4b5ccbf73418b510f97a9ddb6a568db6afe1c18b16e4189e8705ad83f4",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 37169297
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 129.62,
+              "process_wall_s": 8.270138,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 4.37681,
+              "dimensions": [
+                4320,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bca43a4b5ccbf73418b510f97a9ddb6a568db6afe1c18b16e4189e8705ad83f4",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 37169297
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 129.75,
+              "process_wall_s": 9.041525,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 4.568899,
+              "dimensions": [
+                4320,
+                2868
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bca43a4b5ccbf73418b510f97a9ddb6a568db6afe1c18b16e4189e8705ad83f4",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 37169297
+              },
+              "python_peak_rss_mib": 369.79,
+              "decoder_child_peak_rss_mib": 129.62,
+              "process_wall_s": 8.805588,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        }
+      ],
+      "pairs": [
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.000658,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 25.6492,
+          "rmse_8bit": 34.3847
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.000658,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 25.6481,
+          "rmse_8bit": 34.3832
+        },
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.000658,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 25.6096,
+          "rmse_8bit": 34.3027
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.000658,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 25.6084,
+          "rmse_8bit": 34.3009
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 0.0024,
+          "rmse_8bit": 0.049
+        },
+        {
+          "a": "rawpy_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 0.6909,
+          "rmse_8bit": 1.8366
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 0.6909,
+          "rmse_8bit": 1.8366
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 0.6909,
+          "rmse_8bit": 1.8366
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 0.6909,
+          "rmse_8bit": 1.8365
+        },
+        {
+          "a": "rawpy_full",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            340
+          ],
+          "mae_8bit": 0.0025,
+          "rmse_8bit": 0.0496
+        }
+      ]
+    },
+    {
+      "file": "/app/tests/fixtures/testing_samples/public/Z6II/nikon_z6_ii_01.nef",
+      "sha256": "5118c19c5d36636931a9e4a18ded02d495df101797c735af7dd549a73f2101c9",
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "ok",
+        "tool": "raw-identify",
+        "decode_support": "not_tested",
+        "camera": "Nikon Z 6_2",
+        "preview_size": [
+          6048,
+          4024
+        ],
+        "raw_size": [
+          6064,
+          4040
+        ],
+        "image_size": [
+          6064,
+          4040
+        ],
+        "output_size": [
+          6064,
+          4040
+        ],
+        "raw_inset": {
+          "width": 6048,
+          "height": 4024,
+          "left": 8,
+          "top": 8
+        },
+        "flip": 0,
+        "camera_white_balance": [
+          1.66797,
+          1.0,
+          1.40625,
+          1.0
+        ],
+        "decoder": "nikon_load_raw()",
+        "exit_codes": [
+          0,
+          0
+        ]
+      },
+      "routes": [
+        {
+          "route": "embedded_preview",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 0.353007,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.353007,
+              "dimensions": [
+                6048,
+                4024
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bee91e913c80a2e9cfde2c1f0f99d3e027c247abbed7f1b695c341e188e3deea",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 38.04,
+              "process_wall_s": 3.599498,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.343563,
+              "dimensions": [
+                6048,
+                4024
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bee91e913c80a2e9cfde2c1f0f99d3e027c247abbed7f1b695c341e188e3deea",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 38.14,
+              "process_wall_s": 3.585451,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.403329,
+              "dimensions": [
+                6048,
+                4024
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bee91e913c80a2e9cfde2c1f0f99d3e027c247abbed7f1b695c341e188e3deea",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 38.05,
+              "process_wall_s": 3.720124,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_half",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 6.081368,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 6.076102,
+              "dimensions": [
+                3032,
+                2020
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "8d1897c894143d65016396f33d62305cefaf860c5e07fc3bee074effe6520941",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 34.8,
+              "process_wall_s": 8.244927,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 6.081368,
+              "dimensions": [
+                3032,
+                2020
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "8d1897c894143d65016396f33d62305cefaf860c5e07fc3bee074effe6520941",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 35.12,
+              "process_wall_s": 8.18639,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 8.232917,
+              "dimensions": [
+                3032,
+                2020
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "8d1897c894143d65016396f33d62305cefaf860c5e07fc3bee074effe6520941",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 34.75,
+              "process_wall_s": 10.558707,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_half",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 6.961097,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 6.961097,
+              "dimensions": [
+                3032,
+                2020
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "c7ecac2521e8a1ec9f67c97f7d50d93ceda51f18e719a7b281d1e09dcc804399",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 18373937
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 98.12,
+              "process_wall_s": 9.403809,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 6.460214,
+              "dimensions": [
+                3032,
+                2020
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "c7ecac2521e8a1ec9f67c97f7d50d93ceda51f18e719a7b281d1e09dcc804399",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 18373937
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 97.75,
+              "process_wall_s": 8.708239,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 7.524271,
+              "dimensions": [
+                3032,
+                2020
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "c7ecac2521e8a1ec9f67c97f7d50d93ceda51f18e719a7b281d1e09dcc804399",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 18373937
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 98.0,
+              "process_wall_s": 9.711363,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_full",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 8.866701,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 8.866701,
+              "dimensions": [
+                6064,
+                4040
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "2a05088283f3461bd1eef1087b3518efad075792152c3ff91fb3fc1899eca157",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 381.96,
+              "decoder_child_peak_rss_mib": 34.63,
+              "process_wall_s": 16.664687,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 7.759908,
+              "dimensions": [
+                6064,
+                4040
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "2a05088283f3461bd1eef1087b3518efad075792152c3ff91fb3fc1899eca157",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 388.91,
+              "decoder_child_peak_rss_mib": 34.66,
+              "process_wall_s": 16.081043,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 10.750843,
+              "dimensions": [
+                6064,
+                4040
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "2a05088283f3461bd1eef1087b3518efad075792152c3ff91fb3fc1899eca157",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 482.41,
+              "decoder_child_peak_rss_mib": 34.75,
+              "process_wall_s": 20.052649,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_full",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 9.67548,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 9.67548,
+              "dimensions": [
+                6064,
+                4040
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "d444a8280c161846a9e8d86783b03a1d56359a411fca11ba70de6942d8dd281b",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 73495697
+              },
+              "python_peak_rss_mib": 482.41,
+              "decoder_child_peak_rss_mib": 244.75,
+              "process_wall_s": 17.634123,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 8.637933,
+              "dimensions": [
+                6064,
+                4040
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "d444a8280c161846a9e8d86783b03a1d56359a411fca11ba70de6942d8dd281b",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 73495697
+              },
+              "python_peak_rss_mib": 482.41,
+              "decoder_child_peak_rss_mib": 245.0,
+              "process_wall_s": 17.777194,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 15.372822,
+              "dimensions": [
+                6064,
+                4040
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "d444a8280c161846a9e8d86783b03a1d56359a411fca11ba70de6942d8dd281b",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 73495697
+              },
+              "python_peak_rss_mib": 575.79,
+              "decoder_child_peak_rss_mib": 244.38,
+              "process_wall_s": 26.50931,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        }
+      ],
+      "pairs": [
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.001992,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 23.0678,
+          "rmse_8bit": 31.8994
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.001992,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 23.066,
+          "rmse_8bit": 31.8982
+        },
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.001992,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 23.006,
+          "rmse_8bit": 31.8379
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.001992,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 23.0043,
+          "rmse_8bit": 31.8369
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.0057,
+          "rmse_8bit": 0.0758
+        },
+        {
+          "a": "rawpy_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.978,
+          "rmse_8bit": 2.0719
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.9782,
+          "rmse_8bit": 2.072
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.978,
+          "rmse_8bit": 2.0719
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.9781,
+          "rmse_8bit": 2.072
+        },
+        {
+          "a": "rawpy_full",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.0051,
+          "rmse_8bit": 0.0713
+        }
+      ]
+    },
+    {
+      "file": "/app/tests/fixtures/testing_samples/public/Z8/Z8_14bit_lossless_compression.NEF",
+      "sha256": "b4639d05ed25f3bec39c6f0af233f5953089c0a8d6a14cb0b4a623061795d12a",
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "ok",
+        "tool": "raw-identify",
+        "decode_support": "not_tested",
+        "camera": "Nikon Z 8",
+        "preview_size": [
+          8256,
+          5504
+        ],
+        "raw_size": [
+          8280,
+          5520
+        ],
+        "image_size": [
+          8280,
+          5520
+        ],
+        "output_size": [
+          8280,
+          5520
+        ],
+        "raw_inset": {
+          "width": 8256,
+          "height": 5504,
+          "left": 12,
+          "top": 8
+        },
+        "flip": 0,
+        "camera_white_balance": [
+          1.9082,
+          1.0,
+          1.53711,
+          1.0
+        ],
+        "decoder": "nikon_load_raw()",
+        "exit_codes": [
+          0,
+          0
+        ]
+      },
+      "routes": [
+        {
+          "route": "embedded_preview",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 0.589298,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.589298,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "279cabf15e6ad15482453bf5d25117ba9a7b0c3fd85988939d429e12409f471a",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 39.45,
+              "process_wall_s": 7.650966,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.634184,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "279cabf15e6ad15482453bf5d25117ba9a7b0c3fd85988939d429e12409f471a",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 39.43,
+              "process_wall_s": 7.83218,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.558771,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "279cabf15e6ad15482453bf5d25117ba9a7b0c3fd85988939d429e12409f471a",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 39.23,
+              "process_wall_s": 7.497414,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_half",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 16.371354,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 16.371354,
+              "dimensions": [
+                4140,
+                2760
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "3d314b327cddd68c89d881cd20e07189fdd3363bb4da32e4948efe7a4384f334",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 34.64,
+              "process_wall_s": 19.754083,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 17.889895,
+              "dimensions": [
+                4140,
+                2760
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "3d314b327cddd68c89d881cd20e07189fdd3363bb4da32e4948efe7a4384f334",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 34.8,
+              "process_wall_s": 20.883854,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_half",
+              "decode_s": 13.788203,
+              "dimensions": [
+                4140,
+                2760
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "3d314b327cddd68c89d881cd20e07189fdd3363bb4da32e4948efe7a4384f334",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 34.88,
+              "process_wall_s": 16.459646,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_half",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 13.271851,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 13.271851,
+              "dimensions": [
+                4140,
+                2760
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "9389e74e4f03262f4df58f81c0265f2da783d26b608a45c5d5dc5cfb3a5b9f78",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 34279217
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 179.0,
+              "process_wall_s": 15.862268,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 13.707505,
+              "dimensions": [
+                4140,
+                2760
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "9389e74e4f03262f4df58f81c0265f2da783d26b608a45c5d5dc5cfb3a5b9f78",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 34279217
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 178.88,
+              "process_wall_s": 16.272181,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_half",
+              "decode_s": 11.381429,
+              "dimensions": [
+                4140,
+                2760
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "9389e74e4f03262f4df58f81c0265f2da783d26b608a45c5d5dc5cfb3a5b9f78",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-h",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 34279217
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 178.88,
+              "process_wall_s": 13.901924,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_full",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 28.675329,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 15.169623,
+              "dimensions": [
+                8280,
+                5520
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "7bf7f50a3bca0f1292547480cbb0add66c3876988dab5c4baa9c3c2eea631d71",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 34.6,
+              "process_wall_s": 25.967562,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 28.675329,
+              "dimensions": [
+                8280,
+                5520
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "7bf7f50a3bca0f1292547480cbb0add66c3876988dab5c4baa9c3c2eea631d71",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 694.21,
+              "decoder_child_peak_rss_mib": 34.12,
+              "process_wall_s": 44.731367,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "rawpy_full",
+              "decode_s": 35.117277,
+              "dimensions": [
+                8280,
+                5520
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "7bf7f50a3bca0f1292547480cbb0add66c3876988dab5c4baa9c3c2eea631d71",
+              "engine": {
+                "engine": "rawpy",
+                "version": "0.26.1",
+                "libraw_version": [
+                  0,
+                  22,
+                  0
+                ]
+              },
+              "python_peak_rss_mib": 854.25,
+              "decoder_child_peak_rss_mib": 34.84,
+              "process_wall_s": 45.818332,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_full",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 14.719265,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 14.719265,
+              "dimensions": [
+                8280,
+                5520
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bd55fbf98b6aacc341a7d822ea05b240c89beec78b32dc624ecf274e572caa98",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 137116817
+              },
+              "python_peak_rss_mib": 854.25,
+              "decoder_child_peak_rss_mib": 446.88,
+              "process_wall_s": 25.208844,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 16.705074,
+              "dimensions": [
+                8280,
+                5520
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bd55fbf98b6aacc341a7d822ea05b240c89beec78b32dc624ecf274e572caa98",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 137116817
+              },
+              "python_peak_rss_mib": 854.25,
+              "decoder_child_peak_rss_mib": 446.75,
+              "process_wall_s": 27.024405,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "dcraw_emu_full",
+              "decode_s": 14.643125,
+              "dimensions": [
+                8280,
+                5520
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "bd55fbf98b6aacc341a7d822ea05b240c89beec78b32dc624ecf274e572caa98",
+              "engine": {
+                "engine": "dcraw_emu",
+                "arguments": [
+                  "-Z",
+                  "-",
+                  "-w",
+                  "-o",
+                  "1",
+                  "-q",
+                  "3",
+                  "-t",
+                  "0"
+                ],
+                "output_bytes": 137116817
+              },
+              "python_peak_rss_mib": 1028.55,
+              "decoder_child_peak_rss_mib": 447.0,
+              "process_wall_s": 25.021254,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        }
+      ],
+      "pairs": [
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 30.8032,
+          "rmse_8bit": 43.0928
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 30.8022,
+          "rmse_8bit": 43.0914
+        },
+        {
+          "a": "embedded_preview",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 30.7584,
+          "rmse_8bit": 43.0663
+        },
+        {
+          "a": "embedded_preview",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 30.7573,
+          "rmse_8bit": 43.0649
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_half",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.0027,
+          "rmse_8bit": 0.0519
+        },
+        {
+          "a": "rawpy_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.5793,
+          "rmse_8bit": 1.079
+        },
+        {
+          "a": "rawpy_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.579,
+          "rmse_8bit": 1.0791
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "rawpy_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.5796,
+          "rmse_8bit": 1.0791
+        },
+        {
+          "a": "dcraw_emu_half",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": false,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.5794,
+          "rmse_8bit": 1.0792
+        },
+        {
+          "a": "rawpy_full",
+          "b": "dcraw_emu_full",
+          "native_dimensions_equal": true,
+          "aspect_ratio_delta": 0.0,
+          "exact_pixels": false,
+          "comparison_size": [
+            512,
+            341
+          ],
+          "mae_8bit": 0.0026,
+          "rmse_8bit": 0.0511
+        }
+      ]
+    },
+    {
+      "file": "/app/tests/fixtures/testing_samples/public/Z8/Z8_high_efficiency_high.NEF",
+      "sha256": "1c70aa0c58912bd8fb63a8fe55e0288195bd3df841306f568d7d5e34c34611c8",
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "ok",
+        "tool": "raw-identify",
+        "decode_support": "not_tested",
+        "camera": "Nikon Z 8",
+        "preview_size": [
+          8256,
+          5504
+        ],
+        "raw_size": [
+          8280,
+          5520
+        ],
+        "image_size": [
+          8280,
+          5520
+        ],
+        "output_size": [
+          8280,
+          5520
+        ],
+        "raw_inset": {
+          "width": 8256,
+          "height": 5504,
+          "left": 12,
+          "top": 8
+        },
+        "flip": 0,
+        "camera_white_balance": [
+          1.88477,
+          1.0,
+          1.57617,
+          1.0
+        ],
+        "decoder": "nikon_he_load_raw()",
+        "encoding_hint": "nikon_high_efficiency",
+        "exit_codes": [
+          0,
+          0
+        ]
+      },
+      "routes": [
+        {
+          "route": "embedded_preview",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 0.676871,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.836002,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "8c20e6e29f5a6025942508fd73af4a41f3c44c299004b7560cf197aa96eb36dc",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 1260.6,
+              "decoder_child_peak_rss_mib": 39.06,
+              "process_wall_s": 7.9137,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.628643,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "8c20e6e29f5a6025942508fd73af4a41f3c44c299004b7560cf197aa96eb36dc",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 1260.6,
+              "decoder_child_peak_rss_mib": 39.32,
+              "process_wall_s": 8.858772,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.676871,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "8c20e6e29f5a6025942508fd73af4a41f3c44c299004b7560cf197aa96eb36dc",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 1260.6,
+              "decoder_child_peak_rss_mib": 39.47,
+              "process_wall_s": 7.826832,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_half",
+          "successes": 0,
+          "attempts": 3,
+          "median_decode_s": null,
+          "samples": [
+            {
+              "status": "error",
+              "route": "rawpy_half",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.484572
+            },
+            {
+              "status": "error",
+              "route": "rawpy_half",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.425579
+            },
+            {
+              "status": "error",
+              "route": "rawpy_half",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.473291
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_half",
+          "successes": 0,
+          "attempts": 3,
+          "median_decode_s": null,
+          "samples": [
+            {
+              "status": "error",
+              "route": "dcraw_emu_half",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.485657
+            },
+            {
+              "status": "error",
+              "route": "dcraw_emu_half",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.44202
+            },
+            {
+              "status": "error",
+              "route": "dcraw_emu_half",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.521635
+            }
+          ]
+        },
+        {
+          "route": "rawpy_full",
+          "successes": 0,
+          "attempts": 3,
+          "median_decode_s": null,
+          "samples": [
+            {
+              "status": "error",
+              "route": "rawpy_full",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.556082
+            },
+            {
+              "status": "error",
+              "route": "rawpy_full",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.589427
+            },
+            {
+              "status": "error",
+              "route": "rawpy_full",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.545737
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_full",
+          "successes": 0,
+          "attempts": 3,
+          "median_decode_s": null,
+          "samples": [
+            {
+              "status": "error",
+              "route": "dcraw_emu_full",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.587343
+            },
+            {
+              "status": "error",
+              "route": "dcraw_emu_full",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.51727
+            },
+            {
+              "status": "error",
+              "route": "dcraw_emu_full",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.453433
+            }
+          ]
+        }
+      ],
+      "pairs": []
+    },
+    {
+      "file": "/app/tests/fixtures/testing_samples/public/Z8/Z8_high_efficiency_low.NEF",
+      "sha256": "fb411bf0864a5ae5966469a7e0673943c92311846fab3c593e02f91938daf95f",
+      "diagnostic": {
+        "schema_version": 1,
+        "status": "ok",
+        "tool": "raw-identify",
+        "decode_support": "not_tested",
+        "camera": "Nikon Z 8",
+        "preview_size": [
+          8256,
+          5504
+        ],
+        "raw_size": [
+          8280,
+          5520
+        ],
+        "image_size": [
+          8280,
+          5520
+        ],
+        "output_size": [
+          8280,
+          5520
+        ],
+        "raw_inset": {
+          "width": 8256,
+          "height": 5504,
+          "left": 12,
+          "top": 8
+        },
+        "flip": 0,
+        "camera_white_balance": [
+          1.98242,
+          1.0,
+          1.43359,
+          1.0
+        ],
+        "decoder": "nikon_he_load_raw()",
+        "encoding_hint": "nikon_high_efficiency",
+        "exit_codes": [
+          0,
+          0
+        ]
+      },
+      "routes": [
+        {
+          "route": "embedded_preview",
+          "successes": 3,
+          "attempts": 3,
+          "median_decode_s": 0.563749,
+          "samples": [
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.563749,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "230dcb33f9b4b459782741f494c1b597a0086bfcd45b5a296d77bba9b7820a8e",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 1260.6,
+              "decoder_child_peak_rss_mib": 39.35,
+              "process_wall_s": 8.029849,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.524896,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "230dcb33f9b4b459782741f494c1b597a0086bfcd45b5a296d77bba9b7820a8e",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 1260.6,
+              "decoder_child_peak_rss_mib": 39.22,
+              "process_wall_s": 8.393006,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            },
+            {
+              "status": "ok",
+              "route": "embedded_preview",
+              "decode_s": 0.662937,
+              "dimensions": [
+                8256,
+                5504
+              ],
+              "orientation_applied": 1,
+              "pixel_sha256": "230dcb33f9b4b459782741f494c1b597a0086bfcd45b5a296d77bba9b7820a8e",
+              "engine": {
+                "engine": "exiftool/dcraw embedded JPEG extraction"
+              },
+              "python_peak_rss_mib": 1260.6,
+              "decoder_child_peak_rss_mib": 39.35,
+              "process_wall_s": 8.698875,
+              "python_peak_rss_valid": false,
+              "python_peak_rss_source": "ru_maxrss_inherited_high_water"
+            }
+          ]
+        },
+        {
+          "route": "rawpy_half",
+          "successes": 0,
+          "attempts": 3,
+          "median_decode_s": null,
+          "samples": [
+            {
+              "status": "error",
+              "route": "rawpy_half",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.618654
+            },
+            {
+              "status": "error",
+              "route": "rawpy_half",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.76614
+            },
+            {
+              "status": "error",
+              "route": "rawpy_half",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.599235
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_half",
+          "successes": 0,
+          "attempts": 3,
+          "median_decode_s": null,
+          "samples": [
+            {
+              "status": "error",
+              "route": "dcraw_emu_half",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.552202
+            },
+            {
+              "status": "error",
+              "route": "dcraw_emu_half",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.507203
+            },
+            {
+              "status": "error",
+              "route": "dcraw_emu_half",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.511301
+            }
+          ]
+        },
+        {
+          "route": "rawpy_full",
+          "successes": 0,
+          "attempts": 3,
+          "median_decode_s": null,
+          "samples": [
+            {
+              "status": "error",
+              "route": "rawpy_full",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.491587
+            },
+            {
+              "status": "error",
+              "route": "rawpy_full",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.5263
+            },
+            {
+              "status": "error",
+              "route": "rawpy_full",
+              "error_type": "LibRawFileUnsupportedError",
+              "reason": "b'Unsupported file format or not RAW file'",
+              "process_wall_s": 0.510561
+            }
+          ]
+        },
+        {
+          "route": "dcraw_emu_full",
+          "successes": 0,
+          "attempts": 3,
+          "median_decode_s": null,
+          "samples": [
+            {
+              "status": "error",
+              "route": "dcraw_emu_full",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.50436
+            },
+            {
+              "status": "error",
+              "route": "dcraw_emu_full",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.538344
+            },
+            {
+              "status": "error",
+              "route": "dcraw_emu_full",
+              "error_type": "RuntimeError",
+              "reason": "dcraw_emu exit 2",
+              "process_wall_s": 0.514384
+            }
+          ]
+        }
+      ],
+      "pairs": []
+    }
+  ],
+  "memory_metric_warning": "Original Python ru_maxrss figures can include inherited pre-exec parent memory and must not be used for memory comparisons. Corrected Linux VmHWM figures are in memory-validation.json. Timings, pixels and native-child metrics are unaffected."
+}

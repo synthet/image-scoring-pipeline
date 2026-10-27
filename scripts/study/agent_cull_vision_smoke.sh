@@ -28,8 +28,8 @@ case "$PROVIDER" in
     fi
     ;;
   codex)
-    SANDBOX="${CODEX_SANDBOX:-workspace}"
-    CMD=(codex exec --sandbox "$SANDBOX" --ask-for-approval never --json "$PROMPT")
+    SANDBOX="${CODEX_SANDBOX:-workspace-write}"
+    CMD=(codex --ask-for-approval never exec --sandbox "$SANDBOX" --json "$PROMPT")
     ;;
   gemini)
     if [[ -x /app/scripts/wsl/gemini_agent.sh ]]; then

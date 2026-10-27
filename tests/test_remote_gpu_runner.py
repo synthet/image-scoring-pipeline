@@ -362,6 +362,34 @@ def test_bird_species_parity_with_exif_rotation(runner, tmp_path):
     assert remote.last_image_embedding.dtype == np.float32
 
 
+def test_bird_species_proxy_reports_abstention_vs_failure(runner, tmp_path):
+    """A refresh clears a stale label only when ``last_error`` is None (a real abstention)."""
+    from modules.remote_gpu.proxies import RemoteBioCLIPClassifier
+
+    provider, client, _http = runner
+    provider.bio.classify = lambda *a, **kw: []  # nothing above the floor
+    remote = RemoteBioCLIPClassifier(client)
+    path = _image(tmp_path / "bird.jpg", size=(64, 40))
+    assert remote.classify(path, ["Robin", "Mallard"]) == []
+    assert remote.last_error is None
+    assert remote.classify(str(tmp_path / "missing.jpg"), ["Robin"]) == []
+    assert remote.last_error
+
+
+def test_bird_species_proxy_reports_input_mode(runner, tmp_path):
+    """#641: the host knows which input the runner embedded, so the vector lands in the right space."""
+    from modules.remote_gpu.proxies import RemoteBioCLIPClassifier
+
+    _provider, client, _http = runner
+    remote = RemoteBioCLIPClassifier(client)
+    path = _image(tmp_path / "bird.jpg", size=(64, 40))
+    remote.classify(path, ["Robin"])
+    assert remote.last_input_mode == "detector_crop"
+    remote.classify(path, ["Robin"], region=(0.1, 0.1, 0.6, 0.6))
+    assert remote.last_input_mode == "region"
+    remote.classify(path, ["Robin"], use_detector=False)
+    assert remote.last_input_mode == "full_frame"
+
 def test_bird_rescan_detector_runs_remotely(runner):
     from modules.remote_gpu.proxies import RemoteBioCLIPClassifier, RemoteBirdDetector
 
@@ -409,6 +437,11 @@ class _CpuBackend:
     def is_raw_file(self, path):
         return False
 
+    def preprocess_image(self, path, **_kwargs):
+        # Identity stub: these tests cover transport/result ownership. Real
+        # normalization is covered by test_scoring_orientation/model_inputs.
+        return path
+
     def is_nef_file(self, path):
         return self.nef
 
@@ -444,7 +477,7 @@ def test_scoring_through_runner_keeps_host_identity(runner, tmp_path, nef):
 
     sent = provider.scoring.seen[0]
     assert sent["bytes"] == open(path, "rb").read()
-    assert sent["external_scores"] == external
+    assert sent["external_scores"] == {"liqe": external["liqe"]}
     assert sent["write_metadata"] is False  # the runner never writes XMP
     assert result["image_path"] == path and result["image_name"] == "s.jpg"
     assert result["models"]["liqe"]["normalized_score"] == 0.7
@@ -669,3 +702,35 @@ def test_idle_exit_counts_inference_but_not_health(tmp_path):
     client.health()
     now[0] = 560.0
     assert idle.due()
+
+
+def test_remote_scoring_host_registry_includes_import_time_models(monkeypatch):
+    """The runner scores topiq/arniqa from the process registry; the proxy must list them too (#588)."""
+    import scripts.python.run_all_musiq_models as musiq_mod
+    from modules.engines import factory
+    from modules.engines.registry import get_registry
+    from modules.remote_gpu import proxies
+
+    class _Model:
+        def __init__(self, name):
+            self.name = name
+
+    private_spaq = _Model("spaq")
+
+    def _private(backend, registry):
+        registry.register(private_spaq)
+        return registry
+
+    monkeypatch.setattr(proxies, "ready_client", lambda phase: object())
+    monkeypatch.setattr(musiq_mod, "MultiModelMUSIQ", lambda skip_gpu=False: object())
+    monkeypatch.setattr(factory, "ensure_production_registry", _private)
+    process = get_registry()
+    probe = _Model("probe_import_time_model")
+    process.register(probe)
+    try:
+        host = proxies.create_remote_scoring_host()
+    finally:
+        process.unregister(probe.name)
+
+    assert host.registry.get("probe_import_time_model") is probe
+    assert host.registry.get("spaq") is private_spaq  # private wrapper kept, not replaced
