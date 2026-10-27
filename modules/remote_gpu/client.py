@@ -477,7 +477,9 @@ def get_client() -> GpuRunnerClient | FallbackGpuClient:
                 local_url = str(fallback.get("local_url", "http://127.0.0.1:7870")).strip().rstrip("/")
                 if local_url and local_url != url.rstrip("/"):
                     backends.append(GpuRunnerClient(local_url, key[1], timeout=timeout, timeout_options=timeout_options, retry=retry))
-                if fallback.get("embedded", True):
+                # Off by default: embedded models live in this (host) process. Hosts
+                # without a runner container opt in with fallback.embedded = true.
+                if fallback.get("embedded", False):
                     # URL/token changes must not create another set of local GPU models.
                     if _embedded_client is None:
                         _embedded_client = EmbeddedGpuClient(pool_timeout=timeout_options.get("pool_seconds", 5))

@@ -1,0 +1,14 @@
+# Decoupled inference: the WebUI has no GPU and every model runs in the gpu-runner
+# service (the same container a remote GPU PC runs). Opt in per machine by adding
+# this file after docker-compose.yml, e.g. in .env:
+#   COMPOSE_FILE=docker-compose.yml;docker-compose.decoupled.yml   (":" on Linux/WSL)
+# and route phases to it in config.json:
+#   gpu_runner.url (remote PC) + gpu_runner.fallback.local_url = "http://gpu-runner:7870"
+# See docs/guides/REMOTE_GPU_RUNNER.md "Decoupled host".
+include:
+  - docker-compose.gpu-runner.yml
+
+services:
+  webui:
+    gpus: !reset null
+    deploy: !reset {}

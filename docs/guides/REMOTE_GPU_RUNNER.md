@@ -12,7 +12,7 @@ okf_version: 0.3
 
 The GPU runner is a stateless HTTP service (`modules/remote_gpu/server.py`) in a Docker container on a machine with a GPU. A host phase routed to it keeps its normal flow (preprocessing, skip checks, persistence, XMP), and only the model forward pass crosses the network.
 
-If the configured runner becomes unavailable, the host tries a runner on this machine, then embedded inference in the host process. Both HTTP and embedded execution use `modules/remote_gpu/runtime.py`, so they run the same methods and return the same contract. Models for embedded fallback load only when it is first used; embedded inference is serialized across phases.
+If the configured runner becomes unavailable, the host tries a runner on this machine, then (only when `fallback.embedded` is true) embedded inference in the host process. Both HTTP and embedded execution use `modules/remote_gpu/runtime.py`, so they run the same methods and return the same contract. Models for embedded fallback load only when it is first used; embedded inference is serialized across phases.
 
 It is separate from the lease-worker design in [specs/remote-gpu-worker](../specs/remote-gpu-worker/INDEX.md) (#435). That design has the worker pull work and write Postgres itself; the runner opens no database at all.
 
@@ -57,7 +57,7 @@ The construction point is the only branch: `new_keyword_scorer()`, `new_caption_
 
 5. Allow TCP `7870` from the host only (Windows firewall or LAN ACL). The token travels in a header; for TLS set `GPU_RUNNER_SSL_CERTFILE` / `GPU_RUNNER_SSL_KEYFILE` in the container and use `https://` on the host.
 
-Runner environment: `GPU_RUNNER_TOKEN` (required unless bound to loopback), `GPU_RUNNER_HOST`, `GPU_RUNNER_PORT`, `GPU_RUNNER_MAX_BODY_MB` (default 256), `GPU_RUNNER_MAX_CONCURRENCY` (default 4 admitted requests; beyond it the runner answers 503 and the host backs off), and `GPU_RUNNER_UPLOAD_TIMEOUT_SECONDS` (default 60 seconds to receive the whole upload). Inference itself runs one request at a time. Authentication, declared size, config fingerprint, and admission are checked before parsing an upload; streamed bytes are also capped. `/healthz` remains available without an inference admission slot.
+Runner environment: `GPU_RUNNER_TOKEN` (required unless bound to loopback), `GPU_RUNNER_HOST`, `GPU_RUNNER_PORT`, `GPU_RUNNER_MAX_BODY_MB` (default 256), `GPU_RUNNER_MAX_CONCURRENCY` (default 4 admitted requests; beyond it the runner answers 503 and the host backs off), `GPU_RUNNER_UPLOAD_TIMEOUT_SECONDS` (default 60 seconds to receive the whole upload), and `GPU_RUNNER_IDLE_EXIT_SECONDS` (default 0 = off; see [Idle recycle](#idle-recycle)). Inference itself runs one request at a time. Authentication, declared size, config fingerprint, and admission are checked before parsing an upload; streamed bytes are also capped. `/healthz` remains available without an inference admission slot.
 
 To change these limits in Docker Compose, export the corresponding variable before starting the container. The concurrency limit includes requests waiting for inference and uploads still being received; choose it with the maximum body size and available RAM in mind.
 
@@ -80,7 +80,7 @@ To change these limits in Docker Compose, export the corresponding variable befo
   "fallback": {
     "enabled": true,
     "local_url": "http://127.0.0.1:7870",
-    "embedded": true,
+    "embedded": false,
     "cooldown_seconds": 30,
     "max_cooldown_seconds": 300
   }
@@ -92,10 +92,37 @@ Phases left at `local` keep using this machine's GPU.
 ### Local fallback setup
 
 1. Run the same GPU-runner Compose service on the host machine, with the same phase configuration, weights, and bearer token. `fallback.local_url` identifies this service. When the host application runs inside Docker and the fallback service publishes its port on Windows, use `http://host.docker.internal:7870` instead of the container's loopback address.
-2. Install the normal inference dependencies and model weights in the host application's environment for embedded fallback. The existing GPU WebUI/gpu-shell image provides the inference stack. The embedded runner uses the host's normal model device selection; it requires enough RAM/VRAM to load the configured models.
+2. Optional, off by default: set `fallback.embedded` to `true` to allow embedded inference in the host process after both HTTP runners are unavailable. This loads every model the phase needs into the host (WebUI) process; prefer the local runner container. Install the normal inference dependencies and model weights in the host application's environment for embedded fallback. The existing GPU WebUI/gpu-shell image provides the inference stack. The embedded runner uses the host's normal model device selection; it requires enough RAM/VRAM to load the configured models.
 3. Watch host logs for `gpu_runner: phase ... uses ... (fallback)`. An unavailable backend opens its circuit; repeated failures increase the cooldown exponentially from `cooldown_seconds` to `max_cooldown_seconds`, with jitter between half and all of that interval. Only one caller probes a backend after its cooldown; other callers keep using fallback. A successful probe restores the preferred backend and resets its failure count. No service is started automatically.
 
-These fallback settings are the defaults even when omitted. Set `local_url` to an empty string to skip the local HTTP runner, `embedded` to `false` to prevent loading models in the host, or `enabled` to `false` to restore strict remote-only behavior. The local service and embedded host must use the same detector weights for a localization context to remain valid during failover.
+These fallback settings are the defaults even when omitted. Set `local_url` to an empty string to skip the local HTTP runner, `embedded` to `true` to allow loading models in the host, or `enabled` to `false` to restore strict remote-only behavior. The local service and embedded host must use the same detector weights for a localization context to remain valid during failover.
+
+### Decoupled host
+
+To keep all inference out of the WebUI process, run the gpu-runner service next to the WebUI and take the GPU away from the WebUI. `docker-compose.decoupled.yml` does both: it includes `docker-compose.gpu-runner.yml` and resets the WebUI's `gpus`/`deploy` GPU reservation. Enable it per machine in the git-ignored `.env`, together with the runner token (the same value as `gpu_runner.token` in the host secrets file):
+
+```dotenv
+COMPOSE_FILE=docker-compose.yml;docker-compose.decoupled.yml
+GPU_RUNNER_TOKEN=<runner token>
+GPU_RUNNER_IDLE_EXIT_SECONDS=600
+```
+
+Use `:` instead of `;` as the separator on Linux/WSL. Then point the fallback at the service on the Compose network and route every phase to the pool:
+
+```json
+"gpu_runner": {
+  "enabled": true,
+  "url": "http://gpu-pc:7870",
+  "phases": { "scoring": "remote", "keywords": "remote", "culling": "remote", "localization": "remote", "bird_species": "remote" },
+  "fallback": { "enabled": true, "local_url": "http://gpu-runner:7870", "embedded": false }
+}
+```
+
+Without a second GPU PC, set `url` to `http://gpu-runner:7870` and leave `local_url` empty. Phases left at `local` still run in the WebUI process, now on CPU. With every phase remote the WebUI does not import TensorFlow or PyTorch for inference.
+
+### Idle recycle
+
+A runner keeps every model it has loaded, and TensorFlow and CUDA return memory only when the process exits. With `GPU_RUNNER_IDLE_EXIT_SECONDS` set, the runner exits cleanly once that many seconds pass without inference after it has run a model; `restart: unless-stopped` brings it back empty, and models load again on the next request. Health and other non-inference requests do not count as activity. While it restarts, hosts see the runner as unavailable and use the next backend.
 
 ### Retry and timeout policy
 
@@ -129,4 +156,4 @@ docker exec image-scoring-gpu-shell python -m pytest tests/test_remote_gpu_runne
 
 Live check: route one folder's `scoring` to the runner and compare `image_model_scores` against a local run of the same images (they should match within float tolerance). Then run localization twice; the second run should report every image unchanged and write no new `is_current` rows.
 
-For failover, stop the remote service and verify that the host logs selection of the local HTTP runner. Stop the local runner and verify embedded inference with the same inputs. Restart the remote service, wait for the cooldown, and verify that the next inference returns to it. Compare output and host persistence across all three modes. Use a small folder and identical detector weights for this live check.
+For failover, stop the remote service and verify that the host logs selection of the local HTTP runner. If `fallback.embedded` is enabled, stop the local runner and verify embedded inference with the same inputs. Restart the remote service, wait for the cooldown, and verify that the next inference returns to it. Compare output and host persistence across all three modes. Use a small folder and identical detector weights for this live check.

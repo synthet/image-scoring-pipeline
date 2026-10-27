@@ -1,18 +1,12 @@
 import contextlib
+import importlib.util
 import io
 
 from PIL import Image
 
-try:
-    import torch
-    TORCH_AVAILABLE = True
-except ImportError:
-    TORCH_AVAILABLE = False
-
-try:
-    from torchvision.transforms import functional as TF
-except ImportError:
-    pass
+# torch loads with the first scorer, not at import: hosts that score on a GPU
+# runner import this module but never run LIQE locally.
+TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
 
 class LiqeScorer:
     """
@@ -30,6 +24,8 @@ class LiqeScorer:
         if not TORCH_AVAILABLE:
             print("LIQE: PyTorch not installed. LIQE scoring will be unavailable.")
             return
+
+        import torch
 
         # Check torch availability
         if not torch.cuda.is_available() and self.device == 'cuda':
@@ -69,6 +65,8 @@ class LiqeScorer:
         if not self.available:
             return {"error": "Model not loaded", "status": "failed"}
 
+        import torch
+
         try:
              # Load and resize logic from original script
              # using PIL to ensure consistent loading
@@ -82,6 +80,8 @@ class LiqeScorer:
              
              # Convert to tensor
              # We assume torchvision is available if pyiqa is available (it's a dep)
+             from torchvision.transforms import functional as TF
+
              img_tensor = TF.to_tensor(img).unsqueeze(0).to(self.device)
              
              with torch.no_grad():
