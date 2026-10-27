@@ -18,6 +18,10 @@ Recorded the frozen R2 rule, verified local backup, incomplete calibration and f
 
 Added [the phase graph review](reports/phase-graph-review-2026-10-24.md): every edge checked against a live consumer and the timing baseline. AC-9 superseded (scoring reads no localization yet), `pipeline.culling_requires_scoring` stays on until the stack-cover gap and #678 are fixed, and changes C-1 to C-4 proposed (gate localization→scoring, drop localization→keywords, add localization→bird_species, refresh covers).
 
+## [2026-10-24] update | Sync AF focus-evidence plan with merged extraction fixes
+
+Marked the gaps closed by #675 (unknown `FocusResult`, `exiftool_version`, ExifTool 13.52 pin) and `322decec` (coordinate availability, invalid-geometry handling) in [the focus-evidence plan](planning/af-focus-evidence.md) §4, F3 and §9 steps 2–3. Remaining gaps: display-space transform, `af_state`, raw coordinate availability and a focus result when coordinates are absent.
+
 ## [2026-10-24] updated | Nikon AF evidence validation and cache semantics
 
 Required AF geometry is finite with positive integral dimensions; explicit unavailable coordinates clear cached AF while preserving other EXIF. Focused regressions, legacy merge tests and an eleven-record metadata replay passed. No photo writes or policy activation.
