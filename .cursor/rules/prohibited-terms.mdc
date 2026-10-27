@@ -1,0 +1,10 @@
+---
+description: Respect the repository terminology policy
+alwaysApply: true
+---
+
+# Repository terminology
+
+Follow the strict terminology restrictions in the repository's CLAUDE.md and AGENTS.md.
+Apply those restrictions to source code, comments, documentation, commit messages and agent responses.
+Use neutral terminology when wording would conflict with that policy.

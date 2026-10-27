@@ -62,9 +62,32 @@ PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
     PhaseCode.LOCALIZATION.value: (PhaseCode.METADATA.value,),
     PhaseCode.SCORING.value: (PhaseCode.METADATA.value,),
     PhaseCode.CULLING.value: (PhaseCode.SCORING.value,),
-    PhaseCode.KEYWORDS.value: (PhaseCode.SCORING.value,),
+    # Tagging reads the thumbnail and the stored CLIP vector, never a score (#407).
+    PhaseCode.KEYWORDS.value: (PhaseCode.METADATA.value,),
     PhaseCode.BIRD_SPECIES.value: (PhaseCode.KEYWORDS.value,),
 }
+
+CULLING_REQUIRES_SCORING_KEY = "pipeline.culling_requires_scoring"
+
+
+def culling_requires_scoring() -> bool:
+    """``pipeline.culling_requires_scoring`` (default true).  False lets culling group bursts
+    before scoring and leave their picks pending (#407, spec 02 AC-10 to AC-12)."""
+    from modules import config
+
+    return bool(config.get_config_value(CULLING_REQUIRES_SCORING_KEY, True))
+
+
+def phase_prerequisites(code: str) -> tuple[str, ...]:
+    """Effective hard prerequisites of ``code``: :data:`PHASE_PREREQUISITES` plus the culling flag.
+
+    Every reader of the table goes through this so gating, plan prefixes, auto-drive and the
+    phase catalog agree.  Unknown codes have none.
+    """
+    if code == PhaseCode.CULLING.value and not culling_requires_scoring():
+        return (PhaseCode.METADATA.value,)
+    return PHASE_PREREQUISITES.get(code, ())
+
 
 # Advisory ("preferred-before") edges: the key SHOULD be attempted before each listed
 # consumer when both are co-requested, but its artifact is a *preferred input, not a hard
@@ -82,6 +105,15 @@ PHASE_PREFERRED_BEFORE: dict[str, tuple[str, ...]] = {
         PhaseCode.KEYWORDS.value,
         PhaseCode.BIRD_SPECIES.value,
     ),
+}
+
+# Attempt-before edges (#407, spec 02 AC-3): when a run plan requests a listed consumer, the
+# key is inserted ahead of it if any in-scope image still lacks a current *attempt*
+# (``detected``, ``no_detection``, ``terminal_error`` or ``disabled``).  It waits for an attempt,
+# not a success: a ``retryable_error`` leaves the consumer on its full-frame fallback.  Like
+# ``PHASE_PREFERRED_BEFORE`` it never blocks -- ``missing_prerequisites`` does not read it.
+PHASE_ATTEMPT_BEFORE: dict[str, tuple[str, ...]] = {
+    PhaseCode.LOCALIZATION.value: (PhaseCode.SCORING.value,),
 }
 
 # Phases that are registered but gated by a config flag.  While the flag is false the
@@ -172,7 +204,7 @@ def phase_for_job_type(job_type: "PhaseCode | str | None", default: str = "scori
     return JOB_TYPE_TO_PHASE.get(code, default)
 
 
-SCORING_EXECUTOR_VERSION = "5.0.0"
+SCORING_EXECUTOR_VERSION = "5.2.0"  # upright-v1 plus independent model-input routing
 
 
 def missing_prerequisites(
@@ -187,10 +219,10 @@ def missing_prerequisites(
 
     Co-request is judged by plan position, not set membership: ``requested`` is an
     execution order, so a prerequisite scheduled after the phase that needs it does
-    not satisfy it. ``["keywords", "scoring"]`` is rejected while
-    ``["scoring", "keywords"]`` is accepted. Siblings that share a prerequisite
-    (``culling`` and ``keywords``, both under ``scoring``) are unordered relative to
-    each other and pass either way.
+    not satisfy it. ``["culling", "scoring"]`` is rejected while
+    ``["scoring", "culling"]`` is accepted. Siblings that share a prerequisite
+    (``localization``, ``scoring`` and ``keywords``, all under ``metadata``) are
+    unordered relative to each other and pass either way.
 
     Callers that ``sort_phase_value_strings`` before gating are unaffected —
     canonical order already places every prerequisite first. ``/api/pipeline/submit``
@@ -212,9 +244,9 @@ def missing_prerequisites(
 
     missing_map: dict[str, list[str]] = {}
     for phase in requested_norm:
-        prereqs = PHASE_PREREQUISITES.get(phase)
-        if prereqs is None:
+        if phase not in PHASE_PREREQUISITES:
             continue
+        prereqs = phase_prerequisites(phase)
         missing_list = [
             pre for pre in prereqs
             if pre not in satisfied_set
@@ -289,6 +321,59 @@ def assert_prereqs_for_scope(
     return missing_prerequisites(phase_values or [], satisfied)
 
 
+def attempt_pending(producer: str, scope_paths: Iterable[str]) -> bool:
+    """True when running ``producer`` over ``scope_paths`` would claim at least one image.
+
+    Uses the dispatcher's own selection -- a dry-run ``plan_phase`` plus, for localization,
+    the ``new_images_only`` scope -- so an inserted stage is never a no-op that planning
+    would re-insert on every tick.
+    """
+    from modules.run_phase_planner import plan_phase
+
+    planned = plan_phase([str(p) for p in scope_paths if p], producer, dry_run=True)
+    if planned and producer == PhaseCode.LOCALIZATION.value:
+        from modules.localization_policy import auto_scope
+
+        planned = auto_scope(planned)
+    return bool(planned)
+
+
+def insert_attempt_before(
+    phase_values: Iterable[str],
+    scope_paths: Iterable[str],
+    *,
+    pending: Callable[[str, list[str]], bool] | None = None,
+) -> list[str]:
+    """Return ``phase_values`` with attempt-before producers inserted (spec 02 AC-4 to AC-6).
+
+    A producer from :data:`PHASE_ATTEMPT_BEFORE` goes immediately ahead of the first
+    requested consumer when it is enabled (AC-5), not already planned, and some image in
+    ``scope_paths`` lacks a current attempt (``pending``, default :func:`attempt_pending`).
+    Without scope paths (image-id selectors) the plan is returned unchanged, matching the
+    prerequisite gate.  ``/api/runs/submit``, ``/api/pipeline/submit`` and heal call this before
+    ``assert_prereqs_for_scope`` so identical requests produce identical plans (AC-13).
+    Auto-drive does not: its folders get localization from the idle-path lane (#527).
+    """
+    plan: list[str] = []
+    for raw in phase_values or []:
+        code = str(raw or "").strip().lower()
+        if code and code not in plan:
+            plan.append(code)
+    paths = [str(p) for p in scope_paths or [] if p]
+    if not paths:
+        return plan
+    check = pending or attempt_pending
+    for producer, consumers in PHASE_ATTEMPT_BEFORE.items():
+        if producer in plan:
+            continue
+        index = next((i for i, code in enumerate(plan) if code in consumers), None)
+        if index is None or not is_phase_enabled(producer):
+            continue
+        if check(producer, paths):
+            plan.insert(index, producer)
+    return plan
+
+
 def sort_phase_codes_canonical(phases: list[PhaseCode]) -> list[PhaseCode]:
     """Order phase codes in pipeline sequence (not insertion order)."""
     return sorted(phases, key=lambda ph: _PHASE_ORDER_INDEX.get(ph, 999))
@@ -314,10 +399,10 @@ def pipeline_prefix_through(phase: str) -> list[str]:
     """Return the canonical contiguous prefix of required phases up to and
     including ``phase`` (transitive closure over :data:`PHASE_PREREQUISITES`).
 
-    ``keywords`` and ``culling`` are siblings under ``scoring``, so this walks
-    the dependency DAG rather than slicing a linear order::
+    ``keywords`` hangs off ``metadata`` while ``culling`` hangs off ``scoring``, so this
+    walks the dependency DAG rather than slicing a linear order::
 
-        pipeline_prefix_through("keywords") -> ["indexing", "metadata", "scoring", "keywords"]
+        pipeline_prefix_through("keywords") -> ["indexing", "metadata", "keywords"]
         pipeline_prefix_through("culling")  -> ["indexing", "metadata", "scoring", "culling"]
 
     Used by the legacy single-phase ``/start`` endpoints so a downstream phase
@@ -334,7 +419,7 @@ def pipeline_prefix_through(phase: str) -> list[str]:
         if cur in collected:
             continue
         collected.add(cur)
-        for pre in PHASE_PREREQUISITES.get(cur, ()):
+        for pre in phase_prerequisites(cur):
             if pre not in collected:
                 stack.append(pre)
     return sort_phase_value_strings(list(collected))

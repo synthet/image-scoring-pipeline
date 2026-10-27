@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from modules.rendition import COORD_SPACE_DISPLAY
+
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "backfill_region_keypoints.py"
 RULE = "v1_regate_rule/3:a1c2e1f64b24cc79"
 
@@ -85,3 +87,26 @@ def test_selected_by_refuses_localize_missing(script, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         mod.main()
     assert exc.value.code == 2
+
+
+def test_primary_region_reports_the_run_status(script):
+    mod, _ = script
+    assert "r.status" in mod._SQL_PRIMARY_REGION
+
+
+@pytest.mark.parametrize(
+    ("cur", "expected"),
+    [
+        ({"region_id": None, "coord_space": COORD_SPACE_DISPLAY, "status": "no_detection"}, True),
+        ({"region_id": 7, "coord_space": COORD_SPACE_DISPLAY, "status": "detected"}, False),
+        ({"region_id": None, "coord_space": COORD_SPACE_DISPLAY, "status": "retryable_error"}, False),
+        ({"region_id": None, "coord_space": COORD_SPACE_DISPLAY, "status": "terminal_error"}, False),
+        ({"region_id": None, "coord_space": COORD_SPACE_DISPLAY, "status": "disabled"}, False),
+        ({"region_id": None, "coord_space": "original_pixels", "status": "no_detection"}, False),
+        (None, False),
+    ],
+)
+def test_current_no_detection_run_skips_the_decode(script, cur, expected):
+    mod, _ = script
+    # #691: a current no_detection run has nothing to infer on; decoding again only re-proves that.
+    assert mod.is_current_no_detection(cur) is expected

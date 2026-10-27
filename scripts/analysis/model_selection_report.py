@@ -462,14 +462,14 @@ def to_markdown(report: dict[str, Any], man: dict[str, Any], costs: dict[str, An
             L.append(f"| {k} | " + " | ".join(f"{v:+.2f}" for v in load) + " |")
 
     L += ["", "## Distribution health", "",
-          "| Dimension | Role | Coverage | Floor | Ceiling | Distinct-value tie fraction | On 2-decimal grid | Entropy | Failed | Not loaded |",
+          "| Dimension | Role | Coverage | Floor | Ceiling | Duplicate-value fraction | On 2-decimal grid | Entropy | Failed | Not loaded |",
           "|---|---|---|---|---|---|---|---|---|---|"]
     for k in report["dimensions"]:
         pr = report["profiles"][k]
         rel = report["reliability"].get(k, {})
         L.append(
             f"| {k} | {report['roles'][k]} | {report['coverage_pct'][k]:.2f}% | {_fmt(pr.get('floor_pct'), 2)}% | "
-            f"{_fmt(pr.get('ceiling_pct'), 2)}% | {_fmt(pr.get('tie_fraction'))} | {_fmt(pr.get('two_decimal_grid_pct'), 1)}% | "
+            f"{_fmt(pr.get('ceiling_pct'), 2)}% | {_fmt(pr.get('duplicate_value_fraction'))} | {_fmt(pr.get('two_decimal_grid_pct'), 1)}% | "
             f"{_fmt(pr.get('entropy_norm'))} | {_fmt(rel.get('failed_pct'), 2)}% | {_fmt(rel.get('not_loaded_pct'), 2)}% |"
         )
 
@@ -537,7 +537,7 @@ def write_report(report: dict[str, Any], man: dict[str, Any], costs: dict[str, A
             for f in ("kendall_tau_b", "kendall_tau_b_ci", "top1_agreement", "top_tied_rate", "stacks_defined")}}
         for k in report["dimensions"]
     ])
-    fields = ["n", "missing_pct", "mean", "median", "std", "iqr", "skewness", "unique", "tie_fraction", "floor_pct",
+    fields = ["n", "missing_pct", "mean", "median", "std", "iqr", "skewness", "unique", "duplicate_value_fraction", "exact_pair_tie_rate", "floor_pct",
               "ceiling_pct", "two_decimal_grid_pct", "entropy_norm", "bimodal_hint"]
     w.csv("profiles.csv", [{"dimension": k, "role": report["roles"][k], **{f: report["profiles"][k].get(f) for f in fields}}
                            for k in report["dimensions"]], ["dimension", "role", *fields])

@@ -51,6 +51,7 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
             PhaseCode,
             assert_prereqs_for_scope,
             disabled_phase_submission_error,
+            insert_attempt_before,
             job_type_for_phase,
             normalize_phase_codes,
             sort_phase_value_strings,
@@ -105,6 +106,13 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
             phase_values = sort_phase_value_strings(phase_values)
 
         try:
+            # Attempt-before edges (#407 AC-4): may add localization ahead of scoring.  When
+            # the inserted stage leads the plan it is the entry runner.
+            requested_first = (phase_values or [None])[0]
+            phase_values = await asyncio.to_thread(insert_attempt_before, phase_values or [], scope_paths)
+            if phase_values and phase_values[0] != requested_first:
+                phase_code = phase_values[0]
+                job_type = job_type_for_phase(phase_code)
             prereq_miss = await asyncio.to_thread(
                 assert_prereqs_for_scope,
                 phase_values or [],
@@ -264,6 +272,8 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
                 db.update_job_status(run_id, "paused", "user_pause")
             except ValueError as e:
                 raise HTTPException(status_code=409, detail=str(e))
+            if job.get("runner_state") == "waiting_child":
+                return {"success": True, "message": f"Run {run_id} paused"}
             _stop_runner_for_job_row(job)
             _join_runner_threads(per_thread_timeout=4.0)
             try:
@@ -324,6 +334,8 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
             return {"success": True, "run_id": run_id, "queue_position": position}
         except HTTPException:
             raise
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -346,6 +358,8 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
                 cancel_method = "update_status"
                 # Stop the active runner when running (DB update alone doesn't stop the process)
                 if status == "running":
+                    if job.get("runner_state") == "waiting_child":
+                        return {"success": True, "message": f"Run {run_id} canceled", "method": "delegated_subtree"}
                     state = api_module()._job_dispatcher.get_state()
                     active = state.get("active_runner")
                     stopped = _stop_runner_for_phase(active) if active else False
@@ -367,6 +381,8 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
             return {"success": True, "message": f"Run {run_id} canceled", "method": cancel_method}
         except HTTPException:
             raise
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -395,6 +411,8 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
 
             status = (job.get("status") or "").strip().lower()
             actions_taken = []
+            if job.get("runner_state") == "waiting_child":
+                raise HTTPException(status_code=409, detail="Run is waiting for delegated work; cancel or resume its child.")
 
             # --- Branch on status --------------------------------------------
             if status == "running":
@@ -502,6 +520,8 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
         try:
             db.force_reset_job_phase_to_queued(run_id, stage_code)
             return {"success": True}
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -511,6 +531,8 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
         try:
             db.set_job_phase_state(run_id, stage_code, "skipped")
             return {"success": True}
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

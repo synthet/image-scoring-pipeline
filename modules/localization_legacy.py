@@ -7,9 +7,9 @@ Stage 2 of the early-localization rollout (#370, epic #345). Two jobs:
 2. **Import** the existing column into ``image_localization_runs`` / ``image_regions``
    without running any inference.
 
-Nothing here writes ``images.bird_bbox``. That column stays the sole authority until
-``localization.read_normalized_first`` is enabled, and it participates in live
-bird-species work selection, so a dual-write would change production behaviour.
+Nothing here writes ``images.bird_bbox``. The compatibility reader can prefer active
+production selections and imported legacy outcomes when ``localization.read_normalized_first``
+is enabled. Unselected native runs remain shadow artifacts, not production authority.
 
 Retryability is **not** re-derived here: :data:`modules.bird_detection.RETRYABLE_BBOX_ERRORS`
 is the single source of truth for which scan failures are worth retrying, and this module
@@ -436,11 +436,16 @@ _CURRENT_RUN_SQL = """
     WHERE image_id = ? AND detector_key = ? AND is_current
 """
 
-_RUN_REGIONS_SQL = """
-    SELECT object_class, rank, x1, y1, x2, y2, confidence
-    FROM image_regions
-    WHERE localization_run_id = ?
-    ORDER BY rank
+_SELECTED_REGION_SQL = """
+    SELECT r.x1, r.y1, r.x2, r.y2, r.confidence,
+           run.display_width, run.display_height
+    FROM image_localization_selections s
+    JOIN image_regions r ON r.id = s.region_id
+                        AND r.localization_run_id = s.localization_run_id
+    JOIN image_localization_runs run ON run.id = s.localization_run_id
+                                   AND run.image_id = s.image_id
+                                   AND run.detector_key = s.detector_key
+    WHERE s.image_id = ? AND s.detector_key = ? AND s.revoked_at IS NULL
 """
 
 _LEGACY_BBOX_SQL = "SELECT bird_bbox FROM images WHERE id = ?"
@@ -471,10 +476,11 @@ def read_bird_bbox(
     same value, same semantics, including ``None`` for never-scanned. That is what makes
     the reader safe to land before anything writes the normalized tables.
 
-    With the flag on it reads the current normalized run and projects it back to the
-    legacy shape, falling back to the column when no current run exists. The fallback is
-    not an optimisation: during the import, and for any image the import skipped, the
-    column is still the only source, and a missing run must not read as "no bird".
+    With the flag on it projects the active production selection, even when that run is
+    no longer current or its selected region is not rank zero. Without a selection it
+    replays an imported legacy payload, otherwise falling back to the column. Native
+    current runs without a selection are shadow results and must not change production
+    output, including when they report no detection or an error.
 
     ``prefer_normalized`` overrides the config for callers that need both behaviours in
     one process (diagnostics, migration verification, tests).
@@ -499,21 +505,93 @@ _NO_CURRENT_RUN = object()
 
 def _read_normalized_bbox(conn, image_id: int, detector_key: str) -> Any:
     try:
+        selected = conn.query_one(_SELECTED_REGION_SQL, (image_id, detector_key))
+        if selected is not None:
+            return _project_selected_bbox(selected)
         run = conn.query_one(_CURRENT_RUN_SQL, (image_id, detector_key))
     except Exception:
         # A reader must never take down a caller that has a working legacy column.
         logger.exception("read_bird_bbox: normalized lookup failed for image %s", image_id)
         return _NO_CURRENT_RUN
-    if not run:
+    if not run or run.get("legacy_payload") is None:
         return _NO_CURRENT_RUN
+    return run["legacy_payload"]
 
-    regions: list[dict[str, Any]] = []
-    if run.get("status") == _STATUS_DETECTED and run.get("legacy_payload") is None:
-        # Only the synthesis path needs regions; an imported run replays its payload.
-        try:
-            regions = list(conn.query(_RUN_REGIONS_SQL, (run["id"],)) or [])
-        except Exception:
-            logger.exception("read_bird_bbox: region lookup failed for run %s", run["id"])
-            return _NO_CURRENT_RUN
 
-    return legacy_payload_from_normalized(dict(run), regions)
+def _project_selected_bbox(selected: dict) -> Any:
+    from modules.localization_selection import legacy_bbox_payload
+
+    width, height = selected.get("display_width"), selected.get("display_height")
+    if not width or not height or int(width) <= 0 or int(height) <= 0:
+        return _NO_CURRENT_RUN
+    return legacy_bbox_payload(dict(selected), int(width), int(height))
+
+
+_BATCH_BBOX_SQL = """
+    SELECT i.id AS image_id, s.id AS selection_id,
+           r.x1, r.y1, r.x2, r.y2, r.confidence,
+           selected_run.display_width, selected_run.display_height,
+           imported.legacy_payload
+    FROM images i
+    LEFT JOIN image_localization_selections s
+        ON s.image_id = i.id AND s.detector_key = ? AND s.revoked_at IS NULL
+    LEFT JOIN image_regions r
+        ON r.id = s.region_id AND r.localization_run_id = s.localization_run_id
+    LEFT JOIN image_localization_runs selected_run
+        ON selected_run.id = s.localization_run_id AND selected_run.image_id = s.image_id
+        AND selected_run.detector_key = s.detector_key
+    LEFT JOIN image_localization_runs imported
+        ON imported.image_id = i.id AND imported.detector_key = ? AND imported.is_current
+        AND imported.legacy_payload IS NOT NULL
+    WHERE i.id IN ({placeholders})
+"""
+
+
+def overlay_bird_bboxes(
+    rows: list[dict],
+    *,
+    conn=None,
+    detector_key: str = LEGACY_DETECTOR_KEY,
+    prefer_normalized: bool | None = None,
+) -> None:
+    """Overlay normalized compatibility boxes on serialized image rows, in place.
+
+    Flag off performs no normalized lookup and leaves the rows untouched. Flag on
+    uses the single-image reader's authority rules with one query per 500 distinct
+    IDs, retaining each supplied legacy value when normalized data is unavailable.
+    Pass serialized copies, never cached database rows.
+    """
+    if prefer_normalized is None:
+        prefer_normalized = read_normalized_first_enabled()
+    if not prefer_normalized or not rows:
+        return
+    by_id: dict[int, list[dict]] = {}
+    for row in rows:
+        image_id = row.get("id") or row.get("ID")
+        if image_id is not None:
+            by_id.setdefault(int(image_id), []).append(row)
+    if not by_id:
+        return
+    try:
+        if conn is None:
+            from modules import db
+
+            conn = db.get_connector()
+        ids = list(by_id)
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            sql = _BATCH_BBOX_SQL.format(placeholders=",".join("?" for _ in chunk))
+            normalized = conn.query(sql, (detector_key, detector_key, *chunk))
+            for item in normalized:
+                image_id = int(item["image_id"])
+                if item.get("selection_id") is not None:
+                    payload = _project_selected_bbox(item)
+                else:
+                    payload = item.get("legacy_payload", _NO_CURRENT_RUN)
+                    if payload is None:
+                        payload = _NO_CURRENT_RUN
+                if payload is not _NO_CURRENT_RUN:
+                    for row in by_id.get(image_id, []):
+                        row["bird_bbox"] = payload
+    except Exception:
+        logger.exception("overlay_bird_bboxes: normalized lookup failed; retaining legacy values")

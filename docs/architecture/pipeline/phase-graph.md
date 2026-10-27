@@ -4,7 +4,7 @@ title: Phase Graph and Prerequisites
 description: The canonical phase codes, execution order, prerequisite DAG, executor registration, versions, and phase-code aliases.
 resource: architecture/pipeline/phase-graph.md
 tags: [pipeline, phases, dag, prerequisites, executors]
-timestamp: 2026-09-01T00:00:00Z
+timestamp: 2026-10-24T00:00:00Z
 okf_version: 0.2
 ---
 
@@ -56,7 +56,7 @@ PHASE_PREREQUISITES: dict[str, tuple[str, ...]] = {
     "metadata":     ("indexing",),
     "scoring":      ("metadata",),
     "culling":      ("scoring",),
-    "keywords":     ("scoring",),
+    "keywords":     ("metadata",),   # #407: tagging never reads a score
     "bird_species": ("keywords",),
 }
 ```
@@ -111,7 +111,7 @@ the linear order — and returns the contiguous set of phases required to reach 
 
 | Call | Result |
 |---|---|
-| `pipeline_prefix_through("keywords")` | `["indexing", "metadata", "scoring", "keywords"]` |
+| `pipeline_prefix_through("keywords")` | `["indexing", "metadata", "keywords"]` |
 | `pipeline_prefix_through("culling")` | `["indexing", "metadata", "scoring", "culling"]` |
 | unknown phase | `[phase]` unchanged |
 
@@ -146,7 +146,7 @@ both are derived from their tables by `_prereqs()` / `_preferred()` rather than 
 | `metadata` | `1.0.0` | `metadata_runner.start_batch` | `indexing` | `:51-64` |
 | `scoring` | `5.0.0` (`SCORING_EXECUTOR_VERSION`) | `scoring_runner.start_batch` | `metadata` | `:67-73` |
 | `culling` | `1.0.0` | `selection_runner.start_batch`, else `clustering_runner.start_batch` | `scoring` | `:76-89` |
-| `keywords` | `1.0.0` | `tagging_runner.start_batch` | `scoring` | `:92-98` |
+| `keywords` | `1.0.0` | `tagging_runner.start_batch` | `metadata` | `:92-98` |
 | `bird_species` | `BIRD_SPECIES_RUNNER_VERSION` (`1.0.0`) | `bird_species_runner.start_batch` | `keywords` | `:101-109` |
 
 `indexing` and `metadata` register **even when their runner is `None`**, with `run_folder=None`.

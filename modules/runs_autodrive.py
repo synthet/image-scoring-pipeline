@@ -140,9 +140,15 @@ def _reconcile_stale_ips_for_drive() -> None:
     # proves clustering actually ran. Including it marked 672 never-clustered images ``done``
     # in one 23-second sweep, which hid whole folders from the drive permanently — the
     # folder rollup read culling complete and the bucketer advanced past it forever.
+    #
+    # ``localization`` joins only while the phase is enabled, and only from a current
+    # terminal run (#527): a retryable error is an attempt, never proof of completion.
     try:
+        from modules.phases import is_phase_enabled
+
         db.reconcile_phantom_complete_image_phases(
-            ("indexing", "metadata", "scoring", "keywords"),
+            ("indexing", "metadata", "scoring", "keywords")
+            + (("localization",) if is_phase_enabled("localization") else ()),
             limit=5000,
         )
     except Exception:
@@ -2224,6 +2230,8 @@ def drive_tick() -> dict[str, Any] | None:
 
 def get_drive_status_with_outstanding() -> dict[str, Any]:
     """Drive state plus a light snapshot of outstanding work for the UI."""
+    from modules.localization_lane import get_diagnostic_state
+
     state = get_drive_state()
     last = state.get("last_result")
     if isinstance(last, dict) and last:
@@ -2249,7 +2257,7 @@ def get_drive_status_with_outstanding() -> dict[str, Any]:
     last_err = state.get("last_batch_error")
     if last_err:
         outstanding["last_batch_error"] = last_err
-    return {"state": state, "outstanding": outstanding}
+    return {"state": state, "outstanding": outstanding, "localization_lane": get_diagnostic_state()}
 
 
 def _recent_auto_drive_jobs(*, scan_limit: int = 20) -> list[dict[str, Any]]:
@@ -2299,7 +2307,7 @@ def _active_auto_drive_plan_key_duplicates(jobs: Sequence[dict[str, Any]]) -> li
 
 
 def get_drive_diagnostics() -> dict[str, Any]:
-    """Drive status, health, recent auto-drive jobs, and anomaly hints for MCP/CLI."""
+    """Drive/lane status, health, recent auto-drive jobs, and anomaly hints for MCP/CLI."""
     status = get_drive_status_with_outstanding()
     recent_jobs = _recent_auto_drive_jobs(scan_limit=50)
     duplicates = _active_auto_drive_plan_key_duplicates(recent_jobs)
@@ -2320,6 +2328,17 @@ def get_drive_diagnostics() -> dict[str, Any]:
         if str(s.get("reason") or "") == "failed_exhausted"
     ]
     anomalies: list[dict[str, Any]] = []
+    lane = status.get("localization_lane") or {}
+    if lane.get("hold_reason") == "detector_outage_hold":
+        anomalies.append({
+            "code": "detector_outage_hold",
+            "scope": "localization_lane",
+            "severity": "warning",
+            "message": ("Localization repair is held after repeated detector outages; restart clears the hold."
+                        if lane.get("restart_required") else
+                        "Localization repair is cooling down after a detector outage."),
+            "details": lane,
+        })
     if failed_exhausted_folders:
         anomalies.append({
             "code": "failed_exhausted",

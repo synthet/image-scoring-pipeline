@@ -28,6 +28,7 @@ from modules.phases import (
     PhaseCode,
     assert_prereqs_for_scope,
     disabled_phase_submission_error,
+    insert_attempt_before,
     job_type_for_phase,
     normalize_phase_codes,
     public_phase_codes,
@@ -180,6 +181,10 @@ def create_pipeline_submit_router() -> APIRouter:
                 gate_paths.append(resolved_folder)
         if gate_paths:
             try:
+                # Attempt-before edges (#407 AC-4): may add localization ahead of scoring,
+                # in which case it becomes the entry runner.
+                phase_plan_codes = insert_attempt_before(phase_plan_codes, gate_paths)
+                first_phase = phase_plan_codes[0]
                 prereq_miss = assert_prereqs_for_scope(phase_plan_codes, gate_paths)
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"scope prerequisite check failed: {e}") from e

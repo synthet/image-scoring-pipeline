@@ -165,7 +165,8 @@ def test_invalid_remote_scores_are_rejected(result, tmp_path):
     path = tmp_path / "a.jpg"
     path.write_bytes(b"image")
     client = SimpleNamespace(call=lambda *args, **kwargs: result)
-    backend = SimpleNamespace(is_raw_file=lambda path: False, VERSION="test")
+    backend = SimpleNamespace(is_raw_file=lambda path: False, VERSION="test",
+                              preprocess_image=lambda path, **kwargs: path)
     registry = SimpleNamespace(all_active=lambda: [])
     with pytest.raises(RemoteGpuError, match="scoring"):
         RemoteScoringHost(client, backend, registry).run_all_models(str(path), write_metadata=False)
@@ -274,13 +275,26 @@ def test_disabled_liqe_does_not_load_local_gpu_in_remote_scoring(monkeypatch, tm
     from modules.pipeline import ImageJob, ScoringWorker
     from modules.remote_gpu.proxies import RemoteScoringHost
 
+    from PIL import Image
+
     path = tmp_path / "a.jpg"
-    path.write_bytes(b"image")
-    result = {"models": {"spaq": {"status": "success", "normalized_score": 0.6}},
-              "summary": {"total_models": 1, "successful_predictions": 1, "failed_predictions": 0}}
-    client = SimpleNamespace(call=lambda *args, **kwargs: result)
-    backend = SimpleNamespace(is_raw_file=lambda path: False, VERSION="test",
-                              preprocess_image=lambda path, **kwargs: path)
+    Image.new("RGB", (8, 8), (120, 120, 120)).save(path, "JPEG")  # the worker opens it
+
+    def call(_section, params, *_args, **_kwargs):
+        # A real runner attests the prepared input it scored (proxies.run_all_models).
+        attested = params["model_inputs"]["spaq"]["metadata"]
+        return {"models": {"spaq": {"status": "success", "normalized_score": 0.6, "input": attested}},
+                "summary": {"total_models": 1, "successful_predictions": 1, "failed_predictions": 0}}
+
+    client = SimpleNamespace(call=call)
+
+    def prepare(_path, output_dir=None, resolution_override=None):
+        # The worker validates a resolution x resolution prepared input (scoring_inputs).
+        out = tmp_path / f"prepared_{resolution_override}.jpg"
+        Image.new("RGB", (resolution_override, resolution_override)).save(out, "JPEG")
+        return str(out)
+
+    backend = SimpleNamespace(is_raw_file=lambda path: False, VERSION="test", preprocess_image=prepare)
     registry = SimpleNamespace(all_active=lambda: [SimpleNamespace(name="spaq")])
     host = RemoteScoringHost(client, backend, registry)
     worker = ScoringWorker(queue.Queue(), queue.Queue(), threading.Event(), host)

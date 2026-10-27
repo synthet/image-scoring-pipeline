@@ -6,13 +6,13 @@ import math
 
 import numpy as np
 
-# Starting points — re-fit on corpus (clean-room planning).
+# Starting points — re-fit on corpus (planning).
 DEFAULT_FOCUS_CELL_PX = 16
 DEFAULT_NOISE_CELL_PX = 20
 
 
-def _laplacian_variance_cell(grey: np.ndarray) -> float:
-    if grey.size < 4:
+def _laplacian_variance_cell(grey: np.ndarray, mask: np.ndarray | None = None) -> float:
+    if min(grey.shape) < 3:
         return 0.0
     g = grey.astype(np.float64)
     lap = (
@@ -22,7 +22,9 @@ def _laplacian_variance_cell(grey: np.ndarray) -> float:
         + g[1:-1, 0:-2]
         + g[1:-1, 2:]
     )
-    return float(np.var(lap))
+    if mask is not None:
+        lap = lap[mask[1:-1, 1:-1]]
+    return float(np.var(lap)) if lap.size else 0.0
 
 
 def _noise_sigma_cell(grey: np.ndarray) -> float:
@@ -59,14 +61,8 @@ def build_focus_grid(
             y0, y1 = cy * cell_size_px, min(h, (cy + 1) * cell_size_px)
             x0, x1 = cx * cell_size_px, min(w, (cx + 1) * cell_size_px)
             patch = grey[y0:y1, x0:x1]
-            if mask is not None and patch.size:
-                m = mask[y0:y1, x0:x1]
-                if m.any():
-                    patch = patch[m]
-                else:
-                    values.append(0.0)
-                    continue
-            values.append(_laplacian_variance_cell(patch) if patch.size else 0.0)
+            patch_mask = mask[y0:y1, x0:x1] if mask is not None else None
+            values.append(_laplacian_variance_cell(patch, patch_mask))
     return cells_x, cells_y, values, _normalize_values(values)
 
 

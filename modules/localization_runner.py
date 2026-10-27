@@ -28,7 +28,9 @@ from modules.localization import (
     localize_image,
     max_regions_per_class,
 )
+from modules.localization_policy import fetch_run_history, repair_state
 from modules.phases import PhaseCode, disabled_phase_submission_error
+from modules.rendition import source_identity
 from modules.scene_route import scene_route_settings
 
 logger = logging.getLogger(__name__)
@@ -184,8 +186,14 @@ class LocalizationRunner:
         job_id: int | None = None,
         resolved_image_ids: list[int] | None = None,
         report_collector=None,
+        repair_limited: bool = False,
     ) -> str:
-        """Start localization in a background thread. Returns 'Started' or an error string."""
+        """Start localization in a background thread. Returns 'Started' or an error string.
+
+        ``repair_limited`` applies the bounded-repair limit (#527): images whose retryable
+        attempts are exhausted or still cooling down are left for later. Explicit
+        submissions leave it off; they are the explicit retry.
+        """
         if self.is_running:
             return "Error: Already running."
         disabled = disabled_phase_submission_error([PHASE_CODE])
@@ -206,7 +214,8 @@ class LocalizationRunner:
 
             def target_wrapper():
                 try:
-                    self._run_batch_internal(input_path, job_id, resolved_image_ids, report_collector)
+                    self._run_batch_internal(input_path, job_id, resolved_image_ids, report_collector,
+                                             repair_limited=repair_limited)
                 except Exception:
                     self.status_message = "Failed"
                     raise
@@ -230,7 +239,8 @@ class LocalizationRunner:
             tuple(ids),
         ) or []
 
-    def _run_batch_internal(self, input_path, job_id, resolved_image_ids, report_collector):
+    def _run_batch_internal(self, input_path, job_id, resolved_image_ids, report_collector,
+                            repair_limited: bool = False):
         from modules.events import event_manager
         from modules.run_log import runner_emit
 
@@ -253,6 +263,12 @@ class LocalizationRunner:
         metrics = BatchMetrics()
         _reset_gpu_peak()
         ctx = load_detector_context(cfg) if rows else None
+        from modules.localization_cascade_runner import load_cascade_context, localize_cascade
+
+        cascade = load_cascade_context(cfg, ctx) if rows else None  # None unless cascade.enabled (AC-15)
+        if cascade is not None:
+            log("Subject cascade on (shadow): COCO fallback "
+                f"{'ready' if cascade.rtmdet.enabled else 'unavailable: ' + str(cascade.rtmdet.error_code)}.")
         scene = scene_route_settings()
         router = SceneRouter(scene) if rows and scene["enabled"] else None
         if router is not None:
@@ -262,6 +278,8 @@ class LocalizationRunner:
                 "WARNING")
         elif ctx is not None and ctx.load_error:
             log(f"Bird detector unavailable: {ctx.load_error}", "ERROR")
+        history = fetch_run_history([int(r["id"]) for r in rows]) if repair_limited and rows else {}
+        deferred: Counter[str] = Counter()
 
         for row in rows:
             if self.stop_event.is_set():
@@ -274,7 +292,26 @@ class LocalizationRunner:
 
             image_id = int(row["id"])
             file_path = row.get("file_path") or ""
+            if history.get(image_id):
+                reason = self._repair_deferral(history[image_id], file_path, ctx)
+                if reason:
+                    deferred[reason] += 1
+                    if report_collector is not None:
+                        try:
+                            report_collector.record_skip(image_id, reason)
+                        except Exception:
+                            logger.debug("localization: report record failed for image %s", image_id,
+                                         exc_info=True)
+                    self.current_count += 1
+                    continue
             try:
+                # Retries must re-enter running before their terminal outcome;
+                # failed/skipped -> done is rejected by strict phase transitions.
+                # Deferred repair rows above are left untouched.
+                db.set_image_phase_status(
+                    image_id, PHASE_CODE, "running", job_id=job_id,
+                    executor_version=LOCALIZATION_RUNNER_VERSION,
+                )
                 if router is not None:
                     outcome = router.localize(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id)
                 else:
@@ -288,6 +325,11 @@ class LocalizationRunner:
                 )
             else:
                 self._record_phase_status(image_id, outcome, job_id)
+                if cascade is not None:
+                    try:
+                        localize_cascade(image_id, file_path, cascade, max_regions=max_regions, job_id=job_id)
+                    except Exception:  # noqa: BLE001 — shadow: never costs the bird run or the batch
+                        logger.exception("localization: cascade failed for image %s", image_id)
             metrics.add(outcome)
             self._record_report(report_collector, image_id, outcome)
             if outcome.error_detail:
@@ -301,6 +343,8 @@ class LocalizationRunner:
                 })
 
         summary = metrics.summary(_peak_gpu_mib())
+        if repair_limited:
+            summary["repair_deferred"] = dict(deferred)
         if report_collector is not None:
             try:
                 summary = {**report_collector.finalize(), **summary}
@@ -311,6 +355,24 @@ class LocalizationRunner:
             f"unchanged={summary['unchanged_skipped']}")
         self.status_message = "Done"
         self._finish_job(job_id)
+
+    @staticmethod
+    def _repair_deferral(history: list[dict[str, Any]], file_path: str, ctx) -> str | None:
+        """``exhausted`` / ``cooling_down`` when bounded repair holds this image back, else None.
+
+        Compared against the identity the next attempt would have, so a changed source or
+        detector configuration starts a fresh count (#527).
+        """
+        try:
+            source = source_identity(file_path)
+        except OSError:
+            source = (None, None)
+        state = repair_state(history, (ctx.config_hash if ctx is not None else None, *source))
+        if state.exhausted:
+            return "exhausted"
+        if state.blocked:
+            return "cooling_down"
+        return None
 
     @staticmethod
     def _record_phase_status(image_id: int, outcome: ImageOutcome, job_id: int) -> None:

@@ -299,8 +299,21 @@ export interface RunsDriveState {
   idle_no_progress_ticks: number
 }
 
+export interface LocalizationLaneStatus {
+  source: 'process_local'
+  last_tick_at: number
+  last_job_id: number | null
+  outage_streak: number
+  hold_until: number | null
+  backlog: Record<string, number> | null
+  hold_reason: 'detector_outage_hold' | null
+  hold_seconds_remaining: number | null
+  restart_required: boolean
+}
+
 export interface RunsDriveStatus {
   state: RunsDriveState
+  localization_lane?: LocalizationLaneStatus
   outstanding: {
     total_outstanding: number | null
     bucket_counts: Record<string, number>

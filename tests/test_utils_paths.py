@@ -41,6 +41,16 @@ def test_convert_path_to_local_already_windows_unchanged(monkeypatch):
     assert result == "D:/Photos/img.jpg"
 
 
+@pytest.mark.parametrize("system", ["Linux", "Windows"])
+@pytest.mark.parametrize("value", [None, ""])
+def test_convert_path_to_local_passes_through_empty(monkeypatch, system, value):
+    """Selector-mode jobs run with input_path=None; the WebUI sets the host-remap env vars."""
+    monkeypatch.setattr(platform, "system", lambda: system)
+    monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WSL", "/mnt/d/Projects/image-scoring-pipeline")
+    monkeypatch.setenv("IMAGE_SCORING_HOST_PROJECT_WIN", "D:\Projects\image-scoring-pipeline")
+    assert utils.convert_path_to_local(value) == value
+
+
 def test_convert_path_to_local_windows_path_on_linux(monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Linux")
     result = utils.convert_path_to_local("D:/Photos/img.jpg")

@@ -263,7 +263,9 @@
     "fail_open": true
   },
   "bird_species": {
-    "use_regions": false
+    "use_regions": false,
+    "embedded_detector": true,
+    "min_confidence": 0.5
   },
   "scene_route": {
     "enabled": true,
@@ -274,6 +276,10 @@
   },
   "localization": {
     "enabled": true,
+    "new_images_only": true,
+    "repair": {
+      "enabled": false
+    },
     "max_regions_per_class": 10,
     "detectors": {
       "bird": {

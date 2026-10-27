@@ -161,6 +161,8 @@ POSTGRES_APP_TABLES = (
     "image_region_keypoints",
     # Production localization selections (#484).
     "image_localization_selections",
+    # Localization enablement boundary (#527).
+    "localization_enablement",
     # Scene route classifications (#412).
     "image_scene_labels",
 )
@@ -190,6 +192,14 @@ _SEED_EXTRA_EMBEDDING_SPACES_SQL = [
         SELECT 'bioclip_2_image', 768,
                'BioCLIP 2 image tower ViT-L/14 (open_clip) — bird/species similarity', 1
         WHERE NOT EXISTS (SELECT 1 FROM embedding_spaces WHERE code = 'bioclip_2_image')
+        """
+    ),
+    (
+        """
+        INSERT INTO embedding_spaces (code, dim, description, active)
+        SELECT 'bioclip_2_crop', 768,
+               'BioCLIP 2 image tower ViT-L/14 on a bird crop (region or detector box) — species similarity', 1
+        WHERE NOT EXISTS (SELECT 1 FROM embedding_spaces WHERE code = 'bioclip_2_crop')
         """
     ),
     (

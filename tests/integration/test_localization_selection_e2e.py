@@ -145,3 +145,224 @@ def test_promote_cli_dry_run_apply_rerun_and_revoke(tmp_path):
     assert cli.apply(manifest)["skipped:already_selected"] == 1    # idempotent
     assert cli.revoke(manifest, "test") == {"revoked": 1, "not_ours": 1}
     assert _bbox(ready) == SENTINEL
+
+
+@pytest.mark.parametrize("first", ["promotion", "legacy"])
+def test_legacy_write_racing_promotion_cannot_overwrite_projection(monkeypatch, first):
+    """Hold the first image lock until the other transaction attempts that same lock."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
+    from modules.localization_selection import write_legacy_bird_bbox
+
+    iid = _image()
+    rid = _region(_run(iid, publish=False))
+    connector = db.get_connector()
+    locked, release, second_attempt = threading.Event(), threading.Event(), threading.Event()
+    legacy = {"detected": False, "scan_failed": True}
+
+    class Transaction:
+        def __init__(self, tx):
+            self.tx = tx
+
+        def __getattr__(self, name):
+            return getattr(self.tx, name)
+
+        def query_one(self, sql, params):
+            if "FOR UPDATE" not in sql:
+                return self.tx.query_one(sql, params)
+            if threading.current_thread().name.endswith("_1"):
+                second_attempt.set()
+                return self.tx.query_one(sql, params)
+            result = self.tx.query_one(sql, params)
+            locked.set()
+            assert release.wait(5), "first transaction was not released"
+            return result
+
+    class Connector:
+        def __getattr__(self, name):
+            return getattr(connector, name)
+
+        def run_transaction(self, callback):
+            return connector.run_transaction(lambda tx: callback(Transaction(tx)))
+
+    monkeypatch.setattr(db, "get_connector", lambda: Connector())
+    actions = {"promotion": lambda: select_region(iid, rid, RULE),
+               "legacy": lambda: write_legacy_bird_bbox(iid, legacy)}
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="race") as pool:
+        a = pool.submit(actions[first])
+        try:
+            assert locked.wait(5)
+            b = pool.submit(actions["legacy" if first == "promotion" else "promotion"])
+            assert second_attempt.wait(5)
+            with pytest.raises(TimeoutError):
+                b.result(timeout=0.2)
+        finally:
+            release.set()
+        results = [a.result(timeout=5), b.result(timeout=5)]
+    assert any(isinstance(r, dict) and r["status"] == "selected" for r in results)
+    assert _bbox(iid) == active_selection(iid)["projected_bird_bbox"]
+    assert revoke_selection(iid, "race rollback")["status"] == "revoked"
+    assert _bbox(iid) == (SENTINEL if first == "promotion" else legacy)
+
+
+def test_revoked_selection_allows_legacy_species_again():
+    from modules.bird_species import species_input_for_image
+    from modules.localization_selection import write_legacy_bird_bbox
+
+    iid = _image()
+    select_region(iid, _region(_run(iid, publish=False)), RULE)
+    assert species_input_for_image(iid)["mode"] == "region"
+    assert write_legacy_bird_bbox(iid, SENTINEL) is False
+    revoke_selection(iid, "test")
+    assert species_input_for_image(iid)["mode"] == "legacy"
+    assert write_legacy_bird_bbox(iid, SENTINEL) is True
+
+
+def test_geometry_promotion_preserves_keywords_embeddings_and_phase_state(tmp_path):
+    from scripts.maintenance import refresh_region_species as refresh
+
+    iid = _image()
+    rid = _region(_run(iid, publish=False, boxes=((0, 0, 0.0049, 1, 0.8),)))
+    db.update_image_keywords_for_image(iid, "birds,species:wren", source="manual", confidence=0.9,
+                                       relevance_weight=0.7)
+    db.set_image_phase_status(iid, "bird_species", "done", executor_version="previous")
+    baseline = tmp_path / "small.json"
+    refresh.snapshot([iid], baseline, preserve_species=True)
+    assert select_region(iid, rid, "rule/4")["status"] == "selected"
+    assert refresh.verify(baseline)["metadata_preserved"] is True
+    assert revoke_selection(iid, "rollback")["status"] == "revoked"
+    assert refresh.verify(baseline)["metadata_preserved"] is True
+
+
+def test_refresh_restores_removed_non_species_membership_and_metadata(tmp_path):
+    from scripts.maintenance import refresh_region_species as refresh
+
+    iid = _image()
+    db.update_image_keywords_for_image(iid, "birds,birds:species-exhausted,travel,species:old",
+                                       source="manual", confidence=0.9, relevance_weight=0.7)
+    db.get_connector().execute(
+        "UPDATE image_keywords SET confidence=NULL WHERE image_id=? AND keyword_id="
+        "(SELECT keyword_id FROM keywords_dim WHERE keyword_norm='birds:species-exhausted')", (iid,))
+    before = refresh._rows([iid])
+    baseline = tmp_path / "before.json"
+    refresh.snapshot([iid], baseline)
+    db.update_image_keywords_for_image(iid, "birds,travel,species:new", source="auto")
+
+    assert refresh.restore(baseline) == {"restored_rows": 3}
+    after = refresh._rows([iid])
+    assert sorted((r for r in before if not r["keyword_norm"].startswith("species:")),
+                  key=lambda r: r["keyword_norm"]) == sorted(
+        (r for r in after if not r["keyword_norm"].startswith("species:")), key=lambda r: r["keyword_norm"])
+    assert [r["keyword_norm"] for r in after if r["keyword_norm"].startswith("species:")] == ["species:new"]
+    assert refresh.restore(baseline) == {"restored_rows": 0}
+
+
+def test_refresh_restores_metadata_and_continuation_skips_success(monkeypatch, tmp_path):
+    import hashlib
+    import json
+
+    from modules import bird_species as bs
+    from scripts.maintenance import refresh_region_species as refresh
+
+    iid = _image()
+    db.get_connector().execute("UPDATE images SET file_path = ? WHERE id = ?", (str(tmp_path / "bird.jpg"), iid))
+    (tmp_path / "bird.jpg").write_bytes(b"fake classifier input")
+    rid = _region(_run(iid, publish=False))
+    select_region(iid, rid, refresh.SELECTED_BY)
+    selection = active_selection(iid)
+    db.update_image_keywords_for_image(iid, "birds,birds:species-exhausted,travel,species:old", source="manual", confidence=0.9,
+                                       relevance_weight=0.7)
+    def marker_created_at():
+        return db.get_connector().query_one(
+            "SELECT ik.created_at FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id=ik.keyword_id "
+            "WHERE ik.image_id=? AND kd.keyword_norm='birds:species-exhausted'", (iid,))["created_at"]
+
+    original_created_at = marker_created_at()
+    region = db.get_connector().query_one("SELECT x1,y1,x2,y2 FROM image_regions WHERE id = ?", (rid,))
+    cohort, full, baseline, completed = (tmp_path / name for name in ("cohort.json", "full.json", "baseline.json", "completed.json"))
+    cohort.write_text(json.dumps({"selected_by": refresh.SELECTED_BY, "rows": [{"id": iid, **region}],
+        "identities": [{"image_id": iid, "region_id": rid, "localization_run_id": selection["localization_run_id"]}]}))
+    full.write_text(json.dumps({"meta": {"selected_by": refresh.SELECTED_BY},
+                               "images": [{"image_id": iid, "new": "Carolina Wren"}]}))
+    monkeypatch.setattr(refresh, "COHORT_SHA256", hashlib.sha256(cohort.read_bytes()).hexdigest())
+    monkeypatch.setattr(refresh, "FULL_SHA256", hashlib.sha256(full.read_bytes()).hexdigest())
+    monkeypatch.setattr(bs, "use_regions_enabled", lambda: True)
+    monkeypatch.setattr(bs, "min_confidence", lambda: 0.5)
+    calls = []
+
+    class Classifier:
+        last_bbox = None
+        last_image_embedding = None
+
+        def load_model(self):
+            pass
+
+        def classify(self, *args, **kwargs):
+            calls.append(kwargs)
+            return [("Carolina Wren", 0.9)]
+
+    monkeypatch.setattr(bs, "new_bioclip_classifier", lambda: Classifier())
+    refresh.snapshot([iid], baseline)
+    result = refresh.run([iid], refresh.FROZEN_SPECIES_LIST, cohort, full, baseline, completed)
+    assert result["completed_ids"] == [iid]
+    assert marker_created_at() == original_created_at
+    assert refresh.verify(baseline, full)["metadata_preserved"] is True
+    assert calls == [{"threshold": 0.5, "top_k": 1, "region": (0.1, 0.2, 0.3, 0.4), "use_detector": False}]
+    assert _bbox(iid) == selection["projected_bird_bbox"]
+    refresh.run([iid], refresh.FROZEN_SPECIES_LIST, cohort, full, baseline, completed)
+    assert len(calls) == 1
+    # A user pause of a maintenance job must stop inference and retain the pause.
+    paused_baseline = tmp_path / "paused-baseline.json"
+    refresh.snapshot([iid], paused_baseline)
+    monkeypatch.setattr(db, "job_should_stop_processing", lambda job_id: True)
+    monkeypatch.setattr(db, "get_job", lambda job_id: {"status": "paused"})
+    statuses = []
+    monkeypatch.setattr(db, "update_job_status", lambda *args: statuses.append(args[1]))
+    with pytest.raises(RuntimeError, match="paused"):
+        refresh.run([iid], refresh.FROZEN_SPECIES_LIST, cohort, full, paused_baseline, tmp_path / "paused-done.json")
+    assert statuses == ["running"]
+    assert len(calls) == 1
+
+
+def test_refresh_removes_parent_tag_added_to_marker_only_image(monkeypatch, tmp_path):
+    """An image eligible only through ``birds:species-exhausted`` keeps exactly that membership (#593)."""
+    import hashlib
+    import json
+
+    from modules import bird_species as bs
+    from scripts.maintenance import refresh_region_species as refresh
+
+    iid = _image()
+    db.get_connector().execute("UPDATE images SET file_path = ? WHERE id = ?", (str(tmp_path / "bird.jpg"), iid))
+    (tmp_path / "bird.jpg").write_bytes(b"fake classifier input")
+    rid = _region(_run(iid, publish=False))
+    select_region(iid, rid, refresh.SELECTED_BY)
+    selection = active_selection(iid)
+    db.update_image_keywords_for_image(iid, "birds:species-exhausted", source="auto", confidence=1.0)
+    region = db.get_connector().query_one("SELECT x1,y1,x2,y2 FROM image_regions WHERE id = ?", (rid,))
+    cohort, full, baseline, completed = (tmp_path / name for name in ("cohort.json", "full.json", "baseline.json", "completed.json"))
+    cohort.write_text(json.dumps({"selected_by": refresh.SELECTED_BY, "rows": [{"id": iid, **region}],
+        "identities": [{"image_id": iid, "region_id": rid, "localization_run_id": selection["localization_run_id"]}]}))
+    full.write_text(json.dumps({"meta": {"selected_by": refresh.SELECTED_BY},
+                               "images": [{"image_id": iid, "new": "American Wigeon"}]}))
+    monkeypatch.setattr(refresh, "COHORT_SHA256", hashlib.sha256(cohort.read_bytes()).hexdigest())
+    monkeypatch.setattr(refresh, "FULL_SHA256", hashlib.sha256(full.read_bytes()).hexdigest())
+    monkeypatch.setattr(bs, "use_regions_enabled", lambda: True)
+    monkeypatch.setattr(bs, "min_confidence", lambda: 0.5)
+
+    class Classifier:
+        last_bbox = None
+        last_image_embedding = None
+
+        def load_model(self):
+            pass
+
+        def classify(self, *args, **kwargs):
+            return [("American Wigeon", 0.5679)]
+
+    monkeypatch.setattr(bs, "new_bioclip_classifier", lambda: Classifier())
+    refresh.snapshot([iid], baseline)
+    assert refresh.run([iid], refresh.FROZEN_SPECIES_LIST, cohort, full, baseline, completed)["completed_ids"] == [iid]
+    assert sorted(r["keyword_norm"] for r in refresh._rows([iid])) == [
+        "birds:species-exhausted", "species:american wigeon"]

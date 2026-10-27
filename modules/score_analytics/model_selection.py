@@ -660,7 +660,8 @@ def build_report(
     clusters = _clusters(m.stack_ids, min_size)
     weights = {c: {mm: float(w) for mm, w in (weights.get(c) or {}).items()} for c in COMPOSITES if weights.get(c)}
 
-    corr = su.correlation_suite(m.series, keys, clusters, seed=seed)
+    corr = su.correlation_suite(m.series, keys, clusters, seed=seed,
+                                partial_keys=[k for k in keys if roles[k] != "composite"])
     pca_res = su.pca(m.series, candidates) if len(candidates) >= 2 else {}
     stack_res = stacks.analyze_stacks(
         m.series, keys, m.stack_ids, m.pick_status, m.image_ids, m.best_image_by_stack,

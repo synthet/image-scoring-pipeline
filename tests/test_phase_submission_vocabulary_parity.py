@@ -80,6 +80,8 @@ def scope(tmp_path, monkeypatch):
         "modules.phases.compute_satisfied_phases_for_scope",
         lambda _paths: {p.value for p in PhaseCode},
     )
+    # No attempt-before insertion (#407) unless a test asks for it.
+    monkeypatch.setattr("modules.phases.attempt_pending", lambda _producer, _paths: False)
     folder = tmp_path / "scope"
     folder.mkdir()
     return str(folder.resolve())
@@ -183,6 +185,22 @@ def test_pipeline_submit_accepts_every_phase_code(
         json={"workspace_target": scope, "stage_codes": [phase]},
     )
     assert_vocabulary_accepted(r, "/api/pipeline/submit", phase)
+
+
+def test_runs_submit_inserts_localization_ahead_of_scoring(
+    api_client, scope, stub_enqueue, gated_phases_enabled, monkeypatch,
+):
+    """#407 AC-4/AC-13: a scoring run over images without a localization attempt localizes first."""
+    monkeypatch.setattr("modules.phases.attempt_pending", lambda producer, _paths: producer == "localization")
+
+    r = api_client.post(
+        "/api/runs/submit",
+        json={"scope_type": "folder_recursive", "scope_paths": [scope], "stages": ["scoring"]},
+    )
+    assert r.status_code == 200, r.text
+    assert stub_enqueue[-1]["phases"] == ["localization", "scoring"]
+    assert stub_enqueue[-1]["phase_code"] == "localization"
+    assert stub_enqueue[-1]["job_type"] == "localization"
 
 
 @pytest.mark.parametrize("phase", GATED_PHASES)

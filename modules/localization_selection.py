@@ -18,12 +18,14 @@ Both run in one transaction with the ``images`` row locked.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 DETECTOR_KEY = "bird"
 
 #: ``expect_bird_bbox`` default meaning "do not check the current value".
 ANY = object()
+logger = logging.getLogger(__name__)
 
 _ACTIVE_SQL = """
     SELECT id, localization_run_id, region_id, selected_by, evidence, previous_bird_bbox,
@@ -67,6 +69,41 @@ def active_selection(image_id: int, detector_key: str = DETECTOR_KEY) -> dict[st
     from modules import db
 
     return db.get_connector().query_one(_ACTIVE_SQL, (int(image_id), detector_key))
+
+
+def write_legacy_bird_bbox(image_id: int, bbox: dict[str, Any] | None) -> bool:
+    """Write a species detector result only while no active bird selection owns the box.
+
+    Lock images first, exactly as promotion/revocation do, then check the selection and
+    write in the same transaction. Any guard failure suppresses the write, even with
+    region inference disabled. Return True only when a box was written.
+    """
+    from modules import db
+
+    def _tx(tx):
+        image = tx.query_one("SELECT folder_id FROM images WHERE id = ? FOR UPDATE", (int(image_id),))
+        if image is None:
+            return False, None
+        if tx.query_one(_ACTIVE_SQL, (int(image_id), DETECTOR_KEY)) is not None:
+            logger.info("bird_species: selected bird_bbox protected for image_id=%s", image_id)
+            return False, None
+        tx.execute("UPDATE images SET bird_bbox = ?::jsonb WHERE id = ?",
+                   (json.dumps(bbox) if bbox is not None else None, int(image_id)))
+        return True, image.get("folder_id")
+
+    try:
+        written, folder_id = db.get_connector().run_transaction(_tx)
+    except Exception:
+        logger.warning("bird_species: legacy bird_bbox guard failed for image_id=%s; write suppressed",
+                       image_id, exc_info=True)
+        return False
+    if written and folder_id:
+        try:
+            db.invalidate_folder_phase_aggregates(folder_id=folder_id)
+        except Exception:
+            logger.debug("bird_bbox: folder aggregate invalidation failed for image_id=%s",
+                         image_id, exc_info=True)
+    return written
 
 
 def select_region(

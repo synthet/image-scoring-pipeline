@@ -26,7 +26,7 @@ def _ensure_new_helpers(mod):
             done?", ignoring the bird box. ``BirdSpeciesRunner`` uses it to tell a row
             that needs full classification from one that only needs a detector rescan.
             """
-            from modules.bird_detection import bbox_needs_scan
+            from modules.bird_detection import bbox_needs_scan, embedded_detector_enabled
             from modules.bird_species_eligibility import _sql_bird_species_exhausted_ips
 
             conn = mod.get_connector()
@@ -55,8 +55,9 @@ def _ensure_new_helpers(mod):
             # The bird box is a product of this phase, so a birds-tagged image that was
             # never scanned (or whose scan failed retryably) still owes work — even when
             # species are already assigned or the species search is exhausted. Postgres
-            # only: ``bird_bbox`` does not exist on the legacy Firebird schema.
-            if include_bbox and mod._get_db_engine() == "postgres":
+            # only: ``bird_bbox`` does not exist on the legacy Firebird schema. Once the embedded
+            # detector is retired (#638) the box is no longer this phase's product.
+            if include_bbox and embedded_detector_enabled() and mod._get_db_engine() == "postgres":
                 row_bbox = conn.query_one(
                     "SELECT bird_bbox FROM images WHERE id = ?", (image_id,)
                 )

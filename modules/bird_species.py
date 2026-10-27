@@ -11,9 +11,11 @@ Top predicted species are stored as "species:Common Name" keywords.
 import logging
 import os
 import threading
+from decimal import Decimal
 from pathlib import Path
 
 from modules import db
+from modules.localization_selection import write_legacy_bird_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +28,22 @@ SOURCE_BIOCLIP_REGION = "bioclip_region"
 
 USE_REGIONS_KEY = "bird_species.use_regions"
 
-_PRIMARY_REGION_SQL = """
-    SELECT r.id AS run_id, r.status, r.error_code, g.id AS region_id, g.x1, g.y1, g.x2, g.y2
-    FROM image_localization_runs r
-    LEFT JOIN image_regions g ON g.localization_run_id = r.id AND g.rank = 0
-    WHERE r.image_id = ? AND r.detector_key = 'bird' AND r.is_current
+#: Abstention floor (#422): at or below this top-1 probability no species is stored and the image
+#: takes the ``no_species_match`` path. 0.5 is calibrated on the 199 judge-panel frames in
+#: ``docs/reports/bird-species-abstention-2026-10-08.md``. A job's explicit ``threshold`` wins.
+MIN_CONFIDENCE_KEY = "bird_species.min_confidence"
+DEFAULT_MIN_CONFIDENCE = 0.5
+
+# Geometry-only small selections passed the box gate but failed the species gate (#593).
+MIN_REGION_AREA = 0.005
+
+#: The active production selection (#484): only regions that passed a promotion gate. The
+#: current run is not used, because for most images it is an unpromoted shadow run (#592).
+_SELECTED_REGION_SQL = """
+    SELECT s.localization_run_id AS run_id, s.region_id, g.x1, g.y1, g.x2, g.y2
+    FROM image_localization_selections s
+    JOIN image_regions g ON g.id = s.region_id
+    WHERE s.image_id = ? AND s.detector_key = 'bird' AND s.revoked_at IS NULL
 """
 
 
@@ -41,35 +54,80 @@ def use_regions_enabled() -> bool:
     return bool(config.get_config_value(USE_REGIONS_KEY, default=False))
 
 
+def min_confidence() -> float:
+    """``bird_species.min_confidence``; the threshold for jobs that do not pass one (#422)."""
+    from modules import config
+
+    return float(config.get_config_value(MIN_CONFIDENCE_KEY, default=DEFAULT_MIN_CONFIDENCE))
+
+
+def region_species_eligible(region) -> bool:
+    """Compare unpadded normalized area using stored decimal coordinates at the boundary."""
+    x1, y1, x2, y2 = (Decimal(str(value)) for value in region)
+    return (x2 - x1) * (y2 - y1) >= Decimal(str(MIN_REGION_AREA))
+
+
+def bioclip_input_mode(region, last_bbox) -> str:
+    """Which pixels a classify embedded: ``region``, ``detector_crop`` or ``full_frame`` (#641).
+
+    ``classify`` crops to a region when one is passed, and to the embedded detector's box only
+    when ``last_bbox`` holds real coordinates; a not-detected or scan-failed sentinel means the
+    whole frame was used.
+    """
+    if region is not None:
+        return "region"
+    if isinstance(last_bbox, dict) and "x1" in last_bbox:
+        return "detector_crop"
+    return "full_frame"
+
+
 def species_input_for_image(image_id: int) -> dict:
-    """Choose the BioCLIP input from the image's current ``bird`` localization run.
+    """Choose the BioCLIP input from the image's active ``bird`` localization selection.
 
-    Stage 5 of the localization rollout: species consumes localization instead of running
-    its own YOLO. Returns ``{"mode", "region", "run_id", "region_id"}`` where ``mode`` is
+    Stage 5 of the localization rollout: species consumes a gated localization region instead
+    of running its own YOLO. Returns ``{"mode", "region", "run_id", "region_id"}`` where
+    ``mode`` is
 
-    * ``"region"``     -- a ``detected`` run: classify a padded crop of the rank-0 region
+    * ``"region"`` -- an active selection: classify a padded crop of the selected region
       (``region`` is its normalized ``(x1, y1, x2, y2)``);
-    * ``"full_frame"`` -- a ``no_detection`` run, or a ``disabled`` run the scene route recorded
-      (``error_code = scene_route``, #412): localization already answered, classify the whole
-      frame without re-detecting;
-    * ``"legacy"``     -- no current run, an error/disabled run, or a failed lookup: the embedded
-      detector path, unchanged (fail open).
+    * ``"legacy"`` -- no active selection, a failed lookup, or selected area < 0.005:
+      the embedded detector path. Excluded selections retain identity and a reason,
+      with no selected crop. Area is measured before padding. Shadow runs never feed species.
     """
     legacy = {"mode": "legacy", "region": None, "run_id": None, "region_id": None}
     try:
-        row = db.get_connector().query_one(_PRIMARY_REGION_SQL, (int(image_id),))
+        row = db.get_connector().query_one(_SELECTED_REGION_SQL, (int(image_id),))
     except Exception:  # noqa: BLE001 -- a lookup failure must not cost the image its species
         logger.warning("bird_species: region lookup failed for image_id=%s", image_id, exc_info=True)
         return legacy
-    if not row:
+    if not row or row.get("region_id") is None:
         return legacy
-    if row.get("status") == "detected" and row.get("region_id") is not None:
-        return {"mode": "region", "region": (float(row["x1"]), float(row["y1"]), float(row["x2"]), float(row["y2"])),
-                "run_id": row["run_id"], "region_id": row["region_id"]}
-    if row.get("status") == "no_detection" or (
-            row.get("status") == "disabled" and row.get("error_code") == "scene_route"):
-        return {"mode": "full_frame", "region": None, "run_id": row["run_id"], "region_id": None}
-    return legacy
+    region = tuple(float(row[key]) for key in ("x1", "y1", "x2", "y2"))
+    identity = {"run_id": row["run_id"], "region_id": row["region_id"]}
+    if not region_species_eligible(region):
+        return {"mode": "legacy", "region": None, **identity,
+                "exclusion_reason": "selected_area_below_0.005"}
+    return {"mode": "region", "region": region, **identity}
+
+
+def stored_box_input(image_id: int, choice: dict) -> dict:
+    """BioCLIP input when the embedded detector is retired (#638): no YOLO run.
+
+    Crops to the stored compatibility box (``read_bird_bbox``, which follows
+    ``localization.read_normalized_first``) as ``"stored_box"``, or classifies the whole frame as
+    ``"full_frame"`` when there is no real box, the lookup fails, or a small selection was
+    excluded from region species (its stored box is that same small crop, #598).
+    """
+    region = None
+    if not choice.get("exclusion_reason"):
+        from modules.bird_detection import stored_box_region
+        from modules.localization_legacy import read_bird_bbox
+
+        try:
+            region = stored_box_region(read_bird_bbox(db.get_connector(), int(image_id)))
+        except Exception:  # noqa: BLE001 -- a lookup failure must not cost the image its species
+            logger.warning("bird_species: stored box lookup failed for image_id=%s", image_id, exc_info=True)
+    return {**choice, "mode": "stored_box" if region else "full_frame", "region": region}
 
 
 # Default candidate species list (common North American names)
@@ -207,8 +265,10 @@ class BioCLIPClassifier:
         self._cached_text_features = None
         # Most-recent BioCLIP image embedding (768-d, L2-normalized) populated
         # as a side effect of classify() so BirdSpeciesRunner can persist it
-        # under the ``bioclip_2_image`` space without an extra forward pass.
+        # without an extra forward pass: ``bioclip_2_image`` for a full frame,
+        # ``bioclip_2_crop`` for a crop, per ``last_input_mode`` (#641).
         self.last_image_embedding = None
+        self.last_input_mode: str | None = None
         # Optional YOLO bird detector used to crop to the bird before classifying.
         # ``_detector_state`` is one of: None (not yet resolved), "enabled",
         # "disabled" (unavailable / fail-open). ``last_bbox`` is populated as a
@@ -307,7 +367,7 @@ class BioCLIPClassifier:
 
         Returns:
             List of (species_name, confidence) tuples sorted by confidence descending,
-            only including results at or above threshold, capped at top_k.
+            only including results strictly above threshold (#422), capped at top_k.
             Returns [] on error.
         """
         import torch
@@ -316,7 +376,10 @@ class BioCLIPClassifier:
 
         self.load_model()
         self.last_image_embedding = None
+        self.last_input_mode = None
         self.last_bbox = None
+        #: ``None`` after a successful forward pass; the error text when ``[]`` means failure, not abstention.
+        self.last_error = None
         try:
             # Display orientation, so detection, the crop, and the persisted bbox
             # coordinates all share it.
@@ -348,6 +411,7 @@ class BioCLIPClassifier:
                         self.last_bbox = bbox_scan_failed(f"detect_error: {det_err}")
                 else:
                     self.last_bbox = bbox_scan_failed("detector_unavailable")
+            self.last_input_mode = bioclip_input_mode(region, self.last_bbox)
 
             img_tensor = self.preprocess(img).unsqueeze(0).to(self.device)
 
@@ -374,10 +438,11 @@ class BioCLIPClassifier:
             return [
                 (name, round(prob, 4))
                 for name, prob in results
-                if prob >= threshold
+                if prob > threshold
             ][:top_k]
         except Exception as exc:
             logger.error("BioCLIP classify error for %s: %s", image_path, exc)
+            self.last_error = str(exc)[:200]
             return []
 
 
@@ -436,17 +501,26 @@ class BirdSpeciesRunner:
         try:
             from modules import config as _cfg
             from modules import db as _db
-            from modules.embedding_spaces import BIOCLIP_IMAGE_SPACE_CODE
+            from modules.embedding_spaces import BIOCLIP_CROP_SPACE_CODE, BIOCLIP_IMAGE_SPACE_CODE
 
+            # Full frames and crops never share a space (#641). An unknown mode cannot be placed.
+            space = {
+                "full_frame": BIOCLIP_IMAGE_SPACE_CODE,
+                "region": BIOCLIP_CROP_SPACE_CODE,
+                "detector_crop": BIOCLIP_CROP_SPACE_CODE,
+            }.get(getattr(self.classifier, "last_input_mode", None))
+            if space is None:
+                logger.debug("bird_species: no input mode for image_id=%s; embedding not persisted", image_id)
+                return
             emb_section = _cfg.get_config_section('embeddings') or {}
             if not bool(emb_section.get('persist_bioclip_image', True)):
                 return
             versions = emb_section.get('model_versions') or {}
-            model_version = versions.get(BIOCLIP_IMAGE_SPACE_CODE) or getattr(
+            model_version = versions.get(space) or getattr(
                 self.classifier, "MODEL_ID", None
             )
             _db.update_image_embeddings_batch_for_space(
-                BIOCLIP_IMAGE_SPACE_CODE,
+                space,
                 [(image_id, vec, model_version)],
             )
         except Exception as exc:  # noqa: BLE001 — best-effort
@@ -461,14 +535,19 @@ class BirdSpeciesRunner:
         input_path: str,
         job_id: int = None,
         candidate_species: list[str] = None,
-        threshold: float = 0.1,
+        threshold: float | None = None,
         top_k: int = 1,
         overwrite: bool = False,
         resolved_image_ids: list[int] = None,
     ) -> str:
-        """Start classification in a background thread. Returns 'Started' or error string."""
+        """Start classification in a background thread. Returns 'Started' or error string.
+
+        ``threshold=None`` uses ``bird_species.min_confidence`` (#422).
+        """
         if self.is_running:
             return "Error: Already running."
+        if threshold is None:
+            threshold = min_confidence()
 
         self.is_running = True
         self.log_history = []
@@ -514,8 +593,13 @@ class BirdSpeciesRunner:
         top_k,
         phase_code,
         log,
+        refresh: bool = False,
     ):
-        """Classify one bird-tagged image. Returns (processed_delta, skipped_delta)."""
+        """Classify one bird-tagged image. Returns (processed_delta, skipped_delta).
+
+        ``refresh`` (an explicit ``overwrite`` run) lets an abstention remove the image's stale
+        ``species:*`` keywords; otherwise existing species results are preserved.
+        """
         file_path = row["file_path"]
         inference_path = _resolve_inference_path(row, file_path)
 
@@ -523,7 +607,7 @@ class BirdSpeciesRunner:
             try:
                 from modules.bird_detection import bbox_scan_failed
 
-                db.update_image_bird_bbox(int(row["id"]), bbox_scan_failed("file_missing"))
+                write_legacy_bird_bbox(int(row["id"]), bbox_scan_failed("file_missing"))
             except Exception:
                 logger.warning(
                     "bird_species: bird_bbox persist failed for image_id=%s",
@@ -542,6 +626,13 @@ class BirdSpeciesRunner:
             return 0, 1
 
         choice = species_input_for_image(int(row["id"])) if use_regions_enabled() else {"mode": "legacy"}
+        from modules.bird_detection import embedded_detector_enabled
+
+        if choice["mode"] == "legacy" and not embedded_detector_enabled():
+            choice = stored_box_input(int(row["id"]), choice)
+        if choice.get("exclusion_reason"):
+            logger.info("bird_species: legacy inference image_id=%s run_id=%s region_id=%s exclusion=%s",
+                        row["id"], choice.get("run_id"), choice.get("region_id"), choice["exclusion_reason"])
         try:
             predictions = self.classifier.classify(
                 inference_path, species_list, threshold=threshold, top_k=top_k,
@@ -557,29 +648,25 @@ class BirdSpeciesRunner:
                     exc_info=True,
                 )
 
+            # classify() always sets last_bbox (box, not-detected, or scan-failed). In region
+            # mode the selection already projects ``bird_bbox`` (modules/localization_selection.py,
+            # its only writer), so nothing is written here.
+            bbox = getattr(self.classifier, "last_bbox", None)
             if choice["mode"] == "legacy":
-                # classify() always sets last_bbox (box, not-detected, or scan-failed).
-                bbox = getattr(self.classifier, "last_bbox", None)
-            else:
-                # Localization owns the box: keep the legacy column equal to the current
-                # run's projection so the gallery and rescan gates stay consistent.
-                from modules.localization_legacy import read_bird_bbox
-
-                bbox = read_bird_bbox(db.get_connector(), int(row["id"]), prefer_normalized=True)
-            if bbox is not None:
-                try:
-                    db.update_image_bird_bbox(int(row["id"]), bbox)
-                except Exception:
+                if bbox is not None:
+                    try:
+                        write_legacy_bird_bbox(int(row["id"]), bbox)
+                    except Exception:
+                        logger.warning(
+                            "bird_species: bird_bbox persist failed for image_id=%s",
+                            row.get("id"),
+                            exc_info=True,
+                        )
+                else:
                     logger.warning(
-                        "bird_species: bird_bbox persist failed for image_id=%s",
+                        "bird_species: classify left last_bbox unset for image_id=%s",
                         row.get("id"),
-                        exc_info=True,
                     )
-            else:
-                logger.warning(
-                    "bird_species: classify left last_bbox unset for image_id=%s",
-                    row.get("id"),
-                )
 
             if predictions:
                 from modules.bird_species_eligibility import build_bird_species_keyword_csv
@@ -606,6 +693,7 @@ class BirdSpeciesRunner:
                     source="auto",
                     confidence_map=confidence_map,
                     source_map=source_map,
+                    scope="species",
                 )
                 db.set_image_phase_status(
                     row["id"],
@@ -617,8 +705,15 @@ class BirdSpeciesRunner:
                 log(f"{os.path.basename(file_path)}: {', '.join(new_species_kws)}{mode}")
                 return 1, 0
 
-            from modules.bird_species_eligibility import mark_species_exhausted
+            from modules.bird_species_eligibility import build_bird_species_keyword_csv, mark_species_exhausted
 
+            # Only a real abstention clears a stale label; a classify failure also returns [].
+            if refresh and getattr(self.classifier, "last_error", "unknown") is None:
+                existing = row.get("keywords") or ""
+                cleared = build_bird_species_keyword_csv(int(row["id"]), legacy_csv=existing, new_species=[])
+                if "species:" in (db.get_resolved_image_keywords(int(row["id"]), legacy_fallback=existing,
+                                                                 hide_internal=False) or "").lower():
+                    db.update_image_keywords_for_image(row["id"], cleared, source="auto", scope="species")
             mark_species_exhausted(int(row["id"]))
             log(
                 f"{os.path.basename(file_path)}: no species above threshold "
@@ -630,7 +725,7 @@ class BirdSpeciesRunner:
             try:
                 from modules.bird_detection import bbox_scan_failed
 
-                db.update_image_bird_bbox(
+                write_legacy_bird_bbox(
                     int(row["id"]), bbox_scan_failed(f"classify_error: {exc}")
                 )
             except Exception:
@@ -689,8 +784,8 @@ class BirdSpeciesRunner:
 
             bbox = scan_bird_bbox_only(row, detector)
             try:
-                db.update_image_bird_bbox(int(row["id"]), bbox)
-                rescanned += 1
+                if write_legacy_bird_bbox(int(row["id"]), bbox):
+                    rescanned += 1
             except Exception:
                 logger.warning(
                     "bird_species: bird_bbox persist failed for image_id=%s",
@@ -816,14 +911,16 @@ class BirdSpeciesRunner:
         # unrepairable while ``get_phase_incomplete_sql`` kept advertising them as work.
         bbox_only: list = []
         if not overwrite:
-            from modules.bird_detection import bbox_needs_scan
+            from modules.bird_detection import bbox_needs_scan, embedded_detector_enabled
             from modules.phases import PhaseCode
             from modules.phases_policy import explain_phase_run_decision
 
             filtered = []
             skipped_policy = 0
+            # With the embedded detector retired (#638) a missing box is localization's work, not ours.
+            rescan_boxes = embedded_detector_enabled()
             for row in all_images:
-                if bbox_needs_scan(row.get("bird_bbox")) and db.is_image_bird_species_complete(
+                if rescan_boxes and bbox_needs_scan(row.get("bird_bbox")) and db.is_image_bird_species_complete(
                     int(row["id"]), include_bbox=False
                 ):
                     bbox_only.append(row)
@@ -893,6 +990,7 @@ class BirdSpeciesRunner:
                 top_k=top_k,
                 phase_code=phase_code,
                 log=log,
+                refresh=overwrite,
             )
             processed += processed_delta
             skipped += skipped_delta

@@ -1,9 +1,9 @@
 ---
 type: Plan
 title: Evidence-driven scoring and culling improvement candidates
-description: Clean-room improvement candidates for evidence contracts, ranking, burst handling, calibration, caching, diagnostics, and cross-repo delivery.
+description: improvement candidates for evidence contracts, ranking, burst handling, calibration, caching, diagnostics, and cross-repo delivery.
 resource: docs/planning/reference-workflow-improvement-candidates.md
-tags: [docs, planning, scoring, culling, evidence, clean-room]
+tags: [docs, planning, scoring, culling, evidence]
 timestamp: 2026-09-25T18:00:00Z
 okf_version: 0.2
 status: proposed
@@ -13,7 +13,7 @@ status: proposed
 
 > **Status:** proposal inventory, not a backlog commitment. Promote accepted slices through the canonical project board and update API/schema authorities before implementation.
 
-## Provenance and clean-room boundary
+## Provenance
 
 > derived from competitive analysis of a commercial application's observable behaviour and documentation; contains no code, identifiers, fitted constants or model artefacts from it.
 
@@ -23,7 +23,7 @@ This page describes outcomes and engineering practices only. It does not reprodu
 
 This proposal extends rather than replaces:
 
-- [subject-aware culling evidence](subject-aware-culling-evidence.md), which defines the current clean-room evidence direction;
+- [subject-aware culling evidence](subject-aware-culling-evidence.md), which defines the current evidence direction;
 - [pipeline streamlining](pipeline-streamlining.md) and its [subject-aware scoring slice](../specs/pipeline-streamlining/04-subject-aware-scoring.md);
 - [localization region scores and backfill](localization-region-scores-and-backfill.md); and
 - the canonical [model roadmap](../MODEL_RECOMMENDATIONS_PIPELINES.md).

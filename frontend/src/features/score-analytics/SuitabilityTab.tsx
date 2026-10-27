@@ -180,7 +180,9 @@ export function SuitabilityTab({ keyword }: { keyword: string | null }) {
   const pooled = useMemo(() => (s ? corrHeat(s, 'pooled_spearman') : null), [s])
   const within = useMemo(() => (s ? corrHeat(s, 'within_spearman') : null), [s])
   const sub = useMemo(() => (s ? subgroupHeat(s) : null), [s])
-  const evalSet = s?.suitability.evaluation_set.startsWith('untouched') ? 'test' : 'all'
+  const splitOf = (set: string | undefined) => (set?.startsWith('untouched') ? 'test' : 'all')
+  const evalSet = splitOf(s?.suitability.evaluation_sets.culling)
+  const globalEvalSet = splitOf(s?.suitability.evaluation_sets.global)
   const heatH = s ? Math.max(300, s.correlation.keys.length * 30 + 110) : 300
 
   return (
@@ -237,7 +239,11 @@ export function SuitabilityTab({ keyword }: { keyword: string | null }) {
             <StatTile label="Clusters" value={fmtInt(s.clusters.count)} hint={`${fmtInt(s.clusters.images_in_clusters)} images`} />
             <StatTile label="Culling labels" value={s.labels.culling_source.replace(/_/g, ' ')} hint={s.labels.culling_independent ? 'independent' : 'NOT verified independent'} />
             <StatTile label="Global labels" value={s.labels.global_source ?? 'none'} hint={s.labels.global_independent ? 'independent' : 'not verified'} />
-            <StatTile label="Evaluated on" value={evalSet === 'test' ? 'test split' : 'all data'} hint={`test = ${fmtInt(s.split.images.test)} images`} />
+            <StatTile
+              label="Evaluated on"
+              value={`global ${globalEvalSet === 'test' ? 'test split' : 'all data'} · culling ${evalSet === 'test' ? 'test split' : 'all data'}`}
+              hint={`test = ${fmtInt(s.split.images.test)} images`}
+            />
           </div>
         )}
       </Panel>
@@ -292,7 +298,7 @@ export function SuitabilityTab({ keyword }: { keyword: string | null }) {
           <div className="grid gap-3 xl:grid-cols-[3fr_2fr]">
             <Panel
               title="Suitability map Uⱼ = (Gⱼ, Cⱼ)"
-              subtitle={`${s.suitability.evaluation_set}. Membership uses the lower 95% CI bound: ${s.suitability.thresholds.global}; ${s.suitability.thresholds.culling}.`}
+              subtitle={`Global: ${s.suitability.evaluation_sets.global}; culling: ${s.suitability.evaluation_sets.culling}. Membership uses the lower 95% CI bound: ${s.suitability.thresholds.global}; ${s.suitability.thresholds.culling}.`}
             >
               {uOption && <EChart option={uOption} height={380} ariaLabel="Suitability map" />}
             </Panel>

@@ -2641,37 +2641,15 @@ def update_image_field(image_id: int, field_name: str, value) -> bool:
 
 
 def update_image_bird_bbox(image_id: int, bbox: dict) -> bool:
-    """Store the detected bird bounding box for an image in ``images.bird_bbox`` (JSONB).
+    """Write a legacy bird box only while no active selection owns the image.
 
-    ``bbox`` is a dict such as ``{"x1","y1","x2","y2","conf","img_w","img_h"}`` (see
-    ``modules/bird_detection.BirdDetector.detect_best_box``). Passing ``None`` clears the
-    column. Serialized with ``json.dumps`` and cast to ``jsonb``. Returns True on success.
+    ``None`` clears an unselected box. Return False for a missing image,
+    an active selection, or a failed transaction. The shared guard locks the
+    image before checking ownership and invalidates folder rollups after writes.
     """
-    try:
-        payload = json.dumps(bbox) if bbox is not None else None
-        get_connector().execute(
-            "UPDATE images SET bird_bbox = ?::jsonb WHERE id = ?", (payload, image_id)
-        )
-        # The folder rollup counts a missing box as outstanding bird_species work, so a
-        # box write changes the aggregate. Without this the cached ``phase_agg_json``
-        # would keep the folder in ``awaiting_bird_species`` after the repair and
-        # auto-drive would re-enqueue it until the loop guard fires.
-        try:
-            row = get_connector().query_one(
-                "SELECT folder_id FROM images WHERE id = ?", (image_id,)
-            )
-            if row and row.get("folder_id"):
-                invalidate_folder_phase_aggregates(folder_id=row["folder_id"])
-        except Exception:
-            logging.debug(
-                "bird_bbox: folder aggregate invalidation failed for image %s",
-                image_id,
-                exc_info=True,
-            )
-        return True
-    except Exception as e:
-        logging.error(f"Failed to update bird_bbox for image {image_id}: {e}")
-        return False
+    from modules.localization_selection import write_legacy_bird_bbox
+
+    return write_legacy_bird_bbox(image_id, bbox)
 
 
 def update_image_path(image_hash, new_path, hash_version=None):
@@ -3972,7 +3950,7 @@ def enqueue_job(input_path, phase_code=None, job_type=None, queue_payload=None, 
     )
 
 
-def enqueue_job_with_phases(input_path, phase_code=None, job_type=None, queue_payload=None, description=None, phase_codes=None, first_phase_state="queued"):
+def enqueue_job_with_phases(input_path, phase_code=None, job_type=None, queue_payload=None, description=None, phase_codes=None, first_phase_state="queued", *, tx=None):
     """Atomically create a queued job and its phase plan in a single transaction."""
     if not phase_codes:
         return None, 0
@@ -4052,10 +4030,24 @@ def enqueue_job_with_phases(input_path, phase_code=None, job_type=None, queue_pa
         return job_id, display_position
 
     try:
-        return get_connector().run_transaction(_tx)
+        return _tx(tx) if tx is not None else get_connector().run_transaction(_tx)
     except Exception:
+        if tx is not None:
+            raise
         logger.exception("enqueue_job_with_phases failed")
         return None, 0
+
+
+def enqueue_delegated_followup(parent_job_id, input_path, phase_codes, queue_payload=None, description=None):
+    from modules.db_operations.job_delegation import enqueue
+
+    return enqueue(parent_job_id, input_path, phase_codes, queue_payload, description)
+
+
+def reconcile_delegated_jobs():
+    from modules.db_operations.job_delegation import reconcile
+
+    return reconcile()
 
 
 def get_next_pending_job_phase(job_id, tx=None):
@@ -4268,13 +4260,19 @@ def get_recent_jobs(limit=50, offset=0):
 
 def force_reset_job_phase_to_queued(job_id: int, phase_code: str):
     """Admin reset: unconditionally set a phase back to queued."""
+    from modules.db_operations import job_delegation
+
     def _tx(tx):
+        job_delegation.lock_chain(tx, job_id)
+        if job_delegation.child_for_parent(tx, job_id) is not None:
+            raise ValueError("Invalid manual reset of delegated work; control the child run")
         tx.execute(
             "UPDATE job_phases SET state='queued', started_at=NULL, completed_at=NULL, error_message=NULL "
             "WHERE job_id=? AND phase_code=?",
             (job_id, phase_code),
         )
-    get_connector().run_transaction(_tx)
+        return job_delegation.propagate(tx, job_id)
+    job_delegation.publish(get_connector().run_transaction(_tx))
 
 
 PHASE_CODE_TO_RUNNER_KEY = {
@@ -4323,6 +4321,8 @@ def list_phantom_running_job_phases(
         FROM job_phases jp
         INNER JOIN jobs j ON j.id = jp.job_id
         WHERE j.status = 'running' AND jp.state = 'running'
+          AND jp.delegated_job_id IS NULL
+          AND COALESCE(j.runner_state, '') != 'waiting_child'
         ORDER BY jp.job_id ASC, jp.phase_order ASC
         """
     )
@@ -4399,17 +4399,27 @@ def adjust_job_priority(job_id, delta):
     )
 
 
-def requeue_job(job_id):
+def requeue_job(job_id, *, tx=None):
     """Reset an existing job row to queued status (in-place resume).
 
     Resets started_at, finished_at, completed_at and bumps enqueued_at.
     Updates queue_position so it sorts after any already-queued jobs.
     Returns (job_id, display_position).
     """
+    from modules.db_operations import job_delegation
+
+    if tx is None:
+        controlled = job_delegation.control(job_id, "running")
+        if controlled is not None:
+            if not controlled["success"]:
+                raise ValueError(f"Cannot resume delegated run #{job_id}: {controlled['reason']} ({controlled['status']}); use a fresh retry")
+            return job_id, 0
     return _db_job_queue.requeue_job(
         job_id,
         get_connector=get_connector,
         allowed_transitions=JOB_ALLOWED_TRANSITIONS,
+        tx=tx,
+        resume_job_phases=resume_job_phases,
     )
 
 
@@ -4552,15 +4562,24 @@ def _maybe_fail_job_on_post_audit_issues(job_id: int, post_run_audit: dict) -> N
         "\npost_run_audit_fail_job_on_issues: residual data-quality issues — "
         "see queue_payload.post_run_audit"
     )
-    conn = get_connector()
-    row = conn.query_one("SELECT status FROM jobs WHERE id = ?", (job_id,))
-    if not row or (row.get("status") or "").strip().lower() != "completed":
+    from modules.db_operations import job_delegation
+
+    changes = []
+
+    def fail_audit(tx):
+        job_delegation.lock_chain(tx, job_id)
+        changed = tx.execute(
+            "UPDATE jobs SET status = 'failed', runner_state = 'failed', log = COALESCE(log, '') || ? "
+            "WHERE id = ? AND status = 'completed'",
+            (msg, job_id),
+        )
+        if changed:
+            changes.extend(job_delegation.propagate(tx, job_id))
+        return changed
+
+    if not get_connector().run_transaction(fail_audit):
         return
-    conn.execute(
-        "UPDATE jobs SET status = 'failed', runner_state = 'failed', log = COALESCE(log, '') || ? "
-        "WHERE id = ? AND status = 'completed'",
-        (msg, job_id),
-    )
+    job_delegation.publish(changes)
     try:
         record_pipeline_event(
             "error",
@@ -4870,6 +4889,25 @@ def restart_failed_job(job_id):
     multi-phase run can retry phases that were ``failed`` / ``pending`` instead of
     staying stuck with no ``running`` phase row after dequeue.
     """
+    from modules.db_operations import job_delegation
+
+    row = get_connector().query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    if row and row.get("status") == "failed":
+        controlled = job_delegation.control(job_id, "running")
+        if controlled is not None:
+            return controlled
+        if row.get("parent_job_id") is not None:
+            changes = []
+
+            def restart(tx):
+                job_delegation.lock_chain(tx, job_id)
+                requeue_job(job_id, tx=tx)
+                resume_job_phases(job_id, tx=tx)
+                tx.execute("UPDATE jobs SET retry_count = COALESCE(retry_count, 0) + 1 WHERE id = ?", (job_id,))
+                changes.extend(job_delegation.propagate(tx, job_id))
+            get_connector().run_transaction(restart)
+            job_delegation.publish(changes)
+            return {"success": True}
     return _db_job_queue.restart_failed_job(
         job_id,
         get_connector=get_connector,
@@ -4878,6 +4916,11 @@ def restart_failed_job(job_id):
 
 
 def request_cancel_job(job_id):
+    from modules.db_operations.job_delegation import control
+
+    controlled = control(job_id, "cancelled")
+    if controlled is not None:
+        return controlled
     return _db_job_queue.request_cancel_job(
         job_id,
         get_connector=get_connector,
@@ -4923,45 +4966,43 @@ def create_job_phases(job_id, phase_codes, first_phase_state=None):
     ]
 
 
-def resume_job_phases(job_id):
+def resume_job_phases(job_id, *, tx=None):
     """Reset incomplete phases for resume. Completed/skipped stay; others → pending.
 
     The first incomplete phase is set to 'queued' so the dispatcher picks it up.
     Returns the updated phase list.
     """
-    rows = get_connector().query(
-        "SELECT phase_order, phase_code, state FROM job_phases WHERE job_id = ? ORDER BY phase_order",
-        (job_id,),
-    )
-    if not rows:
-        return []
+    from modules.db_operations import job_delegation
 
-    keep_states = {"completed", "skipped"}
-    first_incomplete_set = False
-    updates = []
-    for r in rows:
-        state = (r["state"] or "").strip().lower()
-        if state in keep_states:
-            continue
-        new_state = "queued" if not first_incomplete_set else "pending"
-        first_incomplete_set = True
-        updates.append((new_state, job_id, r["phase_code"]))
+    changes = []
 
-    if updates:
-        def _tx(tx):
-            for params in updates:
-                tx.execute(
-                    "UPDATE job_phases SET state = ?, started_at = NULL, completed_at = NULL, error_message = NULL "
-                    "WHERE job_id = ? AND phase_code = ?",
-                    params,
-                )
-        get_connector().run_transaction(_tx)
+    def resume(transaction):
+        job_delegation.lock_chain(transaction, job_id)
+        if job_delegation.child_for_parent(transaction, job_id) is not None:
+            return get_job_phases(job_id, tx=transaction)
+        job = transaction.query_one("SELECT status, parent_job_id FROM jobs WHERE id = ?", (job_id,))
+        # The API may call resume again after dequeue. Never reset a live child.
+        if (job or {}).get("parent_job_id") is not None and job.get("status") == "running":
+            return get_job_phases(job_id, tx=transaction)
+        rows = get_job_phases(job_id, tx=transaction)
+        first_incomplete = True
+        for row in rows:
+            if (row.get("state") or "").strip().lower() in {"completed", "skipped"}:
+                continue
+            transaction.execute(
+                "UPDATE job_phases SET state = ?, started_at = NULL, completed_at = NULL, error_message = NULL "
+                "WHERE job_id = ? AND phase_code = ?",
+                ("queued" if first_incomplete else "pending", job_id, row["phase_code"]),
+            )
+            first_incomplete = False
+        if tx is None:
+            changes.extend(job_delegation.propagate(transaction, job_id))
+        return get_job_phases(job_id, tx=transaction)
 
-    return [dict(r) for r in get_connector().query(
-        "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
-        "FROM job_phases WHERE job_id = ? ORDER BY phase_order",
-        (job_id,),
-    )]
+    result = resume(tx) if tx is not None else get_connector().run_transaction(resume)
+    if tx is None:
+        job_delegation.publish(changes)
+    return result
 
 
 def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
@@ -4994,14 +5035,20 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
         "cancelled": set(),
     }
     now = datetime.datetime.now()
+    from modules.db_operations import job_delegation
+
+    changes = []
 
     def _tx(tx):
+        job_delegation.lock_chain(tx, job_id)
         row = tx.query_one(
-            "SELECT id, state FROM job_phases WHERE job_id = ? AND phase_code = ?",
+            "SELECT id, state, delegated_job_id FROM job_phases WHERE job_id = ? AND phase_code = ?",
             (job_id, phase_code),
         )
         if not row:
             return None
+        if row.get("delegated_job_id") is not None or job_delegation.child_for_parent(tx, job_id) is not None:
+            raise ValueError("Invalid manual transition of delegated work; control the child run")
 
         phase_id = row["id"]
         old_state = str(row["state"] or "pending").strip().lower()
@@ -5022,7 +5069,7 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
             # Backfill implicit start when bulk-completing a backlog phase (see allowed transition).
             fields.append("started_at = COALESCE(started_at, ?)")
             params.append(now)
-        if state in {"completed", "failed", "skipped", "interrupted"}:
+        if state in {"completed", "failed", "skipped", "interrupted", "canceled", "cancelled"}:
             fields.append("completed_at = ?")
             params.append(now)
         if error_message is not None:
@@ -5048,7 +5095,12 @@ def set_job_phase_state(job_id, phase_code, state, error_message=None, tx=None):
 
     if tx:
         return _tx(tx)
-    result = get_connector().run_transaction(_tx)
+    def update(transaction):
+        result = _tx(transaction)
+        changes.extend(job_delegation.propagate(transaction, job_id))
+        return result
+    result = get_connector().run_transaction(update)
+    job_delegation.publish(changes)
     if result is None:
         return None
     try:
@@ -5072,7 +5124,7 @@ def get_job_phases(job_id, tx=None):
     """Get ordered phase plan/status rows for a job."""
     conn = tx if tx else get_connector()
     return [dict(r) for r in conn.query(
-        "SELECT phase_order, phase_code, state, started_at, completed_at, error_message "
+        "SELECT phase_order, phase_code, state, started_at, completed_at, error_message, delegated_job_id "
         "FROM job_phases WHERE job_id = ? ORDER BY phase_order",
         (job_id,),
     )]
@@ -5294,13 +5346,14 @@ def get_next_running_job_phase(job_id, tx=None):
 
 def recover_running_jobs(mark_as="interrupted"):
     """Mark stale running jobs (and their in-flight job_phases) as interrupted."""
-    rows = get_connector().query("SELECT id FROM jobs WHERE status = 'running'")
+    reconcile_delegated_jobs()
+    rows = get_connector().query("SELECT id FROM jobs WHERE status = 'running' AND COALESCE(runner_state, '') != 'waiting_child'")
     recovered = [r["id"] for r in rows]
     if recovered:
         now = datetime.datetime.now()
         def _tx(tx):
             tx.execute(
-                "UPDATE jobs SET status = ?, completed_at = ?, runner_state = ? WHERE status = 'running'",
+                "UPDATE jobs SET status = ?, completed_at = ?, runner_state = ? WHERE status = 'running' AND COALESCE(runner_state, '') != 'waiting_child'",
                 (mark_as, now, mark_as),
             )
             placeholders = ",".join("?" * len(recovered))
@@ -5334,6 +5387,7 @@ def recover_running_jobs(mark_as="interrupted"):
                 )
         except Exception:
             logger.exception("recover_running_jobs: release work claims failed")
+    reconcile_delegated_jobs()
     return recovered
 
 
@@ -6771,9 +6825,9 @@ def upsert_image_exif(image_id: int, data: dict) -> bool:
                 exposure_compensation, image_width, image_height, orientation, flash,
                 image_unique_id, shutter_count, sub_sec_time_original,
                 gps_latitude, gps_longitude, gps_altitude, gps_position_source,
-                location_resolved, geocoded_at, geocode_provider, extracted_at
+                location_resolved, geocoded_at, geocode_provider, af_metadata, extracted_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?, ?, ?)
             MATCHING (image_id)''',
             (
                 image_id,
@@ -6802,6 +6856,7 @@ def upsert_image_exif(image_id: int, data: dict) -> bool:
                 _exif_location_resolved_param(data.get('location_resolved')),
                 _parse_exif_timestamp(data.get('geocoded_at')),
                 _str_or_none(data.get('geocode_provider'), max_len=50),
+                _exif_location_resolved_param(data.get('af_metadata')),
                 extracted_at,
             ),
         )
@@ -6868,6 +6923,12 @@ def get_image_exif(image_id: int) -> dict | None:
     if isinstance(lr, str) and lr.strip():
         try:
             d["location_resolved"] = json.loads(lr)
+        except json.JSONDecodeError:
+            pass
+    af = d.get("af_metadata")
+    if isinstance(af, str) and af.strip():
+        try:
+            d["af_metadata"] = json.loads(af)
         except json.JSONDecodeError:
             pass
     return d
@@ -7600,11 +7661,13 @@ def _sql_bird_bbox_needs_scan(table_alias: str = "") -> str:
     Mirrors :func:`modules.bird_detection.bbox_needs_scan` in SQL so the folder-level
     predicate and the per-image policy check agree. ``bird_bbox`` is a Postgres-only
     JSONB column and ``->>`` is not translated for Firebird, so this yields ``1=0``
-    on any other engine.
+    on any other engine. It also yields ``1=0`` once the embedded detector is retired
+    (#638): the box then comes from localization and is no longer bird_species work.
     """
-    if _get_db_engine() != "postgres":
+    from modules.bird_detection import RETRYABLE_BBOX_ERRORS, embedded_detector_enabled
+
+    if _get_db_engine() != "postgres" or not embedded_detector_enabled():
         return "1=0"
-    from modules.bird_detection import RETRYABLE_BBOX_ERRORS
 
     prefix = f"{table_alias}." if table_alias else ""
     retryable = ", ".join(f"'{err}'" for err in sorted(RETRYABLE_BBOX_ERRORS))
@@ -7699,7 +7762,34 @@ def get_phase_incomplete_sql(phase_code: str, table_alias: str = "") -> str:
 # Phases whose ``get_phase_incomplete_sql`` predicate cleanly inverts to "complete"
 # (work product present == phase done). bird_species is intentionally excluded — its
 # scope is bird-tagged images only and is reconciled by bird_species_eligibility tooling.
-_PHANTOM_RECONCILABLE_PHASES = ("indexing", "metadata", "scoring", "keywords", "culling")
+# localization has no incomplete predicate (a missing run is not backlog); it is reconciled
+# from its current run instead, see ``_phantom_localization_rows``.
+_PHANTOM_RECONCILABLE_PHASES = ("indexing", "metadata", "scoring", "keywords", "culling", "localization")
+
+
+def _phantom_localization_rows(scope_clause: str, scope_params: tuple, limit: int) -> list[dict]:
+    """Images whose current localization run is a terminal attempt but whose IPS lags (#527).
+
+    Only ``detected`` / ``no_detection`` / ``terminal_error`` prove the work finished. A
+    ``retryable_error`` is an attempt, not completeness, and ``disabled`` is invalidated when
+    the detector is re-enabled. Legacy-import runs (``legacy_payload`` set) were never an
+    attempt by this phase and are left alone.
+    """
+    sql = f"""
+        SELECT i.id, r.status
+        FROM images i
+        JOIN folders f ON f.id = i.folder_id
+        JOIN image_localization_runs r
+            ON r.image_id = i.id AND r.detector_key = 'bird' AND r.is_current
+        JOIN pipeline_phases pp ON LOWER(TRIM(pp.code)) = 'localization'
+        LEFT JOIN image_phase_status ips
+            ON ips.image_id = i.id AND ips.phase_id = pp.id
+        WHERE (ips.status IS NULL OR LOWER(TRIM(ips.status)) NOT IN ('done', 'skipped'))
+          AND r.status IN ('detected', 'no_detection', 'terminal_error')
+          AND r.legacy_payload IS NULL{scope_clause}
+        FETCH FIRST ? ROWS ONLY
+    """
+    return get_connector().query(sql, scope_params + (limit,)) or []
 
 
 def reconcile_phantom_complete_image_phases(
@@ -7745,6 +7835,9 @@ def reconcile_phantom_complete_image_phases(
                 "reconcile_phantom_complete_image_phases: skipping unsupported phase '%s'", code
             )
             result[code] = 0
+            continue
+        if code == "localization":
+            result[code] = _reconcile_phantom_localization(scope_clause, scope_params, lim, dry_run)
             continue
         incomplete_sql = get_phase_incomplete_sql(code, "i")
         sql = f"""
@@ -7793,6 +7886,35 @@ def reconcile_phantom_complete_image_phases(
             )
         result[code] = len(ids)
     return result
+
+
+def _reconcile_phantom_localization(scope_clause: str, scope_params: tuple, limit: int, dry_run: bool) -> int:
+    from modules.localization import LOCALIZATION_RUNNER_VERSION, PHASE_STATUS_FOR_RUN
+
+    try:
+        rows = _phantom_localization_rows(scope_clause, scope_params, limit)
+    except Exception:
+        logger.exception("reconcile_phantom_complete_image_phases: scan failed for phase 'localization'")
+        return 0
+    if not dry_run:
+        for row in rows:
+            ips = PHASE_STATUS_FOR_RUN[row["status"]]
+            kwargs: dict = {"executor_version": LOCALIZATION_RUNNER_VERSION}
+            if ips == "skipped":
+                kwargs.update(skip_reason=row["status"], skipped_by="phantom_reconcile")
+            try:
+                set_image_phase_status(row["id"], "localization", ips, **kwargs)
+            except Exception:
+                logger.debug(
+                    "reconcile_phantom_complete_image_phases: set %s failed image=%s phase=localization",
+                    ips, row["id"], exc_info=True,
+                )
+    if rows:
+        logger.info(
+            "reconcile_phantom_complete_image_phases: %s %d phantom-complete image(s) for phase 'localization'",
+            "would reconcile" if dry_run else "reconciled", len(rows),
+        )
+    return len(rows)
 
 
 def scope_has_unattempted_phase_work(scope_path: str, phase_code: str) -> bool:
@@ -8892,6 +9014,29 @@ def update_image_fields_batch(updates):
         logging.error(f"Failed batch update_image_fields: {e}")
 
 
+# ``image_keywords.source`` values the keywords phase has written, now or in earlier versions.
+# The repair, backfill and remediation rows hold the same CLIP vocabulary (#586).
+KEYWORDS_PHASE_SOURCES = frozenset({
+    "auto", "repair_legacy_keywords_junction", "legacy_backfill", "phase4a_remediation",
+})
+
+
+def _keyword_row_owned_by(scope, keyword_norm, source) -> bool:
+    """Whether a phase-scoped keyword write may replace this ``image_keywords`` row (#586).
+
+    The species phase owns ``species:*`` rows and the ``birds:species-exhausted`` marker,
+    whatever their source. The keywords phase owns the remaining rows written by
+    :data:`KEYWORDS_PHASE_SOURCES`. Hand-entered, selection and unknown sources belong to neither.
+    """
+    norm = str(keyword_norm or "").lower()
+    species_row = norm.startswith("species:") or norm == "birds:species-exhausted"
+    if scope == "species":
+        return species_row
+    if scope == "keywords":
+        return not species_row and (source or "auto") in KEYWORDS_PHASE_SOURCES
+    raise ValueError(f"unknown keyword scope {scope!r}")
+
+
 def update_image_keywords_for_image(
     image_id,
     keywords_str,
@@ -8901,20 +9046,22 @@ def update_image_keywords_for_image(
     confidence_map=None,
     source_map=None,
     relevance_map=None,
+    scope=None,
 ):
     """
     Update one image's legacy keywords CSV and normalized keyword rows.
 
     ``confidence_map``, ``relevance_map`` and ``source_map`` use normalized
     lowercase keyword strings as keys and are applied only to ``image_keywords``
-    rows.
+    rows. ``scope`` limits the write to the rows one phase owns (see
+    :func:`_sync_image_keywords`); the legacy CSV then holds the resulting full set.
     """
     if not image_id:
         return
 
     keywords_str = keywords_str or ""
     try:
-        if _write_legacy_keywords_column():
+        if scope is None and _write_legacy_keywords_column():
             get_connector().execute(
                 "UPDATE images SET keywords = ? WHERE id = ?",
                 (keywords_str, image_id),
@@ -8929,7 +9076,17 @@ def update_image_keywords_for_image(
             confidence_map=confidence_map,
             source_map=source_map,
             relevance_map=relevance_map,
+            scope=scope,
         )
+
+        if scope is not None:
+            resolved = get_resolved_image_keywords(image_id, None, hide_internal=False)
+            keywords_str = ",".join(k.strip() for k in (resolved or "").split(",") if k.strip())
+            if _write_legacy_keywords_column():
+                get_connector().execute(
+                    "UPDATE images SET keywords = ? WHERE id = ?",
+                    (keywords_str, image_id),
+                )
 
         invalidate_folder_images_cache()
         try:
@@ -11203,6 +11360,15 @@ def seed_pipeline_phases():
         logger.info("Pipeline phases seeded successfully.")
     except Exception as e:
         logger.error("Failed to seed pipeline phases: %s", e)
+    # Start the new_images_only clock when the phase is first enabled (#527), not at the
+    # first localization job, so images indexed in between still count as new.
+    if is_phase_enabled("localization"):
+        try:
+            from modules.localization_policy import ensure_enablement_boundary
+
+            ensure_enablement_boundary()
+        except Exception as e:
+            logger.error("Failed to set the localization enablement boundary: %s", e)
     # Clear cache so it's rebuilt on next access
     _phase_id_cache.clear()
 
@@ -12808,6 +12974,7 @@ def _sync_image_keywords(
     confidence_map=None,
     source_map=None,
     relevance_map=None,
+    scope=None,
 ):
     """
     Dual-write sync: Parses the legacy keywords CSV string and updates the normalized
@@ -12817,6 +12984,10 @@ def _sync_image_keywords(
     keyword importance for the image (ranking, propagation, filtering). Defaults to 1.0.
     ``confidence_map``, ``relevance_map`` and ``source_map`` can override those values
     per normalized keyword string.
+
+    ``scope=None`` replaces every row for the image (a full keyword edit). A phase scope
+    (``"keywords"`` or ``"species"``) replaces only the rows that phase owns and leaves
+    every other row untouched; see :func:`_keyword_row_owned_by` (#586).
     """
     if not image_id:
         return
@@ -12860,17 +13031,34 @@ def _sync_image_keywords(
 
     try:
         def _tx(tx):
-            tx.execute("DELETE FROM image_keywords WHERE image_id = ?", (image_id,))
+            kept = set()
+            if scope is None:
+                tx.execute("DELETE FROM image_keywords WHERE image_id = ?", (image_id,))
+            else:
+                existing = tx.query(
+                    "SELECT ik.keyword_id, kd.keyword_norm, ik.source FROM image_keywords ik "
+                    "JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id WHERE ik.image_id = ?",
+                    (image_id,)) or []
+                for r in existing:
+                    if _keyword_row_owned_by(scope, r["keyword_norm"], r["source"]):
+                        tx.execute("DELETE FROM image_keywords WHERE image_id = ? AND keyword_id = ?",
+                                   (image_id, r["keyword_id"]))
+                    else:
+                        kept.add(str(r["keyword_norm"]).lower())
 
-            if not keywords_str:
-                return
-
-            kws = [k.strip() for k in keywords_str.split(',') if k.strip()]
+            kws = [k.strip() for k in (keywords_str or "").split(',') if k.strip()]
+            # Species labels that survive a keywords run keep ``birds``, as a species write does;
+            # without it the image drops out of species scope and its label can never be refreshed.
+            if (scope == "keywords" and any(k.startswith("species:") for k in kept)
+                    and "birds" not in kept and "birds" not in {k.lower() for k in kws}):
+                kws.append("birds")
             if not kws:
                 return
 
             for kw in kws:
                 kw_norm = kw.lower()
+                if kw_norm in kept:
+                    continue  # another writer owns this row; leave its source and confidence as they are
                 row_source = normalized_source_map.get(kw_norm, source)
                 row_confidence = normalized_confidence_map.get(kw_norm, confidence)
                 row_relevance = normalized_relevance_map.get(kw_norm, relevance_weight)

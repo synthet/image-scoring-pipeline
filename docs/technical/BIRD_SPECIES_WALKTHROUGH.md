@@ -33,8 +33,8 @@ Given a folder of images (or an explicit image selector), the runner:
 - **`bird_bbox` payload:** `{"x1", "y1", "x2", "y2", "conf", "img_w", "img_h", "area_frac"}` in pixels; `area_frac` is the box area as a fraction of the image. **`NULL` means never scanned**; **`{"detected": false}`** means the detector ran and found no bird; **`{"detected": false, "error": "..."}`** means a scan was attempted but could not produce a box (e.g. `detector_unavailable`, decode/IO failure).
 - **A missing box is phase work.** `bird_bbox` is a product of this phase, so `get_phase_incomplete_sql("bird_species")`, `is_image_bird_species_complete`, and the folder rollup in `get_folder_phase_summary` (which excludes a box-gap image from both `done_count` and `skipped_count`) all treat a bird-tagged image as incomplete when `bird_bbox IS NULL` **or** it holds a retryable failure sentinel (`modules/bird_detection.RETRYABLE_BBOX_ERRORS`, currently just `detector_unavailable`). Such folders surface as `awaiting_bird_species` and **Drive to Complete** repairs them on its own; `update_image_bird_bbox` invalidates the folder aggregate cache so the bucket flips back to `complete` on the next scan instead of being re-enqueued until the loop guard fires. Data-terminal sentinels (`decode_error`, `file_missing`, `detect_error`, `classify_error`) are deliberately *not* retryable — re-queueing them would never converge.
 - **Detector-only repair pass.** When an image's species work is already done (or exhausted) but the box is missing, `BirdSpeciesRunner` routes it through `scan_bird_bbox_only` instead of classification: it writes `images.bird_bbox` and nothing else — no BioCLIP forward pass, no keyword or embedding writes, no phase-status change. A batch consisting only of such rows never loads the BioCLIP model. If the detector itself is unavailable, the rows are left untouched (and therefore still queued) rather than stamped with a sentinel.
-- **Offline backfill.** `scripts/backfill_bird_bbox.py` runs the detector only (no BioCLIP / keyword writes) for bird-tagged rows where `bird_bbox IS NULL`. Resume is automatic: re-running skips rows that already have a box or sentinel. Now that the phase repairs its own gaps, this is mainly for scope the phase does not cover — notably `--all-null`, which drops the bird-keyword gate. Example: `python scripts/backfill_bird_bbox.py --folder /path/to/folder --workers 4`.
-- **Embeddings.** Because the crop (not the whole frame) is what BioCLIP encodes, the persisted `bioclip_2_image` embedding describes the bird crop — re-run with `overwrite` to refresh embeddings stored before this step existed.
+- **Offline backfill.** `scripts/backfill_bird_bbox.py` no longer runs a detector or writes `bird_bbox` (#638). For rows where `bird_bbox IS NULL` (bird-tagged by default; `--all-null` drops the keyword gate) it queues ID-scoped localization jobs, skipping images that already have a current `bird` run. The box reaches `bird_bbox` only through the selection projection once a run is promoted. Example: `python scripts/backfill_bird_bbox.py --folder /path/to/folder --dry-run`.
+- **Embeddings.** The vector goes to the space that matches what BioCLIP encoded: `bioclip_2_crop` for a region or detector-box crop, `bioclip_2_image` for the whole frame (#641). Rows stored before migration `0042` can mix both in `bioclip_2_image`.
 
 > **Future work (not implemented):** the model repo's `docs/guides/BACKEND_INTEGRATION.md` also specifies an `eye_quality` phase (eye localization + focus scoring, an `image_eye_quality` table, an API detail block, and optional technical-score fusion). None of that exists in this backend yet.
 
@@ -257,7 +257,7 @@ The model is loaded **lazily** on the first job and reused for all subsequent ru
 
 ## 5. Default species list
 
-`data/bird_species_list.txt` — bundled North American common names (~360 entries; recount the file if you need an exact number) organized by family group:
+`data/bird_species_list.txt` contains 379 bundled North American common-name candidates. They span:
 
 - Passerines (robins, warblers, sparrows, tanagers, finches, …)
 - Woodpeckers
@@ -275,6 +275,12 @@ The model is loaded **lazily** on the first job and reused for all subsequent ru
 - Pelicans, cormorants, anhingas
 - Rails, coots, gallinules
 - Nightjars and swifts
+
+The file is ordered by a five-year Austin-area observation/detection proxy. Species without local records are grouped alphabetically at the end. The [count and score snapshot](../../data/bird_species_austin_frequency_proxy_2026-10-09.csv) records the ordering evidence.
+
+The proxy is not a calibrated encounter probability. Reordering the same candidates does not change BioCLIP scores except when scores tie exactly.
+
+The 2026-10-16 agent-panel gate adopted ten additions to the earlier 369-name list. It did not adopt Boat-tailed Grackle or Eurasian Jackdaw, which have no local photo records, or American Herring Gull, which duplicates Herring Gull. See [the list gate report](../reports/bird-species-list-379-gate-2026-10-16.md). The Stage 5 refresh operator keeps the frozen [369-name list](../../data/bird_species_list_369_stage5.txt).
 
 Comments (`#`) and blank lines are ignored. The file path is resolved relative to the project root at import time.
 
@@ -519,7 +525,7 @@ curl -X POST http://127.0.0.1:7860/api/bird-species/start \
 | File | Role |
 |------|------|
 | [`modules/bird_species.py`](../../modules/bird_species.py) | `BioCLIPClassifier` + `BirdSpeciesRunner` + module helpers |
-| [`data/bird_species_list.txt`](../../data/bird_species_list.txt) | Default bundled (~360) North American species list |
+| [`data/bird_species_list.txt`](../../data/bird_species_list.txt) | Default bundled (379) North American species list, ordered by an Austin-area frequency proxy |
 | [`modules/db_legacy.py`](../../modules/db_legacy.py) | `get_images_with_keyword()` — SQL filter; post-filters large ID lists in Python |
 | [`modules/job_dispatcher.py`](../../modules/job_dispatcher.py) | Routes `job_type="bird_species"` to `BirdSpeciesRunner` |
 | [`modules/api.py`](../../modules/api.py) | `BirdSpeciesStartRequest`; `/bird-species/start`, `/stop`, `/status`; `submit_run` routing |

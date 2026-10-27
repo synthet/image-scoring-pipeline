@@ -104,8 +104,9 @@ Full categorized index for **image-scoring-pipeline**. Prefer small linked pages
 | [planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md](planning/models/IQA_MODEL_STACK_UPDATE_PROPOSAL.md) | Planned model stack changes. |
 | [planning/human-culling-labels.md](planning/human-culling-labels.md) | Human culling label set (#415): sampling design, label semantics, `human_labels` storage, evaluation plan and status. |
 | [planning/visual-domain-router.md](planning/visual-domain-router.md) | Visual domain router + specialist analysis proposal, reconciled against the scene route and subject-aware specs (SR-1 conflict, macro gap). |
+| [af-focus-evidence](planning/af-focus-evidence.md) | Proposed AF and eye-focus evidence for within-group culling; validation gates |
 | [reports/reference-culling-shadow-scores-2026-09-25.md](reports/reference-culling-shadow-scores-2026-09-25.md) | Reference culling scores as shadow models across the library: storage by type, normalisation, agreement analysis. |
-| [planning/reference-workflow-improvement-candidates.md](planning/reference-workflow-improvement-candidates.md) | Clean-room candidates for versioned evidence, deterministic reranking, uncertainty, sequence review, calibration, caches, and diagnostics. |
+| [planning/reference-workflow-improvement-candidates.md](planning/reference-workflow-improvement-candidates.md) | Improvement candidates for versioned evidence, deterministic reranking, uncertainty, sequence review, calibration, caches, and diagnostics. |
 | [research/STUDENT_SCORER_STUDY.md](research/STUDENT_SCORER_STUDY.md) | Ensemble → single multi-head student research program. |
 | [research/STUDENT_SCORER_PROTOCOL.md](research/STUDENT_SCORER_PROTOCOL.md) | Locked protocol / gates / commands for the student scorer. |
 | [research/STUDENT_SCORER_RESULTS.md](research/STUDENT_SCORER_RESULTS.md) | Append-only experiment results. |
@@ -244,3 +245,8 @@ Full categorized index for **image-scoring-pipeline**. Prefer small linked pages
 | Architecture | [image-scoring-gallery docs/architecture/01-system-overview.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/architecture/01-system-overview.md) |
 | Integration TODO | [image-scoring-gallery docs/integration/TODO.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/integration/TODO.md) |
 | Implemented features | [image-scoring-gallery docs/features/implemented/INDEX.md](https://github.com/synthet/image-scoring-gallery/blob/main/docs/features/implemented/INDEX.md) |
+
+## As-built behavior
+
+- [Source-derived specifications](specs/as-built/INDEX.md) — observed behavior, contracts, regression evidence and gaps.
+- [Nikon AF metadata](specs/as-built/nikon-af-metadata.md) — implemented AF extraction, missing evidence and cache contract.

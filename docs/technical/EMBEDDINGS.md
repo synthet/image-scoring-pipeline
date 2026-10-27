@@ -1,3 +1,13 @@
+---
+type: Technical Reference
+title: Image Embeddings
+description: Embedding spaces stored in PostgreSQL (MobileNetV2, CLIP, BioCLIP full-frame and crop, BLIP, culling towers), their producers, config flags and backfill.
+resource: technical/EMBEDDINGS.md
+tags: [technical, embeddings, pgvector, bioclip]
+timestamp: 2026-10-17T00:00:00Z
+okf_version: 0.2
+---
+
 # Image embeddings (MobileNetV2, Postgres, backfill)
 
 ## What is stored
@@ -75,7 +85,8 @@ Treat a new space as **not interchangeable** with MobileNet embeddings without m
 |---|---|---|---|---|
 | `mobilenet_v2_imagenet_gap` | 1280 | `image_embeddings` | `modules/clustering.py` (culling / indexing) | `CLUSTER_VERSION` |
 | `clip_vit_b32_image` | 512 | `image_embeddings_512` | `modules/tagging.py::KeywordScorer.predict` (keywords phase) | `openai/clip-vit-base-patch32` |
-| `bioclip_2_image` | 768 | `image_embeddings_768` | `modules/bird_species.py::BioCLIPClassifier.classify` (bird-species phase) | `hf-hub:imageomics/bioclip-2` |
+| `bioclip_2_image` | 768 | `image_embeddings_768` | `modules/bird_species.py::BioCLIPClassifier.classify` on a **full frame** (bird-species phase); `scripts/maintenance/backfill_bioclip_embeddings.py` | `hf-hub:imageomics/bioclip-2` |
+| `bioclip_2_crop` | 768 | `image_embeddings_768` | `modules/bird_species.py::BioCLIPClassifier.classify` on a **crop**: a selected localization region or the embedded detector's box (bird-species phase) | `hf-hub:imageomics/bioclip-2` |
 | `blip_vit_b16_image` | 768 | `image_embeddings_768` | `modules/tagging.py::CaptionGenerator.generate` (keywords phase, captions enabled) | `Salesforce/blip-image-captioning-base` |
 | `openclip_l14_laion2b_image` | 768 | `image_embeddings_768` | `modules/embedding_extractors.py` (opt-in / backfill) | `ViT-L-14/laion2b_s32b_b82k` |
 | `openai_clip_vit_l14_image` | 768 | `image_embeddings_768` | `modules/embedding_extractors.py` (opt-in / backfill) | `ViT-L-14-quickgelu/openai` |
@@ -122,6 +133,7 @@ The `embeddings` section in `config.json` gates per-model persistence and pins t
 - **`get_embedding_space_id` caches positive hits only.** A miss (Postgres engine not active, registry row not yet seeded by Alembic, or transient DB error) does *not* poison the cache; the next call performs a fresh DB lookup. A long-running webui/runner started before a `0012`-style migration runs will recover automatically once the migration completes.
 - **`BLIP_768` only fills when captions are generated.** `CaptionGenerator.generate(extract_embedding=True)` is the producer, and the runner only sets `extract_embedding=True` when `generate_captions=True`. Tagging-only jobs leave `image_embeddings_768` empty by design — BLIP's vision tower is only worth running when a caption is already needed.
 - **`BIOCLIP_768` only fills during bird-species jobs.** `BirdSpeciesRunner` is the only writer. Empty rows for `bioclip_2_image` are usually "no bird-species job ran", not a defect. Alembic `0026` corrects the registry if `bioclip_2_image` was still listed as 512-d (BioCLIP 2 is ViT-L/14, not ViT-B/32).
+- **Crops and full frames use separate BioCLIP spaces (#641, Alembic `0042`).** `classify` sets `last_input_mode` (`region`, `detector_crop` or `full_frame`), and `BirdSpeciesRunner` writes crop vectors to `bioclip_2_crop` and full-frame vectors to `bioclip_2_image`. A classifier without an input mode persists nothing. Rows written before `0042` mix both modes in `bioclip_2_image` until the operator rebuild runs; see #641. `persist_bioclip_image` gates both spaces.
 - **Shared `tagging_engine` path does not extract embeddings yet.** `TaggingRunner(tagging_engine=...)` skips the `_persist_tagging_embeddings` call (the engine doesn't surface `last_image_embedding`). Production call sites use `TaggingRunner()` with no engine and persist correctly; the runner emits a one-time `WARNING` per instance if persist flags are enabled on the engine path so the gap is discoverable.
 - **Persist failures log at `WARNING`.** Earlier code logged at `DEBUG`, hiding real upsert errors at default log levels. If an `image_embeddings_*` table is mysteriously empty, `grep "embedding upsert failed\|embedding persist failed" webui.log` first.
 

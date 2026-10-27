@@ -1,40 +1,35 @@
 #!/usr/bin/env python3
 """
-Backfill ``images.bird_bbox`` for bird-tagged images that have never been scanned.
+Queue localization for images whose ``images.bird_bbox`` has never been set.
 
-Detector-only: runs YOLO ``synthet/bird-detect-v0`` (via ``BirdDetector``) without
-BioCLIP, so species keywords and embeddings are not rewritten. Writes a real box
-when a bird is found, or the ``BBOX_NOT_DETECTED`` sentinel (``{"detected": false}``)
-when the detector runs and finds nothing. Decode / detect failures write
-``{"detected": false, "error": "..."}`` so rows are not left ``NULL``. Only
-``NULL`` rows are selected on the next run.
+This script no longer runs a detector or writes ``bird_bbox`` (#638, rollout Stage 8: no
+supported writer updates ``bird_bbox`` without a normalized run). It selects the same
+candidates as before and enqueues ID-scoped localization jobs for them, so each image gets a
+normalized ``image_localization_runs`` row. ``bird_bbox`` is then written only by the
+selection projection (``modules/localization_selection.py``) when a run is promoted.
+Images that already have a current ``bird`` run are skipped: their box waits on promotion,
+not on another detection.
 
-Usage (WSL, project root, per CLAUDE.md):
-  export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib
-  source ~/.venvs/tf/bin/activate
+The jobs are explicit submits, not the automatic repair lane, so the lane's bounded-repair
+limit does not apply. WebUI must be running to execute them.
 
-  # Inspect how many rows would be processed
+Usage (gpu-shell, per CLAUDE.md):
+  # Inspect how many rows would be queued
   python scripts/backfill_bird_bbox.py --dry-run
 
-  # Pilot one folder
+  # One folder
   python scripts/backfill_bird_bbox.py --folder "/path/to/folder"
 
-  # Full library, bird-tagged only (detach with setsid/nohup for long runs)
-  python scripts/backfill_bird_bbox.py --workers 4
-
   # Every image with bird_bbox IS NULL (no birds* keyword filter)
-  python scripts/backfill_bird_bbox.py --all-null --workers 4
+  python scripts/backfill_bird_bbox.py --all-null
 """
 from __future__ import annotations
 
 import argparse
 import logging
 import os
-import signal
 import sys
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, List, Optional, Tuple
+from typing import List
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
@@ -67,17 +62,13 @@ WHERE i.bird_bbox IS NULL
 ORDER BY f.path, i.id
 """
 
-# Set by SIGINT handler; main loop finishes the in-flight chunk then stops.
-_stop_requested = False
+_SQL_CURRENT_RUNS = """
+SELECT DISTINCT image_id FROM image_localization_runs
+WHERE detector_key = 'bird' AND is_current AND image_id IN ({placeholders})
+"""
 
-
-def _on_sigint(signum, frame) -> None:  # noqa: ARG001
-    global _stop_requested
-    if _stop_requested:
-        logger.warning("Second interrupt — exiting immediately.")
-        raise SystemExit(130)
-    _stop_requested = True
-    logger.warning("Interrupt received — finishing in-flight chunk then stopping.")
+#: Queue one localization job per this many images (the lane's own batch is smaller).
+DEFAULT_CHUNK_SIZE = 200
 
 
 def fetch_candidates(*, folder: str = "", limit: int = 0, all_null: bool = False) -> List[dict]:
@@ -125,187 +116,57 @@ def fetch_candidates(*, folder: str = "", limit: int = 0, all_null: bool = False
     return out
 
 
-def _decode_oriented(row: dict) -> Tuple[int, Optional[Any], Optional[str]]:
-    """Decode + bake orientation. Returns (image_id, pil_image_or_None, error_or_None)."""
-    from modules.bird_species import _resolve_inference_path
-    from modules.thumbnails import open_oriented_for_ml
+def drop_already_localized(image_ids: List[int]) -> List[int]:
+    """Remove images that already have a current ``bird`` localization run."""
+    from modules import db
 
-    image_id = int(row["id"])
-    file_path = row.get("file_path") or ""
-    try:
-        inference_path = _resolve_inference_path(row, file_path)
-        if not inference_path or not os.path.exists(inference_path):
-            return image_id, None, "file_missing"
-        return image_id, open_oriented_for_ml(inference_path), None
-    except Exception as exc:  # noqa: BLE001 — continue batch
-        return image_id, None, f"decode_error: {exc}"
+    conn = db.get_connector()
+    localized: set[int] = set()
+    for start in range(0, len(image_ids), 500):
+        chunk = image_ids[start:start + 500]
+        sql = _SQL_CURRENT_RUNS.format(placeholders=",".join("?" for _ in chunk))
+        localized.update(int(row["image_id"]) for row in conn.query(sql, tuple(chunk)) or [])
+    return [image_id for image_id in image_ids if image_id not in localized]
 
 
-def apply_detection_result(
-    image_id: int,
-    box: Optional[dict],
-    *,
-    dry_run: bool,
-    update_fn=None,
-    error: Optional[str] = None,
-) -> str:
-    """Persist a box, not-detected sentinel, or scan-failed sentinel.
+def enqueue_localization(image_ids: List[int], *, chunk_size: int = DEFAULT_CHUNK_SIZE) -> List[int]:
+    """Queue ID-scoped localization jobs in chunks. Returns the created ``jobs.id`` values."""
+    from modules import db
+    from modules.job_description import augment_queue_payload_for_audit
+    from modules.phases import PhaseCode, job_type_for_phase
 
-    Returns ``'detected'|'not_detected'|'scan_failed'|'write_error'``.
-    """
-    from modules.bird_detection import bird_bbox_payload
-
-    if update_fn is None:
-        from modules import db
-
-        update_fn = db.update_image_bird_bbox
-
-    payload = bird_bbox_payload(box, error=error)
-    if error:
-        outcome = "scan_failed"
-    elif box is not None:
-        outcome = "detected"
-    else:
-        outcome = "not_detected"
-    if dry_run:
-        return outcome
-    if update_fn(image_id, payload):
-        return outcome
-    return "write_error"
-
-
-def process_batch(
-    rows: List[dict],
-    *,
-    detector,
-    dry_run: bool,
-    workers: int,
-    progress_every: int,
-    decode_fn=_decode_oriented,
-    update_fn=None,
-) -> dict:
-    """Decode in a pool, run YOLO serially, write boxes/sentinels. Returns counters."""
-    detected = 0
-    not_detected = 0
-    skipped = 0
-    errors = 0
-    written = 0
-    t0 = time.monotonic()
-    total = len(rows)
-    chunk_size = max(workers * 4, workers)
-    processed = 0
-
-    for start in range(0, total, chunk_size):
-        if _stop_requested:
-            break
-        chunk = rows[start : start + chunk_size]
-        decoded: List[Tuple[int, Optional[Any], Optional[str]]] = []
-
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(decode_fn, row) for row in chunk]
-            for fut in as_completed(futures):
-                decoded.append(fut.result())
-
-        by_id = {image_id: (img, err) for image_id, img, err in decoded}
-
-        for row in chunk:
-            image_id = int(row["id"])
-            img, err = by_id.get(image_id, (None, "missing_decode_result"))
-            processed += 1
-
-            if err or img is None:
-                skipped += 1
-                skip_reason = err or "decode_error"
-                if err and err != "file_missing":
-                    errors += 1
-                    logger.warning("Skip image_id=%s: %s", image_id, err)
-                outcome = apply_detection_result(
-                    image_id,
-                    None,
-                    dry_run=dry_run,
-                    update_fn=update_fn,
-                    error=skip_reason,
-                )
-                if outcome == "scan_failed" and not dry_run:
-                    written += 1
-                elif outcome == "write_error":
-                    errors += 1
-                    logger.error("Failed to write bird_bbox for image_id=%s", image_id)
-                continue
-
-            try:
-                box = detector.detect_best_box(img)
-            except Exception as det_err:  # noqa: BLE001
-                errors += 1
-                logger.warning("Detect failed image_id=%s: %s", image_id, det_err)
-                outcome = apply_detection_result(
-                    image_id,
-                    None,
-                    dry_run=dry_run,
-                    update_fn=update_fn,
-                    error=f"detect_error: {det_err}",
-                )
-                if outcome == "scan_failed" and not dry_run:
-                    written += 1
-                elif outcome == "write_error":
-                    errors += 1
-                    logger.error("Failed to write bird_bbox for image_id=%s", image_id)
-                continue
-            finally:
-                try:
-                    img.close()
-                except Exception:  # noqa: BLE001
-                    pass
-
-            outcome = apply_detection_result(
-                image_id, box, dry_run=dry_run, update_fn=update_fn
-            )
-            if outcome == "detected":
-                detected += 1
-                if not dry_run:
-                    written += 1
-            elif outcome == "not_detected":
-                not_detected += 1
-                if not dry_run:
-                    written += 1
-            else:
-                errors += 1
-                logger.error("Failed to write bird_bbox for image_id=%s", image_id)
-
-            if progress_every > 0 and processed % progress_every == 0:
-                elapsed = max(time.monotonic() - t0, 1e-6)
-                rate = processed / elapsed
-                remaining = max(total - processed, 0)
-                eta = remaining / rate if rate > 0 else 0
-                logger.info(
-                    "Progress %s/%s (%.1f img/s, ETA %.0fs) — detected=%s none=%s skipped=%s",
-                    processed,
-                    total,
-                    rate,
-                    eta,
-                    detected,
-                    not_detected,
-                    skipped,
-                )
-
-    return {
-        "total": total,
-        "detected": detected,
-        "not_detected": not_detected,
-        "skipped": skipped,
-        "errors": errors,
-        "written": written,
-        "elapsed_sec": round(time.monotonic() - t0, 1),
-        "stopped_early": _stop_requested,
-    }
+    job_ids: List[int] = []
+    for start in range(0, len(image_ids), chunk_size):
+        chunk = list(image_ids[start:start + chunk_size])
+        payload = augment_queue_payload_for_audit(
+            {
+                "input_path": None,
+                "resolved_image_ids": chunk,
+                "resolved_image_ids_by_stage": {"localization": chunk},
+            },
+            trigger="api",
+            tool_id="backfill_bird_bbox",
+        )
+        job_id, _ = db.enqueue_job_with_phases(
+            "SELECTOR_LOCALIZATION_BACKFILL",
+            phase_code=PhaseCode.LOCALIZATION.value,
+            job_type=job_type_for_phase(PhaseCode.LOCALIZATION),
+            queue_payload=payload,
+            description=f"Localization backfill: {len(chunk)} image(s)",
+            phase_codes=[PhaseCode.LOCALIZATION.value],
+        )
+        if not job_id:
+            raise RuntimeError(f"failed to enqueue localization for {len(chunk)} image(s) at offset {start}")
+        job_ids.append(int(job_id))
+    return job_ids
 
 
-def main() -> int:
+def main(argv: List[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument(
         "--dry-run",
         action="store_true",
-        help="Query and print candidates; run detection but do not write to DB",
+        help="Query and print candidates; do not enqueue jobs",
     )
     p.add_argument(
         "--folder",
@@ -319,40 +180,25 @@ def main() -> int:
         type=int,
         default=0,
         metavar="N",
-        help="Process at most N images (0 = no limit)",
+        help="Queue at most N images (0 = no limit)",
     )
     p.add_argument(
-        "--workers",
+        "--chunk-size",
         type=int,
-        default=4,
+        default=DEFAULT_CHUNK_SIZE,
         metavar="N",
-        help="Decode worker threads (default 4); YOLO stays single-threaded",
-    )
-    p.add_argument(
-        "--progress-every",
-        type=int,
-        default=100,
-        metavar="N",
-        help="Log progress every N processed images (default 100; 0 = silent)",
-    )
-    p.add_argument(
-        "--device",
-        type=str,
-        default=None,
-        help="Override detector device (cpu|cuda|auto); default from config",
+        help=f"Images per localization job (default {DEFAULT_CHUNK_SIZE})",
     )
     p.add_argument(
         "--all-null",
         action="store_true",
         help="Include every bird_bbox IS NULL row (skip birds* keyword filter)",
     )
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
-    if args.workers < 1:
-        logger.error("--workers must be >= 1")
+    if args.chunk_size < 1:
+        logger.error("--chunk-size must be >= 1")
         return 2
-
-    signal.signal(signal.SIGINT, _on_sigint)
 
     rows = fetch_candidates(folder=args.folder, limit=args.limit, all_null=args.all_null)
     scope = "image(s)" if args.all_null else "bird-tagged image(s)"
@@ -362,52 +208,26 @@ def main() -> int:
         scope,
         f" in folder {args.folder!r}" if args.folder else "",
     )
+    image_ids = drop_already_localized([row["id"] for row in rows])
+    if len(image_ids) < len(rows):
+        logger.info("Skipping %s image(s) that already have a current localization run.", len(rows) - len(image_ids))
 
-    if not rows:
-        logger.warning("Nothing to process.")
+    if not image_ids:
+        logger.warning("Nothing to queue.")
         return 1
 
     if args.dry_run:
-        for row in rows[:50]:
-            print(f"{row['id']}\t{row['file_path']}")
-        if len(rows) > 50:
-            print(f"... and {len(rows) - 50} more", file=sys.stderr)
-        logger.info("Dry-run: %s candidate(s); no detection or writes.", len(rows))
+        paths = {row["id"]: row["file_path"] for row in rows}
+        for image_id in image_ids[:50]:
+            print(f"{image_id}\t{paths[image_id]}")
+        if len(image_ids) > 50:
+            print(f"... and {len(image_ids) - 50} more", file=sys.stderr)
+        logger.info("Dry-run: %s image(s) would be queued; nothing enqueued.", len(image_ids))
         return 0
 
-    from modules.bird_detection import BirdDetector
-
-    detector = BirdDetector(device=args.device)
-    if not detector.enabled:
-        logger.error("bird_detection.enabled is false in config; aborting.")
-        return 1
-    try:
-        detector.load_model()
-    except Exception as exc:
-        logger.error("Failed to load bird detector: %s", exc)
-        return 1
-    logger.info("Bird detector loaded (device=%s).", detector.device)
-
-    summary = process_batch(
-        rows,
-        detector=detector,
-        dry_run=False,
-        workers=args.workers,
-        progress_every=args.progress_every,
-    )
-    logger.info(
-        "Done: total=%s detected=%s not_detected=%s skipped=%s errors=%s written=%s elapsed=%ss",
-        summary["total"],
-        summary["detected"],
-        summary["not_detected"],
-        summary["skipped"],
-        summary["errors"],
-        summary["written"],
-        summary["elapsed_sec"],
-    )
-    if summary["stopped_early"]:
-        return 130
-    return 0 if summary["errors"] == 0 else 1
+    job_ids = enqueue_localization(image_ids, chunk_size=args.chunk_size)
+    logger.info("Queued %s image(s) in %s localization job(s): %s", len(image_ids), len(job_ids), job_ids)
+    return 0
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 ---
 type: Plan
 title: Subject-aware culling evidence — consolidated with the localization rollout
-description: Clean-room plan for region-, keypoint- and mask-conditioned quality evidence, a code-owned within-burst ranker, and burst sub-segmentation, mapped stage by stage onto the eight-stage localization rollout.
+description: plan for region-, keypoint- and mask-conditioned quality evidence, a code-owned within-burst ranker, and burst sub-segmentation, mapped stage by stage onto the eight-stage localization rollout.
 resource: docs/planning/subject-aware-culling-evidence.md
-tags: [planning, culling, localization, evidence, scoring, keypoints, saliency, bursts, clean-room]
-timestamp: 2026-09-24T00:00:00Z
+tags: [planning, culling, localization, evidence, scoring, keypoints, saliency, bursts]
+timestamp: 2026-10-13T00:58:42Z
 okf_version: 0.2
 status: proposed
 ---
@@ -89,7 +89,7 @@ hash and extractor version, like crop scores in spec 04 (AC-14). A new rendition
 detector version (#408) therefore invalidates evidence without a library rescan, and the recompute
 is crop-local.
 
-## Provenance (clean-room)
+## Provenance 
 
 This page comes from a competitive analysis of a commercial wildlife burst-culling application. The
 sources were its user documentation and its observable input/output behaviour (scores and
@@ -326,10 +326,17 @@ covered 236 agent-labelled frames in 54 bursts.
 
 ## Roadmap (ordered by value ÷ cost)
 
+**Execution status after #594:** cascade persistence and its AC-17/AC-18 gate
+evidence are merged. Live shadow activation and consumer-source adoption remain
+separate; small-crop species failed its precision gate (0.8123 < 0.85). These
+species/box panels do not replace #415's independent owner culling labels.
+Use [the current handoff](../../NEXT_STEPS.md) before planning new inference;
+completed imports, keypoints and frozen species comparisons should not be repeated.
+
 | # | Item | Stage | Size | Depends on |
 |---|---|---|---|---|
-| 0a | **Open COCO detector as a second localization provider** (#408) (shadow; upstream weights). It beat YOLO-1280 on the #377 cohort ([comparison](../reports/subject-detector-comparison-2026-09-24.md)) | 3–4 | S–M | upstream checkpoint re-run |
-| 0 | **Human label set** (#415): about 300 bursts of pick/reject, stratified by subject-size tercile (no human labels exist today). **In progress:** [protocol and status](human-culling-labels.md), 20 of 302 groups done | — | M (your time) | — |
+| 0a | **Cascade shadow activation/observation** (#408). Provider, persistence and gates are merged in #594; consumer-source adoption remains separately gated ([report](../reports/localization-agent-panel-gates-2026-10-12.md)). | 3–4 | S | deployed-code/preflight/backup checks |
+| 0 | **Human label set** (#415): reconcile independent owner-label coverage before collecting more. [Protocol](human-culling-labels.md) last documented 20/302 groups on September 25; that is not a fresh progress count. | — | M (your time) | current blind-review progress |
 | 1 | Descriptor addendum: resampler, fit, working/fine sizes (folded into #406) | 3 | S | — |
 | 2 | Evidence extractor v0 (#423) using the **imported `bird_bbox` regions** only: focus, exposure, noise, composition from box, no mask yet → research JSONL | 6 | M | Stage 2 import |
 | 3 | Burst sub-segmentation (0.5 s) as stack scope (#424) | orth. | S | — |

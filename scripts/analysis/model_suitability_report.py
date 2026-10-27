@@ -45,7 +45,7 @@ logger = logging.getLogger("model_suitability_report")
 PROFILE_FIELDS = [
     "n", "missing_pct", "finite_pct", "min", "max", "below_bound", "above_bound", "mean", "median", "variance",
     "std", "mad", "iqr", "skewness", "excess_kurtosis", "bimodality_coefficient", "bimodal_hint", "unique",
-    "tie_fraction", "floor_pct", "ceiling_pct", "near_bound_pct", "two_decimal_grid_pct", "entropy_norm",
+    "duplicate_value_fraction", "exact_pair_tie_rate", "floor_pct", "ceiling_pct", "near_bound_pct", "two_decimal_grid_pct", "entropy_norm",
 ]
 
 

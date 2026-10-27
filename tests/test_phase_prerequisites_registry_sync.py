@@ -143,5 +143,5 @@ def test_a_preferred_edge_never_enters_the_phase_prefix(monkeypatch):
 
     assert "localization" not in phases.pipeline_prefix_through("keywords")
     assert phases.pipeline_prefix_through("keywords") == [
-        "indexing", "metadata", "scoring", "keywords",
+        "indexing", "metadata", "keywords",
     ]

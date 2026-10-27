@@ -236,18 +236,18 @@ def _write_outputs(
         "title": result.title if result.title else row.get("title"),
         "description": result.caption if result.caption else row.get("description"),
     }
-    if not use_scored_keywords:
-        field_updates["keywords"] = tags_csv
     db.update_image_fields_batch([(row["id"], field_updates)])
 
+    # Replace only the keyword rows this phase owns; species and hand-entered rows stay (#586).
+    db.update_image_keywords_for_image(
+        row["id"],
+        tags_csv,
+        source="auto",
+        confidence_map=result.confidence_map if use_scored_keywords else None,
+        relevance_map=result.relevance_map if use_scored_keywords else None,
+        scope="keywords",
+    )
     if use_scored_keywords:
-        db.update_image_keywords_for_image(
-            row["id"],
-            tags_csv,
-            source="auto",
-            confidence_map=result.confidence_map,
-            relevance_map=result.relevance_map,
-        )
         keyword_shadow.verify_image(
             int(row["id"]),
             processing_path,

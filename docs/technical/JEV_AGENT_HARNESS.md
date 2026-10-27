@@ -198,3 +198,4 @@ has its own `.agent/jev_harness.json` and packs.
 - Jev rerank in the gallery's Node `mcp-server` search.
 - A Cursor `beforeShellExecution` adapter for the permission gate.
 - Flip `permission` to `on` after reviewing shadow-mode agreement in `decisions.jsonl`.
+- Image inputs (Jev 1.14, experimental): candidate vision judge for species and box gates. It needs crop-egress approval, `typesafe-sdk` ≥ 0.7.5, a pinned `jev-1.14.0` and its own pilot. Until then `state` holds no images. See the [assessment](../reports/jev-1.14-image-inputs-assessment-2026-10-16.md).

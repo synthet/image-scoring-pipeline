@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 _HOST_THUMB_WARN_EMITTED = False
@@ -417,6 +417,34 @@ def bake_orientation(img: Image.Image, source_path: str) -> Image.Image:
     return ImageOps.exif_transpose(img)
 
 
+#: ExifTool attempts per tag: the second, longer one absorbs intermittent slow reads on the
+#: mounted (9p) photo share, where identical local bytes extract in under a second
+#: (docs/reports/localization-session-work-log-2026-10-10.md). Same command, same pixels.
+EXIFTOOL_TIMEOUTS = (10, 60)
+
+
+def _exiftool_embedded_jpeg(image_path: str, tag: str, min_size: int) -> Image.Image | None:
+    """One embedded JPEG tag via ExifTool, retried once with a longer timeout; ``None`` on failure."""
+    for timeout in EXIFTOOL_TIMEOUTS:
+        try:
+            result = subprocess.run(["exiftool", "-b", tag, image_path], capture_output=True, text=False,
+                                    timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning("exiftool %s timed out after %ss: %s", tag, timeout, image_path)
+            continue
+        except Exception:  # noqa: BLE001 — missing binary or OS error: try the next route
+            return None
+        if result.returncode == 0 and len(result.stdout) > min_size and result.stdout.startswith(b"\xff\xd8"):
+            try:
+                img = Image.open(io.BytesIO(result.stdout))
+                img.load()  # Verify validity
+                return img
+            except Exception:  # noqa: BLE001
+                return None
+        return None
+    return None
+
+
 def extract_embedded_jpeg(image_path: str, min_size: int = 100) -> Image.Image | None:
     """
     Extract embedded JPEG preview from RAW file.
@@ -434,35 +462,13 @@ def extract_embedded_jpeg(image_path: str, min_size: int = 100) -> Image.Image |
     
     # Try ExifTool first (most robust for modern Nikon formats)
     if shutil.which("exiftool"):
-        try:
-            # Try -JpgFromRaw first (full-size embedded JPEG)
-            cmd = ['exiftool', '-b', '-JpgFromRaw', image_path_str]
-            result = subprocess.run(cmd, capture_output=True, text=False, timeout=10)
-            
-            if result.returncode == 0 and len(result.stdout) > min_size:
-                if result.stdout.startswith(b'\xff\xd8'):  # JPEG header
-                    try:
-                        img = Image.open(io.BytesIO(result.stdout))
-                        img.load()  # Verify validity
-                        return img
-                    except Exception:
-                        pass
-            
-            # Try -PreviewImage if JpgFromRaw fails or is missing
-            cmd = ['exiftool', '-b', '-PreviewImage', image_path_str]
-            result = subprocess.run(cmd, capture_output=True, text=False, timeout=10)
-            
-            if result.returncode == 0 and len(result.stdout) > min_size:
-                if result.stdout.startswith(b'\xff\xd8'):  # JPEG header
-                    try:
-                        img = Image.open(io.BytesIO(result.stdout))
-                        img.load()  # Verify validity
-                        return img
-                    except Exception:
-                        pass
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-            pass
-    
+        # -JpgFromRaw (full-size embedded JPEG) first, then -PreviewImage. Each tag gets its own
+        # attempt so a timeout on one does not skip the other.
+        for tag in ("-JpgFromRaw", "-PreviewImage"):
+            img = _exiftool_embedded_jpeg(image_path_str, tag, min_size)
+            if img is not None:
+                return img
+
     # Fallback to dcraw -e (fast embedded thumbnail extraction)
     if shutil.which("dcraw"):
         try:
@@ -488,15 +494,18 @@ _RAW_EXT_ML = frozenset({".nef", ".nrw", ".cr2", ".dng", ".arw", ".orf", ".cr3",
 
 def open_image_for_ml(read_path: str) -> Image.Image:
     """
-    Open a file as PIL for ML inference (CLIP, BLIP, BioCLIP, etc.).
+    Open a file as upright RGB PIL for ML inference (CLIP, BLIP, MobileNet, etc.).
 
     Raster formats use :func:`PIL.Image.open` directly. RAW files use the same decode
     chain as thumbnail generation (embedded JPEG → rawpy → ImageMagick) so tagging
     and similar jobs work when no thumbnail row/path exists yet.
 
-    Use :func:`open_rendition_for_ml` when you also need to know which route ran.
+    Orientation is applied (:func:`open_oriented_for_ml`): RAW-derived thumbnails keep
+    sensor-orientation pixels plus an EXIF tag, so a plain open fed portrait RAWs to the
+    models sideways (#418). Use :func:`open_rendition_for_ml` for the unoriented decode
+    and the route that ran.
     """
-    return open_rendition_for_ml(read_path)[0]
+    return open_oriented_for_ml(read_path)
 
 
 def open_rendition_for_ml(read_path: str):
@@ -543,6 +552,9 @@ def open_rendition_for_ml(read_path: str):
     if img is None:
         from PIL import UnidentifiedImageError
 
+        from modules.raw_diagnostics import log_raw_failure
+
+        log_raw_failure(read_path, "ml_decode")
         raise UnidentifiedImageError(f"cannot identify or decode RAW image file {read_path!r}")
     return img, route
 
@@ -731,6 +743,8 @@ def generate_thumbnail(image_path, source_path=None):
         # Check if RAW file
         is_raw = Path(read_path).suffix.lower() in ['.nef', '.cr2', '.dng', '.arw', '.orf', '.nrw', '.cr3', '.rw2']
 
+        # rawpy's postprocess already rotates; tagging its output too would rotate it twice.
+        pixels_upright = False
         if is_raw:
             img = None
 
@@ -744,6 +758,7 @@ def generate_thumbnail(image_path, source_path=None):
                     with rawpy.imread(str(read_path)) as raw:
                         rgb = raw.postprocess(use_camera_wb=True, bright=1.0, user_sat=None)
                         img = Image.fromarray(rgb)
+                        pixels_upright = True
                 except ImportError:
                     pass  # rawpy not available
                 except Exception:
@@ -759,6 +774,8 @@ def generate_thumbnail(image_path, source_path=None):
                         return thumb_path
 
                 # All methods failed
+                from modules.raw_diagnostics import log_raw_failure
+                log_raw_failure(read_path, "thumbnail_decode")
                 raise Exception("All RAW conversion methods failed for thumbnail generation")
         else:
             # Standard image handling (non-RAW)
@@ -766,6 +783,10 @@ def generate_thumbnail(image_path, source_path=None):
 
         # Process and save thumbnail
         with img:
+            # Raster sources can store landscape pixels with a portrait EXIF tag.
+            # Bake the rotation before saving, since Pillow does not copy EXIF on save.
+            if not is_raw:
+                img = ImageOps.exif_transpose(img)
             # Convert to RGB if needed
             if img.mode in ('RGBA', 'P'):
                 img = img.convert('RGB')
@@ -774,7 +795,7 @@ def generate_thumbnail(image_path, source_path=None):
             img.save(thumb_path, "JPEG", quality=85)
 
             # Copy EXIF orientation from original
-            if is_raw and shutil.which("exiftool"):
+            if is_raw and not pixels_upright and shutil.which("exiftool"):
                 cmd = ["exiftool", "-TagsFromFile", str(read_path), "-Orientation", "-overwrite_original", thumb_path]
                 subprocess.run(cmd, capture_output=True, timeout=10)
 
@@ -864,4 +885,7 @@ def generate_preview(image_path):
         except Exception as e:
             print(f"rawpy decode failed: {e}")
         
+    if img is None:
+        from modules.raw_diagnostics import log_raw_failure
+        log_raw_failure(image_path, "preview_decode")
     return None

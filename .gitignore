@@ -88,6 +88,7 @@ reports/model-score-quality/
 # Everypixel UGC correlation study — canonical artifacts in private image-scoring-skills repo
 reports/everypixel-correlation/
 reports/clip-culling/rollout_recluster.checkpoint.json
+reports/clip-species-study/
 
 # Bird-crop labelling contact sheets: regenerable from label_set_provenance.json
 # (seed + burst params) and carry no verdict data — verdicts key off image_id in
@@ -110,6 +111,8 @@ dumps/
 .agent/tmp/
 .agent/study/runs/
 debug_*.py
+# Library module, not a scratch script (#673).
+!modules/debug_bundle_export.py
 debug_*.txt
 debug_*.html
 debug.log
@@ -325,6 +328,7 @@ reports/gallery-visual-review/
 
 # Operator-local docs tree (gitignored; public wiki must not link here).
 docs/private/
+.docs/private/
 # Agent session transcripts. These capture pasted session content, including
 # credentials. Dated Claude exports (YYYY-MM-DD-HHMMSS-slug.txt/.md) and Codex
 # dumps stay local. The dated .md rule is root-only so docs/raw/YYYY-MM-DD-*.md
@@ -334,3 +338,13 @@ codex-session-*.md
 /20??-??-??-*.md
 models/*.onnx
 models/*.manifest.json
+/docs/_local/
+/.agent/local/
+/.cursor/mcp.json
+/.claude/settings.local.json
+/.agents/mcp_config.json
+
+# Agent instruction files
+AGENTS.md
+CLAUDE.md
+GEMINI.md

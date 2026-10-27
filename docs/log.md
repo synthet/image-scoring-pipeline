@@ -6,6 +6,253 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-26] update | Shared hook repaired; localization calibration stops at one qualified judge (#694)
+
+Applied the owner-approved shared Jev hook repair with 11 installed tests and 40 completed Claude image reads. Recorded the completed backfill, frozen 390-frame sample and restored WebUI. Antigravity scores 19/20; Codex and Claude score 17/20, so the unchanged three-judge prerequisite prevents fresh validation and promotion.
+
+## [2026-10-26] update | Localization promotion gate continuation (#694, #638)
+
+Recorded the frozen R2 rule, verified local backup, incomplete calibration and final backfill dependency in reports/localization-promotion-gate-2026-10-26.md. Updated the rollout order: #694 supersedes #683. No selection promotion or flag activation.
+
+## [2026-10-24] update | Phase graph review against data dependencies (#407)
+
+Added [the phase graph review](reports/phase-graph-review-2026-10-24.md): every edge checked against a live consumer and the timing baseline. AC-9 superseded (scoring reads no localization yet), `pipeline.culling_requires_scoring` stays on until the stack-cover gap and #678 are fixed, and changes C-1 to C-4 proposed (gate localization→scoring, drop localization→keywords, add localization→bird_species, refresh covers).
+
+## [2026-10-24] update | Sync AF focus-evidence plan with merged extraction fixes
+
+Marked the gaps closed by #675 (unknown `FocusResult`, `exiftool_version`, ExifTool 13.52 pin) and `322decec` (coordinate availability, invalid-geometry handling) in [the focus-evidence plan](planning/af-focus-evidence.md) §4, F3 and §9 steps 2–3. Remaining gaps: display-space transform, `af_state`, raw coordinate availability and a focus result when coordinates are absent.
+
+## [2026-10-24] updated | Nikon AF evidence validation and cache semantics
+
+Required AF geometry is finite with positive integral dimensions; explicit unavailable coordinates clear cached AF while preserving other EXIF. Focused regressions, legacy merge tests and an eleven-record metadata replay passed. No photo writes or policy activation.
+
+## [2026-10-24] update | Draft AF metadata and eye-focus evidence plan
+
+Added [the focus-evidence proposal](planning/af-focus-evidence.md), grounded in the saved eleven-frame Nikon probe. Separated measured observations from camera-semantics and decode uncertainties, and added shadow evaluation and acceptance criteria. Runtime scores and selections were not changed.
+
+## [2026-10-24] edit | keywords depends on metadata, not scoring (#407, spec 02 AC-1/AC-2)
+
+Updated [phase graph](architecture/pipeline/phase-graph.md): the `keywords` hard prerequisite is now `metadata`, and `pipeline_prefix_through("keywords")` no longer includes `scoring`.
+
+## [2026-10-23] update | Resolve bbox disagreements with swarm judges and Jev (#638)
+
+Recorded the blind judge panel and the Jev decision for the 43 legacy/view bbox disagreements in the [Stage 8 readiness report](reports/localization-stage8-readiness-2026-10-23.md): 25 selected images were resolved through the selection module, 6 held; the unselected images wait for the skills backfill; the zero-filled originals are kept.
+
+## [2026-10-23] updated | As-built architecture and contract review
+
+Added source-derived specs for execution/scoring, localization/consumer ownership and model inventory; kept proposed changes and historical evidence separate.
+
+## [2026-10-23] update | Record Stage 8 readiness: repair complete, rollback drill, 43 disagreements
+
+Added the [Stage 8 readiness report](reports/localization-stage8-readiness-2026-10-23.md) and indexed it. Updated the rollout status of record: #660 complete, WebUI on v9.2.0, #639 closed, gallery #185 merged, rollback drill passed, 43 (not 31) legacy/view disagreements, backfill reroute (#664), and the remaining #638 gates.
+
+## [2026-10-23] update | Add localization rollout summary and record the 0043 deploy (#661)
+
+Added a one-page rollout summary, indexed it, and updated the status of record: 0043 deployed with verified view parity, v9.2.0 released, #660 repair running. Corrected `status: proposed`, the "What is left" order and the timing-baseline blocker.
+
+## [2026-10-22] update | Record localization rollout status through 2026-10-22 (#655)
+
+The rollout status of record now carries the 2026-10-18 to 2026-10-21 continuation text and reports, plus a 2026-10-22 summary. Merged: #646 (v9.1.2), #652 reader and view 0043, #651, #653. Not deployed: live revision 0042. The BioCLIP repair has 23,836 repair images remaining after the 8 missing-original records were removed.
+
+## [2026-10-21] edit | Normalized bbox SQL compatibility groundwork
+
+Added the local compatibility view 0043 and coordinated default-off gallery SQL consumers. Contract: docs/technical/NORMALIZED_BBOX_COMPATIBILITY.md; schema catalog: docs/technical/DB_SCHEMA.md. Isolated PostgreSQL migration checks and gallery consumer/type checks pass. No live schema, runtime flag or release delivery changed.
+
+## [2026-10-21] update | Route API and evidence boxes through the opt-in normalized reader
+
+The local compatibility-release implementation batches normalized reads for image list/detail and public/UUID/hash variants, and uses the same selection authority for evidence overlays. The flag remains disabled by default; no activation, deployment or Stage 8 completion is claimed. Gallery SQL consumers and the compatibility/rollback gates remain outstanding.
+
+## [2026-10-21] update | Protect production selections from legacy bbox backfill writes (#646)
+
+The generic writer now uses the transactional ownership guard locally. Forty-two unit/adjacent tests and three real PostgreSQL interleaving tests pass. The issue is assigned, but the Project board claim is blocked by token permissions; no deployment or Stage 8 activation occurred.
+
+## [2026-10-21] update | Expose localization outage holds through status and diagnostics
+
+`GET /api/runs/drive/status` and `get_drive_diagnostics` report the process-local localization lane state and a `detector_outage_hold` anomaly; a parked lane reports `restart_required` (#639).
+
+## [2026-10-20] update | Prepare selection-aware compatibility reader with regression coverage
+
+`read_bird_bbox` projects the active production selection's region and source-run dimensions when `localization.read_normalized_first` is enabled, and falls back to `images.bird_bbox` otherwise (#638).
+## [2026-10-21] update | Verify owner-approved bbox ownership guard with PostgreSQL interleavings
+
+Issue #646 local fix passes 42 unit/adjacent and three real PostgreSQL cases. Disposable test instance removed; Project board claim unavailable due to token permission. The embedding resume and Stage 8 remain gated.
+
+## [2026-10-21] update | Reproduce legacy backfill ownership race and prepare unapplied fix
+
+Current helper fails the promotion-during-detection regression. A private candidate passes five cases; production source and Stage 8 readiness remain unchanged pending focused tracking signoff.
+
+## [2026-10-21] update | Bound historical selection drift and document fresh backup admission
+
+Read-only October 5/10 backup comparisons bound all 31 legacy projection disagreements. Current state is unchanged; resume checkpoint/runtime approval and full backup-to-proof execution remain pending.
+
+## [2026-10-21] update | Record outage visibility fix and pending execution gates
+
+## [2026-10-20] update | Prepare culling-preserving checkpoint and verified resume approval package
+
+## [2026-10-20] update | Verify local reader fix and identify culling-only resume drift
+
+## [2026-10-20] update | Audit selection-aware normalized-reader readiness
+
+## [2026-10-20] update | Diagnose stopped cascade pilot source identities
+
+## [2026-10-20] edit | Reconcile interrupted BioCLIP rebuild and restore WebUI
+
+Windows restart at 02:21 UTC interrupted the rebuild and prevented automatic application restart. Read-only reconciliation verified 2,000 valid surviving vectors, 31,764 missing IDs and unchanged pilot/non-target/protected state. WebUI was restored and health returned HTTP 200; the stale running receipt was corrected with its original preserved. A fresh backup and controlled-resume preflight passed, as did 13 resume/backfill and 12 timing tests. New proposed 14-hour budget remains unapproved.
+
+## [2026-10-20] edit | Launch approved bounded BioCLIP rebuild remainder
+
+After a fresh verified local backup and exact-ID preservation preflight, launched the approved 33,564-image remainder at 01:39:52 UTC on October 20. WebUI is paused; a hidden host controller restores it after success or failure. Single batch-8 process, offline cached weights, 12-hour watchdog ending 13:39:52 UTC, hourly preservation checks and no automatic retries. Final data-repair verification remains pending.
+
+## [2026-10-20] edit | Verify successful 200-image BioCLIP rebuild pilot
+
+The approved pilot completed 200/200 exact frozen IDs with valid normalized 768-dimensional vectors, zero decode failures and unchanged protected/non-target state. Backfill took 199.71 seconds; sampled GPU peak was 2,619 MiB and child peak RSS 4.04 GiB. WebUI restarted and health returned HTTP 200. Remaining 33,564 rebuilds need approval for the proposed 12-hour budget; 9.31 hours is a pilot-based planning proxy.
+
+## [2026-10-19] edit | Complete approved deletion of mixed BioCLIP vectors
+
+After a fresh verified local backup, deleted exactly the 33,764 frozen mixed vectors. All 149,288 non-target embedding rows and crop payloads were preserved; independent postflight found 40,371 full-frame and 4,029 crop vectors. WebUI restarted. The 200-image rebuild selector dry run passed; recomputation awaits separate approval.
+
+## [2026-10-19] edit | Complete approved BioCLIP crop-space move
+
+Moved exactly 4,029 frozen proven-crop vectors into bioclip_2_crop; 74,135 full-frame vectors remain. Selected payload equality and all 179,023 non-target row fingerprints passed before and after commit. WebUI restarted and health returned HTTP 200. No deletion or rebuild ran.
+
+## [2026-10-19] edit | Record stopped localization cascade pilot and BioCLIP repair preflight
+
+Added the October 19 continuation report and updated rollout status: the pilot stopped at 38/200 after three retryable errors, protected state matched, full replay is blocked, and the embedding repair remains pending operator confirmation.
+
+## [2026-10-18] created | Localization timing baseline and routing control
+
+Added the #416 three-repeat timing report, sanitized measurement artifacts, a local YOLO/PNG/keypoint control and explicit unsupported-provider and VRAM limits.
+
+## [2026-10-17] ingest | #418 re-tag recovery session
+
+Saved the [session summary](reports/retag-418-session-2026-10-17.md) from a gitignored Claude Code export: host sleep failed job 6945 through a bind-mount I/O error, `jobs/{id}/restart` recovered it in place, and the re-tag completed with 0 failed actions and verified keyword preservation. Linked from the reports index and the session digest router.
+
+## [2026-10-16] edit | Keyword writes keep rows other writers own (#586)
+
+Updated [the keywords phase page](architecture/pipeline/phases/keywords.md) for the scoped keyword writes in #586:
+- A keywords run now replaces only CLIP-owned rows. Species labels, the species marker, hand-entered rows and selection rows are kept.
+- A species write now replaces only `species:*` rows, without overwriting the source of other rows.
+- Removed the known gap that said every keyword write deletes species data.
+
+## [2026-10-16] edit | Record the 379-name relabel and the #408 live cascade runs
+
+Updated the 379 gate report, the rollout status and NEXT_STEPS.
+- **Relabel:** the 124 affected Stage 5 images were relabelled under the 379-name list through `--profile 379` (#620, #619). All 4,401 verify: 4,029 labelled and 372 abstaining.
+- **Bug fix:** #621 makes the GPU-runner BioCLIP proxy report `last_error`, so a refresh abstention clears stale labels.
+- **Cascade:** live `subject_cascade` runs were observed on all three paths, and #408 is closed.
+
+Agent-panel labels, not owner labels.
+
+## [2026-10-16] edit | Assess Jev 1.14 image inputs
+
+Added [the assessment](reports/jev-1.14-image-inputs-assessment-2026-10-16.md) and a follow-up in the Jev harness doc. Verified that `jev-1.14.0` is available and that `typesafe-sdk` 0.7.5 has `Image` assets and `Box`. The size limits and pricing come from a third-party report and are unverified. The MCP tool cannot send images. Use is limited to research gates after egress approval, an SDK upgrade and a pilot. No code or configuration changed.
+
+## [2026-10-16] edit | Gate and adopt the 379-name bird species list
+
+Added [the list gate report](reports/bird-species-list-379-gate-2026-10-16.md). Stored region embeddings reproduced all 4,401 live outcomes. A Jev range screen and the AOS checklist removed three of the 13 proposed additions. A four-CLI blind panel with Jev split adjudication judged all 124 differing frames: 379-list right 110 / wrong 4 versus 369-list right 5 / wrong 29. L1–L3 pass. The Stage 5 operator keeps a frozen 369-name list. Agent-panel labels, not owner labels.
+
+## [2026-10-15] edit | Enable the #408 shadow cascade after deploying onnxruntime
+
+Updated the rollout status and NEXT_STEPS. `onnxruntime==1.22.1` is pinned (#613) and overlaid on `image-scoring:latest`; the rollback image is `image-scoring:pre-onnxruntime-20261015`. RTMDet parity on 20 AC-18 images is exact. `localization.cascade.enabled` is on, with AC-15 holding before the flip. Live runs are not yet observed. WebUI needs a checkout containing #598 before it starts.
+
+## [2026-10-15] edit | Stage 5 region-species activation complete; rule/4 geometry promoted
+
+Added [the activation report](reports/localization-stage5-activation-2026-10-15.md) and updated the rollout status, NEXT_STEPS.md and the reports index. All 4,401 large/medium images were refreshed and verified: 3,948 region labels and 453 abstentions, equal to the frozen counts, with non-species keywords preserved. The 274 rule/4 selections are active for geometry only. #608 fixed the parent-tag preservation stop. #408 enablement is held on a missing onnxruntime dependency. Job 6945 is still paused. These are agent-panel gates, not owner labels.
+
+## [2026-10-14] updated | #593 geometry-only implementation; activation stopped on four changed manifest rows
+
+## [2026-10-12] edit | Reconcile next-task roadmaps after merged localization delivery
+
+Updated root handoff, active pipeline plans/specs, scoring-input, database and embedding next steps, historical handoff supersession links and queue pointers. PR #594 is merged at 0e24a43; code delivery is distinct from live activation and the failed 0.8123/0.85 small-species gate. #573/#569 scoring delivery is recorded, while remaining acceptance stays open. Corrected stale removal dates, API paths and proposed migration numbering without changing runtime or original research evidence.
+
+## [2026-10-12] edit | Record localization agent-panel gates and stop small-species promotion
+
+Preserved frozen replies and three-of-four quorum. Cascade AC-17/AC-18 pass; small-species Wilson lower bound 0.8123 fails 0.85 after blind descriptions and confidence-filtered Jev adjudication. Updated gate report, rollout status and NEXT_STEPS. Implementation c285c20 is pushed with 38 targeted tests and scoped ruff passing. Job 6945 remains paused; no promotion, flag change or species refresh.
+
+## [2026-10-10] edit | Diagnose mounted-source ExifTool latency and shut down Docker
+
+Recorded CPU-only paired extraction evidence in reports/localization-session-work-log-2026-10-10.md: three mounted timeouts with p9_client_rpc waits, identical local previews, and an intermittent successful follow-up identifying input reads. Updated NEXT_STEPS.md. At user request stopped GPU-shell and PostgreSQL containers and shut down Docker Desktop; portrait job 6945 remains paused. No decoder, timeout, production data or rollout flags changed.
+
+## [2026-10-10] save | Localization rollout session work log and summary
+
+Saved [session work log and summary](reports/localization-session-work-log-2026-10-10.md) with full 4,401-image outcomes, checkpoint recovery and exact-byte staging, verification evidence, retained private artifacts and remaining gates. The aggregate validation report and root NEXT_STEPS.md remain the evidence and operational handoff. Portrait 6945 remains paused; no production promotion, commit or push.
+
+## [2026-10-10] edit | Complete frozen localization species comparison with verified input provenance
+
+Completed the frozen 369-species/0.5 shadow comparison for all 4,401 distinct expected images with zero final skips. Final merge verified unchanged source metadata, selected geometry/identities, stored baseline and inference code/model; preserved every prior success and verified 1,660 exact-byte staging bindings. Local staging reproduced two retained controls exactly and bypassed mounted-source ExifTool timeouts. Updated aggregate report, rollout status, indexes and NEXT_STEPS.md. Production flags, keywords, scores and original photos unchanged; portrait job 6945 remains paused. Labelled validation and production retry timing remain separate gates.
+
+## [2026-10-10] edit | Continue frozen localization species validation with retained partial results
+
+Recorded 2,741 distinct successful predictions from the 4,401-image frozen 369-species/0.5 cohort, with first partition complete and 540 second-partition successes retained. Final audit verified unchanged frozen inputs/baseline and crop/decode provenance. ExifTool ten-second extraction timeouts persisted after cache warming, leaving 1,660 images without final inference. Updated NEXT_STEPS.md, docs/reports/localization-species-policy-validation-2026-10-10.md, rollout status and indexes; corrected the already deployed registration boundary fix. No production keywords, scores or rollout flags changed; portrait job 6945 remains paused.
+
+## [2026-10-09] ingest | Record October 9 localization rollout next steps
+
+Added docs/reports/localization-rollout-next-steps-2026-10-09.md and indexed it under docs/reports/. Status after the October 1-9 transcripts: fixes through PR #590 are merged, job 6945 is paused at 2,059/2,324 with the stack stopped, and release 9.0.0 is uncommitted.
+
+## [2026-10-09] ingest | Record live Stage 4 Nikon NEF lane observation
+
+Added docs/reports/localization-stage4-live-nef-2026-10-09.md and updated the rollout status and reports index. Twelve new wildlife NEFs entered automatic jobs 6939 and 6941 after metadata; ten were detected, one had no detection, and one was skipped by scene route. The documented one-live-cycle observation is met. Normal indexing can overwrite the new-image timestamp with an older capture date, and no production retryable failure exercised backoff.
+
+## [2026-10-08] edit | Complete selected-region localization follow-up evidence
+
+Loaded merged PR #577 and verified three isolated strict-repair regressions. Completed the four missing shadow keypoint outcomes, giving 4,401 final selected-region results. The canonical species comparison classified all 4,401 images with zero skips under the 360-species/0.1 snapshot; later #422 workspace policy changes need separate validation. Updated docs/reports/localization-rollout-continuation-2026-10-08.md and the rollout status/indexes. Production automatic-lane gate remains pending genuine eligible images; no species keyword or flag promotion.
+
+## [2026-10-07] edit | Continue localization rollout validation after PR #577
+
+Recorded the merged strict-retry fix, 84 unit and 19 isolated PostgreSQL checks with zero skips, and read-only production preflight in docs/reports/localization-rollout-operations-2026-10-07.md. Updated the rollout status and both indexes. The empty cloud development database does not establish production deployment or the eligible automatic-lane cycle; those gates remain unverified.
+
+## [2026-10-07] edit | Record deployed localization control plane and bounded live validation
+
+PR #575 and revision 0040 are deployed; the three-folder, 34-image production batch completed with verified delegated states and timestamps. Added docs/reports/localization-rollout-operations-2026-10-07.md and corrected docs/architecture/pipeline/localization-rollout.md. An isolated real-clock exercise verified three automatic jobs, recovery and exhaustion; its strict-transition warning led to a local running-state fix with a PostgreSQL RED/GREEN regression. The automatic-lane production exit gate remains pending eligible work, and the fix is not deployed.
+
+## [2026-10-07] edit | Clarify delegated parent audit failures and terminal-child controls (#368)
+
+Documented that duplicate completion and reconciliation retain parent audit failure, finished child work requires a fresh retry, and conflicting cancel/resume requests return 409. Added regression coverage for post-commit notification lookup failure, audit idempotence, terminal-child retry guards, and genuine repaired child success.
+
+## [2026-10-07] edit | Document delegated culling lifecycle (#368)
+
+Updated the schema, API contract, queue/recovery procedure, and localization rollout status for revision 0040. Parent stages mirror child outcomes; in-place retries reopen the chain and fresh retries remain independent. Production migration and live rollout verification remain pending.
+
+## [2026-10-06] edit | Completed labeled scoring-input benchmark with HOLD decisions
+
+Five cached checkpoints completed 1,815 measured inferences on 121 owner-provided NEFs in 32 labeled groups. Saved frozen hashes, human-pick/rejection/ranking metrics, resource limits and per-model HOLD decisions in docs/planning/scoring-inputs/BENCHMARK-RESULTS.md; updated NEXT-STEPS.md and #570 tracking. Production defaults and original photos unchanged; representative and GPU gates remain open.
+
+## [2026-10-06] edit | Resumed scoring orientation and per-model input fixes
+
+Local upright-v1 / executor 5.2.0 implementation, 241 focused tests, real local/HTTP evidence, updated input specification and research gates. See docs/planning/scoring-inputs/VERIFICATION.md. Defaults and original photos unchanged; labeled evaluation in progress.
+
+## [2026-10-06] created | RAW diagnostics and decode comparison
+
+Added optional RAW failure probes, a JSON diagnostic CLI, and an isolated CPU decode comparison. Reference: [RAW diagnostics](technical/RAW_DIAGNOSTICS.md); evidence: [2026-10-06 comparison](reports/raw-decode-comparison-2026-10-06.md).
+
+## [2026-10-05] created | Scoring orientation and model-input task handoffs
+
+[Task index](planning/scoring-inputs/INDEX.md): backend #568-#570 and the existing gallery #176 compatibility slice, with acceptance criteria, test tasks, dependencies and rollout gates. All three new backend issues were added to Project 1 and verified at Stage=Backlog.
+
+## [2026-10-05] corrected | Localization live config and lane gate (#527)
+
+The live `config.json` already has `localization.enabled: true` and `localization.repair.enabled: true`, correcting the entry below. The WebUI and dispatcher are running, but the live library has no images after the enablement boundary and no current retryable runs. The stage 4 gate still waits for one lane cycle with eligible images; see [localization-rollout.md](architecture/pipeline/localization-rollout.md).
+
+## [2026-10-05] edit | Localization stage 4 exit-gate code merged; S4-4 kept (#527)
+
+[localization-rollout.md](architecture/pipeline/localization-rollout.md) now records #558–#561 as merged (slices #538–#541). The stage 4 exit gate waits only on one live lane cycle, which is an operator step because the live `config.json` has no `localization` section. Decision S4-4 was revisited now that the repair lane exists and is kept: a job with retryable per-image failures stays `completed`. The same note is added to the S4-4 row of the [decision register](specs/pipeline-streamlining/07-blockers-and-decisions.md).
+
+## [2026-10-05] added | Scoring loop ordering report
+
+[reports/scoring-loop-ordering-2026-10-05.md](reports/scoring-loop-ordering-2026-10-05.md) answers image-major vs model-major for the scoring phase. Scoring is image-major at bs=1 with all models resident. A NEF decode (507 ms p50) costs about 3× the five-model ensemble (179.5 ms). Model-major frees no VRAM (TF keeps MUSIQ's memory) and breaks the any-model resume check and XMP fusion. The recommendation is decode-once with parallel prep, then micro-batched image-major (`run_all_models_batch`) and phase-boundary unloading. The report also reconciles an external generic analysis and lists six measurements (#416).
+
+## [2026-10-05] edit | Windows-native plan refreshed; ONNX matrix corrections
+
+[planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md](planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md) is rewritten for the Postgres era. It records the current state: the launcher and setup script still assume Firebird, `launch.py` probes Firebird regardless of `database.engine`, the Windows `.venv` lacks `open_clip`/`timm`/`transformers`, and TF 2.15 needs Python 3.10–3.11. It adds per-model native-Windows GPU status (only MUSIQ and MobileNetV2 are TF/CPU-only) and options A–D, recommending a native host + GPU runner. ONNX verdicts, runtime choice and conversion order are deferred to [ONNX_CONVERSION_FEASIBILITY.md](planning/models/ONNX_CONVERSION_FEASIBILITY.md). That matrix is corrected: MobileNetV2 is TF Keras in `modules/clustering.py`; the OpenCLIP L/14, DINOv2 and SigLIP2 culling spaces are implemented and opt-in, not roadmap; an eye-pose YOLO row is added.
+
+## [2026-10-05] updated | Windows-native ONNX model conversion feasibility
+
+Expanded the ONNX feasibility matrix across production and roadmap models, distinguished exportability from runtime and score parity, documented CUDA/DirectML/WinML choices, and recommended a staged conversion order backed by current primary sources.
+
+## [2026-10-04] edit | Localization stage 4 remainder in review (#527)
+
+[localization-rollout.md](architecture/pipeline/localization-rollout.md) stage 4 status and the consolidated table now point at the four #527 PRs: `new_images_only` + `localization_enablement` boundary (migration 0039), bounded repair from run history, phantom reconciliation from the current terminal run, and the dispatcher-idle repair lane (`modules/localization_lane.py`). [technical/CONFIG.md](technical/CONFIG.md) gains a `localization` section; [technical/DB_SCHEMA.md](technical/DB_SCHEMA.md) a `localization_enablement` row. The exit gate is recorded as met only after merge and one live lane cycle.
+
 ## [2026-10-04] updated | Compact MCP worker uses gpu-shell
 
 Windows `is-be-mcp` now starts `scripts/mcp/compact_worker.py` in `image-scoring-gpu-shell` instead of requiring Ubuntu `~/.venvs/tf`. `IS_BE_MCP_USE_WSL=1` keeps the old venv path. Guide: [guides/setup/mcp-compact-servers.md](guides/setup/mcp-compact-servers.md).
@@ -663,7 +910,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 
 - 2026-09-24: created — [score analytics and model suitability](features/implemented/11-score-analytics-and-model-suitability.md) for #393; updated [API_CONTRACT.md](technical/API_CONTRACT.md) (score analytics endpoints), [features/implemented/INDEX.md](features/implemented/INDEX.md), [FRONTEND_VISUAL_SPEC.md](design/FRONTEND_VISUAL_SPEC.md) (chart palette exception) and [scripts/README.md](../scripts/README.md).
 
-## [2026-09-24] created | Subject-aware culling evidence (clean-room proposal)
+## [2026-09-24] created | Subject-aware culling evidence (proposal)
 
 - 2026-09-24: created — [subject-aware culling evidence](planning/subject-aware-culling-evidence.md) and [subject-evidence model roles](planning/models/subject-evidence-model-roles.md): region/keypoint/mask-conditioned evidence, code-owned within-burst ranker, 0.5 s burst sub-segmentation, determinism lessons; consolidated stage-by-stage with the [localization rollout](architecture/pipeline/localization-rollout.md) (Related pages link added). Updated [planning/INDEX.md](planning/INDEX.md).
 - 2026-09-24: created — [subject-evidence probe](reports/subject-evidence-probe-2026-09-24.md): Arm A vs subject-evidence probe on the 236-frame bird-crop set; B ≈ A overall, B leads best-vs-reject, small subjects at chance, `pick_status` found circular; roadmap step 0 (human label set) added to [subject-aware culling evidence](planning/subject-aware-culling-evidence.md); row in [reports/INDEX.md](reports/INDEX.md).
@@ -709,7 +956,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 
 ## [2026-09-25] created | Evidence-driven scoring and culling improvement candidates
 
-- 2026-09-25: created — [evidence-driven scoring and culling improvement candidates](planning/reference-workflow-improvement-candidates.md): clean-room behavior proposal covering versioned evidence, deterministic reranking, uncertainty, editable sequence boundaries, close-call review, project-owned calibration, caches, diagnostics, and additive cross-project contracts; indexed in [planning/INDEX.md](planning/INDEX.md) and [INDEX.md](INDEX.md).
+- 2026-09-25: created — [evidence-driven scoring and culling improvement candidates](planning/reference-workflow-improvement-candidates.md): behavior proposal covering versioned evidence, deterministic reranking, uncertainty, editable sequence boundaries, close-call review, project-owned calibration, caches, diagnostics, and additive cross-project contracts; indexed in [planning/INDEX.md](planning/INDEX.md) and [INDEX.md](INDEX.md).
 
 ## [2026-09-25] created | Reference culling shadow scores and human culling label set
 
@@ -789,3 +1036,23 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-03] updated | Jev MCP for session decisions
 
 - 2026-10-03: updated — [Jev agent harness](technical/JEV_AGENT_HARNESS.md) now tells Cursor, Codex, and Antigravity to ask `jev-rw-systemone` for visibility, tool pick, routing, permissions, and file sensitivity when the Claude Code hooks did not run. Protocol: `.cursor/skills/jev-mcp/SKILL.md`. `AGENTS.md`, `CLAUDE.md`, and the decision-bearing skills point at it.
+
+## [2026-10-08] created | Bird species abstention floor (#422)
+
+- 2026-10-08: created — [bird species abstention report](reports/bird-species-abstention-2026-10-08.md). BioCLIP 2 was rerun on the 213 panel crops, scored against a 3-of-4 judge consensus (199 frames). A 0.5 top-1 floor keeps 184 at 93.5% precision. Nine missing species were added to `data/bird_species_list.txt`; they raise accuracy from 83.4% to 87.9% in-sample but add confident look-alike errors. A Jev re-check on blind descriptions overturned no panel verdict. Ships `bird_species.min_confidence` (0.5) in [CONFIG](technical/CONFIG.md); 22% of bird-tagged images in the live library have a stored top-1 below it.
+
+## [2026-10-09] edit | Localization boundary uses images.registered_at (#584)
+
+- 2026-10-09: updated — [DB schema](technical/DB_SCHEMA.md): migration 0041 adds `images.registered_at`, set on insert and never updated, backfilled from `created_at`. The localization new-image boundary now uses it instead of `created_at`, which indexing fills with the capture date. A photo captured before 2026-10-04 and imported later is now new to the lane.
+
+## [2026-10-24] created | Nikon autofocus MakerNote parsing and EXIF schema
+
+- 2026-10-24: created - migration 0044 (`0044_image_exif_af_metadata.py`) adds `image_exif.af_metadata` (`JSONB`). `modules/exif_extractor.py` extracts Nikon `AFInfo2` (tag `0x00B7`), `CropArea` (tag `0x0045`), and focus status into normalized coordinates (`box` [0-1], `crop_box` for DX crops, focus mode, and lock state). `modules/db_legacy.py` persists and deserializes `af_metadata`. Unit tests in `tests/test_exif_extractor_af.py` verify extraction against real Z8 and Z6 II NEF fixtures.
+
+## [2026-10-25] created | Model suitability export audit
+
+- 2026-10-25: created - `reports/model-suitability-audit-2026-10-25.md`: external audit of the 2026-10-25 model-suitability export, with a code-verification table. Three defects filed: #685 (global evaluation set chosen from the culling test split), #686 (composites in partial correlation), #687 (`tie_fraction` naming). Indexed in `reports/INDEX.md`.
+
+## [2026-10-25] updated | Localization rollout status (#638)
+
+- 2026-10-25: updated - `architecture/pipeline/localization-rollout.md`: 2026-10-25 status block (disagreement recount 6 selected / 0 unselected, #407 closed with follow-ups #681–#684, remaining #638 gates) and a new "What is left" order. `reports/localization-stage8-readiness-2026-10-23.md`: dated recount note.

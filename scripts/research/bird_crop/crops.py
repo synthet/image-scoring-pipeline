@@ -100,10 +100,9 @@ class CropResult:
 
 def load_oriented(read_path: str):
     """Decode to an EXIF-oriented RGB PIL image, exactly as bird_species does."""
-    from modules.thumbnails import bake_orientation, open_image_for_ml
+    from modules.thumbnails import open_oriented_for_ml
 
-    img = open_image_for_ml(read_path).convert("RGB")
-    return bake_orientation(img, read_path)
+    return open_oriented_for_ml(read_path)
 
 
 def rescale_box(box: BirdBox, img_w: int, img_h: int) -> BirdBox:
