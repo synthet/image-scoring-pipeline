@@ -62,6 +62,7 @@ def test_describe_from_clip_uses_stored_embedding(monkeypatch):
     image_emb = np.array([1.0, 0.0, 0.0], dtype=np.float32)
     ranked = [("a photo of mountains", 0.95)]
 
+    monkeypatch.setattr("modules.remote_gpu.client.phase_is_remote", lambda _phase: False)
     monkeypatch.setattr(clip_accessibility, "load_prompt_bank", lambda path=None: ["a photo of mountains"])
     monkeypatch.setattr(clip_accessibility, "get_stored_clip_embedding", lambda image_id: image_emb)
     monkeypatch.setattr(clip_accessibility, "_rank_prompts_by_embedding", lambda emb, prompts: ranked)

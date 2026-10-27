@@ -6,6 +6,14 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-26] update | Shared hook repaired; localization calibration stops at one qualified judge (#694)
+
+Applied the owner-approved shared Jev hook repair with 11 installed tests and 40 completed Claude image reads. Recorded the completed backfill, frozen 390-frame sample and restored WebUI. Antigravity scores 19/20; Codex and Claude score 17/20, so the unchanged three-judge prerequisite prevents fresh validation and promotion.
+
+## [2026-10-26] update | Localization promotion gate continuation (#694, #638)
+
+Recorded the frozen R2 rule, verified local backup, incomplete calibration and final backfill dependency in reports/localization-promotion-gate-2026-10-26.md. Updated the rollout order: #694 supersedes #683. No selection promotion or flag activation.
+
 ## [2026-10-24] update | Phase graph review against data dependencies (#407)
 
 Added [the phase graph review](reports/phase-graph-review-2026-10-24.md): every edge checked against a live consumer and the timing baseline. AC-9 superseded (scoring reads no localization yet), `pipeline.culling_requires_scoring` stays on until the stack-cover gap and #678 are fixed, and changes C-1 to C-4 proposed (gate localization→scoring, drop localization→keywords, add localization→bird_species, refresh covers).
