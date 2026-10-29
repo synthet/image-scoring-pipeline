@@ -4,7 +4,7 @@ title: API Contract Summary
 description: "REST contract for the Vexlum Scoring FastAPI backend: endpoints, request/response models and error codes."
 resource: docs/technical/API_CONTRACT.md
 tags: [api, rest, contract]
-timestamp: 2026-10-20T23:00:00Z
+timestamp: 2026-10-29T14:31:18Z
 okf_version: 0.2
 ---
 
@@ -28,6 +28,14 @@ REST API for the Vexlum Scoring Scoring WebUI. Base path: `/api`.
 | **Utilities** | raw-preview, similar, duplicates/find |
 
 **Runs queue & restart:** [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) describes how `GET /api/queue` and `JobDispatcher` relate to `jobs` rows and recovery on WebUI startup.
+
+`GET /api/runs/drive/status` also returns additive `localization_authority` diagnostics
+for the default-off observational worker. The object reports availability/running
+state and, when initialized, mode/revision, scan cursor/watermark, backlog age,
+evaluation reasons, proposed actions, reservation conflicts, fenced publication
+rejections and scan faults. Existing `state`, `outstanding` and `localization_lane`
+fields retain their behavior. Clients may ignore the optional object. No authority
+write endpoint is added; see [LOCALIZATION_AUTHORITY_SHADOW.md](LOCALIZATION_AUTHORITY_SHADOW.md).
 
 **Delegated culling runs (#368):** Job list/detail responses expose nullable
 `parent_job_id`; phase detail and `/api/runs/{id}/stages` expose nullable

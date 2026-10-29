@@ -94,5 +94,6 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 | [ELECTRON_SYNC_IMPORT_AND_PHASES.md](ELECTRON_SYNC_IMPORT_AND_PHASES.md) | After **Sync from device**: `image_phase_status`, `jobs`, `indexing` vs Inspection, links to gallery workflow doc |
 | [CROSS_APP_INTEGRATION_AUDIT.md](../testing/CROSS_APP_INTEGRATION_AUDIT.md) | Automated integration coverage between backend and gallery |
 | [NORMALIZED BBOX COMPATIBILITY](NORMALIZED_BBOX_COMPATIBILITY.md) | Local normalized bird-box compatibility contract: view 0043, coordinated gallery reads, deployment gates and rollback |
+| [LOCALIZATION AUTHORITY SHADOW](LOCALIZATION_AUTHORITY_SHADOW.md) | Default-off authority observations, frozen image reservations, fenced work and operator commands |
 
 **See also:** [Main docs index](../INDEX.md) · [reference/models/](../reference/models/INDEX.md) · [reference/api/](../reference/api/INDEX.md) · [planning/](../planning/INDEX.md) · [image-scoring-gallery docs](https://github.com/synthet/image-scoring-gallery/blob/main/docs/README.md)

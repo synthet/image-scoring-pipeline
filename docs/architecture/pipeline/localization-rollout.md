@@ -1407,6 +1407,10 @@ legacy rescan, three consumer crops at most, full-frame culling, and full-frame 
 
 ## Related pages
 
+Default-off [authority shadow observation](../../technical/LOCALIZATION_AUTHORITY_SHADOW.md)
+adds durable evaluations and proposed lifecycle actions. It does not promote #694
+selections, qualify a policy, expand species scope or change the Stage 8 gates.
+
 - [localization-rollout-supplement-2026-09-08.md](localization-rollout-supplement-2026-09-08.md) — review evidence, current implementation snapshot, and resolved design details
 - [../../planning/localization-region-scores-and-backfill.md](../../planning/localization-region-scores-and-backfill.md) — box vs region-score backfill, and full-frame vs crop score storage today vs Stages 5–7
 - [phase-graph.md](phase-graph.md) — current phase order and prerequisites
