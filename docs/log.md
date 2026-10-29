@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-29] edit | Add observational localization authority persistence and worker (#699)
+
+Add migration 0045 and matching bootstrap, cached evaluations, revision-keyed fenced attempts, verified cohort reservations, bounded restart-safe scans, off/shadow maintenance CLI and additive drive diagnostics. Production authority, species convergence and activation remain later work.
+
 ## [2026-10-26] update | Shared hook repaired; localization calibration stops at one qualified judge (#694)
 
 Applied the owner-approved shared Jev hook repair with 11 installed tests and 40 completed Claude image reads. Recorded the completed backfill, frozen 390-frame sample and restored WebUI. Antigravity scores 19/20; Codex and Claude score 17/20, so the unchanged three-judge prerequisite prevents fresh validation and promotion.
