@@ -40,7 +40,8 @@ MIN_REGION_AREA = 0.005
 #: The active production selection (#484): only regions that passed a promotion gate. The
 #: current run is not used, because for most images it is an unpromoted shadow run (#592).
 _SELECTED_REGION_SQL = """
-    SELECT s.localization_run_id AS run_id, s.region_id, g.x1, g.y1, g.x2, g.y2
+    SELECT s.localization_run_id AS run_id, s.region_id, g.x1, g.y1, g.x2, g.y2,
+           localization_selection_is_fresh(s.id) AS selection_fresh
     FROM image_localization_selections s
     JOIN image_regions g ON g.id = s.region_id
     WHERE s.image_id = ? AND s.detector_key = 'bird' AND s.revoked_at IS NULL
@@ -104,6 +105,9 @@ def species_input_for_image(image_id: int) -> dict:
         return legacy
     region = tuple(float(row[key]) for key in ("x1", "y1", "x2", "y2"))
     identity = {"run_id": row["run_id"], "region_id": row["region_id"]}
+    if row.get("selection_fresh", True) is not True:
+        return {"mode": "legacy", "region": None, **identity,
+                "exclusion_reason": "selection_stale"}
     if not region_species_eligible(region):
         return {"mode": "legacy", "region": None, **identity,
                 "exclusion_reason": "selected_area_below_0.005"}

@@ -128,6 +128,11 @@ def _quoted_db_identifier(name: str) -> str:
 
 
 POSTGRES_APP_TABLES = (
+    "localization_selection_lineage",
+    "localization_change_journal",
+    "localization_discovery_state",
+    "localization_policy_events",
+    "localization_policy_approvals",
     "localization_authority_scan_faults",
     "localization_authority_lineage",
     "localization_authority_attempts",
