@@ -4,7 +4,7 @@ title: Database Schema
 description: Routing catalog for the PostgreSQL + pgvector schema — table inventory by area, pgvector notes, and where the authoritative DDL lives.
 resource: technical/DB_SCHEMA.md
 tags: [database, postgres, pgvector, schema, migrations]
-timestamp: 2026-10-21T03:51:29Z
+timestamp: 2026-10-29T14:31:18Z
 okf_version: 0.2
 ---
 
@@ -30,6 +30,7 @@ The current PostgreSQL initializer creates or maintains these application tables
 
 | Area | Tables |
 |---|---|
+| Localization authority observation | Eight `localization_authority_*` tables (migration 0045): default-off control, immutable scoped policies/evaluations, revision observations, fenced attempts, image reservations, protected proposal lineage and bounded scan faults. These metadata tables confer no production authority. See [LOCALIZATION_AUTHORITY_SHADOW.md](LOCALIZATION_AUTHORITY_SHADOW.md). |
 | Library and folders | `folders`, `images`, `file_paths`, `deleted_images`, `pipeline_tool_folder_last_touch` |
 | Runs, jobs, and execution trail | `jobs`, `job_phases`, `job_steps`, `job_image_actions`, `pipeline_phases`, `image_phase_status`, `image_incidents` |
 | Metadata | `image_exif`, `image_xmp`, image identity fields on `images`. `images.created_at` holds the capture time (indexing writes EXIF DateTimeOriginal; the gallery sorts by it); `images.registered_at` (migration 0041, #584) is when the row was inserted and is never updated; `image_exif.af_metadata` (migration 0044, JSONB) stores normalized autofocus coordinates, mode, crop area, and in-focus lock state from MakerNotes |

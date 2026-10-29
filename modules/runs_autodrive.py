@@ -2231,6 +2231,7 @@ def drive_tick() -> dict[str, Any] | None:
 def get_drive_status_with_outstanding() -> dict[str, Any]:
     """Drive state plus a light snapshot of outstanding work for the UI."""
     from modules.localization_lane import get_diagnostic_state
+    from modules.localization_authority_worker import get_diagnostic_state as authority_diagnostics
 
     state = get_drive_state()
     last = state.get("last_result")
@@ -2257,7 +2258,8 @@ def get_drive_status_with_outstanding() -> dict[str, Any]:
     last_err = state.get("last_batch_error")
     if last_err:
         outstanding["last_batch_error"] = last_err
-    return {"state": state, "outstanding": outstanding, "localization_lane": get_diagnostic_state()}
+    return {"state": state, "outstanding": outstanding, "localization_lane": get_diagnostic_state(),
+            "localization_authority": authority_diagnostics()}
 
 
 def _recent_auto_drive_jobs(*, scan_limit: int = 20) -> list[dict[str, Any]]:

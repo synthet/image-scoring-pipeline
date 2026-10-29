@@ -30,6 +30,7 @@ class JobDispatcher:
         maintenance_runner=None,
         poll_interval: float = 1.0,
         localization_runner=None,
+        authority_worker=None,
     ):
         self.scoring_runner = scoring_runner
         self.tagging_runner = tagging_runner
@@ -45,6 +46,7 @@ class JobDispatcher:
         self._thread: threading.Thread | None = None
         self._dispatch_lock = threading.Lock()
         self._last_busy_logged: float = 0
+        self._authority_worker = authority_worker
 
     def set_runners(self, scoring_runner=None, tagging_runner=None, clustering_runner=None, selection_runner=None, bird_species_runner=None, indexing_runner=None, metadata_runner=None, maintenance_runner=None, localization_runner=None):
         self.scoring_runner = scoring_runner
@@ -61,12 +63,18 @@ class JobDispatcher:
         if self._thread and self._thread.is_alive():
             return
         self._stop_event.clear()
+        if self._authority_worker is None:
+            from modules.localization_authority_worker import ShadowAuthorityWorker
+            self._authority_worker = ShadowAuthorityWorker()
+        self._authority_worker.start()
         self._thread = threading.Thread(target=self._run_loop, name="job-dispatcher", daemon=True)
         self._thread.start()
         logger.info("JobDispatcher started")
 
     def stop(self):
         self._stop_event.set()
+        if self._authority_worker is not None:
+            self._authority_worker.stop()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2)
         logger.info("JobDispatcher stopped")

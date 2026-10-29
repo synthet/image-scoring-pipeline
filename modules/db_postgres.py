@@ -128,6 +128,14 @@ def _quoted_db_identifier(name: str) -> str:
 
 
 POSTGRES_APP_TABLES = (
+    "localization_authority_scan_faults",
+    "localization_authority_lineage",
+    "localization_authority_attempts",
+    "localization_authority_evaluations",
+    "localization_authority_reservations",
+    "localization_authority_observations",
+    "localization_authority_policies",
+    "localization_authority_control",
     "jobs",
     "folders",
     "stacks",
@@ -297,6 +305,7 @@ def truncate_app_tables() -> None:
     with PGConnectionManager(commit=True) as conn:
         with conn.cursor() as cur:
             cur.execute(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE")
+            cur.execute("INSERT INTO localization_authority_control (id) VALUES (1)")
             cur.execute(_SEED_DEFAULT_EMBEDDING_SPACE_SQL)
             for extra_sql in _SEED_EXTRA_EMBEDDING_SPACES_SQL:
                 cur.execute(extra_sql)

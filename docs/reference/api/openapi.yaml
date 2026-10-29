@@ -7999,6 +7999,10 @@ components:
       title: RunsDriveState
     RunsDriveStatus:
       properties:
+        localization_authority:
+          type: object
+          additionalProperties: true
+          description: Cached observational authority diagnostics; default off, with no authority grants or production output changes.
         state:
           $ref: '#/components/schemas/RunsDriveState'
         localization_lane:

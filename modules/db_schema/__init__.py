@@ -5,6 +5,7 @@ entire bootstrap remains one transaction and preserves the historical DDL order.
 """
 
 from modules.db_schema.core import initialize_core_schema
+from modules.db_schema.authority import initialize_authority_schema
 from modules.db_schema.embeddings import initialize_embedding_schema
 from modules.db_schema.pipeline import initialize_pipeline_schema
 from modules.db_schema.review import initialize_review_schema
@@ -26,3 +27,4 @@ def initialize_schema(
     )
     initialize_pipeline_schema(cur)
     initialize_review_schema(cur, conn=conn)
+    initialize_authority_schema(cur)
