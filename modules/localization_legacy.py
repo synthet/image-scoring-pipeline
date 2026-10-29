@@ -485,6 +485,10 @@ def read_bird_bbox(
     ``prefer_normalized`` overrides the config for callers that need both behaviours in
     one process (diagnostics, migration verification, tests).
     """
+    from modules.localization_freshness import freshness_enabled
+    if freshness_enabled(conn):
+        row = conn.query_one("SELECT bird_bbox FROM image_bird_bbox_compat WHERE image_id=?", (image_id,))
+        return (row or {}).get("bird_bbox")
     if prefer_normalized is None:
         prefer_normalized = read_normalized_first_enabled()
 
@@ -561,9 +565,29 @@ def overlay_bird_bboxes(
     IDs, retaining each supplied legacy value when normalized data is unavailable.
     Pass serialized copies, never cached database rows.
     """
+    if not rows:
+        return
+    if conn is None:
+        from modules import db
+        conn = db.get_connector()
+    from modules.localization_freshness import freshness_enabled
+    if freshness_enabled(conn):
+        ids = sorted({int(row.get("id") or row.get("ID")) for row in rows if row.get("id") or row.get("ID")})
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start+500]
+            projected = conn.query(
+                "SELECT image_id,bird_bbox FROM image_bird_bbox_compat WHERE image_id IN (" + ",".join("?" for _ in chunk) + ")",
+                tuple(chunk),
+            )
+            values = {int(item["image_id"]): item["bird_bbox"] for item in projected}
+            for row in rows:
+                iid = int(row.get("id") or row.get("ID") or 0)
+                if iid in values:
+                    row["bird_bbox"] = values[iid]
+        return
     if prefer_normalized is None:
         prefer_normalized = read_normalized_first_enabled()
-    if not prefer_normalized or not rows:
+    if not prefer_normalized:
         return
     by_id: dict[int, list[dict]] = {}
     for row in rows:

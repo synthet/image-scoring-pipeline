@@ -1,4 +1,4 @@
-"""Local observational authority maintenance. Run with python -m from repo root."""
+"""Explicit scoped authority maintenance. Run with python -m from repo root."""
 import argparse
 import json
 from pathlib import Path
@@ -7,6 +7,8 @@ from modules.localization_authority_reservations import import_frozen_reservatio
 from modules.localization_authority_store import AuthorityStore
 from modules.localization_authority_worker import ShadowAuthorityWorker
 from modules.localization_evaluation import ArtifactScope
+from modules.localization_active import ActiveAuthority
+from modules.localization_policy_approval import register_runtime_policy
 
 
 def main(argv=None):
@@ -21,6 +23,26 @@ def main(argv=None):
     register.add_argument("--rule", type=Path, required=True)
     for name in ("detector-version", "detector-config-hash", "rendition-version"):
         register.add_argument(f"--{name}", required=True)
+    runtime = sub.add_parser("register-runtime-policy")
+    for name in ("detector-version", "detector-config-hash", "rendition-version"):
+        runtime.add_argument(f"--{name}", required=True)
+    freshness = sub.add_parser("set-freshness")
+    freshness.add_argument("value", choices=("on","off"))
+    freshness.add_argument("--confirm", action="store_true", required=True)
+    approve = sub.add_parser("approve-policy")
+    approve.add_argument("--policy-hash", required=True)
+    approve.add_argument("--receipt", type=Path, required=True)
+    approve.add_argument("--receipt-sha256", required=True)
+    approve.add_argument("--actor", required=True)
+    approve.add_argument("--confirm", action="store_true", required=True)
+    activate = sub.add_parser("activate")
+    activate.add_argument("--policy-hash", required=True)
+    activate.add_argument("--receipt-sha256", required=True)
+    activate.add_argument("--confirm", action="store_true", required=True)
+    revoke = sub.add_parser("revoke-policy")
+    revoke.add_argument("--policy-hash", required=True)
+    revoke.add_argument("--reason", required=True)
+    sub.add_parser("cleanup-invalid")
     for action in ("verify-inventory", "import-reservations"):
         inventory = sub.add_parser(action)
         inventory.add_argument("--root", type=Path, required=True)
@@ -39,6 +61,22 @@ def main(argv=None):
         elif args.command == "set-mode":
             store.set_mode(args.mode)
             result = store.diagnostics()
+        elif args.command == "register-runtime-policy":
+            scope = ArtifactScope(args.detector_version, args.detector_config_hash, args.rendition_version)
+            result = {"policy_hash": register_runtime_policy(store,scope), "approval_granted": False}
+        elif args.command == "set-freshness":
+            ActiveAuthority(store).set_freshness(args.value == "on")
+            result = store.diagnostics()
+        elif args.command == "approve-policy":
+            ActiveAuthority(store).approve(args.policy_hash,args.receipt,args.receipt_sha256,args.actor,confirmed=args.confirm)
+            result = store.diagnostics()
+        elif args.command == "activate":
+            ActiveAuthority(store).activate(args.policy_hash,args.receipt_sha256,confirmed=args.confirm)
+            result = store.diagnostics()
+        elif args.command == "revoke-policy":
+            result = {"revoked": ActiveAuthority(store).revoke_policy(args.policy_hash,args.reason)}
+        elif args.command == "cleanup-invalid":
+            result = {"cleaned": ActiveAuthority(store).cleanup_invalid()}
         elif args.command == "import-reservations":
             result = import_frozen_reservations(store, args.root)
         elif args.command == "run-once":

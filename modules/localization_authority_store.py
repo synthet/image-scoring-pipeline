@@ -61,7 +61,7 @@ class AuthorityStore:
 
         def scan(tx):
             control = tx.query_one("SELECT * FROM localization_authority_control WHERE id=1 FOR UPDATE")
-            if not control or control["mode"] != "shadow":
+            if not control or control["mode"] not in ("shadow", "active"):
                 return []
             upper = control["scan_upper_bound"]
             if not upper:
@@ -137,6 +137,10 @@ class AuthorityStore:
             "SELECT proposal->>'species_action' AS action,count(*) AS count FROM localization_authority_attempts "
             "WHERE disposition='proposed' GROUP BY proposal->>'species_action'",
         )
+        approvals = self.conn.query(
+            "SELECT policy_hash,revision,geometry_allowed,species_allowed FROM localization_policy_approvals "
+            "WHERE active ORDER BY policy_hash",
+        )
         return {
             "availability": "available", "mode": control["mode"], "revision": control["revision"],
             "scan_cursor": control["scan_cursor"], "scan_upper_bound": control["scan_upper_bound"],
@@ -155,20 +159,26 @@ class AuthorityStore:
                 "SELECT proposal->>'geometry_action' AS action,count(*) AS count FROM localization_authority_attempts "
                 "WHERE disposition='proposed' GROUP BY proposal->>'geometry_action'",
             ),
-            "authority_granted": False,
+            "selection_freshness_enabled": control["selection_freshness_enabled"],
+            "approved_policies": approvals,
+            "authority_granted": bool(control["mode"] == "active" and control["selection_freshness_enabled"]
+                                      and any(a["geometry_allowed"] for a in approvals)),
         }
 
     def observe(self, image_id, policy_hash, *, source_observation=None):
         """Cache evaluation once and enqueue a revision-specific proposal atomically."""
         def observe(tx):
             control = tx.query_one("SELECT * FROM localization_authority_control WHERE id=1 FOR SHARE")
-            if not control or control["mode"] != "shadow":
+            if not control or control["mode"] not in ("shadow", "active"):
                 return None
             policy = tx.query_one(
                 "SELECT * FROM localization_authority_policies WHERE policy_hash=? FOR SHARE", (policy_hash,),
             )
             if policy is None:
                 raise ValueError("unknown observation policy")
+            approval = tx.query_one(
+                "SELECT revision FROM localization_policy_approvals WHERE policy_hash=? FOR SHARE", (policy_hash,),
+            )
             snapshot = load_inputs(tx, image_id, source_observation, control["reservation_inventory_sha256"])
             if snapshot is None:
                 return None
@@ -197,8 +207,18 @@ class AuthorityStore:
                 (policy_hash, artifact_hash),
             )
             if evaluation is None:
+                population = snapshot["population"]
+                if policy["rule_kind"] == "runtime":
+                    from modules.localization_policy_approval import RUNTIME_RULE_ID, RUNTIME_RULE_SHA256
+                    if policy["rule_id"] != RUNTIME_RULE_ID or policy["rule_sha256"] != RUNTIME_RULE_SHA256:
+                        raise ValueError("unknown runtime policy")
+                    # A separately identified and qualified population reuses
+                    # the exact geometry interpreter without changing R2.
+                    population = {"bird_tagged": True, "has_active_selection": False}
+                elif policy["rule_kind"] != "r2":
+                    raise ValueError("unknown policy kind")
                 result = evaluate_r2(snapshot["run"], snapshot["regions"],
-                                     scope=ArtifactScope(**policy["scope"]), **snapshot["population"])
+                                     scope=ArtifactScope(**policy["scope"]), **population)
                 tx.execute(
                     "INSERT INTO localization_authority_evaluations "
                     "(policy_hash,image_id,run_id,artifact_fingerprint,outcome,reason,result,population_snapshot) "
@@ -213,7 +233,7 @@ class AuthorityStore:
             context = {key: observed[key] for key in (
                 "authority_revision", "discovery_revision", "ownership_revision", "source_revision", "reservation_revision",
             )}
-            context.update(control_revision=control["revision"], approval_revision=policy["approval_revision"],
+            context.update(control_revision=control["revision"], approval_revision=approval["revision"] if approval else 0,
                            observation_revision=observed["revision"], components_hash=fingerprint(components))
             context_hash = fingerprint(context)
             tx.execute(
@@ -238,7 +258,7 @@ class AuthorityStore:
             return tx.query_one(
                 "WITH picked AS (SELECT id FROM localization_authority_attempts "
                 "WHERE attempts<3 AND available_at<=clock_timestamp() AND "
-                "EXISTS (SELECT 1 FROM localization_authority_control WHERE id=1 AND mode='shadow') AND "
+                "EXISTS (SELECT 1 FROM localization_authority_control WHERE id=1 AND mode IN ('shadow','active')) AND "
                 "(status='queued' OR (status='running' AND lease_until<=clock_timestamp())) "
                 "ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1) "
                 "UPDATE localization_authority_attempts w SET status='running',"
@@ -280,8 +300,12 @@ class AuthorityStore:
             if evaluation is None:
                 return False
             control = tx.query_one("SELECT * FROM localization_authority_control WHERE id=1 FOR SHARE")
-            policy = tx.query_one(
+            tx.query_one(
                 "SELECT * FROM localization_authority_policies WHERE policy_hash=? FOR SHARE",
+                (evaluation["policy_hash"],),
+            )
+            approval = tx.query_one(
+                "SELECT revision FROM localization_policy_approvals WHERE policy_hash=? FOR SHARE",
                 (evaluation["policy_hash"],),
             )
             snapshot = load_inputs(tx, evaluation["image_id"], source_observation,
@@ -302,7 +326,7 @@ class AuthorityStore:
             current = bool(snapshot and control["mode"] == "shadow"
                            and observation and context["observation_revision"] == observation["revision"]
                            and context["control_revision"] == control["revision"]
-                           and context["approval_revision"] == policy["approval_revision"]
+                           and context["approval_revision"] == (approval["revision"] if approval else 0)
                            and context["components_hash"] == fingerprint(snapshot["components"])
                            and evaluation["artifact_fingerprint"] == fingerprint(
                                {"run": snapshot["run"], "regions": snapshot["regions"]}))

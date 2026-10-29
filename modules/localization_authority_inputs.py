@@ -34,15 +34,22 @@ def load_inputs(tx, image_id, source_observation, inventory_hash):
         "SELECT inventory_sha256,original_run_id,original_region_id "
         "FROM localization_authority_reservations WHERE image_id=? ORDER BY inventory_sha256", (image_id,),
     )
+    changes = tx.query(
+        "SELECT kind,MAX(id) AS revision FROM localization_change_journal WHERE image_id=? GROUP BY kind",
+        (image_id,),
+    )
+    revisions = {row["kind"]: row["revision"] for row in changes}
     return {
         "run": run, "regions": regions,
         "population": {"bird_tagged": bool(discovery), "has_active_selection": selection is not None},
         "components": {
-            "authority": {"selection": selection, "projection": image["bird_bbox"], "run_id": run["id"]},
+            "authority": {"selection": selection, "projection": image["bird_bbox"], "run_id": run["id"],
+                          "writer_revision": revisions.get("authority", 0)},
             # Observations are not eligibility or ownership grants. Legacy and
             # ambiguous outputs stay protected until the active lifecycle exists.
-            "discovery": {"observed_keywords": discovery},
-            "ownership": {"observed_species": species, "outputs_protected": True},
+            "discovery": {"observed_keywords": discovery, "writer_revision": revisions.get("discovery", 0)},
+            "ownership": {"observed_species": species, "outputs_protected": True,
+                          "writer_revision": max(revisions.get("keyword", 0), revisions.get("embedding", 0))},
             "source": source_observation or {"status": "not_observed"},
             "reservation": {"inventory_hash": inventory_hash, "images": reservations},
         },

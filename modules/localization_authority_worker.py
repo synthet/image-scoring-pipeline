@@ -94,6 +94,9 @@ class ShadowAuthorityWorker:
         try:
             item = self.store.claim_input(claim)
             source = observe_source(item["file_path"]) if item else {"status": "unreadable"}
+            if self.store.control()["mode"] == "active":
+                from modules.localization_active import ActiveAuthority
+                return ActiveAuthority(self.store).apply_claim(claim, source_observation=source)
             return self.store.complete(claim, source_observation=source)
         finally:
             finished.set()
@@ -103,7 +106,10 @@ class ShadowAuthorityWorker:
         control = self.store.control()
         if not control:
             raise RuntimeError("authority schema unavailable")
-        if control["mode"] != "shadow":
+        if control.get("selection_freshness_enabled") and control["mode"] != "shadow":
+            from modules.localization_active import ActiveAuthority
+            ActiveAuthority(self.store).cleanup_invalid(limit=self.batch_size)
+        if control["mode"] not in ("shadow", "active"):
             self._publish_diagnostics(scanned=0, completed=0)
             return 0
         rows = self.store.scan_batch(self.batch_size)
@@ -128,7 +134,7 @@ class ShadowAuthorityWorker:
             self.store.finish_scan(rows)
         completed = 0
         for _ in range(self.batch_size):
-            if self._stop.is_set() or self.store.control()["mode"] != "shadow":
+            if self._stop.is_set() or self.store.control()["mode"] not in ("shadow", "active"):
                 break
             claim = self.store.claim_next()
             if claim is None:
