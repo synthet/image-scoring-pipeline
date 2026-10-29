@@ -1,0 +1,26 @@
+{
+  "id": "bird-694-promotion-rule/1",
+  "candidate": "R2",
+  "min_confidence": 0.7,
+  "max_regions": 3,
+  "rank": 0,
+  "small_max_area_exclusive": 0.005,
+  "medium_max_area_exclusive": 0.02,
+  "small_use": "geometry_only",
+  "sample_per_band": 130,
+  "seed": "bird-694-promotion-validation-1",
+  "wilson_95_lower_bound": 0.9,
+  "no_enlargement": true,
+  "min_judges": 3,
+  "pilot_min_correct": 18,
+  "pilot_min_parsed": 0.95,
+  "pilot_seed": "bird-694-box-controls-20261026",
+  "pilot_per_class": {
+    "wrong_target": 8,
+    "poor_crop": 6,
+    "usable": 6
+  },
+  "consensus": "3 matching, or 2 when exactly 3 qualified judges",
+  "split_jev_min_confidence": 0.7,
+  "exclusions": "all previous gate, owner-label and calibration image IDs"
+}
