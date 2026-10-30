@@ -1,3 +1,12 @@
+---
+type: Technical Reference
+title: Run options (single mode)
+description: Canonical run mode for POST /api/runs/submit, planner narrowing and dispatcher flags.
+resource: technical/RUN_OPTIONS_MODE_MATRIX.md
+tags: [runs, planner, api]
+timestamp: 2026-10-30T08:00:00Z
+okf_version: 0.2
+---
 # Run options (single mode)
 
 **Canonical `run_mode`:** `process_stale_or_missing`  
@@ -19,6 +28,7 @@ As of 2026-05, Vexlum Scoring exposes one pipeline run mode. Legacy modes (`proc
 ## API
 
 - **`POST /api/runs/submit`** — `RunSubmitRequest.run_mode` literal `process_stale_or_missing`; optional `plan_dry_run` returns planner output without enqueueing.
+  The submit narrows the requested stages to those with planner work and answers `400 nothing_to_queue` when none remain. The planner only sees registered images, so when the plan includes `indexing` and the scope holds image files indexing would discover but no `images` row exists for, the full requested plan is kept and prerequisites are checked as if nothing were satisfied (#712).
 - **`POST /api/runs/plan/preview`** — alias for validation-repair preview (planner dry-run).
 - **`POST /api/runs/auto-drive`** — no `run_mode` field; always uses canonical mode.
 - **`POST /api/maintenance/heal/{phase_code}`** — spawns heal runs with canonical mode internally.

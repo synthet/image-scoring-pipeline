@@ -14,6 +14,7 @@ import os
 from typing import Any
 
 import pytest
+from PIL import Image
 
 from tests.support.pipeline_matrix import build_submit_matrix
 
@@ -104,6 +105,9 @@ def test_runs_submit_phase_matrix(api_client, tmp_path, scenario: dict[str, Any]
 
     scope_dir = tmp_path / scenario["test_id"].replace("|", "_").replace("+", "_")
     scope_dir.mkdir(parents=True, exist_ok=True)
+    if scenario["seed_state"] == "from_scratch":
+        # A fresh folder holds unregistered images; an empty one has nothing to queue (#712).
+        Image.new("RGB", (64, 48), (10, 20, 30)).save(scope_dir / "fresh.jpg")
     paths = [str(scope_dir.resolve())]
 
     seed_image_id: int | None = None
