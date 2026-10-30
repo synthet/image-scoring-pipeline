@@ -4,7 +4,7 @@ title: Localization authority lifecycle
 description: Localization authority lifecycle
 resource: technical/LOCALIZATION_AUTHORITY.md
 tags: [localization, postgres, authority]
-timestamp: 2026-10-29T23:47:32Z
+timestamp: 2026-10-30T07:00:00Z
 okf_version: 0.2
 ---
 # Localization authority lifecycle
@@ -89,6 +89,48 @@ connected target. Inspect `status` first. The commands are:
 Disabling freshness requires applications already off and a separately reviewed
 reader rollback; it may expose legacy stored values. Database downgrade is refused
 until a preservation migration is reviewed. Reverting code is not data rollback.
+
+## Species convergence, idle lane and recovery
+
+Migration 0047 makes species scope one predicate (`localization_species_in_scope`):
+independent discovery evidence, or a fresh species-qualified selection. Existing
+`birds` tags are a legacy baseline; generated compatibility tags never sustain
+selection-only eligibility. Species work is keyed by selection, source, approval,
+discovery and ownership revisions, and publishes keywords, BioCLIP embedding,
+lineage and phase completion in one transaction under the image lock. Only outputs
+with verified producer lineage are replaced or removed; curated, ambiguous-origin
+and same-value user edits keep user ownership. `localization_visible_image_keywords`
+and `localization_visible_image_embeddings*` hide stale generated outputs while
+freshness is on; gallery readers use the same views when they exist.
+
+Work runs only in `active` mode. The authority worker performs CPU actions
+(`cleanup`, `preserve`, `out_of_scope`) regardless of GPU activity. GPU actions
+(`classify`, `fallback`) are admitted only by the repair lane's idle slot, as one
+`bird_species` job after detection candidates and only while no pipeline job is
+queued or running. Every species item keeps three attempts with 60/300-second backoff.
+
+Targeted negative recovery (migration 0048) re-detects a discovery-positive current
+`no_detection` run once per detector-config/source/active-policy identity,
+recorded in `localization_recovery_attempts`; a repeat negative ends it. A detector
+outage holds the lane 60 s, then 300 s after each later outage job, never until
+restart; while the streak lasts each lane job is a one-image canary, and the first
+clean canary resumes full batches. Outages consume no per-image attempts.
+
+Read during activation and rollback:
+
+- `GET /api/runs/drive/status` → `localization_lane`: `hold_reason`,
+  `hold_seconds_remaining`, `outage_streak`, `canary_pending`, `last_job_kind`
+  (`restart_required` is always false).
+- `localization_authority.species` in the same response (and `status` in the
+  maintenance CLI): `refresh_pending`, `cleanup_pending`, `preserved`, `exhausted`,
+  `recovery_scheduled`.
+
+Rollback: `set-mode off` stops new species claims and recovery scheduling; completed
+outputs stay as published. To withdraw region-derived species, `revoke-policy`: the
+images leave scope, readers hide stale generated outputs at once, and the worker's
+`out_of_scope`/`cleanup` work removes only lineage-owned outputs (drain until
+`cleanup_pending` is 0). Downgrading 0048 only drops the recovery markers; 0047 is
+refused until a preservation migration is reviewed.
 
 Before production: verified backup/restore evidence, real scoped qualification,
 shadow observation, coordinated gallery deployment, independent switch rollout,
