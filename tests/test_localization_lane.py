@@ -57,6 +57,7 @@ def test_localization_is_never_an_auto_drive_bucket():
 def test_lane_is_off_by_default(monkeypatch):
     monkeypatch.setattr("modules.localization.localization_config", lambda: {})
     monkeypatch.setattr("modules.phases.is_phase_enabled", lambda code: True)
+    monkeypatch.setattr(lane, "species_lane_active", lambda: False)
     assert lane.lane_enabled() is False
     assert lane.maybe_enqueue()["skipped"] == "disabled"
 
@@ -220,6 +221,54 @@ def test_no_outage_has_no_diagnostic_hold(monkeypatch):
     assert status["hold_seconds_remaining"] == 0.0
     assert status["source"] == "process_local"
     candidates.assert_not_called()
+
+
+@pytest.fixture
+def species_on(monkeypatch):
+    monkeypatch.setattr(lane, "species_lane_active", lambda: True)
+    monkeypatch.setattr(lane, "select_species_candidates", lambda limit=lane.SPECIES_BATCH: [7, 8])
+    enqueued = []
+
+    def _enqueue_species(ids):
+        enqueued.append(list(ids))
+        return 200 + len(enqueued)
+
+    monkeypatch.setattr(lane, "_enqueue_species", _enqueue_species)
+    return enqueued
+
+
+def test_active_authority_admits_gpu_species_work_without_the_repair_flag(fake_db, species_on, monkeypatch):
+    monkeypatch.setattr(lane, "lane_enabled", lambda: False)
+    out = lane.maybe_enqueue(now=1000.0)
+    assert out["enqueued"] == 201 and out["kind"] == "species" and species_on == [[7, 8]]
+    assert lane.get_state()["last_job_kind"] == "species"
+
+
+def test_detection_candidates_take_priority_over_species_work(fake_db, lane_on, species_on):
+    assert lane.maybe_enqueue(now=1000.0)["enqueued"] == 101
+    assert lane_on == [[1, 2]] and species_on == []
+
+
+def test_species_work_runs_when_detection_has_no_candidates(fake_db, lane_on, species_on, monkeypatch):
+    monkeypatch.setattr(lane, "select_candidates", lambda limit=lane.LANE_BATCH: ([], {"pending": 0}))
+    out = lane.maybe_enqueue(now=1000.0)
+    assert out["enqueued"] == 201 and out["backlog"] == {"pending": 0} and lane_on == []
+
+
+def test_core_work_keeps_species_work_out(fake_db, species_on, monkeypatch):
+    monkeypatch.setattr(lane, "lane_enabled", lambda: False)
+    fake_db.count_running_pipeline_jobs.return_value = 1
+    assert lane.maybe_enqueue(now=1000.0)["skipped"] == "core_busy"
+    assert species_on == []
+
+
+def test_finished_species_job_leaves_the_detector_outage_streak_alone(fake_db, species_on, monkeypatch):
+    monkeypatch.setattr(lane, "lane_enabled", lambda: False)
+    fake_db.get_connector.return_value.query_one.return_value = {"n": 3}  # would read as outage runs
+    lane.maybe_enqueue(now=1000.0)
+    lane.maybe_enqueue(now=1061.0)                 # species job 201 finished; next one admitted
+    state = lane.get_state()
+    assert state["outage_streak"] == 0 and state["hold_until"] == 0.0 and species_on == [[7, 8], [7, 8]]
 
 
 def test_lane_errors_never_escape(monkeypatch):
