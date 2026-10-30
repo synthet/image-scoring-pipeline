@@ -8007,18 +8007,20 @@ components:
           $ref: '#/components/schemas/RunsDriveState'
         localization_lane:
           type: object
-          description: Process-local localization repair state; an indefinite hold requires restart and uses null durations.
+          description: Process-local localization repair state; outage holds are finite (capped at 300 s) and followed by one-image canary jobs. restart_required is retained for compatibility and is always false.
           additionalProperties: false
           required:
           - source
           - last_tick_at
           - last_job_id
+          - last_job_kind
           - outage_streak
           - hold_until
           - backlog
           - hold_reason
           - hold_seconds_remaining
           - restart_required
+          - canary_pending
           properties:
             source:
               type: string
@@ -8029,6 +8031,14 @@ components:
               anyOf:
               - type: integer
               - type: 'null'
+            last_job_kind:
+              anyOf:
+              - type: string
+                enum:
+                - localization
+                - species
+              - type: 'null'
+              description: Kind of the last admitted lane job; species jobs carry queued GPU species work under active authority.
             outage_streak:
               type: integer
             hold_until:
@@ -8053,6 +8063,9 @@ components:
               - type: 'null'
             restart_required:
               type: boolean
+            canary_pending:
+              type: boolean
+              description: True while an outage streak lasts; the next admitted lane job carries one image.
         outstanding:
           type: object
           properties:
