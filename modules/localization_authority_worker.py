@@ -145,4 +145,21 @@ class ShadowAuthorityWorker:
                 self.store.fail(claim, type(exc).__name__)
                 logger.warning("Authority proposal failed (%s)", type(exc).__name__)
         self._publish_diagnostics(scanned=len(rows), completed=completed)
+        if self.store.control()["mode"]=="active":
+            from modules.localization_species import CPU_ACTIONS,SpeciesStore
+            species=SpeciesStore(self.store.conn)
+            species_rows=species.scan_batch(self.batch_size)
+            for row in species_rows:
+                if self._stop.is_set():
+                    return completed
+                species.observe(row['id'],source_observation=observe_source(row['file_path']))
+            species.finish_scan(species_rows)
+            for _ in range(self.batch_size):
+                claim=species.claim_next(actions=CPU_ACTIONS)
+                if not claim:
+                    break
+                try:
+                    species.publish(claim)
+                except Exception as exc:
+                    species.fail(claim,type(exc).__name__)
         return completed

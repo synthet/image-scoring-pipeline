@@ -49,8 +49,14 @@ def test_keywords_incomplete_sql_includes_legacy_when_column_present(monkeypatch
     assert "i.keywords" in sql
 
 
-def test_bird_species_in_scope_matches_birds_predicate():
+def test_bird_species_in_scope_matches_birds_predicate(monkeypatch):
+    monkeypatch.setattr(db_legacy, "_get_db_engine", lambda: "firebird")
     assert db_legacy._sql_bird_species_in_scope("i") == db_legacy._sql_image_has_birds_keyword("i")
+
+
+def test_bird_species_in_scope_uses_shared_lifecycle_scope_on_postgres(monkeypatch):
+    monkeypatch.setattr(db_legacy, "_get_db_engine", lambda: "postgres")
+    assert db_legacy._sql_bird_species_in_scope("i") == "localization_species_in_scope(i.id)"
 
 
 def test_is_postgres_missing_keywords_column_error():
@@ -137,6 +143,8 @@ def test_get_folder_phase_summary_retries_after_missing_keywords_column(monkeypa
     monkeypatch.setattr(db_legacy, "get_or_create_folder", lambda _path: 42)
     monkeypatch.setattr(db_legacy, "_get_db_engine", lambda: "postgres")
     monkeypatch.setattr(db_legacy, "_heal_stale_phase_flags", lambda _path: 0)
+    # Postgres scope no longer reads i.keywords; pin the legacy predicate to exercise the retry.
+    monkeypatch.setattr(db_legacy, "_sql_bird_species_in_scope", db_legacy._sql_image_has_birds_keyword)
     # Catalog probe claims column exists; pin after runtime error must still win.
     monkeypatch.setattr(
         db_legacy.db_postgres,

@@ -102,7 +102,7 @@ def create_geo_router() -> APIRouter:
                     clauses.append(
                         "EXISTS ("
                         " SELECT 1"
-                        " FROM image_keywords ik"
+                        " FROM localization_visible_image_keywords ik"
                         " JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id"
                         " WHERE ik.image_id = i.id AND COALESCE(kd.keyword_display, kd.keyword_norm) ILIKE ?"
                         ")"
