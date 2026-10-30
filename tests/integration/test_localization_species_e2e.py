@@ -227,3 +227,26 @@ def test_authority_diagnostics_report_species_refresh_cleanup_preservation_and_e
     authority.revoke_policy(key,'scope exit')
     species.observe(iid,source_observation=SOURCE)
     assert store.diagnostics()['species']['cleanup_pending']==1
+
+
+def test_recovery_and_species_work_survive_a_process_restart(tmp_path):
+    from PIL import Image
+
+    from modules import localization as loc
+    from modules import localization_lane as lane
+    store,_,species,_,sel_iid,_=selected()
+    ctx=loc.DetectorContext(enabled=True,detector=_NoBirds(),version='test/v0',config_hash='cfg-restart')
+    path=tmp_path/'restart.jpg'
+    Image.new('RGB',(64,48),(10,20,30)).save(path)
+    iid=store.conn.execute_returning('INSERT INTO images (file_path) VALUES (?) RETURNING id',(str(path),))[0]['id']
+    keyword(store.conn,iid,'birds')
+    assert loc.localize_image(iid,str(path),ctx,max_regions=10).status=='no_detection'
+    lane._mark_recovery([iid])
+    species.observe(sel_iid,source_observation=SOURCE)
+    lane.reset_state()                                          # simulated process restart
+    assert lane.get_state()['outage_streak']==0 and lane.get_state()['hold_until']==0.0
+    assert lane.select_recovery_candidates(10)==[]              # durable marker: no second sequence
+    assert lane.select_species_candidates()==[sel_iid]          # queued GPU work is still due
+    assert loc.localize_image(iid,str(path),ctx,max_regions=10,reuse_unchanged=False).status=='no_detection'
+    lane.reset_state()
+    assert lane.select_recovery_candidates(10)==[]              # repeat negative stays terminal
