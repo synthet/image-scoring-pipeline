@@ -114,6 +114,7 @@ def select_region(
     *,
     detector_key: str = DETECTOR_KEY,
     expect_bird_bbox: Any = ANY,
+    transaction=None,
 ) -> dict[str, Any]:
     """Select ``region_id`` as the production answer and project it into ``bird_bbox``.
 
@@ -153,10 +154,10 @@ def select_region(
         tx.execute("UPDATE images SET bird_bbox = ?::jsonb WHERE id = ?", (json.dumps(payload), int(image_id)))
         return {"status": "selected", "selection_id": int(rows[0]["id"]), "bird_bbox": payload}
 
-    return db.get_connector().run_transaction(_tx)
+    return _tx(transaction) if transaction is not None else db.get_connector().run_transaction(_tx)
 
 
-def revoke_selection(image_id: int, reason: str, *, detector_key: str = DETECTOR_KEY) -> dict[str, Any]:
+def revoke_selection(image_id: int, reason: str, *, detector_key: str = DETECTOR_KEY, transaction=None) -> dict[str, Any]:
     """Revoke the active selection and restore the ``bird_bbox`` value it replaced.
 
     Returns ``{"status": "revoked"}`` when ``bird_bbox`` was restored, ``"revoked_bbox_kept"``
@@ -179,4 +180,4 @@ def revoke_selection(image_id: int, reason: str, *, detector_key: str = DETECTOR
                    "revoked_reason = ? WHERE id = ?", (reason, active["id"]))
         return {"status": "revoked" if restored else "revoked_bbox_kept", "selection_id": active["id"]}
 
-    return db.get_connector().run_transaction(_tx)
+    return _tx(transaction) if transaction is not None else db.get_connector().run_transaction(_tx)

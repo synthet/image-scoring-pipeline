@@ -19,11 +19,18 @@ class NormalizedRows:
         self.rows = rows
         self.failure = failure
         self.calls = []
+        self.freshness_enabled = False
+
+    def query_one(self,sql,params=()):
+        assert 'localization_authority_control' in sql
+        return {'selection_freshness_enabled': self.freshness_enabled}
 
     def query(self, sql, params=()):
         self.calls.append((sql, params))
         if self.failure:
             raise RuntimeError("normalized storage unavailable")
+        if 'image_bird_bbox_compat' in sql:
+            return [{'image_id':row['image_id'],'bird_bbox':None} for row in self.rows if row['image_id'] in params]
         return [row for row in self.rows if row['image_id'] in params]
 
 
@@ -114,15 +121,28 @@ def test_batch_queries_scale_with_pages_not_image_count():
     assert rows[1]['bird_bbox'] is None
 
 
-def test_batch_flag_off_never_opens_normalized_storage(monkeypatch):
-    def forbidden():
-        pytest.fail('flag-off read touched normalized storage')
-
-    monkeypatch.setattr(db, 'get_connector', forbidden)
+def test_batch_both_flags_off_never_queries_normalized_geometry(monkeypatch):
+    # Reading the independent control is necessary even with normalized-first
+    # off. Neither geometry storage nor the compatibility view may be read.
+    normalized = NormalizedRows([])
+    monkeypatch.setattr(db, 'get_connector', lambda: normalized)
     rows = [{"id": 1, "bird_bbox": None}, {"id": 2}, {"id": 3, "bird_bbox": LEGACY}]
     before = deepcopy(rows)
     localization_legacy.overlay_bird_bboxes(rows, prefer_normalized=False)
     assert rows == before
+    assert normalized.calls == []
+
+
+@pytest.mark.parametrize('path',['/api/images','/public/api/images','/api/images/1','/public/api/images/1'])
+def test_independent_freshness_cannot_be_bypassed_by_normalized_flag_off(api_reads,monkeypatch,path):
+    client,normalized,_ = api_reads
+    normalized.freshness_enabled = True
+    monkeypatch.setattr(localization_legacy,'read_normalized_first_enabled',lambda:False)
+    response = client.get(path)
+    assert response.status_code == 200
+    body = response.json()
+    image = body['images'][0] if 'images' in body else body
+    assert image['bird_bbox'] is None
 
 
 def test_batch_storage_outage_retains_legacy_values(caplog):

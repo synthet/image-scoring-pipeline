@@ -6,6 +6,8 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-29] edit | Localization active authority and independent freshness
+
 ## [2026-10-29] edit | Add observational localization authority persistence and worker (#699)
 
 Add migration 0045 and matching bootstrap, cached evaluations, revision-keyed fenced attempts, verified cohort reservations, bounded restart-safe scans, off/shadow maintenance CLI and additive drive diagnostics. Production authority, species convergence and activation remain later work.

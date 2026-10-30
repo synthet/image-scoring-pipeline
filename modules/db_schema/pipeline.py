@@ -351,14 +351,18 @@ def initialize_pipeline_schema(cur) -> None:
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_imgkw_keyword_id ON image_keywords(keyword_id);"
     )
-    try:
-        cur.execute("ALTER TABLE image_keywords ALTER COLUMN source TYPE VARCHAR(128)")
-    except Exception as e:
-        logger.debug("image_keywords.source widen (optional): %s", e)
-    try:
-        cur.execute(
-            "ALTER TABLE image_keywords ADD COLUMN IF NOT EXISTS relevance_weight "
-            "DOUBLE PRECISION NOT NULL DEFAULT 1.0"
-        )
-    except Exception as e:
-        logger.debug("image_keywords.relevance_weight add (optional): %s", e)
+    # Repeating even an unchanged ALTER TYPE fails once read views depend on
+    # this column. Do the historical widening only when it is still needed.
+    cur.execute("""
+    DO $widen$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='image_keywords'
+                     AND column_name='source' AND character_maximum_length<128) THEN
+            ALTER TABLE image_keywords ALTER COLUMN source TYPE VARCHAR(128);
+        END IF;
+    END $widen$;
+    """)
+    cur.execute(
+        "ALTER TABLE image_keywords ADD COLUMN IF NOT EXISTS relevance_weight "
+        "DOUBLE PRECISION NOT NULL DEFAULT 1.0"
+    )
