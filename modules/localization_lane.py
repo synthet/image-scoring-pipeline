@@ -17,7 +17,9 @@ Source-changed legacy images are picked up by folder submits (``new_images_only`
 finding them needs a file read per localized image.
 
 A detector outage holds the whole lane rather than spending per-image attempts: 1 min after
-the first outage job, 5 min after the second, then until the process restarts.
+the first outage job, then 5 min after each later one. While the outage streak lasts, each
+admitted lane job is a one-image canary; the first clean canary clears the streak and full
+batches resume, so recovery never needs a process restart (#706).
 """
 
 from __future__ import annotations
@@ -74,6 +76,7 @@ def get_diagnostic_state(now: float | None = None) -> dict[str, Any]:
     held = now < until
     state.update(
         source="process_local",
+        canary_pending=state["outage_streak"] > 0,
         hold_until=None if indefinite else until,
         hold_reason="detector_outage_hold" if held else None,
         hold_seconds_remaining=None if indefinite else max(0.0, until - now),
@@ -123,12 +126,10 @@ def _note_finished_job(now: float) -> None:
         return
     _STATE["outage_streak"] += 1
     streak = _STATE["outage_streak"]
-    if streak > len(REPAIR_BACKOFF_SECONDS):
-        _STATE["hold_until"] = float("inf")
-        logger.warning("localization lane: detector unavailable on %d lane jobs; holding until restart", streak)
-    else:
-        _STATE["hold_until"] = now + REPAIR_BACKOFF_SECONDS[streak - 1]
-        logger.warning("localization lane: detector unavailable; holding %ds", REPAIR_BACKOFF_SECONDS[streak - 1])
+    hold = REPAIR_BACKOFF_SECONDS[min(streak, len(REPAIR_BACKOFF_SECONDS)) - 1]
+    _STATE["hold_until"] = now + hold
+    logger.warning("localization lane: detector unavailable on %d lane job(s); holding %ds, then a one-image canary",
+                   streak, hold)
 
 
 def select_candidates(limit: int = LANE_BATCH) -> tuple[list[int], dict[str, int]]:
@@ -245,7 +246,10 @@ def maybe_enqueue(now: float | None = None) -> dict[str, Any]:
         if not _core_idle():
             out["skipped"] = "core_busy"
             return out
-        image_ids, backlog = select_candidates()
+        canary = get_state()["outage_streak"] > 0
+        limit = 1 if canary else LANE_BATCH
+        image_ids, backlog = select_candidates(limit)
+        image_ids = image_ids[:limit]
         out["backlog"] = backlog
         with _LOCK:
             _STATE["backlog"] = backlog
@@ -256,8 +260,8 @@ def maybe_enqueue(now: float | None = None) -> dict[str, Any]:
         with _LOCK:
             _STATE["last_job_id"] = job_id
         out["enqueued"] = job_id
-        logger.info("localization lane: enqueued job %s with %d image(s); backlog %s",
-                    job_id, len(image_ids), backlog)
+        logger.info("localization lane: enqueued %sjob %s with %d image(s); backlog %s",
+                    "canary " if canary else "", job_id, len(image_ids), backlog)
     except Exception:
         logger.exception("localization lane: tick failed")
         out["skipped"] = "error"
