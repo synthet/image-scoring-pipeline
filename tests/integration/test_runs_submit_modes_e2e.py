@@ -19,6 +19,7 @@ import time
 from typing import Any
 
 import pytest
+from PIL import Image
 
 pytestmark = [pytest.mark.postgres]
 
@@ -72,6 +73,8 @@ def _mkdir_scope(tmp_path, n_folders: int) -> list[str]:
     for i in range(n_folders):
         p = tmp_path / f"scope_folder_{i}"
         p.mkdir(parents=True, exist_ok=True)
+        # A fresh folder holds unregistered images; an empty one has nothing to queue (#712).
+        Image.new("RGB", (64, 48), (10, 20, 30)).save(p / "fresh.jpg")
         paths.append(str(p.resolve()))
     return paths
 

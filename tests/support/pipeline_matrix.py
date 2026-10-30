@@ -405,12 +405,16 @@ def seed_partial_phase_state(scope_folder_abs: str, completed_phase_codes: Tuple
             "UPDATE images SET keywords = ? WHERE id = ?",
             ("matrix_seed_kw", image_id),
         )
+        # A birds tag gives the seed real bird_species work; species scope excludes
+        # images without bird discovery evidence.
+        db._sync_image_keywords(image_id, "birds,matrix_seed_kw")
     return image_id
 
 
 def _valid_prefix_plans() -> List[Tuple[str, ...]]:
     p = CANONICAL_PIPELINE_PHASES
-    return [tuple(p[:k]) for k in range(1, len(p) + 1)]
+    # Tagging needs only metadata (#407), so skipping scoring/culling is a valid plan too.
+    return [tuple(p[:k]) for k in range(1, len(p) + 1)] + [("indexing", "metadata", "keywords")]
 
 
 _INVALID_SCRATCH_PLANS: Tuple[Tuple[str, ...], ...] = (
@@ -420,7 +424,6 @@ _INVALID_SCRATCH_PLANS: Tuple[Tuple[str, ...], ...] = (
     ("metadata",),
     ("scoring",),
     ("indexing", "keywords"),
-    ("indexing", "metadata", "keywords"),
 )
 
 
