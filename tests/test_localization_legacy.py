@@ -272,6 +272,10 @@ class _FakeConn:
         return "legacy"
 
     def query_one(self, sql, params=()):
+        if "localization_authority_control" in sql:
+            # These source-order tests keep the independent protection off.
+            # Freshness-on scalar/batch parity is covered against PostgreSQL.
+            return {"selection_freshness_enabled": False}
         tag = self._tag(sql)
         self.queries.append(tag)
         if tag in self.fail_on:

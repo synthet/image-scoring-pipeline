@@ -30,6 +30,14 @@ def _ensure_new_helpers(mod):
             from modules.bird_species_eligibility import _sql_bird_species_exhausted_ips
 
             conn = mod.get_connector()
+            if mod._get_db_engine()=="postgres":
+                state=conn.query_one(
+                    "SELECT (mode='active' OR COALESCE((localization_species_input(?)->>'managed')::boolean,FALSE)) AS lifecycle,"
+                    "localization_species_in_scope(?) AS in_scope,localization_species_has_disposition(?) AS complete "
+                    "FROM localization_authority_control WHERE id=1",(image_id,image_id,image_id),
+                )
+                if state and state.get('lifecycle') is True:
+                    return not state['in_scope'] or state['complete']
             cnt_birds = conn.query_one(
                 "SELECT COUNT(*) AS c FROM image_keywords ik "
                 "JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "

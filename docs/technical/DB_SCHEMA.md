@@ -10,6 +10,13 @@ okf_version: 0.2
 
 # Database Schema
 
+Migration 0046 adds `localization_policy_approvals`, `localization_policy_events`,
+`localization_discovery_state`, `localization_change_journal` and
+`localization_selection_lineage`. Approval/control revisions fence publication;
+the independent freshness switch defaults off and, when enabled, overrides legacy
+reader preferences. See [Localization authority lifecycle](LOCALIZATION_AUTHORITY.md)
+for schema ownership, qualification, writer locking, gallery compatibility and rollback.
+
 PostgreSQL + pgvector is the primary database schema for Vexlum Scoring. Older Firebird schema descriptions are historical/migration context only unless current code and docs explicitly say otherwise.
 
 ## Canonical Sources

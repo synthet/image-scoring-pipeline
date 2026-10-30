@@ -17,7 +17,7 @@ class Connector:
     def run_transaction(self, callback):
         return callback(self)
 
-    def query_one(self, sql, params):
+    def query_one(self, sql, params=None):
         self.calls.append(sql)
         if "FROM images" in sql:
             return {"id": 3, "folder_id": 8, "bird_bbox": {"selected": True}}

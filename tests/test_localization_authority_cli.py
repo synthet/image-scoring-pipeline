@@ -26,6 +26,17 @@ def test_active_mode_is_not_exposed_by_the_cli():
     assert error.value.code == 2
 
 
+@pytest.mark.parametrize('argv',[
+    ['activate','--policy-hash','p','--receipt-sha256','r'],
+    ['set-freshness','on'],
+    ['approve-policy','--policy-hash','p','--receipt','x','--receipt-sha256','r','--actor','test'],
+])
+def test_effectful_rollout_commands_require_separate_confirmation(argv):
+    with pytest.raises(SystemExit) as error:
+        cli.main(argv)
+    assert error.value.code == 2
+
+
 def test_verified_shadow_mode_is_an_explicit_operator_action(monkeypatch, capsys):
     calls = []
     store = SimpleNamespace(conn=SimpleNamespace(query_one=lambda _: {"name": "image_scoring_test"}),
