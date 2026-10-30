@@ -601,6 +601,11 @@ class BirdSpeciesRunner:
         try:
             ctl=conn.query_one('SELECT mode FROM localization_authority_control WHERE id=1') or {}
             state=conn.query_one("SELECT (localization_species_input(?)->>'managed')::boolean AS managed",(int(row['id']),)) or {}
+        except Exception:
+            # Unknown authority state: the legacy writers still refuse managed images.
+            logger.warning('bird_species: authority state unavailable; using the legacy path', exc_info=True)
+            return None
+        try:
             if ctl.get('mode')!='active':
                 return (0,1) if state.get('managed') else None
             source=observe_source(row['file_path'])
