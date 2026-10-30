@@ -28,7 +28,7 @@ def active_work(*, tagged=False, runtime=True):
         "INSERT INTO localization_policy_approvals (policy_hash,revision,active,geometry_allowed,"
         "species_allowed,qualification_sha256,receipt,approved_by) "
         "VALUES (?,1,TRUE,TRUE,TRUE,?,?::jsonb,'synthetic-test-fixture')",
-        (key, 'f'*64, json.dumps({'synthetic': True, 'geometry_bands': ['small','medium','large']})),
+        (key, 'f'*64, json.dumps({'synthetic': True, 'geometry_bands': ['small','medium','large'], 'species_bands':['medium','large']})),
     )
     store.conn.execute("UPDATE localization_authority_control SET reservation_inventory_sha256=? WHERE id=1", ('a'*64,))
     authority.set_freshness(True)

@@ -85,7 +85,8 @@ def create_electron_images_router() -> APIRouter:
                     new_label = ""
 
         try:
-            success = db.update_image_metadata(file_path, new_keywords, new_title, new_desc, new_rating, new_label)
+            success = db.update_image_metadata(file_path, new_keywords, new_title, new_desc, new_rating, new_label,
+                                               keywords_changed=request.keywords is not None)
             if not success:
                 raise HTTPException(status_code=500, detail="Database update failed")
 

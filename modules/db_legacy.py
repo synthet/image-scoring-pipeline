@@ -838,7 +838,7 @@ def _add_keyword_filter(conditions, params, keyword_filter, table_ref="images", 
             predicate = "kd.keyword_norm LIKE ?"
             value = f"%{norm}%"
         conditions.append(
-            f"EXISTS (SELECT 1 FROM image_keywords ik "
+            f"EXISTS (SELECT 1 FROM localization_visible_image_keywords ik "
             f"JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id "
             f"WHERE ik.image_id = {table_ref}.id "
             f"AND {predicate})"
@@ -2134,9 +2134,9 @@ def _build_image_query_components(
     elif sort_by == "embeddings":
         if _get_db_engine() == "postgres":
             sort_expr = (
-                "((SELECT COUNT(*) FROM image_embeddings ie WHERE ie.image_id = images.id) +"
-                " (SELECT COUNT(*) FROM image_embeddings_512 ie512 WHERE ie512.image_id = images.id) +"
-                " (SELECT COUNT(*) FROM image_embeddings_768 ie768 WHERE ie768.image_id = images.id))"
+                "((SELECT COUNT(*) FROM localization_visible_image_embeddings ie WHERE ie.image_id = images.id) +"
+                " (SELECT COUNT(*) FROM localization_visible_image_embeddings_512 ie512 WHERE ie512.image_id = images.id) +"
+                " (SELECT COUNT(*) FROM localization_visible_image_embeddings_768 ie768 WHERE ie768.image_id = images.id))"
             )
         else:
             sort_expr = "(CASE WHEN images.image_embedding IS NOT NULL THEN 1 ELSE 0 END)"
@@ -3705,7 +3705,7 @@ def get_images_by_folder(folder_path):
                 i.*,
                 COALESCE(
                     (SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
-                     FROM image_keywords ik
+                     FROM localization_visible_image_keywords ik
                      JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
                      WHERE ik.image_id = i.id),
                     ''
@@ -3738,7 +3738,7 @@ def get_images_by_folder(folder_path):
                 i.score_technical, i.score_aesthetic,
                 COALESCE(
                     (SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
-                     FROM image_keywords ik
+                     FROM localization_visible_image_keywords ik
                      JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
                      WHERE ik.image_id = i.id),
                     ''
@@ -3762,13 +3762,16 @@ def get_images_with_keyword(folder_path=None, keyword="birds", resolved_image_id
     conditions = []
     params = []
 
-    # Always filter by keyword using the normalized junction tables
-    conditions.append(
-        "EXISTS (SELECT 1 FROM image_keywords ik "
+    # Species scope also admits independently qualified selection-only images.
+    if keyword.strip().lower()=="birds" and _get_db_engine()=="postgres":
+        conditions.append(_sql_bird_species_in_scope("images"))
+    else:
+        conditions.append(
+        "EXISTS (SELECT 1 FROM localization_visible_image_keywords ik "
         "JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id "
         "WHERE ik.image_id = images.id AND kd.keyword_norm LIKE ?)"
-    )
-    params.append(f"%{keyword.strip().lower()}%")
+        )
+        params.append(f"%{keyword.strip().lower()}%")
 
     # When resolved_image_ids is large, skip the IN clause (Firebird ~900 param limit)
     # and post-filter in Python instead.
@@ -6741,7 +6744,7 @@ def get_image_details(file_path):
                 i.image_hash, i.hash_version,
                 COALESCE(
                     (SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
-                     FROM image_keywords ik
+                     FROM localization_visible_image_keywords ik
                      JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
                      WHERE ik.image_id = i.id),
                     i.keywords, ''
@@ -6769,7 +6772,7 @@ def get_image_details(file_path):
                 i.image_hash, i.hash_version,
                 COALESCE(
                     (SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
-                     FROM image_keywords ik
+                     FROM localization_visible_image_keywords ik
                      JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
                      WHERE ik.image_id = i.id),
                     i.keywords, ''
@@ -6791,7 +6794,7 @@ def get_image_details(file_path):
     if keywords:
         # Check if normalized source exists for this image
         normalized_count_result = get_connector().query_one(
-            "SELECT COUNT(*) as cnt FROM image_keywords WHERE image_id = ?",
+            "SELECT COUNT(*) as cnt FROM localization_visible_image_keywords WHERE image_id = ?",
             (image_id,)
         )
         normalized_count = (normalized_count_result['cnt'] if isinstance(normalized_count_result, dict)
@@ -7255,7 +7258,7 @@ def backup_database(max_backups=5) -> str:
 
     return f"Created Firebird file backup: {backup_path}"
 
-def update_image_metadata(file_path, keywords, title, description, rating, label):
+def update_image_metadata(file_path, keywords, title, description, rating, label, *, keywords_changed=True):
     """
     Updates the metadata fields for a given image path.
     """
@@ -7271,7 +7274,7 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
             _audit_before = None
 
     try:
-        if _write_legacy_keywords_column():
+        if keywords_changed and _write_legacy_keywords_column():
             get_connector().execute(
                 "UPDATE images SET keywords = ?, title = ?, description = ?, rating = ?, label = ? WHERE file_path = ?",
                 (keywords, title, description, rating, label, file_path),
@@ -7282,7 +7285,7 @@ def update_image_metadata(file_path, keywords, title, description, rating, label
                 (title, description, rating, label, file_path),
             )
         row = get_connector().query_one("SELECT id FROM images WHERE file_path = ?", (file_path,))
-        if row:
+        if row and keywords_changed:
             _sync_image_keywords(row["id"], keywords)
 
         if _audit_on and row:
@@ -7639,7 +7642,7 @@ def _sql_image_has_birds_keyword(table_alias: str = "i") -> str:
     """True when the image has a birds keyword (normalized or legacy column)."""
     prefix = f"{table_alias}." if table_alias else ""
     norm_birds = f"""EXISTS (
-        SELECT 1 FROM image_keywords ik_b
+        SELECT 1 FROM localization_visible_image_keywords ik_b
         JOIN keywords_dim kd_b ON kd_b.keyword_id = ik_b.keyword_id
         WHERE ik_b.image_id = {prefix}id
           AND LOWER(kd_b.keyword_norm) LIKE '%birds%'
@@ -7652,6 +7655,9 @@ def _sql_image_has_birds_keyword(table_alias: str = "i") -> str:
 
 def _sql_bird_species_in_scope(table_alias: str = "i") -> str:
     """Images that count toward folder bird_species phase aggregates (birds-tagged only)."""
+    if _get_db_engine() == "postgres":
+        prefix=f"{table_alias}." if table_alias else ""
+        return f"localization_species_in_scope({prefix}id)"
     return _sql_image_has_birds_keyword(table_alias)
 
 
@@ -7716,7 +7722,7 @@ def get_phase_incomplete_sql(phase_code: str, table_alias: str = "") -> str:
 
     if code == "keywords":
         missing_norm = f"""NOT EXISTS (
-                SELECT 1 FROM image_keywords ik WHERE ik.image_id = {prefix}id
+                SELECT 1 FROM localization_visible_image_keywords ik WHERE ik.image_id = {prefix}id
             )"""
         if not _images_table_has_legacy_keywords_column():
             return missing_norm
@@ -7729,7 +7735,7 @@ def get_phase_incomplete_sql(phase_code: str, table_alias: str = "") -> str:
         from modules.bird_species_eligibility import _sql_exhausted_marker
 
         norm_species_check = f"""EXISTS (
-            SELECT 1 FROM image_keywords ik_s
+            SELECT 1 FROM localization_visible_image_keywords ik_s
             JOIN keywords_dim kd_s ON kd_s.keyword_id = ik_s.keyword_id
             WHERE ik_s.image_id = {prefix}id
               AND LOWER(kd_s.keyword_norm) LIKE 'species:%'
@@ -7748,6 +7754,15 @@ def get_phase_incomplete_sql(phase_code: str, table_alias: str = "") -> str:
         # exhausted image with no box stays invisible to auto-drive forever and can only
         # be repaired by scripts/backfill_bird_bbox.py.
         needs_bbox = _sql_bird_bbox_needs_scan(table_alias)
+        if _get_db_engine()=="postgres":
+            image_ref=f"{table_alias}.id" if table_alias else "id"
+            lifecycle=(f"localization_species_in_scope({image_ref}) AND "
+                       f"NOT localization_species_has_disposition({image_ref})")
+            legacy=(f"({_sql_image_has_birds_keyword(table_alias or '')}) AND "
+                    f"((NOT ({species_present}) AND NOT ({exhausted})) OR ({needs_bbox}))")
+            return ("(CASE WHEN (SELECT mode='active' FROM localization_authority_control WHERE id=1) "
+                    f"OR (localization_species_input({image_ref})->>'managed')::boolean "
+                    f"THEN ({lifecycle}) ELSE ({legacy}) END)")
         return f"""(
             ({_sql_image_has_birds_keyword(table_alias or "")})
             AND (
@@ -8291,14 +8306,14 @@ def get_resolved_image_keywords(
     if conn.type == "postgres":
         agg_sql = """
             SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') AS kw
-            FROM image_keywords ik
+            FROM localization_visible_image_keywords ik
             JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
             WHERE ik.image_id = ?
         """
     else:
         agg_sql = """
             SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') AS kw
-            FROM image_keywords ik
+            FROM localization_visible_image_keywords ik
             JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id
             WHERE ik.image_id = ?
         """
@@ -8341,7 +8356,7 @@ def get_batch_resolved_image_keywords(image_ids: list[int]) -> dict[int, str]:
         agg_expr = "LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')"
     sql = (
         f"SELECT ik.image_id, {agg_expr} AS kw "
-        "FROM image_keywords ik "
+        "FROM localization_visible_image_keywords ik "
         "JOIN keywords_dim kd ON ik.keyword_id = kd.keyword_id "
         f"WHERE ik.image_id IN ({placeholders}) "
         "GROUP BY ik.image_id"
@@ -8380,7 +8395,7 @@ def is_image_keywords_complete(image_id: int) -> bool:
     if not kw:
         # Fallback: check image_keywords table
         cnt = get_connector().query_one(
-            "SELECT COUNT(*) as c FROM image_keywords WHERE image_id = ?",
+            "SELECT COUNT(*) as c FROM localization_visible_image_keywords WHERE image_id = ?",
             (image_id,)
         )
         if int((cnt or {}).get("c") or 0) == 0:
@@ -8444,7 +8459,7 @@ def is_image_culling_similarity_artefacts_missing(image_id: int) -> bool:
             sid = get_default_embedding_space_id()
             if sid is not None:
                 hit = conn.query_one(
-                    "SELECT 1 AS x FROM image_embeddings WHERE image_id = ? "
+                    "SELECT 1 AS x FROM localization_visible_image_embeddings WHERE image_id = ? "
                     "AND embedding_space_id = ?",
                     (image_id, sid),
                 )
@@ -10574,6 +10589,10 @@ def _pg_embedding_table_for_dim(dim: int) -> str:
     )
 
 
+def _pg_embedding_read_table_for_dim(dim: int) -> str:
+    return "localization_visible_"+_pg_embedding_table_for_dim(dim)
+
+
 def update_image_embeddings_batch_for_space(space_code, rows):
     """Upsert a batch of embeddings for a named embedding space (Postgres only).
 
@@ -10644,7 +10663,13 @@ def update_image_embeddings_batch_for_space(space_code, rows):
         written = 0
         with db_postgres.PGConnectionManager(commit=True) as pg_conn:
             with pg_conn.cursor() as cur:
+                for lock_id in sorted({r[0] for r in normalized}):
+                    cur.execute("SELECT id FROM images WHERE id=%s FOR UPDATE",(lock_id,))
                 for image_id, arr, model_version in normalized:
+                    if space_code in ('bioclip_2_image','bioclip_2_crop'):
+                        cur.execute("SELECT COALESCE((localization_species_input(%s)->>'managed')::boolean,FALSE)",(image_id,))
+                        if cur.fetchone()[0]:
+                            continue
                     cur.execute(sql, (image_id, sid, arr, model_version))
                     written += 1
         return written
@@ -10685,7 +10710,7 @@ def get_images_missing_embedding_for_space(
         sid = get_embedding_space_id(space_code)
         if sid is None:
             return []
-        table = _pg_embedding_table_for_dim(expected_dim)
+        table = _pg_embedding_read_table_for_dim(expected_dim)
         params: list = []
         folder_clause = ""
         ids_clause = ""
@@ -10759,7 +10784,7 @@ def get_image_embedding(image_id):
                 f"""
                 SELECT {emb_expr} AS emb
                 FROM images i
-                LEFT JOIN image_embeddings ie ON ie.image_id = i.id
+                LEFT JOIN localization_visible_image_embeddings ie ON ie.image_id = i.id
                   AND ie.embedding_space_id = {sub}
                 WHERE i.id = %s
                 """,
@@ -10790,7 +10815,7 @@ def get_image_embeddings_batch(image_ids: list[int]) -> dict[int, bytes]:
                 SELECT i.id,
                        {emb_expr} AS emb
                 FROM images i
-                LEFT JOIN image_embeddings ie ON ie.image_id = i.id
+                LEFT JOIN localization_visible_image_embeddings ie ON ie.image_id = i.id
                   AND ie.embedding_space_id = {sub}
                 WHERE i.id IN ({placeholders})
                 """,
@@ -10833,7 +10858,7 @@ def get_image_embeddings_batch_for_space(space_code: str, image_ids: list[int]) 
         if sid is None:
             return {}
 
-        table = _pg_embedding_table_for_dim(expected_dim)
+        table = _pg_embedding_read_table_for_dim(expected_dim)
         placeholders = ",".join(["%s"] * len(image_ids))
         rows = db_postgres.execute_select(
             f"""
@@ -10867,7 +10892,7 @@ def get_embeddings_for_search(folder_path=None, limit=None):
             norm = os.path.normpath(folder_path)
             sql = (
                 f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding FROM images i "
-                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"LEFT JOIN localization_visible_image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
                 f"JOIN folders f ON f.id = i.folder_id "
                 f"WHERE {has_e} AND f.path = ?"
             )
@@ -10875,7 +10900,7 @@ def get_embeddings_for_search(folder_path=None, limit=None):
         else:
             sql = (
                 f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding FROM images i "
-                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"LEFT JOIN localization_visible_image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
                 f"WHERE {has_e}"
             )
             params = []
@@ -10944,7 +10969,7 @@ def get_embeddings_with_metadata(folder_path=None, limit=None):
                 f"       i.label, i.rating, i.score_general, i.score_technical, i.score_aesthetic, "
                 f"{ims_select}"
                 f"FROM images i "
-                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}{ims_join} "
+                f"LEFT JOIN localization_visible_image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}{ims_join} "
                 f"JOIN folders f ON f.id = i.folder_id "
                 f"WHERE {has_e} AND f.path = ?"
             )
@@ -10955,7 +10980,7 @@ def get_embeddings_with_metadata(folder_path=None, limit=None):
                 f"       i.label, i.rating, i.score_general, i.score_technical, i.score_aesthetic, "
                 f"{ims_select}"
                 f"FROM images i "
-                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}{ims_join} "
+                f"LEFT JOIN localization_visible_image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}{ims_join} "
                 f"WHERE {has_e}"
             )
             params = []
@@ -11150,20 +11175,20 @@ def get_images_for_tag_propagation(folder_path=None):
             emb_expr = _postgres_default_embedding_select_expr()
             q_untagged = (
                 f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding FROM images i "
-                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"LEFT JOIN localization_visible_image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
                 f"WHERE {has_e} "
-                f"AND NOT EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
+                f"AND NOT EXISTS (SELECT 1 FROM localization_visible_image_keywords ik WHERE ik.image_id = i.id) "
                 f"AND (i.keywords IS NULL OR i.keywords = '')" + folder_filter
             )
             q_tagged = (
                 f"SELECT i.id, i.file_path, {emb_expr} AS image_embedding, "
                 f"COALESCE((SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') "
-                f"FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
+                f"FROM localization_visible_image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
                 f"WHERE ik.image_id = i.id), i.keywords) AS keywords_csv "
                 f"FROM images i "
-                f"LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
+                f"LEFT JOIN localization_visible_image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub} "
                 f"WHERE {has_e} "
-                f"AND (EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
+                f"AND (EXISTS (SELECT 1 FROM localization_visible_image_keywords ik WHERE ik.image_id = i.id) "
                 f"OR (i.keywords IS NOT NULL AND i.keywords != ''))" + folder_filter
             )
             import psycopg2.extras
@@ -11180,17 +11205,17 @@ def get_images_for_tag_propagation(folder_path=None):
         q_untagged = (
             "SELECT i.id, i.file_path, i.image_embedding FROM images i "
             "WHERE i.image_embedding IS NOT NULL "
-            "AND NOT EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
+            "AND NOT EXISTS (SELECT 1 FROM localization_visible_image_keywords ik WHERE ik.image_id = i.id) "
             "AND (i.keywords IS NULL OR i.keywords = '')" + folder_filter
         )
         q_tagged = (
             "SELECT i.id, i.file_path, i.image_embedding, "
             "COALESCE((SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') "
-            "FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
+            "FROM localization_visible_image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
             "WHERE ik.image_id = i.id), i.keywords) AS keywords_csv "
             "FROM images i "
             "WHERE i.image_embedding IS NOT NULL "
-            "AND (EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id) "
+            "AND (EXISTS (SELECT 1 FROM localization_visible_image_keywords ik WHERE ik.image_id = i.id) "
             "OR (i.keywords IS NOT NULL AND i.keywords != ''))" + folder_filter
         )
         p = tuple(params) if params else None
@@ -11222,10 +11247,10 @@ def get_image_tag_propagation_focus(image_id: int):
             SELECT {emb_expr} AS image_embedding,
                    i.file_path, f.path,
                    COALESCE((SELECT STRING_AGG(COALESCE(kd.keyword_display, kd.keyword_norm), ', ')
-                            FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id
+                            FROM localization_visible_image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id
                             WHERE ik.image_id = i.id), COALESCE(i.keywords, '')) AS kw
             FROM images i
-            LEFT JOIN image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}
+            LEFT JOIN localization_visible_image_embeddings ie ON ie.image_id = i.id AND ie.embedding_space_id = {sub}
             LEFT JOIN folders f ON f.id = i.folder_id
             WHERE i.id = %s
         """
@@ -11253,7 +11278,7 @@ def get_image_tag_propagation_focus(image_id: int):
             c.execute(
                 "SELECT i.image_embedding, i.file_path, f.path, "
                 "COALESCE((SELECT LIST(COALESCE(kd.keyword_display, kd.keyword_norm), ', ') "
-                "FROM image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
+                "FROM localization_visible_image_keywords ik JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id "
                 "WHERE ik.image_id = i.id), COALESCE(i.keywords, '')) AS kw "
                 "FROM images i LEFT JOIN folders f ON f.id = i.folder_id WHERE i.id = ?",
                 (image_id,),
@@ -11866,7 +11891,7 @@ def get_batch_image_embedding_presence(image_ids: list[int]) -> dict[int, dict[s
             # Query each per-dim fact table
             for dim, sps in dim_to_spaces.items():
                 try:
-                    table = _pg_embedding_table_for_dim(dim)
+                    table = _pg_embedding_read_table_for_dim(dim)
                 except ValueError:
                     continue
 
@@ -12718,10 +12743,10 @@ def get_folder_fulfillment_stats_for_path(folder_path: str) -> dict:
 
     kw_has_legacy = _images_table_has_legacy_keywords_column()
     kw_count_expr = (
-        "EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id)"
+        "EXISTS (SELECT 1 FROM localization_visible_image_keywords ik WHERE ik.image_id = i.id)"
         if not kw_has_legacy
         else """(
-                EXISTS (SELECT 1 FROM image_keywords ik WHERE ik.image_id = i.id)
+                EXISTS (SELECT 1 FROM localization_visible_image_keywords ik WHERE ik.image_id = i.id)
                 OR (i.keywords IS NOT NULL AND TRIM(COALESCE(i.keywords, '')) <> '')
             )"""
     )
@@ -13031,6 +13056,11 @@ def _sync_image_keywords(
 
     try:
         def _tx(tx):
+            tx.query_one("SELECT id FROM images WHERE id=? FOR UPDATE",(image_id,))
+            if scope=='species' and _get_db_engine()=='postgres':
+                managed=tx.query_one("SELECT (localization_species_input(?)->>'managed')::boolean AS managed",(image_id,))
+                if managed and managed.get('managed'):
+                    raise RuntimeError('managed species writes require transactional lifecycle publication')
             kept = set()
             if scope is None:
                 tx.execute("DELETE FROM image_keywords WHERE image_id = ?", (image_id,))
