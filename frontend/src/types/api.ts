@@ -303,12 +303,14 @@ export interface LocalizationLaneStatus {
   source: 'process_local'
   last_tick_at: number
   last_job_id: number | null
+  last_job_kind: 'localization' | 'species' | null
   outage_streak: number
   hold_until: number | null
   backlog: Record<string, number> | null
   hold_reason: 'detector_outage_hold' | null
   hold_seconds_remaining: number | null
   restart_required: boolean
+  canary_pending: boolean
 }
 
 export interface RunsDriveStatus {

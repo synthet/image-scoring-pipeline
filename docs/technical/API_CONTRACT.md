@@ -55,11 +55,15 @@ reconciliation and duplicate completion callbacks; use a fresh Retry for that ru
 **Localization repair diagnostics (#639):** `GET /api/runs/drive/status` adds
 `localization_lane` alongside the existing `state` and `outstanding` fields.
 It reports process-local lane state, including `outage_streak`, `last_job_id`,
-cached `backlog`, `hold_reason`, `hold_until`, `hold_seconds_remaining` and
-`restart_required`. A parked lane reports `hold_reason: detector_outage_hold`,
-`restart_required: true`, and null hold deadline/remaining duration rather than
-non-finite JSON numbers. Finite outage backoff reports its Unix-time deadline
-and remaining seconds; expired holds have no hold reason. Reading diagnostics
+`last_job_kind` (`localization` or `species`; under active authority the lane also
+admits queued GPU species work as `bird_species` jobs after detection candidates),
+cached `backlog`, `hold_reason`, `hold_until`, `hold_seconds_remaining`,
+`restart_required` and `canary_pending`. Outage backoff is 60 s after the first
+outage lane job and 300 s after each later one; it never parks until restart
+(#706), so `restart_required` is always `false`. While `canary_pending` is true
+the next admitted lane job carries a single image, and a clean canary resumes
+full batches. Holds report their Unix-time deadline and remaining seconds;
+expired holds have no hold reason. Reading diagnostics
 does not advance or reset the lane, query candidates, or block core auto-drive.
 The existing `get_drive_diagnostics` result includes the same status and a scoped
 `detector_outage_hold` anomaly. Use the WebUI HTTP endpoint or its live MCP

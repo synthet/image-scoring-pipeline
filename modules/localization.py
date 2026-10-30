@@ -509,6 +509,7 @@ def localize_image(
     max_regions: int,
     job_id: int | None = None,
     decoded: Decoded | None = None,
+    reuse_unchanged: bool = True,
 ) -> ImageOutcome:
     """Run one image through decode + detection and persist the attempt.
 
@@ -517,6 +518,8 @@ def localize_image(
 
     ``decoded`` lets a caller that already decoded ``file_path`` (e.g. the keypoint
     backfill, which needs the same pixels afterwards) skip a second decode.
+    ``reuse_unchanged=False`` re-detects an unchanged image; only targeted negative recovery
+    asks for it (#706).
     """
     import time
 
@@ -582,7 +585,7 @@ def localize_image(
         decode_route=d.decode_route.value,
     )
 
-    if current is not None and is_unchanged(current, ctx.config_hash, d):
+    if reuse_unchanged and current is not None and is_unchanged(current, ctx.config_hash, d):
         return ImageOutcome(status=current["status"], unchanged=True, decode_seconds=decode_seconds)
 
     t1 = time.perf_counter()

@@ -20,6 +20,12 @@ from modules.bird_species import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _legacy_species_path(monkeypatch):
+    """Runner unit tests cover the legacy path; authority publication has PostgreSQL proofs."""
+    monkeypatch.setattr(BirdSpeciesRunner, "_process_authority_species", lambda self, *a, **k: None)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # _load_default_species
 # ──────────────────────────────────────────────────────────────────────────────

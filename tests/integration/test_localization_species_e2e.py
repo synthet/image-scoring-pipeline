@@ -1,4 +1,6 @@
 """Species lifecycle proofs use the isolated DB and synthetic SQL approvals; no models."""
+import json
+
 import pytest
 
 from modules import db
@@ -153,3 +155,98 @@ def test_runner_scalar_and_sql_completeness_share_selection_only_scope():
     keyword(store.conn,iid,'birds')
     species.observe(iid,source_observation={**SOURCE,'hash':'changed'})
     assert not db.is_image_bird_species_complete(iid,include_bbox=False)
+
+
+def test_idle_lane_admits_due_gpu_species_work_as_one_bird_species_job():
+    from modules import localization_lane as lane
+    store,_,species,_,iid,_=selected()
+    assert lane.species_lane_active() and lane.select_species_candidates()==[]
+    assert species.observe(iid,source_observation=SOURCE)['action']=='classify'
+    assert lane.select_species_candidates()==[iid]
+    job_id=lane._enqueue_species([iid])
+    job=store.conn.query_one('SELECT job_type,queue_payload FROM jobs WHERE id=?',(job_id,))
+    assert job['job_type']=='bird_species'
+    payload=job['queue_payload'] if isinstance(job['queue_payload'],dict) else json.loads(job['queue_payload'])
+    assert payload['resolved_image_ids_by_stage']=={'bird_species':[iid]} and payload['species_lane']=='auto'
+    claim=species.claim_next(image_id=iid)
+    assert lane.select_species_candidates()==[]                 # leased work is not due
+    species.fail(claim,'Transient')
+    assert lane.select_species_candidates()==[]                 # 60 s backoff before the next attempt
+    store.conn.execute("UPDATE localization_authority_control SET mode='off' WHERE id=1")
+    assert not lane.species_lane_active()
+
+
+class _NoBirds:
+    def detect_boxes(self,image):
+        return []
+
+
+def test_targeted_negative_recovery_runs_once_per_identity(tmp_path):
+    from PIL import Image
+
+    from modules import localization as loc
+    from modules import localization_lane as lane
+    store,authority,_,key,_,_=selected()
+    ctx=loc.DetectorContext(enabled=True,detector=_NoBirds(),version='test/v0',config_hash='cfg-neg')
+    def negative(name,tagged=True):
+        path=tmp_path/f'{name}.jpg'
+        Image.new('RGB',(64,48),(10,20,30)).save(path)
+        iid=store.conn.execute_returning('INSERT INTO images (file_path) VALUES (?) RETURNING id',(str(path),))[0]['id']
+        if tagged:
+            keyword(store.conn,iid,'birds')
+        assert loc.localize_image(iid,str(path),ctx,max_regions=10).status=='no_detection'
+        return iid,str(path)
+    iid,path=negative('neg')
+    untagged,_=negative('untagged',tagged=False)
+    assert lane.select_recovery_candidates(10)==[iid]                 # discovery-positive negatives only
+    assert lane.select_recovery_candidates(10,exclude=[iid])==[]
+    assert loc.localize_image(iid,path,ctx,max_regions=10).unchanged  # ordinary reuse still skips
+    lane._mark_recovery([iid])
+    assert lane.select_recovery_candidates(10)==[]
+    repeat=loc.localize_image(iid,path,ctx,max_regions=10,reuse_unchanged=False)
+    assert repeat.status=='no_detection' and not repeat.unchanged      # recovery re-detects
+    assert lane.select_recovery_candidates(10)==[]                    # repeat negative ends recovery
+    authority.revoke_policy(key,'new revision')
+    store.conn.execute('UPDATE localization_policy_approvals SET active=TRUE,revision=revision+1 WHERE policy_hash=?',(key,))
+    assert lane.select_recovery_candidates(10)==[iid]                 # changed policy identity: one new sequence
+    assert untagged not in lane.select_recovery_candidates(10)
+
+
+def test_authority_diagnostics_report_species_refresh_cleanup_preservation_and_exhaustion():
+    store,authority,species,key,iid,_=selected()
+    assert store.diagnostics()['species']=={'refresh_pending':0,'cleanup_pending':0,'preserved':0,
+                                            'exhausted':0,'recovery_scheduled':0}
+    species.observe(iid,source_observation=SOURCE)
+    assert store.diagnostics()['species']['refresh_pending']==1
+    for _ in range(3):
+        claim=species.claim_next(image_id=iid)
+        species.fail(claim,'Transient')
+        store.conn.execute('UPDATE localization_species_work SET available_at=clock_timestamp() WHERE image_id=?',(iid,))
+    status=store.diagnostics()['species']
+    assert status['exhausted']==1 and status['refresh_pending']==0
+    authority.revoke_policy(key,'scope exit')
+    species.observe(iid,source_observation=SOURCE)
+    assert store.diagnostics()['species']['cleanup_pending']==1
+
+
+def test_recovery_and_species_work_survive_a_process_restart(tmp_path):
+    from PIL import Image
+
+    from modules import localization as loc
+    from modules import localization_lane as lane
+    store,_,species,_,sel_iid,_=selected()
+    ctx=loc.DetectorContext(enabled=True,detector=_NoBirds(),version='test/v0',config_hash='cfg-restart')
+    path=tmp_path/'restart.jpg'
+    Image.new('RGB',(64,48),(10,20,30)).save(path)
+    iid=store.conn.execute_returning('INSERT INTO images (file_path) VALUES (?) RETURNING id',(str(path),))[0]['id']
+    keyword(store.conn,iid,'birds')
+    assert loc.localize_image(iid,str(path),ctx,max_regions=10).status=='no_detection'
+    lane._mark_recovery([iid])
+    species.observe(sel_iid,source_observation=SOURCE)
+    lane.reset_state()                                          # simulated process restart
+    assert lane.get_state()['outage_streak']==0 and lane.get_state()['hold_until']==0.0
+    assert lane.select_recovery_candidates(10)==[]              # durable marker: no second sequence
+    assert lane.select_species_candidates()==[sel_iid]          # queued GPU work is still due
+    assert loc.localize_image(iid,str(path),ctx,max_regions=10,reuse_unchanged=False).status=='no_detection'
+    lane.reset_state()
+    assert lane.select_recovery_candidates(10)==[]              # repeat negative stays terminal

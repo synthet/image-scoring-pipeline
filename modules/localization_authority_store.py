@@ -141,6 +141,14 @@ class AuthorityStore:
             "SELECT policy_hash,revision,geometry_allowed,species_allowed FROM localization_policy_approvals "
             "WHERE active ORDER BY policy_hash",
         )
+        species = self.conn.query_one(
+            "SELECT count(*) FILTER (WHERE status<>'completed' AND action IN ('classify','fallback')) AS refresh_pending,"
+            "count(*) FILTER (WHERE status<>'completed' AND action IN ('cleanup','out_of_scope')) AS cleanup_pending,"
+            "count(*) FILTER (WHERE disposition='preserved') AS preserved,"
+            "count(*) FILTER (WHERE disposition='retry_exhausted') AS exhausted,"
+            "(SELECT count(*) FROM localization_recovery_attempts) AS recovery_scheduled "
+            "FROM localization_species_work",
+        )
         return {
             "availability": "available", "mode": control["mode"], "revision": control["revision"],
             "scan_cursor": control["scan_cursor"], "scan_upper_bound": control["scan_upper_bound"],
@@ -161,6 +169,8 @@ class AuthorityStore:
             ),
             "selection_freshness_enabled": control["selection_freshness_enabled"],
             "approved_policies": approvals,
+            "species": {key: int(species[key]) for key in
+                        ("refresh_pending", "cleanup_pending", "preserved", "exhausted", "recovery_scheduled")},
             "authority_granted": bool(control["mode"] == "active" and control["selection_freshness_enabled"]
                                       and any(a["geometry_allowed"] for a in approvals)),
         }
