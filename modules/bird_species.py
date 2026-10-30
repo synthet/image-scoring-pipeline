@@ -41,7 +41,8 @@ MIN_REGION_AREA = 0.005
 #: current run is not used, because for most images it is an unpromoted shadow run (#592).
 _SELECTED_REGION_SQL = """
     SELECT s.localization_run_id AS run_id, s.region_id, g.x1, g.y1, g.x2, g.y2,
-           localization_selection_is_fresh(s.id) AS selection_fresh
+           localization_selection_is_fresh(s.id) AS selection_fresh,
+           localization_selection_species_allowed(s.id) AS species_allowed
     FROM image_localization_selections s
     JOIN image_regions g ON g.id = s.region_id
     WHERE s.image_id = ? AND s.detector_key = 'bird' AND s.revoked_at IS NULL
@@ -111,6 +112,8 @@ def species_input_for_image(image_id: int) -> dict:
     if not region_species_eligible(region):
         return {"mode": "legacy", "region": None, **identity,
                 "exclusion_reason": "selected_area_below_0.005"}
+    if row.get('species_allowed',True) is not True:
+        return {"mode":"legacy","region":None,**identity,"exclusion_reason":"selection_not_species_qualified"}
     return {"mode": "region", "region": region, **identity}
 
 
@@ -588,6 +591,71 @@ class BirdSpeciesRunner:
         self._thread.start()
         return "Started"
 
+    def _process_authority_species(self,row,species_list,threshold,top_k,*,refresh=False):
+        from modules.localization_authority_worker import observe_source
+        from modules.localization_species import CPU_ACTIONS,SpeciesStore
+
+        conn=db.get_connector()
+        if not hasattr(conn,'query_one'):
+            return None
+        try:
+            ctl=conn.query_one('SELECT mode FROM localization_authority_control WHERE id=1') or {}
+            state=conn.query_one("SELECT (localization_species_input(?)->>'managed')::boolean AS managed",(int(row['id']),)) or {}
+            if ctl.get('mode')!='active':
+                return (0,1) if state.get('managed') else None
+            source=observe_source(row['file_path'])
+            store=SpeciesStore(conn)
+            work=store.observe(int(row['id']),source_observation=source)
+            if not work or work['status']=='completed':
+                return 0,1
+            claim=store.claim_next(image_id=int(row['id']))
+            if not claim:
+                return 0,1
+            if claim['action'] in CPU_ACTIONS:
+                store.publish(claim,source_observation=source)
+                return 0,1
+        except Exception:
+            logger.exception('bird_species: authority admission unavailable')
+            return 0,1
+        finished=threading.Event()
+        def renew():
+            while not finished.wait(20):
+                if not store.renew(claim):
+                    return
+        heartbeat=threading.Thread(target=renew,name='species-lease',daemon=True)
+        heartbeat.start()
+        try:
+            selected=claim['input_state']['semantic']['selection']
+            choice=({'mode':'region','region':selected['region']} if selected else species_input_for_image(int(row['id'])))
+            from modules.bird_detection import embedded_detector_enabled
+            if not selected and not embedded_detector_enabled():
+                choice=stored_box_input(int(row['id']),choice)
+            path=_resolve_inference_path(row,row['file_path'])
+            predictions=self.classifier.classify(path,species_list,threshold=threshold,top_k=top_k,
+                                                 region=choice.get('region'),use_detector=choice['mode']=='legacy')
+            error=getattr(self.classifier,'last_error',None)
+            if error:
+                store.fail(claim,error)
+                return 0,1
+            vec=getattr(self.classifier,'last_image_embedding',None)
+            mode=getattr(self.classifier,'last_input_mode',None)
+            space={'full_frame':'bioclip_2_image','region':'bioclip_2_crop','detector_crop':'bioclip_2_crop'}.get(mode)
+            if space is None:
+                raise ValueError('species classifier did not identify its embedding input')
+            from modules import config
+            emb=config.get_config_section('embeddings') or {}
+            version=(emb.get('model_versions') or {}).get(space) or getattr(self.classifier,'MODEL_ID','authority-species/1')
+            published=store.publish(claim,predictions=predictions,embedding=vec,space_code=space,
+                                    model_version=version,source_observation=observe_source(row['file_path']))
+            return (1,0) if published and predictions else (0,1)
+        except Exception as exc:
+            store.fail(claim,type(exc).__name__)
+            logger.exception('bird_species: atomic authority publication failed')
+            return 0,1
+        finally:
+            finished.set()
+            heartbeat.join(timeout=1)
+
     def _process_bird_species_image_row(
         self,
         row,
@@ -604,6 +672,9 @@ class BirdSpeciesRunner:
         ``refresh`` (an explicit ``overwrite`` run) lets an abstention remove the image's stale
         ``species:*`` keywords; otherwise existing species results are preserved.
         """
+        managed=self._process_authority_species(row,species_list,threshold,top_k,refresh=refresh)
+        if managed is not None:
+            return managed
         file_path = row["file_path"]
         inference_path = _resolve_inference_path(row, file_path)
 
