@@ -55,6 +55,8 @@ reconciliation and duplicate completion callbacks; use a fresh Retry for that ru
 **Localization repair diagnostics (#639):** `GET /api/runs/drive/status` adds
 `localization_lane` alongside the existing `state` and `outstanding` fields.
 It reports process-local lane state, including `outage_streak`, `last_job_id`,
+`last_job_kind` (`localization` or `species`; under active authority the lane also
+admits queued GPU species work as `bird_species` jobs after detection candidates),
 cached `backlog`, `hold_reason`, `hold_until`, `hold_seconds_remaining`,
 `restart_required` and `canary_pending`. Outage backoff is 60 s after the first
 outage lane job and 300 s after each later one; it never parks until restart

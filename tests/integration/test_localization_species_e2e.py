@@ -1,4 +1,6 @@
 """Species lifecycle proofs use the isolated DB and synthetic SQL approvals; no models."""
+import json
+
 import pytest
 
 from modules import db
@@ -153,3 +155,22 @@ def test_runner_scalar_and_sql_completeness_share_selection_only_scope():
     keyword(store.conn,iid,'birds')
     species.observe(iid,source_observation={**SOURCE,'hash':'changed'})
     assert not db.is_image_bird_species_complete(iid,include_bbox=False)
+
+
+def test_idle_lane_admits_due_gpu_species_work_as_one_bird_species_job():
+    from modules import localization_lane as lane
+    store,_,species,_,iid,_=selected()
+    assert lane.species_lane_active() and lane.select_species_candidates()==[]
+    assert species.observe(iid,source_observation=SOURCE)['action']=='classify'
+    assert lane.select_species_candidates()==[iid]
+    job_id=lane._enqueue_species([iid])
+    job=store.conn.query_one('SELECT job_type,queue_payload FROM jobs WHERE id=?',(job_id,))
+    assert job['job_type']=='bird_species'
+    payload=job['queue_payload'] if isinstance(job['queue_payload'],dict) else json.loads(job['queue_payload'])
+    assert payload['resolved_image_ids_by_stage']=={'bird_species':[iid]} and payload['species_lane']=='auto'
+    claim=species.claim_next(image_id=iid)
+    assert lane.select_species_candidates()==[]                 # leased work is not due
+    species.fail(claim,'Transient')
+    assert lane.select_species_candidates()==[]                 # 60 s backoff before the next attempt
+    store.conn.execute("UPDATE localization_authority_control SET mode='off' WHERE id=1")
+    assert not lane.species_lane_active()

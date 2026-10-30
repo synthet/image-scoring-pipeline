@@ -8013,6 +8013,7 @@ components:
           - source
           - last_tick_at
           - last_job_id
+          - last_job_kind
           - outage_streak
           - hold_until
           - backlog
@@ -8030,6 +8031,14 @@ components:
               anyOf:
               - type: integer
               - type: 'null'
+            last_job_kind:
+              anyOf:
+              - type: string
+                enum:
+                - localization
+                - species
+              - type: 'null'
+              description: Kind of the last admitted lane job; species jobs carry queued GPU species work under active authority.
             outage_streak:
               type: integer
             hold_until:
