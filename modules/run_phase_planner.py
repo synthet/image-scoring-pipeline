@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections import defaultdict
 from typing import Any
 
@@ -57,6 +58,35 @@ def _reason_bucket(policy_reason: str) -> str:
 
 def _images_in_scope(scope_paths: list[str]) -> list[int]:
     return db._query_image_ids_by_condition_for_scope(scope_paths, "1=1")
+
+
+def scope_has_unregistered_files(scope_paths: list[str]) -> bool:
+    """Whether indexing would find an image file under the scope that has no ``images`` row (#712).
+
+    Planning only sees registered images, so without this a fresh folder has no work at all.
+    One bulk query covers the common case; files missing from it get the indexer's own
+    per-path lookup, and the scan stops at the first truly unregistered file.
+    """
+    from modules.indexing_runner import discover_image_files
+
+    def _norm(path: str) -> str:
+        return os.path.normcase(os.path.normpath(str(path)))
+
+    files = [f for p in scope_paths or [] for f in discover_image_files(p)]
+    if not files:
+        return False
+    ids = _images_in_scope(scope_paths)
+    registered: set[str] = set()
+    for start in range(0, len(ids), 900):
+        chunk = ids[start:start + 900]
+        rows = db.get_connector().query(
+            f"SELECT file_path FROM images WHERE id IN ({','.join('?' * len(chunk))})", tuple(chunk),
+        ) or []
+        registered.update(_norm(r["file_path"]) for r in rows if r.get("file_path"))
+    for path in files:
+        if _norm(path) not in registered and not db.get_image_details(path):
+            return True
+    return False
 
 
 def _apply_preflight(scope_paths: list[str]) -> dict[str, int]:

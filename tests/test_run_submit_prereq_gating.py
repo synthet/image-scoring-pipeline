@@ -269,3 +269,45 @@ def test_plan_preview_include_stale_executor_explicit(api_client, monkeypatch):
     )
     assert r.status_code == 200, r.text
     assert captured.get("include_stale_executor") is False
+
+
+def _capture_enqueue(monkeypatch):
+    calls = []
+
+    def _enqueue(*args, **kwargs):
+        calls.append(args[3])  # (input_path, phase_code, job_type, queue_payload, ...)
+        return 42, 0
+
+    monkeypatch.setattr("modules.db.enqueue_job_with_phases", _enqueue)
+    return calls
+
+
+@pytest.mark.parametrize("planned", [[], ["scoring"]])
+def test_unregistered_files_keep_the_requested_indexing_plan(
+    api_client, tmp_path, _stub_compute_scope_phases, resolve_scope_stub, monkeypatch, planned,
+):
+    """A fresh or partly indexed folder must reach indexing, not narrow it away (#712)."""
+    monkeypatch.setattr("modules.runs_autodrive.phases_with_work_from_repair_plan", lambda *_a, **_k: list(planned))
+    monkeypatch.setattr("modules.run_phase_planner.scope_has_unregistered_files", lambda paths: True)
+    calls = _capture_enqueue(monkeypatch)
+    p = tmp_path / "fresh"
+    p.mkdir()
+    r = api_client.post("/api/runs/submit", json=_submit_body(str(p.resolve()), ["indexing", "metadata", "scoring"]))
+    assert r.status_code == 200, r.text
+    assert calls and calls[0]["phases"] == ["indexing", "metadata", "scoring"]
+
+
+def test_unregistered_file_check_only_runs_for_indexing_plans(
+    api_client, tmp_path, _stub_compute_scope_phases, resolve_scope_stub, monkeypatch,
+):
+    _stub_compute_scope_phases.update({"indexing", "metadata", "scoring"})
+    monkeypatch.setattr("modules.runs_autodrive.phases_with_work_from_repair_plan", lambda *_a, **_k: [])
+
+    def _no_scan(paths):
+        raise AssertionError("no file scan without an indexing stage")
+
+    monkeypatch.setattr("modules.run_phase_planner.scope_has_unregistered_files", _no_scan)
+    p = tmp_path / "scope"
+    p.mkdir()
+    r = api_client.post("/api/runs/submit", json=_submit_body(str(p.resolve()), ["metadata", "scoring"]))
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "nothing_to_queue"
