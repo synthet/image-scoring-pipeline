@@ -7,6 +7,12 @@ import modules.bird_species as bs
 from modules.bird_species import BirdSpeciesRunner, species_input_for_image
 
 
+@pytest.fixture(autouse=True)
+def _legacy_species_path(monkeypatch):
+    """Runner unit tests cover the legacy path; authority publication has PostgreSQL proofs."""
+    monkeypatch.setattr(BirdSpeciesRunner, "_process_authority_species", lambda self, *a, **k: None)
+
+
 class _Conn:
     def __init__(self, row=None, exc=None):
         self.row, self.exc = row, exc
