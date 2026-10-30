@@ -34,6 +34,8 @@ python $H sync-master                 # fetch --prune; fast-forward master where
 - **Before `pr`:** the PR body follows `.github/pull_request_template.md` and must contain
   `Closes #N`; the harness refuses otherwise. Move the card to **Review**:
   `python scripts/agent_skills/backlog_stage.py set-stage <N> --stage review`.
+  Write the body to a scratch file with the file-editing tool, not a shell heredoc: the Jev
+  `PreToolUse` hook rejects commands whose inline text looks sensitive (`sensitive_path_or_secret`).
 - **After `merge`:** the issue closes automatically. Remove a finished worktree with
   `git worktree remove <path>` and delete the local branch.
 
