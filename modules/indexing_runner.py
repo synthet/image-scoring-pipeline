@@ -175,6 +175,37 @@ SUPPORTED_EXTENSIONS = {
 }
 
 
+def discover_image_files(directory: str) -> list[str]:
+    """Image files indexing would consider under ``directory`` (or ``directory`` itself)."""
+    valid_files = []
+    exts = discovery_extensions()
+    if os.path.isfile(directory):
+        if path_is_indexing_excluded(directory):
+            return valid_files
+        ext = os.path.splitext(directory)[1].lower()
+        if ext in exts:
+            valid_files.append(directory)
+        return valid_files
+
+    try:
+        norm_dir = os.path.normpath(directory)
+    except (OSError, ValueError):
+        norm_dir = directory
+    if os.path.isdir(norm_dir) and path_is_indexing_excluded(norm_dir):
+        return valid_files
+
+    for root, dirs, files in os.walk(directory):
+        prune_indexing_excluded_walk_dirs(root, dirs)
+        for file in files:
+            fp = os.path.join(root, file)
+            if path_is_indexing_excluded(fp):
+                continue
+            ext = os.path.splitext(file)[1].lower()
+            if ext in exts:
+                valid_files.append(fp)
+    return valid_files
+
+
 def _path_under_or_equal(child: str, ancestor: str) -> bool:
     c = os.path.normpath(child)
     a = os.path.normpath(ancestor)
@@ -426,33 +457,7 @@ class IndexingRunner:
         return "Started"
 
     def discover_files(self, directory: str) -> list[str]:
-        valid_files = []
-        exts = discovery_extensions()
-        if os.path.isfile(directory):
-            if path_is_indexing_excluded(directory):
-                return valid_files
-            ext = os.path.splitext(directory)[1].lower()
-            if ext in exts:
-                valid_files.append(directory)
-            return valid_files
-
-        try:
-            norm_dir = os.path.normpath(directory)
-        except (OSError, ValueError):
-            norm_dir = directory
-        if os.path.isdir(norm_dir) and path_is_indexing_excluded(norm_dir):
-            return valid_files
-
-        for root, dirs, files in os.walk(directory):
-            prune_indexing_excluded_walk_dirs(root, dirs)
-            for file in files:
-                fp = os.path.join(root, file)
-                if path_is_indexing_excluded(fp):
-                    continue
-                ext = os.path.splitext(file)[1].lower()
-                if ext in exts:
-                    valid_files.append(fp)
-        return valid_files
+        return discover_image_files(directory)
 
 
     def _process_indexing_file(

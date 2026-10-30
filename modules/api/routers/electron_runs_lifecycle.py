@@ -51,6 +51,7 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
             PhaseCode,
             assert_prereqs_for_scope,
             disabled_phase_submission_error,
+            missing_prerequisites,
             insert_attempt_before,
             job_type_for_phase,
             normalize_phase_codes,
@@ -113,11 +114,21 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
             if phase_values and phase_values[0] != requested_first:
                 phase_code = phase_values[0]
                 job_type = job_type_for_phase(phase_code)
-            prereq_miss = await asyncio.to_thread(
-                assert_prereqs_for_scope,
-                phase_values or [],
-                scope_paths,
-            )
+            # Planning only sees registered images: new files on disk are indexing work (#712).
+            fresh_files = False
+            if PhaseCode.INDEXING.value in (phase_values or []):
+                from modules.run_phase_planner import scope_has_unregistered_files
+
+                fresh_files = await asyncio.to_thread(scope_has_unregistered_files, scope_paths)
+            if fresh_files:
+                # New images satisfy no phase yet, so the plan must carry its own prerequisites.
+                prereq_miss = missing_prerequisites(phase_values or [], set())
+            else:
+                prereq_miss = await asyncio.to_thread(
+                    assert_prereqs_for_scope,
+                    phase_values or [],
+                    scope_paths,
+                )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"scope prerequisite check failed: {e}") from e
 
@@ -142,6 +153,8 @@ def create_electron_runs_lifecycle_router() -> APIRouter:
                 )
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"run planning failed: {e}") from e
+            if fresh_files:
+                narrowed = list(requested_phases)  # new images need every requested phase
             if not narrowed:
                 raise HTTPException(
                     status_code=400,
