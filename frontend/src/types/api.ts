@@ -309,6 +309,7 @@ export interface LocalizationLaneStatus {
   hold_reason: 'detector_outage_hold' | null
   hold_seconds_remaining: number | null
   restart_required: boolean
+  canary_pending: boolean
 }
 
 export interface RunsDriveStatus {

@@ -7,6 +7,7 @@ Candidate SQL and the end-to-end enqueue are in
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -98,15 +99,17 @@ def test_tick_cooldown(fake_db, lane_on):
     assert lane.maybe_enqueue(now=1000.0 + lane.LANE_TICK_SEC - 1)["skipped"] == "cooldown"
 
 
-def test_detector_outage_holds_the_lane_1m_then_5m_then_until_restart(fake_db, lane_on):
+def test_detector_outage_holds_the_lane_1m_then_5m_capped_with_canaries(fake_db, lane_on):
     fake_db.get_connector.return_value.query_one.return_value = {"n": 2}  # outage runs on the job
     t = 1000.0
-    lane.maybe_enqueue(now=t)                       # job 101
+    lane.maybe_enqueue(now=t)                       # job 101, full batch
+    assert lane_on[-1] == [1, 2]
 
     t += 61                                        # job 101 done with outage -> hold 60s
     assert lane.maybe_enqueue(now=t)["skipped"] == "detector_outage_hold"
     t += 61
     assert lane.maybe_enqueue(now=t)["enqueued"] == 102
+    assert lane_on[-1] == [1]                      # one-image canary while the streak lasts
 
     t += 61                                        # second outage -> hold 300s
     assert lane.maybe_enqueue(now=t)["skipped"] == "detector_outage_hold"
@@ -115,11 +118,27 @@ def test_detector_outage_holds_the_lane_1m_then_5m_then_until_restart(fake_db, l
     t += 61
     assert lane.maybe_enqueue(now=t)["enqueued"] == 103
 
-    t += 61                                        # third outage -> hold until restart
+    t += 61                                        # third outage -> still capped at 300s, never parked
     assert lane.maybe_enqueue(now=t)["skipped"] == "detector_outage_hold"
-    assert lane.maybe_enqueue(now=t + 86_400)["skipped"] == "detector_outage_hold"
-    lane.reset_state()                             # a restart clears it
-    assert lane.maybe_enqueue(now=t + 86_500)["enqueued"] == 104
+    t += 241
+    assert lane.maybe_enqueue(now=t)["skipped"] == "detector_outage_hold"
+    t += 61
+    assert lane.maybe_enqueue(now=t)["enqueued"] == 104
+    assert lane_on[-1] == [1]
+
+
+def test_recovered_canary_resumes_full_batches_without_restart(fake_db, lane_on):
+    fake_db.get_connector.return_value.query_one.return_value = {"n": 1}
+    t = 1000.0
+    for _ in range(6):                             # three outage jobs, each followed by its hold
+        lane.maybe_enqueue(now=t)
+        t += 400
+    assert lane.get_state()["outage_streak"] == 3
+    fake_db.get_connector.return_value.query_one.return_value = {"n": 0}  # detector recovers
+    assert lane.maybe_enqueue(now=t)["enqueued"] is not None and lane_on[-1] == [1]
+    t += 61                                        # clean canary resets the streak
+    assert lane.maybe_enqueue(now=t)["enqueued"] is not None
+    assert lane_on[-1] == [1, 2] and lane.get_state()["outage_streak"] == 0
 
 
 def test_a_clean_job_clears_the_outage_streak(fake_db, lane_on):
@@ -132,7 +151,7 @@ def test_a_clean_job_clears_the_outage_streak(fake_db, lane_on):
     assert lane.get_state()["outage_streak"] == 0
 
 
-def test_parked_lane_is_visible_through_status_and_diagnostics(fake_db, lane_on, monkeypatch):
+def test_held_lane_is_visible_through_status_and_diagnostics(fake_db, lane_on, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -142,9 +161,8 @@ def test_parked_lane_is_visible_through_status_and_diagnostics(fake_db, lane_on,
     fake_db.get_connector.return_value.query_one.return_value = {"n": 1}
     for now in (1000.0, 1061.0, 1122.0, 1183.0, 1544.0, 1605.0):
         lane.maybe_enqueue(now=now)
-    fake_db.get_connector.return_value.query_one.return_value = {"n": 0}  # detector recovers
-    assert lane.maybe_enqueue(now=1605.0 + 86_400)["skipped"] == "detector_outage_hold"
     before = lane.get_state()
+    monkeypatch.setattr(lane, "time", SimpleNamespace(time=lambda: 1605.0))  # status reads the clock
     core_state = {"enabled": True, "last_result": {"total_outstanding": 1,
                   "bucket_counts": {"awaiting_scoring": 1}, "health": {"schedulable_folders": 1}}}
     monkeypatch.setattr(drive, "get_drive_state", lambda: core_state)
@@ -156,9 +174,10 @@ def test_parked_lane_is_visible_through_status_and_diagnostics(fake_db, lane_on,
     assert response.status_code == 200
     status = response.json()
     assert status["localization_lane"]["hold_reason"] == "detector_outage_hold"
-    assert status["localization_lane"]["restart_required"] is True
-    assert status["localization_lane"]["hold_until"] is None
-    assert status["localization_lane"]["hold_seconds_remaining"] is None
+    assert status["localization_lane"]["restart_required"] is False
+    assert status["localization_lane"]["hold_until"] == 1905.0
+    assert status["localization_lane"]["hold_seconds_remaining"] == 300.0
+    assert status["localization_lane"]["canary_pending"] is True
     assert status["state"] == core_state and status["outstanding"]["total_outstanding"] == 1
     diagnostics = drive.get_drive_diagnostics()
     assert any(row["code"] == "detector_outage_hold" and row["scope"] == "localization_lane"
