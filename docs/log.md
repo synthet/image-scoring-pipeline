@@ -1062,3 +1062,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-25] updated | Localization rollout status (#638)
 
 - 2026-10-25: updated - `architecture/pipeline/localization-rollout.md`: 2026-10-25 status block (disagreement recount 6 selected / 0 unselected, #407 closed with follow-ups #681–#684, remaining #638 gates) and a new "What is left" order. `reports/localization-stage8-readiness-2026-10-23.md`: dated recount note.
+
+## [2026-10-30] updated | Localization lifecycle runbook (#710)
+
+- 2026-10-30: updated - `technical/LOCALIZATION_AUTHORITY.md`: species convergence, idle-lane GPU admission, targeted negative recovery, outage canaries, the drive-status and authority diagnostics fields read during activation, and species/recovery rollback (#704, #707).
