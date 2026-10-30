@@ -1,4 +1,4 @@
-"""Assemble evidence payload for an image (on-demand or fixture-backed)."""
+"""Assemble legacy evidence from real, display-oriented preview pixels."""
 
 from __future__ import annotations
 
@@ -6,31 +6,29 @@ import hashlib
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from modules import db
 from modules.localization_legacy import overlay_bird_bboxes
-from modules.visual_evidence import grids, rle
+from modules.paths import resolve_to_existing
+from modules.visual_evidence import grids
 from modules.visual_evidence.schema import (
-    CriterionBand,
     EvidenceDisplayGates,
     EvidenceGrid,
-    EvidenceMaskRle,
     EvidencePayload,
     EvidenceSeparation,
 )
 
 logger = logging.getLogger(__name__)
 
-_FIXTURE_PATH = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "evidence" / "synthetic_orientation_1.json"
 
 
 def _load_grey_from_thumbnail(path: str) -> np.ndarray | None:
+    path = resolve_to_existing(path)
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
     except ImportError:
         logger.warning("PIL unavailable for evidence thumbnails")
         return None
@@ -38,7 +36,7 @@ def _load_grey_from_thumbnail(path: str) -> np.ndarray | None:
         return None
     try:
         with Image.open(path) as im:
-            im = im.convert("L")
+            im = ImageOps.exif_transpose(im).convert("L")
             return np.asarray(im, dtype=np.uint8)
     except OSError as exc:
         logger.debug("thumbnail read failed: %s", exc)
@@ -70,20 +68,11 @@ def _bbox_mask(h: int, w: int, bbox: dict[str, Any] | None) -> np.ndarray | None
 
 
 def _rendition_hash(thumbnail_path: str | None, w: int, h: int) -> str:
-    base = f"{thumbnail_path or ''}:{w}x{h}"
+    from modules.rendition import source_identity
+
+    identity, version = source_identity(resolve_to_existing(thumbnail_path) or thumbnail_path)
+    base = f"{identity}:{version}:{w}x{h}:legacy_oriented_v2"
     return hashlib.sha256(base.encode("utf-8")).hexdigest()[:16]
-
-
-def _fixture_payload(image_id: int) -> EvidencePayload | None:
-    if not _FIXTURE_PATH.is_file():
-        return None
-    try:
-        raw = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
-        raw["image_id"] = image_id
-        return EvidencePayload.model_validate(raw)
-    except Exception as exc:
-        logger.warning("evidence fixture invalid: %s", exc)
-        return None
 
 
 def build_evidence_for_image(image_id: int) -> EvidencePayload:
@@ -115,25 +104,21 @@ def build_evidence_for_image(image_id: int) -> EvidencePayload:
 
     grey = _load_grey_from_thumbnail(thumbnail_path or "")
     if grey is None:
-        fixed = _fixture_payload(image_id)
-        if fixed:
-            return fixed
         return EvidencePayload(
             image_id=image_id,
-            display_width=800,
-            display_height=600,
+            display_width=1,
+            display_height=1,
             gates=EvidenceDisplayGates(),
-            limitations=["no_region"],
+            limitations=["source_unavailable"],
         )
 
     h, w = grey.shape
-    mask = _bbox_mask(h, w, bbox)
     limitations: list[str] = []
     if bbox is None:
         limitations.append("no_region")
 
-    cx, cy, focus_vals, focus_norm = grids.build_focus_grid(grey, mask=mask)
-    nx, ny, noise_vals, noise_norm = grids.build_noise_grid(grey, mask=mask)
+    cx, cy, focus_vals, focus_norm = grids.build_focus_grid(grey)
+    nx, ny, noise_vals, noise_norm = grids.build_noise_grid(grey)
 
     focus_grid = EvidenceGrid(
         cells_x=cx,
@@ -150,14 +135,8 @@ def build_evidence_for_image(image_id: int) -> EvidencePayload:
         values_normalized=noise_norm,
     )
 
-    mask_rle: EvidenceMaskRle | None = None
-    if mask is not None and mask.any():
-        mw, mh, counts = rle.encode_mask_rle(mask)
-        mask_rle = EvidenceMaskRle(width=mw, height=mh, counts=counts)
-
-    subj_mean = float(np.mean([focus_vals[i] for i in range(len(focus_vals))])) if focus_vals else None
     separation = EvidenceSeparation(
-        subject_sharpness_mean=subj_mean,
+        subject_sharpness_mean=None,
         background_sharpness_mean=None,
         ratio=None,
         noise_sigma_mean=float(np.mean(noise_vals)) if noise_vals else None,
@@ -165,16 +144,11 @@ def build_evidence_for_image(image_id: int) -> EvidencePayload:
 
     gates = EvidenceDisplayGates(
         region=bbox is not None,
-        mask=mask_rle is not None,
+        mask=False,
         keypoints=False,
         focus_grid=True,
         noise_grid=True,
     )
-
-    criteria = [
-        CriterionBand(criterion="focus", band="acceptable" if subj_mean and subj_mean > 10 else "soft", sub_score=72),
-        CriterionBand(criterion="noise", band="acceptable", sub_score=65),
-    ]
 
     return EvidencePayload(
         image_id=image_id,
@@ -183,10 +157,10 @@ def build_evidence_for_image(image_id: int) -> EvidencePayload:
         rendition_hash=_rendition_hash(thumbnail_path, w, h),
         gates=gates,
         limitations=limitations,
-        criteria=criteria,
+        criteria=[],
         focus_grid=focus_grid,
         noise_grid=noise_grid,
-        mask_rle=mask_rle,
+        mask_rle=None,
         separation=separation,
         region_bbox=bbox,
     )

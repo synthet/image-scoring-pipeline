@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from numbers import Integral
+
 import numpy as np
 
 
@@ -24,9 +26,9 @@ def encode_mask_rle(mask: np.ndarray, max_dim: int = 256) -> tuple[int, int, lis
     counts: list[int] = []
     if flat.size == 0:
         return w, h, counts
-    run_val = bool(flat[0])
-    run_len = 1
-    for v in flat[1:]:
+    run_val = False
+    run_len = 0
+    for v in flat:
         vb = bool(v)
         if vb == run_val:
             run_len += 1
@@ -39,18 +41,20 @@ def encode_mask_rle(mask: np.ndarray, max_dim: int = 256) -> tuple[int, int, lis
 
 
 def decode_mask_rle(width: int, height: int, counts: list[int]) -> np.ndarray:
+    if not isinstance(width, Integral) or not isinstance(height, Integral) or width <= 0 or height <= 0:
+        raise ValueError("Mask dimensions must be positive integers")
     total = width * height
+    if any(not isinstance(count, Integral) or isinstance(count, bool) or count < 0 for count in counts):
+        raise ValueError("Mask counts must be non-negative integers")
+    if sum(counts) != total:
+        raise ValueError("Mask counts must exactly cover the raster")
     out = np.zeros(total, dtype=bool)
     idx = 0
     val = False
-    for c in counts:
-        if c <= 0:
-            continue
-        end = min(idx + c, total)
+    for count in counts:
+        end = idx + count
         if val:
             out[idx:end] = True
         idx = end
         val = not val
-        if idx >= total:
-            break
     return out.reshape((height, width), order="C")
