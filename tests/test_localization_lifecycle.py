@@ -26,6 +26,23 @@ def test_lifecycle_migration_bootstrap_and_test_cleanup_match():
     assert 'selection_freshness_enabled BOOLEAN NOT NULL DEFAULT FALSE' in LIFECYCLE_SCHEMA_SQL
 
 
+@pytest.mark.parametrize('name,revision,down,module,const', [
+    ('0047_localization_species.py', '0047', '0046', 'species_lifecycle', 'SPECIES_SCHEMA_SQL'),
+    ('0048_localization_recovery.py', '0048', '0047', 'localization_recovery', 'RECOVERY_SCHEMA_SQL'),
+])
+def test_later_localization_migrations_mirror_bootstrap(name, revision, down, module, const):
+    from modules.db_postgres import POSTGRES_APP_TABLES
+
+    path = Path(__file__).resolve().parents[1] / 'migrations/versions' / name
+    spec = importlib.util.spec_from_file_location(f'localization_{revision}', path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    bootstrap = importlib.import_module(f'modules.db_schema.{module}')
+    assert migration.revision == revision and migration.down_revision == down
+    assert getattr(migration, const) == getattr(bootstrap, const)
+    assert 'localization_recovery_attempts' in POSTGRES_APP_TABLES
+
+
 @pytest.mark.parametrize('change',[{'synthetic':True},{'scope':{}},{'rule_sha256':'changed'}])
 def test_receipt_cannot_use_synthetic_evidence_or_a_different_scope(tmp_path,change):
     policy = {'policy_hash':'p','rule_kind':'runtime','rule_id':RUNTIME_RULE_ID,

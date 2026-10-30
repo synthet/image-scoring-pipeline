@@ -133,12 +133,14 @@ class SceneRouter:
         else:
             self.classifier = SceneClassifier(self.backend)
 
-    def localize(self, image_id: int, file_path: str, ctx, *, max_regions: int, job_id: int) -> ImageOutcome:
+    def localize(self, image_id: int, file_path: str, ctx, *, max_regions: int, job_id: int,
+                 reuse_unchanged: bool = True) -> ImageOutcome:
         from modules.localization import DecodeError, decode_for_localization, record_scene_skip
         from modules.scene_route import detectors_to_run, save_scene_label
 
         def detect(decoded=None) -> ImageOutcome:
-            return localize_image(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id, decoded=decoded)
+            return localize_image(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id, decoded=decoded,
+                                  reuse_unchanged=reuse_unchanged)
 
         if not file_path or not os.path.exists(file_path):
             return detect()  # records file_missing
@@ -187,12 +189,14 @@ class LocalizationRunner:
         resolved_image_ids: list[int] | None = None,
         report_collector=None,
         repair_limited: bool = False,
+        recovery_image_ids: list[int] | None = None,
     ) -> str:
         """Start localization in a background thread. Returns 'Started' or an error string.
 
         ``repair_limited`` applies the bounded-repair limit (#527): images whose retryable
         attempts are exhausted or still cooling down are left for later. Explicit
-        submissions leave it off; they are the explicit retry.
+        submissions leave it off; they are the explicit retry. ``recovery_image_ids`` are
+        targeted negative-recovery images that are re-detected even when unchanged (#706).
         """
         if self.is_running:
             return "Error: Already running."
@@ -215,7 +219,8 @@ class LocalizationRunner:
             def target_wrapper():
                 try:
                     self._run_batch_internal(input_path, job_id, resolved_image_ids, report_collector,
-                                             repair_limited=repair_limited)
+                                             repair_limited=repair_limited,
+                                             recovery_image_ids=recovery_image_ids)
                 except Exception:
                     self.status_message = "Failed"
                     raise
@@ -240,7 +245,7 @@ class LocalizationRunner:
         ) or []
 
     def _run_batch_internal(self, input_path, job_id, resolved_image_ids, report_collector,
-                            repair_limited: bool = False):
+                            repair_limited: bool = False, recovery_image_ids: list[int] | None = None):
         from modules.events import event_manager
         from modules.run_log import runner_emit
 
@@ -279,6 +284,7 @@ class LocalizationRunner:
         elif ctx is not None and ctx.load_error:
             log(f"Bird detector unavailable: {ctx.load_error}", "ERROR")
         history = fetch_run_history([int(r["id"]) for r in rows]) if repair_limited and rows else {}
+        recovery = {int(i) for i in recovery_image_ids or []}
         deferred: Counter[str] = Counter()
 
         for row in rows:
@@ -312,10 +318,13 @@ class LocalizationRunner:
                     image_id, PHASE_CODE, "running", job_id=job_id,
                     executor_version=LOCALIZATION_RUNNER_VERSION,
                 )
+                reuse = image_id not in recovery
                 if router is not None:
-                    outcome = router.localize(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id)
+                    outcome = router.localize(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id,
+                                              reuse_unchanged=reuse)
                 else:
-                    outcome = localize_image(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id)
+                    outcome = localize_image(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id,
+                                             reuse_unchanged=reuse)
             except Exception as exc:  # noqa: BLE001 — a DB fault on one image must not end the batch
                 logger.exception("localization: persisting image %s failed", image_id)
                 outcome = ImageOutcome(status="retryable_error", error_detail=f"persist_error: {exc}")

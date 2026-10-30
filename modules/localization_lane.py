@@ -21,6 +21,11 @@ the first outage job, then 5 min after each later one. While the outage streak l
 admitted lane job is a one-image canary; the first clean canary clears the streak and full
 batches resume, so recovery never needs a process restart (#706).
 
+Under active authority a lane job may also carry targeted negative recovery: a current
+``no_detection`` run with independent bird discovery evidence is re-detected once per
+detector-config/source/policy identity. A repeat negative ends it; faults use the bounded
+retry path above.
+
 Under active localization authority the same idle slot also admits queued GPU species work
 (``classify``/``fallback``) as a ``bird_species`` job, after detection candidates. CPU species
 actions never wait for it: the authority worker runs them independently of GPU activity.
@@ -34,7 +39,7 @@ import threading
 import time
 from typing import Any
 
-from modules.localization import DETECTOR_KEY, STATUS_RETRYABLE
+from modules.localization import DETECTOR_KEY, STATUS_NO_DETECTION, STATUS_RETRYABLE
 from modules.localization_policy import (
     OUTAGE_ERROR_CODE,
     REPAIR_BACKOFF_SECONDS,
@@ -124,6 +129,46 @@ def select_species_candidates(limit: int = SPECIES_BATCH) -> list[int]:
         (*GPU_ACTIONS, int(limit)),
     ) or []
     return [int(r["image_id"]) for r in rows]
+
+
+#: Identity of one recovery sequence: the current run's detector config and source, plus the
+#: active approved policies. A changed identity permits one new sequence.
+_RECOVERY_IDENTITY = """
+    r.detector_config_hash, COALESCE(r.source_hash, ''), COALESCE(r.source_hash_version, ''),
+    COALESCE((SELECT string_agg(a.policy_hash || ':' || a.revision::text, ',' ORDER BY a.policy_hash)
+              FROM localization_policy_approvals a WHERE a.active), '')
+"""
+
+
+def select_recovery_candidates(limit: int, exclude: list[int] | tuple = ()) -> list[int]:
+    """Discovery-positive current negatives that have not had recovery for their identity."""
+    from modules import db
+
+    skip = {int(i) for i in exclude}
+    rows = db.get_connector().query(
+        "SELECT r.image_id FROM image_localization_runs r "
+        "WHERE r.detector_key = ? AND r.is_current AND r.status = ? "
+        "AND EXISTS (SELECT 1 FROM localization_discovery_evidence d WHERE d.image_id = r.image_id AND d.independent) "
+        "AND NOT EXISTS (SELECT 1 FROM localization_recovery_attempts m WHERE m.image_id = r.image_id "
+        "AND m.detector_key = r.detector_key AND (m.detector_config_hash, m.source_hash, m.source_hash_version, "
+        f"m.policy_key) = ({_RECOVERY_IDENTITY})) ORDER BY r.image_id FETCH FIRST ? ROWS ONLY",
+        (DETECTOR_KEY, STATUS_NO_DETECTION, int(limit) + len(skip)),
+    ) or []
+    return [i for i in (int(r["image_id"]) for r in rows) if i not in skip][:limit]
+
+
+def _mark_recovery(image_ids: list[int]) -> None:
+    """Record the scheduled sequence so a repeat negative for the same identity ends recovery."""
+    from modules import db
+
+    placeholders = ",".join("?" * len(image_ids))
+    db.get_connector().execute(
+        "INSERT INTO localization_recovery_attempts (image_id, detector_key, detector_config_hash, source_hash, "
+        f"source_hash_version, policy_key) SELECT r.image_id, r.detector_key, {_RECOVERY_IDENTITY} "
+        f"FROM image_localization_runs r WHERE r.detector_key = ? AND r.is_current AND r.image_id IN ({placeholders}) "
+        "ON CONFLICT DO NOTHING",
+        (DETECTOR_KEY, *[int(i) for i in image_ids]),
+    )
 
 
 def _core_idle() -> bool:
@@ -232,18 +277,21 @@ def select_candidates(limit: int = LANE_BATCH) -> tuple[list[int], dict[str, int
     return (new_ids + ready)[:limit], backlog
 
 
-def _enqueue(image_ids: list[int]) -> int | None:
+def _enqueue(image_ids: list[int], recovery_ids: list[int] | tuple = ()) -> int | None:
     from modules import db
     from modules.job_description import augment_queue_payload_for_audit
     from modules.phases import PhaseCode, job_type_for_phase
 
+    body: dict[str, Any] = {
+        "input_path": None,
+        "resolved_image_ids": list(image_ids),
+        "resolved_image_ids_by_stage": {"localization": list(image_ids)},
+        "localization_lane": "auto",
+    }
+    if recovery_ids:
+        body["localization_recovery_ids"] = list(recovery_ids)
     payload = augment_queue_payload_for_audit(
-        {
-            "input_path": None,
-            "resolved_image_ids": list(image_ids),
-            "resolved_image_ids_by_stage": {"localization": list(image_ids)},
-            "localization_lane": "auto",
-        },
+        body,
         trigger="api",  # same trigger the auto-drive's own enqueues use
         tool_id="localization_lane",
     )
@@ -318,7 +366,10 @@ def maybe_enqueue(now: float | None = None) -> dict[str, Any]:
             out["backlog"] = backlog
             with _LOCK:
                 _STATE["backlog"] = backlog
-        if not image_ids:
+        recovery: list[int] = []
+        if detect and species and len(image_ids) < limit:
+            recovery = select_recovery_candidates(limit - len(image_ids), exclude=image_ids)
+        if not image_ids and not recovery:
             species_ids = select_species_candidates() if species else []
             if not species_ids:
                 out["skipped"] = "no_candidates"
@@ -329,10 +380,12 @@ def maybe_enqueue(now: float | None = None) -> dict[str, Any]:
             out.update(enqueued=job_id, kind="species")
             logger.info("localization lane: enqueued species job %s with %d image(s)", job_id, len(species_ids))
             return out
-        job_id = _enqueue(image_ids)
+        job_id = _enqueue(image_ids + recovery, recovery) if recovery else _enqueue(image_ids)
+        if job_id and recovery:
+            _mark_recovery(recovery)
         with _LOCK:
             _STATE.update(last_job_id=job_id, last_job_kind="localization")
-        out.update(enqueued=job_id, kind="localization")
+        out.update(enqueued=job_id, kind="localization", recovery=len(recovery))
         logger.info("localization lane: enqueued %sjob %s with %d image(s); backlog %s",
                     "canary " if canary else "", job_id, len(image_ids), backlog)
     except Exception:

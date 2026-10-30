@@ -701,6 +701,7 @@ class JobDispatcher:
                 report_collector=report_collector,
                 # Only the automatic repair lane is limited; an explicit submit is the retry (#527).
                 repair_limited=payload.get("localization_lane") == "auto",
+                recovery_image_ids=payload.get("localization_recovery_ids"),
             )
 
         if phase_key in ("score", "scoring"):
