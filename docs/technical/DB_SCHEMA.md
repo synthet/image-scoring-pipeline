@@ -4,7 +4,7 @@ title: Database Schema
 description: Routing catalog for the PostgreSQL + pgvector schema — table inventory by area, pgvector notes, and where the authoritative DDL lives.
 resource: technical/DB_SCHEMA.md
 tags: [database, postgres, pgvector, schema, migrations]
-timestamp: 2026-10-29T14:31:18Z
+timestamp: 2026-10-30T05:00:00Z
 okf_version: 0.2
 ---
 
@@ -16,6 +16,16 @@ Migration 0046 adds `localization_policy_approvals`, `localization_policy_events
 the independent freshness switch defaults off and, when enabled, overrides legacy
 reader preferences. See [Localization authority lifecycle](LOCALIZATION_AUTHORITY.md)
 for schema ownership, qualification, writer locking, gallery compatibility and rollback.
+
+Migration 0047 adds species convergence: `localization_discovery_evidence`
+(independent vs generated `birds` tags, seeded from existing tags as a legacy
+baseline), `localization_species_work` (revision-keyed, fenced, three attempts
+with 60/300-second backoff) and `localization_species_outputs` (producer lineage
+for generated keywords and BioCLIP embeddings), plus the protected read views
+`localization_visible_image_keywords` and `localization_visible_image_embeddings*`
+that hide stale generated outputs. Migration 0048 adds
+`localization_recovery_attempts`, one row per scheduled targeted negative-recovery
+sequence keyed by image, detector config, source identity and active policy key.
 
 PostgreSQL + pgvector is the primary database schema for Vexlum Scoring. Older Firebird schema descriptions are historical/migration context only unless current code and docs explicitly say otherwise.
 

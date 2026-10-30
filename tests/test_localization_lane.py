@@ -42,7 +42,7 @@ def lane_on(monkeypatch):
     monkeypatch.setattr(lane, "select_candidates", lambda limit=lane.LANE_BATCH: ([1, 2], {"pending": 2}))
     enqueued = []
 
-    def _enqueue(ids):
+    def _enqueue(ids, recovery_ids=()):
         enqueued.append(list(ids))
         return 100 + len(enqueued)
 
@@ -269,6 +269,23 @@ def test_finished_species_job_leaves_the_detector_outage_streak_alone(fake_db, s
     lane.maybe_enqueue(now=1061.0)                 # species job 201 finished; next one admitted
     state = lane.get_state()
     assert state["outage_streak"] == 0 and state["hold_until"] == 0.0 and species_on == [[7, 8], [7, 8]]
+
+
+def test_active_authority_adds_targeted_negative_recovery_to_the_lane_job(fake_db, lane_on, species_on, monkeypatch):
+    marked, payloads = [], []
+    monkeypatch.setattr(lane, "select_recovery_candidates", lambda limit, exclude=(): [9])
+    monkeypatch.setattr(lane, "_mark_recovery", lambda ids: marked.append(list(ids)))
+    monkeypatch.setattr(lane, "_enqueue", lambda ids, recovery_ids=(): payloads.append((list(ids), list(recovery_ids))) or 101)
+    out = lane.maybe_enqueue(now=1000.0)
+    assert out["enqueued"] == 101 and out["recovery"] == 1
+    assert payloads == [([1, 2, 9], [9])] and marked == [[9]] and species_on == []
+
+
+def test_recovery_needs_active_authority(fake_db, lane_on, monkeypatch):
+    monkeypatch.setattr(lane, "species_lane_active", lambda: False)
+    monkeypatch.setattr(lane, "select_recovery_candidates",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no recovery without authority")))
+    assert lane.maybe_enqueue(now=1000.0)["recovery"] == 0 and lane_on == [[1, 2]]
 
 
 def test_lane_errors_never_escape(monkeypatch):
