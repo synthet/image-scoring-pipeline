@@ -90,6 +90,17 @@ def test_add_puts_issue_on_board_and_sets_stage(bs, monkeypatch):
     assert edit_args[:2] == ["project", "item-edit"] and bs.STAGE_OPTIONS["done"] in edit_args
 
 
+def test_project_item_for_reads_the_issues_own_project_items(bs, monkeypatch):
+    nodes = [{"id": "PVTI_other", "project": {"number": 2}}, {"id": "PVTI_725", "project": {"number": 1}}]
+    reply = {"data": {"repository": {"issue": {"projectItems": {"nodes": nodes}}}}}
+    fake = _install(bs, monkeypatch, [(0, json.dumps(reply), ""), (0, json.dumps({**reply, "data": {
+        "repository": {"issue": {"projectItems": {"nodes": nodes[:1]}}}}}), "")])
+    assert bs.project_item_for("synthet/image-scoring-pipeline", 725) == "PVTI_725"
+    assert fake.calls[0][0][:2] == ["api", "graphql"]
+    assert "issue(number:725)" in fake.calls[0][0][-1]
+    assert bs.project_item_for("synthet/image-scoring-pipeline", 725) is None
+
+
 def test_add_dry_run_makes_no_board_call(bs, monkeypatch):
     issue = {"number": 7, "title": "t", "url": "u"}
     fake = _install(bs, monkeypatch, [(0, json.dumps(issue), "")])

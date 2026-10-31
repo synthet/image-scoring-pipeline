@@ -114,10 +114,6 @@ def resolve_repo(alias: str) -> str:
     raise SystemExit(f"Unknown repo alias: {alias!r} (use backend|gallery)")
 
 
-def short_repo(full: str) -> str:
-    return full.split("/")[-1]
-
-
 def view_issue(repo: str, number: int) -> dict:
     return gh_json(
         "issue",
@@ -140,26 +136,18 @@ def current_login() -> str | None:
 
 
 def project_item_for(repo: str, number: int) -> str | None:
-    short = short_repo(repo)
-    data = gh_json(
-        "project",
-        "item-list",
-        PROJECT_NUMBER,
-        "--owner",
-        OWNER,
-        "--format",
-        "json",
-        "--limit",
-        "300",
+    # Read the issue's own projectItems: `gh project item-list` is capped by --limit
+    # and missed newer issues once the board outgrew it.
+    owner, name = repo.split("/", 1)
+    query = (
+        '{repository(owner:"%s",name:"%s"){issue(number:%d){projectItems(first:5)'
+        "{nodes{id project{number}}}}}}" % (owner, name, number)
     )
-    for item in data.get("items", []) or []:
-        content = item.get("content") or {}
-        if content.get("number") != number:
-            continue
-        repo_field = content.get("repository") or ""
-        if str(repo_field).endswith(short):
-            return str(item.get("id") or "")
-    return None
+    data = gh_json("api", "graphql", "-f", f"query={query}")
+    nodes = data["data"]["repository"]["issue"]["projectItems"]["nodes"]
+    return next(
+        (str(n["id"]) for n in nodes if str(n["project"]["number"]) == PROJECT_NUMBER), None
+    )
 
 
 def set_stage(item_id: str, stage_key: str) -> None:
