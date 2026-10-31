@@ -16,6 +16,7 @@ description: Cross-repo GitHub Project board is the canonical task queue. Use wh
 Do **not** hand-roll `gh project item-edit` or rediscover Stage option IDs.
 
 ```powershell
+python scripts/agent_skills/backlog_stage.py add <N> [--repo gallery] [--stage backlog]
 python scripts/agent_skills/backlog_stage.py claim <N>
 python scripts/agent_skills/backlog_stage.py claim <N> --repo gallery
 python scripts/agent_skills/backlog_stage.py set-stage <N> --stage in_progress
@@ -25,6 +26,12 @@ python scripts/agent_skills/backlog_stage.py set-stage <N> --stage done
 ```
 
 Slash command `/task-claim <N>` uses the same harness.
+
+**Board writes denied** (`Resource not accessible by personal access token`): a fine-grained
+`GITHUB_TOKEN` can never write to this user-owned board, so the harness retries board calls with
+gh's stored login. If that login lacks the `project` scope, the user runs once (bash `!` prompt):
+`env -u GITHUB_TOKEN gh auth refresh -h github.com -s project`. Hand-rolled `gh project` writes need
+the same `env -u GITHUB_TOKEN` prefix.
 
 | Owner | Responsibility |
 |-------|----------------|
@@ -51,7 +58,8 @@ Slash command `/task-claim <N>` uses the same harness.
 
 1. Search both repos for duplicates.
 2. Choose owning repo (or both + `cross-repo`).
-3. Open issue with label taxonomy below; add to Project; default Stage=Backlog.
+3. Open issue with label taxonomy below, then `backlog_stage.py add <N>` (default Stage=Backlog).
+   A `stage:*` label alone never puts an issue on the board; the label sync only updates existing items.
 4. Promote to Ready only with maintainer signoff.
 
 ## Label taxonomy

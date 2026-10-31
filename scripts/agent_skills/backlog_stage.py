@@ -2,6 +2,7 @@
 """Compiled backlog claim / Stage transition harness.
 
 Deterministic gh Project board steps from /task-claim and backlog-queue:
+  - add a newly filed issue to the board
   - verify issue is claimable
   - assign @me
   - resolve project item id
@@ -11,6 +12,7 @@ Picking which Ready card and writing Blocked comment bodies stay LLM-shaped.
 Backlog→Ready promotion stays human-gated.
 
 Usage:
+  python scripts/agent_skills/backlog_stage.py add 123 [--stage backlog]
   python scripts/agent_skills/backlog_stage.py claim 123
   python scripts/agent_skills/backlog_stage.py claim 45 --repo gallery
   python scripts/agent_skills/backlog_stage.py set-stage 123 --stage in_progress
@@ -21,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -47,6 +50,9 @@ STAGE_OPTIONS = {
     "done": "73062c96",
 }
 
+TOKEN_ENV_VARS = ("GH_TOKEN", "GITHUB_TOKEN")
+PAT_DENIED = "Resource not accessible by personal access token"
+
 
 @dataclass
 class ActionResult:
@@ -62,14 +68,31 @@ class ActionResult:
     reminder: str = ""
 
 
-def gh_run(*args: str) -> str:
-    res = subprocess.run(
+def _gh(args: tuple[str, ...], env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
         ["gh", *args],
         capture_output=True,
         text=True,
         encoding="utf-8",
         check=False,
+        env=env,
     )
+
+
+def gh_run(*args: str) -> str:
+    res = _gh(args)
+    # A fine-grained token in GITHUB_TOKEN/GH_TOKEN cannot write to a user-owned
+    # Project; gh's stored login (with the `project` scope) can. Retry board
+    # calls once without the env token so gh falls back to that login.
+    env_tokens = [k for k in TOKEN_ENV_VARS if os.environ.get(k)]
+    if (
+        res.returncode != 0
+        and args[:1] == ("project",)
+        and env_tokens
+        and PAT_DENIED in (res.stderr or res.stdout or "")
+    ):
+        env = {k: v for k, v in os.environ.items() if k not in TOKEN_ENV_VARS}
+        res = _gh(args, env)
     if res.returncode != 0:
         err = (res.stderr or res.stdout or "").strip()
         raise RuntimeError(f"gh {' '.join(args)}\n{err}")
@@ -323,6 +346,44 @@ def set_issue_stage(
     )
 
 
+def add_issue(
+    number: int,
+    repo_alias: str,
+    stage_key: str = "backlog",
+    *,
+    dry_run: bool = False,
+) -> ActionResult:
+    repo = resolve_repo(repo_alias)
+    data = view_issue(repo, number)
+    title = str(data.get("title") or "")
+    url = str(data.get("url") or f"https://github.com/{repo}/issues/{number}")
+    result = ActionResult(
+        ok=True, action="add", repo=repo, number=number, title=title, url=url, stage=stage_key
+    )
+    if dry_run:
+        result.message = f"dry_run: would add to the Project board and set Stage={stage_key}"
+        return result
+
+    # item-add is idempotent: an issue already on the board returns its existing item.
+    item = gh_json(
+        "project", "item-add", PROJECT_NUMBER, "--owner", OWNER, "--url", url, "--format", "json"
+    )
+    result.item_id = str((item or {}).get("id") or "")
+    if not result.item_id:
+        result.ok = False
+        result.message = "gh project item-add returned no item id"
+        return result
+    set_stage(result.item_id, stage_key)
+    result.message = f"On board, Stage={stage_key}"
+    return result
+
+
+def cmd_add(args: argparse.Namespace) -> int:
+    result = add_issue(args.number, args.repo, args.stage, dry_run=args.dry_run)
+    print(json.dumps(asdict(result), indent=2))
+    return 0 if result.ok else 1
+
+
 def cmd_claim(args: argparse.Namespace) -> int:
     result = claim_issue(args.number, args.repo, dry_run=args.dry_run)
     print(json.dumps(asdict(result), indent=2))
@@ -350,6 +411,13 @@ def main() -> int:
     c.add_argument("--repo", default="backend", help="backend|gallery")
     c.add_argument("--dry-run", action="store_true")
     c.set_defaults(func=cmd_claim)
+
+    a = sub.add_parser("add", help="Add an issue to the Project board and set its Stage")
+    a.add_argument("number", type=int)
+    a.add_argument("--repo", default="backend", help="backend|gallery")
+    a.add_argument("--stage", default="backlog", choices=sorted(STAGE_OPTIONS.keys()))
+    a.add_argument("--dry-run", action="store_true")
+    a.set_defaults(func=cmd_add)
 
     s = sub.add_parser("set-stage", help="Move Project Stage for an issue")
     s.add_argument("number", type=int)
