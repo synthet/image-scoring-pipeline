@@ -583,8 +583,31 @@ export function birdBboxStatusLabel(bbox: BirdBboxValue | null | undefined): str
   return '(no bird)'
 }
 
+export interface AutofocusBox {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export interface AutofocusMetadata {
+  box?: AutofocusBox | null
+  crop_box?: AutofocusBox | null
+  mode?: string
+  in_focus?: boolean
+  focus_distance_m?: number | null
+}
+
+export interface ImageEyeKeypoints {
+  display_width: number
+  display_height: number
+  points: { name: 'left_eye' | 'right_eye'; x: number; y: number; confidence: number }[]
+}
+
 /** Payload from GET /api/images/{id}, by-uuid, or by-hash */
 export interface ImageDetail extends Image {
+  af_metadata?: AutofocusMetadata | null
+  eye_keypoints?: ImageEyeKeypoints | null
   file_paths?: string[] | null
   resolved_path?: string | null
   /** Phase code → status info (legacy responses may use plain string values). */

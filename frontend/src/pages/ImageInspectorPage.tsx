@@ -481,7 +481,8 @@ export function ImageInspectorPage() {
           <div className="w-full lg:w-[min(42%,520px)] shrink-0 lg:sticky lg:top-0 lg:self-start">
             <div className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-preview)] min-h-[200px] max-h-[50vh] lg:max-h-[calc(100vh-8rem)] flex items-center justify-center p-2">
               {src ? (
-                <BirdBoxPreview src={src} alt={data.file_name} bbox={data.bird_bbox} />
+                <BirdBoxPreview key={data.id} imageId={data.id} src={src} alt={data.file_name} bbox={data.bird_bbox}
+                  eyes={data.eye_keypoints} af={data.af_metadata} />
               ) : (
                 <span className="text-sm text-[var(--color-text-muted)]">No preview path</span>
               )}
