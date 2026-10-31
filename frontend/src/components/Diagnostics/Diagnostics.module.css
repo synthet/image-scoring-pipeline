@@ -1,0 +1,41 @@
+.controlRoot { position: relative; display: inline-flex; }
+.moreButton {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; min-height: 32px; padding: 6px; border: 1px solid var(--color-border);
+    border-radius: 4px; color: var(--color-text-secondary); background: var(--color-bg-primary); cursor: pointer;
+}
+.moreButton[data-active='true'] { border-color: var(--color-accent-bright); color: var(--color-accent-bright); }
+.moreButton:hover { background: var(--color-bg-elevated); }
+.popover {
+    position: fixed; width: min(322px, calc(100vw - 16px)); box-sizing: border-box;
+    overflow-y: auto; overscroll-behavior: contain;
+    display: flex; flex-direction: column; gap: 6px; padding: 10px; z-index: 1100;
+    color: var(--color-text-primary); background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border); border-radius: 6px; box-shadow: 0 6px 20px var(--color-bg-preview);
+    font: 12px/1.5 'Segoe UI', sans-serif;
+}
+.layerButton { display: flex; align-items: center; gap: 6px; padding: 7px; width: 100%; text-align: left; border: 1px solid var(--color-border-muted); border-radius: 4px; background: var(--color-bg-primary); color: var(--color-text-primary); cursor: pointer; }
+.layerButton small { margin-left: auto; color: var(--color-text-secondary); }
+.layerButton[aria-pressed='true'] { border-color: var(--color-accent-bright); background: var(--color-accent-dim); }
+.layerButton:disabled { opacity: .55; cursor: not-allowed; }
+.setting { display: grid; grid-template-columns: 1fr 100px; gap: 10px; align-items: center; }
+.setting select { width: 100%; background: var(--color-bg-primary); color: var(--color-text-primary); border: 1px solid var(--color-border); border-radius: 3px; padding: 3px; }
+.setting input[type='range'] { appearance: none; width: 100%; height: 24px; margin: 0; padding: 0; border: 0; background: transparent; }
+.setting input[type='range']::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--color-border); }
+.setting input[type='range']::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; margin-top: -5px; border: 0; border-radius: 50%; background: var(--color-accent); }
+.setting input[type='range']::-moz-range-track { height: 6px; border-radius: 3px; background: var(--color-border); }
+.setting input[type='range']::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: var(--color-accent); }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 7px; border: 1px solid var(--color-border); border-radius: 4px; color: var(--color-text-primary); background: var(--color-bg-elevated); cursor: pointer; }
+.actions button:disabled { opacity: .5; cursor: not-allowed; }
+.moreButton:focus-visible, .popover :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.hint, .legend { color: var(--color-text-secondary); font-size: 11px; }
+.legend { margin-top: 8px; line-height: 1.5; overflow-wrap: anywhere; }
+.error { color: var(--color-danger); }
+.overlayRoot, .raster { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.overlayRoot { z-index: 10; overflow: hidden; }
+.raster { max-width: none; object-fit: fill; }
+.backgroundMask { filter: brightness(0); }
+.maskContour { filter: drop-shadow(0 0 1px var(--color-accent-bright)); }
+.peaking { filter: drop-shadow(0 0 1px var(--color-accent-bright)); }
+.head { color: var(--embedding-blip); }

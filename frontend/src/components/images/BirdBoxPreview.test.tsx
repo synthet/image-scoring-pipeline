@@ -17,8 +17,8 @@ const bbox: BirdBoundingBox = {
   img_h: 2624,
 }
 
-function checkbox(): HTMLInputElement {
-  return screen.getByRole('checkbox') as HTMLInputElement
+function boundingBoxButton(): HTMLButtonElement {
+  return screen.getByRole('button', { name: 'Bounding Box' }) as HTMLButtonElement
 }
 
 function parseRgba(css: string): { r: number; g: number; b: number; a: number } {
@@ -77,17 +77,17 @@ describe('BirdBoxPreview', () => {
     cleanup()
   })
 
-  it('hides the overlay until the checkbox is ticked', () => {
+  it('hides the overlay until its button is pressed', () => {
     render(<BirdBoxPreview src="/source-image?path=a.NEF" alt="a.NEF" bbox={bbox} />)
 
     expect(screen.queryByTestId('bird-bbox-overlay')).toBeNull()
-    fireEvent.click(checkbox())
+    fireEvent.click(boundingBoxButton())
     expect(screen.getByTestId('bird-bbox-overlay')).not.toBeNull()
   })
 
   it('positions the box as a fraction of the detector image size', () => {
     render(<BirdBoxPreview src="/source-image?path=a.NEF" alt="a.NEF" bbox={bbox} />)
-    fireEvent.click(checkbox())
+    fireEvent.click(boundingBoxButton())
 
     const overlay = screen.getByTestId('bird-bbox-overlay')
     expect(overlay.style.left).toBe(`${(884 / 3936) * 100}%`)
@@ -96,20 +96,19 @@ describe('BirdBoxPreview', () => {
     expect(overlay.style.height).toBe(`${((1672 - 377) / 2624) * 100}%`)
   })
 
-  it('applies an rgba confidence border when shown', () => {
+  it('distinguishes the subject frame from the autofocus target', () => {
     render(<BirdBoxPreview src="/source-image?path=a.NEF" alt="a.NEF" bbox={bbox} />)
-    fireEvent.click(checkbox())
+    fireEvent.click(boundingBoxButton())
 
     const overlay = screen.getByTestId('bird-bbox-overlay')
-    expect(overlay.style.border).toBe(`2px solid ${birdBboxBorderCss(bbox.conf)}`)
-    expect(overlay.style.border).toContain('rgba(')
+    expect(overlay.className).toContain('subject')
   })
 
-  it('disables the checkbox when the image has not been scanned', () => {
+  it('disables the control when the image has not been scanned', () => {
     render(<BirdBoxPreview src="/source-image?path=a.NEF" alt="a.NEF" bbox={null} />)
 
-    expect(checkbox().disabled).toBe(true)
-    expect(screen.getByText('(not scanned)')).not.toBeNull()
+    expect(boundingBoxButton().disabled).toBe(true)
+    expect(boundingBoxButton().title).toContain('not scanned')
     expect(screen.queryByTestId('bird-bbox-overlay')).toBeNull()
   })
 
@@ -118,8 +117,8 @@ describe('BirdBoxPreview', () => {
       <BirdBoxPreview src="/source-image?path=a.NEF" alt="a.NEF" bbox={{ detected: false }} />,
     )
 
-    expect(checkbox().disabled).toBe(true)
-    expect(screen.getByText('(no bird)')).not.toBeNull()
+    expect(boundingBoxButton().disabled).toBe(true)
+    expect(boundingBoxButton().title).toContain('no bird')
     expect(screen.queryByTestId('bird-bbox-overlay')).toBeNull()
   })
 
@@ -132,8 +131,8 @@ describe('BirdBoxPreview', () => {
       />,
     )
 
-    expect(checkbox().disabled).toBe(true)
-    expect(screen.getByText('(scan failed: detector_unavailable)')).not.toBeNull()
+    expect(boundingBoxButton().disabled).toBe(true)
+    expect(boundingBoxButton().title).toContain('scan failed: detector_unavailable')
   })
 
   it('treats a box with zero reference dimensions as undrawable', () => {
@@ -141,8 +140,40 @@ describe('BirdBoxPreview', () => {
       <BirdBoxPreview src="/source-image?path=a.NEF" alt="a.NEF" bbox={{ ...bbox, img_w: 0, img_h: 0 }} />,
     )
 
-    expect(checkbox().disabled).toBe(true)
-    expect(screen.getByText('(not scanned)')).not.toBeNull()
+    expect(boundingBoxButton().disabled).toBe(true)
+    expect(boundingBoxButton().title).toContain('not scanned')
     expect(screen.queryByTestId('bird-bbox-overlay')).toBeNull()
+  })
+
+  it('offers three icon-only controls with availability and pressed state', () => {
+    render(<BirdBoxPreview src="/preview" alt="test" bbox={bbox} />)
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    for (const name of ['Bounding Box', 'Eyes', 'Focus Point']) {
+      const control = screen.getByRole('button', { name }) as HTMLButtonElement
+      expect(control.textContent).toBe('')
+      expect(control.getAttribute('aria-pressed')).toBe('false')
+    }
+    expect((screen.getByRole('button', { name: 'Eyes' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Focus Point' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('toggles eyes and camera AF independently, using the cropped display coordinates', () => {
+    render(<BirdBoxPreview src="/preview" alt="test" bbox={bbox}
+      eyes={{ display_width: 1000, display_height: 800, points: [{ name: 'left_eye', x: .4, y: .3, confidence: .95 }] }}
+      af={{ mode: 'Wide (L)', in_focus: false, box: { left: .1, top: .1, width: .1, height: .1 }, crop_box: { left: .3, top: .2, width: .2, height: .25 } }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Eyes' }))
+    const eye = screen.getByTestId('eye-keypoint-marker')
+    expect(eye.style.left).toBe('40%')
+    expect(eye.style.top).toBe('30%')
+    expect(screen.queryByTestId('af-reticle-overlay')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Focus Point' }))
+    const af = screen.getByTestId('af-reticle-overlay')
+    expect(af.style.left).toBe('30%')
+    expect(af.style.top).toBe('20%')
+    expect(af.style.width).toBe('20%')
+    expect(screen.getByText('UNCONFIRMED')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Eyes' }))
+    expect(screen.queryByTestId('eye-keypoint-marker')).toBeNull()
+    expect(screen.getByTestId('af-reticle-overlay')).toBeTruthy()
   })
 })
