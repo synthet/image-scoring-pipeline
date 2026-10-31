@@ -6,9 +6,46 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-31] created | Consolidated October 2026 session digests and master inventory
+
+Transformed all 37 exported session transcripts from the workspace root into a consolidated set of 7 thematic digests and a master cryptographic provenance catalog under `docs/reports/`:
+- `SESSION_TRANSCRIPTS_OCTOBER_2026.md`: master inventory, byte counts, line counts, and SHA-256 hashes for all 37 root transcripts.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-model-selection.md`: label-free model selection, score analytics, and within-stack correlation divergence.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-localization-stage5-shadow.md`: Stage 5 localization rollout, 4,401-image shadow comparison, 9p ExifTool retry fix, and small-crop geometry promotion.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-orientation-retag-recovery.md`: RAW portrait orientation bug #418, keyword ownership fix #586, and job 6945 retag recovery after host sleep.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-vector-space-separation-and-meta-skills.md`: 3-repeat timing baseline #416, BioCLIP vector space collision #641 (migration 0042), and resume meta-skills.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-localization-gaps-and-focus-evidence.md`: localization rollout gap analysis, 11-frame autofocus study in `docs/af-focus-evidence`, and OpenAPI contract sync.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-runtime-plan-and-phase2-execution.md`: localization runtime plan execution, 143-image `read_normalized_first` rollback drill, and Jev harness repair.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-focus-culling-and-pipeline-integration.md`: eye keypoints as culling tie-breakers, `is_image_bird_species_complete` edge case fix, and v9.2.1 release.
+Updated `docs/reports/SESSION_TRANSCRIPT_DIGESTS.md` and `docs/reports/INDEX.md`. Documentation only; no production state changed.
+
+## [2026-10-30] updated | Disable Scores and Map pages and fix diagnostic menu clipping
+
+Removed Scores and Map navigation and lazy page entry points; direct and nested URLs redirect to Runs. Moved the diagnostic menu outside scrolling inspector clipping, with viewport positioning and focus restoration. Verified 167 frontend tests, TypeScript, design checks and the production frontend build.
+
+## [2026-10-30] updated | On-demand image diagnostic overlays v2
+
+Documented explicit requests, immutable image artifacts, provenance checks, scoring-priority cancellation, cache limits and isolated optional segmentation in docs/technical/VISUAL_EVIDENCE_API.md. Added matching compact controls in both viewers and validated all five layers on real source pixels.
+
+## [2026-10-30] updated | Expose cached inspector overlay artifacts
+
+Documented additive autofocus and reliable-eye fields in the image detail response, with matching compact preview controls.
+
 ## [2026-10-29] edit | Add observational localization authority persistence and worker (#699)
 
 Add migration 0045 and matching bootstrap, cached evaluations, revision-keyed fenced attempts, verified cohort reservations, bounded restart-safe scans, off/shadow maintenance CLI and additive drive diagnostics. Production authority, species convergence and activation remain later work.
+
+## [2026-10-27] updated | Refine localization runtime discovery and ownership contract
+
+Refined [the revised runtime plan](planning/localization/localization-runtime-plan-revised-2026-10-27.md) and its local index: independent discovery provenance, legacy compatibility, machine-only output ownership, transactional species publication, and scope-exit/concurrent-edit acceptance cases. Retained separate duplicate-policy qualification and the existing activation gates. Documentation only; no runtime or production state changed.
+
+## [2026-10-27] created | Save localization automation planning artifacts
+
+Saved [the planning bundle](planning/localization/INDEX.md): the original Downloads proposal, initial and revised implementation plans, and owner contract review. Preserved the original problem statement, Downloads source and unrelated workspace changes. No runtime implementation, production writes or qualification runs.
+
+## [2026-10-28] created | Localization automation gap problem statement
+
+Created [the problem statement](reports/localization-automation-gap-problem-statement-2026-10-27.md) with source-revision evidence, the current-run to active-selection contract change, the missing runtime selection transition, a dated read-only coverage snapshot and proposed completion criteria. Separated offline judge calibration from routine pipeline automation; no production state changed.
 
 ## [2026-10-26] update | Shared hook repaired; localization calibration stops at one qualified judge (#694)
 

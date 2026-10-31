@@ -15,12 +15,13 @@ Use when the operator wants a **local dump** of the `image_scoring` PostgreSQL d
 
 ## Action (agent)
 
-1. From **this repo root** (`image-scoring-pipeline`), run **with Dropbox mirror and max-3 retention** (see skill **`.cursor/skills/backup-db/SKILL.md`**):
+1. From **this repo root** (`image-scoring-pipeline`), write a real dump to Dropbox and a separate real copy to Google Drive (see skill **`.cursor/skills/backup-db/SKILL.md`**). Do not write to `backups\postgres`. Do not create a symlink or junction.
 
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\Backup-Postgres.ps1 `
+     -BackupDir "D:\Dropbox\Photos\Scoring" `
      -MaxBackups 3 `
-     -MirrorDir "D:\Dropbox\Photos\Scoring" `
+     -MirrorDir "D:\backup-drive\Backups\image-scoring" `
      -MirrorMaxBackups 3 `
      -RetentionDays 0 `
      -MirrorRetentionDays 0
@@ -28,10 +29,10 @@ Use when the operator wants a **local dump** of the `image_scoring` PostgreSQL d
 
 2. Optional parameters (only if the user asked):
 
-   - `-BackupDir <path>` — override output folder (default: `backups\postgres` under repo root).
+   - `-BackupDir <path>` — Dropbox dump folder (default: `D:\Dropbox\Photos\Scoring`).
    - `-MaxBackups <n>` / `-MirrorMaxBackups <n>` — change count cap (`0` skips count prune).
    - `-RetentionDays <n>` / `-MirrorRetentionDays <n>` — age-based prune when count cap is `0`.
-   - `-MirrorDir` — omit mirror step when empty or not passed.
+   - `-MirrorDir` — default is `D:\backup-drive\Backups\image-scoring`. Pass `""` to skip the Google Drive copy.
    - `-ConfigPath <path>` — non-default `config.json`.
 
 3. **Report** the primary dump path, mirror path (when used), file sizes, prune summary, and any errors. Do not claim success without a non-empty `.dump` on disk (primary and mirror when mirroring).
@@ -49,4 +50,4 @@ To **restore** a dump, use the sanctioned wrapper **`/restore-db`** (`.cursor/co
 
 ## Done when
 
-- A timestamped `image_scoring_*.dump` exists under the chosen backup directory, the run exited successfully, and when using the default workflow above the same filename exists under `D:\Dropbox\Photos\Scoring` with at most **3** dumps in each folder.
+- A timestamped `image_scoring_*.dump` exists in `D:\Dropbox\Photos\Scoring` and as a separate file in `D:\backup-drive\Backups\image-scoring`, the run exited successfully, and each folder has at most **3** dumps. Nothing new was written under `backups\postgres`.

@@ -1,7 +1,7 @@
 ---
 name: backup-db
 description: >-
-  PostgreSQL custom-format backup for image-scoring-pipeline via Backup-Postgres.ps1. Use when the user runs /backup-db, asks for a local pg_dump, database backup, or Postgres dump. Default workflow keeps at most 3 dumps in backups/postgres and mirrors the latest copy to D:\Dropbox\Photos\Scoring (also capped at 3 files).
+  PostgreSQL custom-format backup for image-scoring-pipeline via Backup-Postgres.ps1. Use when the user runs /backup-db, asks for a local pg_dump, database backup, or Postgres dump. Default workflow writes a real dump to D:\Dropbox\Photos\Scoring and a separate real copy to D:\backup-drive\Backups\image-scoring (3 newest dumps in each). It does not write to backups\postgres.
 disable-model-invocation: true
 ---
 
@@ -13,34 +13,36 @@ Run **`scripts/powershell/Backup-Postgres.ps1`** from **repo root** so the dump 
 
 ## Canonical invocation (this operator)
 
-Always pass **mirror** arguments and **count-based retention** so both locations keep at most **3** newest `image_scoring_*.dump` files:
+Write the dump into Dropbox, then copy that file into Google Drive. Both copies are real files. Do not create a symlink or junction, and do not write to `backups\postgres`. Each folder keeps at most **3** newest `image_scoring_*.dump` files:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\Backup-Postgres.ps1 `
+  -BackupDir "D:\Dropbox\Photos\Scoring" `
   -MaxBackups 3 `
-  -MirrorDir "D:\Dropbox\Photos\Scoring" `
+  -MirrorDir "D:\backup-drive\Backups\image-scoring" `
   -MirrorMaxBackups 3 `
   -RetentionDays 0 `
   -MirrorRetentionDays 0
 ```
 
-- **Primary directory:** `backups\postgres` under repo root (default).
-- **Mirror directory:** `D:\Dropbox\Photos\Scoring` — created if missing.
-- **Rotation:** after each successful dump, oldest files beyond the third newest are deleted in each folder (newest kept by `LastWriteTime`).
+- **Dropbox (original):** `D:\Dropbox\Photos\Scoring` — created if missing.
+- **Google Drive (second copy):** `D:\backup-drive\Backups\image-scoring` — a separate file, created if missing.
+- **Rotation:** after each successful dump, oldest `image_scoring_*.dump` files beyond the third newest are deleted in each folder on its own (newest kept by `LastWriteTime`). Deleting a file in one folder does not remove the copy in the other.
 
 ## Without mirror
 
-If the user explicitly wants **no** Dropbox copy:
+If the user explicitly wants **no** mirror copy, pass an empty `-MirrorDir` (the script otherwise mirrors by default):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\Backup-Postgres.ps1 `
   -MaxBackups 3 `
+  -MirrorDir "" `
   -RetentionDays 0
 ```
 
 ## Other script parameters
 
-- `-BackupDir <path>` — primary dump folder (default: `backups\postgres` under repo root).
+- `-BackupDir <path>` — Dropbox dump folder (default: `D:\Dropbox\Photos\Scoring`). Do not point this at `backups\postgres`.
 - `-MaxBackups <n>` — keep newest *n* dumps in primary folder; `0` skips count prune.
 - `-RetentionDays <n>` — age-based prune in primary folder (used only when `-MaxBackups 0`); `0` skips.
 - `-MirrorMaxBackups <n>` — keep newest *n* mirror dumps; `0` skips count prune.

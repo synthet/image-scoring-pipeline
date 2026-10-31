@@ -15,6 +15,7 @@ CriterionCode = Literal["focus", "eye", "exposure", "composition", "noise", "con
 BandCode = str
 LimitationCode = Literal[
     "no_region",
+    "source_unavailable",
     "mask_low_confidence",
     "keypoints_heuristic",
     "small_subject_second_pass",
