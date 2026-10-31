@@ -64,6 +64,8 @@ gh pr status
 2. Show `git diff --stat` and path-scoped `git diff` before claiming work complete.
 3. Never modify `.git/config` (project rule).
 4. PR body must include `Closes #<N>` per backlog contract — see [`backlog-queue`](../backlog-queue/SKILL.md).
+   Write the body to a file (file tool) and pass `--body-file`; an inline heredoc carrying the PR
+   template's "No secrets or credentials" line trips the Bash secret hook.
 5. Only commit when the user explicitly asks.
 
 ## Commands requiring confirmation

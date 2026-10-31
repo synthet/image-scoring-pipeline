@@ -59,6 +59,19 @@ npx tsc --noEmit
 
 From repo root (if documented in package.json): same via `frontend/` scripts.
 
+### Rebuilding `static/app` for a PR
+
+`npm run build` writes the committed bundle to `../static/app` and bundles every uncommitted
+`frontend/` edit. When the main checkout has unrelated frontend work or stale builds, build in a
+clean worktree instead:
+
+1. `git worktree add -b <branch> .agent/scratch/wt-<name> origin/master`, then apply only the
+   intended `frontend/` change.
+2. Link dependencies (PowerShell): `New-Item -ItemType Junction -Path <wt>\frontend\node_modules -Target <main>\frontend\node_modules`.
+3. `npx vitest run`, scoped `npx eslint`, `npm run build`; stage the source change plus `static/app` only.
+4. Cleanup: `cmd /c rmdir <wt>\frontend\node_modules` (removes the link only) **before**
+   `git worktree remove`, so the main checkout's `node_modules` survives.
+
 ## Token change workflow
 
 If sibling **image-scoring-ui** `tokens.json` changed:
