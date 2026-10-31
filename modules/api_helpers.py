@@ -268,6 +268,13 @@ def _image_detail_payload(image_id: int) -> dict:
 
         data = _row_to_dict(row, exclude_keys={"image_embedding"})
         overlay_bird_bboxes([data])
+        try:
+            from modules.image_preview_overlays import get_image_preview_overlays
+
+            data.update(get_image_preview_overlays(db, image_id))
+        except Exception as exc:
+            logger.warning("Preview overlays unavailable for image %s: %s", image_id, exc)
+            data.update(af_metadata=None, eye_keypoints=None)
         legacy_kw = (data.get("keywords") or "").strip()
         resolved_kw = db.get_resolved_image_keywords(image_id, legacy_fallback=legacy_kw).strip()
         data["keywords"] = resolved_kw or None
