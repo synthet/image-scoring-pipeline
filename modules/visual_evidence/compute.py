@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-import cv2
 import numpy as np
 
 EXTRACTOR_VERSION = "diagnostics-2.1"
@@ -16,11 +15,20 @@ OUTLINE_FLOOR = .012
 TEXTURE_FLOOR = .010
 
 
+def _cv2():
+    # OpenCV ships with the GPU/ML environments only; importing it lazily keeps the API
+    # importable where it is absent, and diagnostics that need it fail per request.
+    import cv2
+
+    return cv2
+
+
 def _shape(image):
     return (image.height, image.width) if hasattr(image, "crop") else image.shape[:2]
 
 
 def _grey(image, box=None):
+    cv2 = _cv2()
     if hasattr(image, "crop"):
         data = np.asarray((image.crop(box) if box else image).convert("L"))
     else:
@@ -35,6 +43,7 @@ def _grey(image, box=None):
 
 def noise_sigma(grey):
     """Haar diagonal-band MAD on low-structure pixels; reject correlated texture."""
+    cv2 = _cv2()
     h, w = grey.shape
     h, w = h // 2 * 2, w // 2 * 2
     if min(h, w) < 8:
@@ -62,6 +71,7 @@ def noise_sigma(grey):
 
 
 def sharpness(grey, sigma=None):
+    cv2 = _cv2()
     if min(grey.shape) < 3:
         return None
     lap = cv2.Laplacian(grey, cv2.CV_32F, ksize=1)[1:-1, 1:-1]
@@ -91,6 +101,7 @@ def compute_maps(image, *, cancelled=lambda: False):
 
 
 def peaking_fields(image, *, cancelled=lambda: False):
+    cv2 = _cv2()
     height, width = _shape(image)
     outputs = {mode: np.zeros((height, width), np.uint8) for mode in ("outlines", "texture", "both")}
     halo = 12
