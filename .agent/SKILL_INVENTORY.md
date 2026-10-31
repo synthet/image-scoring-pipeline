@@ -18,7 +18,7 @@ Central list of **first-party** `SKILL.md` files in this repository for governan
 | Skill `name` | Path | Purpose (short) | Risk | Mirror under `.claude/skills/` | Last reviewed |
 |--------------|------|-----------------|------|-------------------------------|---------------|
 | agent-memory | `.cursor/skills/agent-memory/SKILL.md` | Log/dream/promote + transcript import v2 | L2 | Yes | 2026-06-17 |
-| backlog-queue | `.cursor/skills/backlog-queue/SKILL.md` | Cross-repo GitHub Project board contract (claim, transition, file) | L1 | Yes | 2026-04-28 |
+| backlog-queue | `.cursor/skills/backlog-queue/SKILL.md` | Cross-repo GitHub Project board contract (claim, transition, file) | L1 | Yes | 2026-10-31 |
 | backlog-housekeeping | `.cursor/skills/backlog-housekeeping/SKILL.md` | GitHub Project board hygiene | L2 | Yes | 2026-06-16 |
 | backlog-triage | `.cursor/skills/backlog-triage/SKILL.md` | Priority triage of open issues: snapshot + findings, rubric, apply plan; harness `scripts/agent_skills/backlog_triage.py` | L2 | Yes | 2026-09-23 |
 | image-scoring-mcp | `.cursor/skills/image-scoring-mcp/SKILL.md` | Compact MCP search/dispatch | L2 | — (Cursor only) | 2026-05-31 |
@@ -26,7 +26,7 @@ Central list of **first-party** `SKILL.md` files in this repository for governan
 | commit-conventions | `.cursor/skills/commit-conventions/SKILL.md` | Conventional Commits / PR titles | L1 | Yes | 2026-04-25 |
 | critical-commit-audit | `.cursor/skills/critical-commit-audit/SKILL.md` | High-severity post-commit review; trace paths, PR bar | L2 | Yes | 2026-04-26 |
 | imgscore-backend-implementer | `.cursor/skills/imgscore-backend-implementer/SKILL.md` | Scoped backend implementation | L1 | Yes | 2026-04-25 |
-| backend-frontend-ui | `.cursor/skills/backend-frontend-ui/SKILL.md` | React `/ui/` SPA, design tokens, Gradio CSS sync | L1 | Yes | 2026-06-21 |
+| backend-frontend-ui | `.cursor/skills/backend-frontend-ui/SKILL.md` | React `/ui/` SPA, design tokens, Gradio CSS sync | L1 | Yes | 2026-10-31 |
 | imgscore-mcp-debug | `.cursor/skills/imgscore-mcp-debug/SKILL.md` | MCP read-only triage | L2 | Yes | 2026-10-17 |
 | mcp-debugging-workflow | `.cursor/skills/mcp-debugging-workflow/SKILL.md` | MCP debugging workflow | L2 | Yes | 2026-04-25 |
 | security-review | `.cursor/skills/security-review/SKILL.md` | Pre-merge security sanity | L1 | Yes | 2026-04-25 |
@@ -44,7 +44,7 @@ Central list of **first-party** `SKILL.md` files in this repository for governan
 | eval | `.cursor/skills/eval/SKILL.md` | Task quality signals → agent memory feedback loop | L1 | Yes | 2026-07-01 |
 | agent-cli-hub | `.cursor/skills/agent-cli-hub/SKILL.md` | CLI skill router; install tiers, agent-environment, shared references | L1 | Yes | 2026-07-21 |
 | agent-search | `.cursor/skills/agent-search/SKILL.md` | rg/grep/ast-grep/fd tool selection + fff + Graphify when connected | L1 | Yes | 2026-07-21 |
-| agent-git-workflows | `.cursor/skills/agent-git-workflows/SKILL.md` | git/gh safe status, diff, PR workflows | L2 | Yes | 2026-07-04 |
+| agent-git-workflows | `.cursor/skills/agent-git-workflows/SKILL.md` | git/gh safe status, diff, PR workflows | L2 | Yes | 2026-10-31 |
 | agent-data-config | `.cursor/skills/agent-data-config/SKILL.md` | jq/yq/curl config and API inspection | L1 | Yes | 2026-07-25 |
 | agent-dev-tooling | `.cursor/skills/agent-dev-tooling/SKILL.md` | WSL pytest, ruff, doctor, docker compose | L1 | Yes | 2026-07-25 |
 | agent-platform-tooling | `.cursor/skills/agent-platform-tooling/SKILL.md` | Windows vs WSL2 environment choice | L1 | Yes | 2026-07-04 |
@@ -71,7 +71,7 @@ Skills listed with **Mirror = Yes** must stay in sync with **`.cursor/skills/<na
 
 | Skill `name` | Path | Purpose (short) | Risk | Last reviewed |
 |--------------|------|-----------------|------|---------------|
-| backlog-queue | `.agent/skills/backlog-queue/SKILL.md` | Project board contract (Antigravity / generic agent mirror of canonical Cursor skill) | L1 | 2026-04-28 |
+| backlog-queue | `.agent/skills/backlog-queue/SKILL.md` | Project board contract (Antigravity / generic agent mirror of canonical Cursor skill) | L1 | 2026-10-31 |
 | git-changelog | `.agent/skills/git-changelog/SKILL.md` | Git / changelog conventions | L1 | 2026-04-25 |
 | image-scoring-mcp | `.agent/skills/image-scoring-mcp/SKILL.md` | MCP tools reference | L2 | 2026-04-25 |
 | scoring-pipeline | `.agent/skills/scoring-pipeline/SKILL.md` | Pipeline architecture | L1 | 2026-04-25 |
