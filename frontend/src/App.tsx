@@ -38,12 +38,6 @@ import { useConfig } from '@/hooks/useConfig'
 
 
 
-const GeoMapPage = lazy(() =>
-
-  import('@/pages/GeoMapPage').then((m) => ({ default: m.GeoMapPage })),
-
-)
-
 const EmbeddingAtlasPage = lazy(() =>
 
   import('@/features/embedding-atlas/pages/EmbeddingAtlasPage').then((m) => ({
@@ -51,12 +45,6 @@ const EmbeddingAtlasPage = lazy(() =>
     default: m.EmbeddingAtlasPage,
 
   })),
-
-)
-
-const ScoreAnalyticsPage = lazy(() =>
-
-  import('@/features/score-analytics/ScoreAnalyticsPage').then((m) => ({ default: m.ScoreAnalyticsPage })),
 
 )
 
@@ -172,21 +160,7 @@ export default function App() {
 
             <Route path="/dashboard" element={<DashboardPage />} />
 
-            <Route
-
-              path="/scores"
-
-              element={(
-
-                <Suspense fallback={<RouteFallback />}>
-
-                  <ScoreAnalyticsPage />
-
-                </Suspense>
-
-              )}
-
-            />
+            <Route path="/scores/*" element={<Navigate to="/runs" replace />} />
 
             <Route path="/images" element={<ImagesPage />} />
 
@@ -210,21 +184,7 @@ export default function App() {
 
             <Route path="/db/:tableName" element={<ProtectedDbRoute />} />
 
-            <Route
-
-              path="/map"
-
-              element={(
-
-                <Suspense fallback={<RouteFallback />}>
-
-                  <GeoMapPage />
-
-                </Suspense>
-
-              )}
-
-            />
+            <Route path="/map/*" element={<Navigate to="/runs" replace />} />
 
             <Route path="/diagnostics" element={<DiagnosticsPage />} />
 
