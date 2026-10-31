@@ -65,3 +65,28 @@ def test_revoked_selection_is_not_used(tmp_path):
     assert select_region(iid, _rank0(iid), "test")["status"] == "selected"
     revoke_selection(iid, "withdrawn")
     assert load_context(iid)["region"] is None
+
+
+def _eye(region_id, x):
+    conn = db.get_connector()
+    run = conn.execute_returning(
+        "INSERT INTO image_keypoint_runs (region_id, provider_key, provider_version, provider_config_hash, pass, status, is_current) "
+        "VALUES (?, 'bird_head_pose', 'test/v0', 'cfg', 'full', 'detected', TRUE) RETURNING id", (region_id,))[0]["id"]
+    conn.execute("INSERT INTO image_region_keypoints (keypoint_run_id, name, x, y, confidence, visible) "
+                 "VALUES (?, 'left_eye', ?, 0.3, 0.95, TRUE)", (run, x))
+
+
+def test_inspector_eyes_follow_the_selected_region(tmp_path):
+    from modules.image_preview_overlays import get_image_preview_overlays
+
+    iid, path = _image(tmp_path)
+    loc.localize_image(iid, path, _ctx([(20, 10, 100, 60)], "cfg-selected"), max_regions=10)
+    selected = _rank0(iid)
+    _eye(selected, 0.25)
+    assert select_region(iid, selected, "test")["status"] == "selected"
+    loc.localize_image(iid, path, _ctx([(120, 40, 190, 95)], "cfg-shadow"), max_regions=10)
+    _eye(_rank0(iid), 0.8)                                            # shadow-run eye must not show
+    eyes = get_image_preview_overlays(db, iid)["eye_keypoints"]
+    assert [p["x"] for p in eyes["points"]] == [0.25]
+    revoke_selection(iid, "withdrawn")
+    assert get_image_preview_overlays(db, iid)["eye_keypoints"] is None
