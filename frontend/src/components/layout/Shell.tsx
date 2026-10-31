@@ -8,9 +8,7 @@ import {
   LayoutDashboard,
   Stethoscope,
   ScrollText,
-  MapPin,
   ChartScatter,
-  ChartLine,
   Image,
   Table2,
   Bird,
@@ -87,7 +85,6 @@ export function Shell() {
         <nav className="flex items-center gap-1">
           <NavItem to="/runs" icon={<Workflow size={14} />} label="Runs" />
           <NavItem to="/dashboard" icon={<LayoutDashboard size={14} />} label="Dashboard" />
-          <NavItem to="/scores" icon={<ChartLine size={14} />} label="Scores" />
           <NavItem to="/images" icon={<Image size={14} />} label="Images" />
           <NavItem to="/birds" icon={<Bird size={14} />} label="Birds" />
           <NavItem to="/keywords" icon={<Tags size={14} />} label="Keywords" />
@@ -97,7 +94,6 @@ export function Shell() {
           {isDbExplorerEnabled && (
             <NavItem to="/db" icon={<Table2 size={14} />} label="DB" />
           )}
-          <NavItem to="/map" icon={<MapPin size={14} />} label="Map" />
           <NavItem to="/diagnostics" icon={<Stethoscope size={14} />} label="Health" />
           <NavItem to="/logs" icon={<ScrollText size={14} />} label="Logs" />
         </nav>
