@@ -1066,3 +1066,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-30] updated | Localization lifecycle runbook (#710)
 
 - 2026-10-30: updated - `technical/LOCALIZATION_AUTHORITY.md`: species convergence, idle-lane GPU admission, targeted negative recovery, outage canaries, the drive-status and authority diagnostics fields read during activation, and species/recovery rollback (#704, #707).
+
+## [2026-10-30] updated | Visual evidence diagnostics API (#714)
+
+- 2026-10-30: updated - `technical/VISUAL_EVIDENCE_API.md` (schema v2 manifest, request/artifact/cancel endpoints; subject and head layers use the selected, fresh bird region) and `technical/API_CONTRACT.md` (image detail `af_metadata` / `eye_keypoints` from the selected region).

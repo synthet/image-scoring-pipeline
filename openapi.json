@@ -4709,7 +4709,7 @@
           "Vexlum Scoring API"
         ],
         "summary": "Get image details by ID",
-        "description": "Returns full details for a single image including all scores, metadata, and file paths.",
+        "description": "Returns full details for a single image including all scores, metadata, file paths, and cached autofocus/eye preview overlays.",
         "operationId": "get_image_by_id_api_images__image_id__get",
         "parameters": [
           {
@@ -4885,9 +4885,8 @@
         "tags": [
           "Vexlum Scoring API"
         ],
-        "summary": "Visual evidence for inspector overlays",
-        "description": "Returns precomputed or on-demand evidence artifacts (grids, mask RLE, bands, gates) for gallery evidence layers. See docs/planning/visual-evidence-api-and-grids.md.",
-        "operationId": "get_image_evidence_api_images__image_id__evidence_get",
+        "summary": "Cached visual evidence manifest",
+        "operationId": "manifest_api_images__image_id__evidence_get",
         "parameters": [
           {
             "name": "image_id",
@@ -4896,6 +4895,197 @@
             "schema": {
               "type": "integer",
               "title": "Image Id"
+            }
+          },
+          {
+            "name": "schema_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2,
+              "minimum": 1,
+              "default": 1,
+              "title": "Schema Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/{image_id}/evidence/requests": {
+      "post": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Request on-demand diagnostics",
+        "operationId": "request_api_images__image_id__evidence_requests_post",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosticRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/{image_id}/evidence/requests/{request_id}": {
+      "delete": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Cancel one diagnostic subscription",
+        "operationId": "cancel_api_images__image_id__evidence_requests__request_id__delete",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/{image_id}/evidence/artifacts/{artifact_id}": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Read an immutable diagnostic artifact",
+        "operationId": "artifact_api_images__image_id__evidence_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Artifact Id"
             }
           }
         ],
@@ -11493,6 +11683,36 @@
         ],
         "title": "DeleteFolderCacheRequest",
         "description": "Remove a folder subtree from the folders cache when no images reference it."
+      },
+      "DiagnosticRequest": {
+        "properties": {
+          "layers": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "sharpness",
+                "peaking",
+                "noise",
+                "mask",
+                "head"
+              ]
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Layers"
+          },
+          "refresh": {
+            "type": "boolean",
+            "title": "Refresh",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "layers"
+        ],
+        "title": "DiagnosticRequest"
       },
       "DiagnosticsResponse": {
         "properties": {
