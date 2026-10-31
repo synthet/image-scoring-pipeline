@@ -36,4 +36,9 @@ Writes and review require elevated MCP flags (`--allow-writes` / `--allow-review
 commands with the user's reviewer identity. Generated facts stay `candidate` until human review.
 After canonical changes: `llmwiki --root "D:\Projects\synthet-llm-wiki" validate` then `render`.
 
+## Environment and sandbox notes
+
+- **Executable:** Windows CLI lives at `<wiki-root>\.venv\Scripts\llmwiki.exe`. Set `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` when invoking via subprocess to avoid console Unicode crashes.
+- **Cross-root SQLite locking:** When running the `llmwiki` CLI from a workspace outside `<wiki-root>`, standard agent sandboxing blocks cross-directory SQLite file locks (`sqlite3.OperationalError: unable to open database file`). Run with sandbox bypass / elevated execution (`BypassSandbox: true`) after a sandboxed attempt fails with this error.
+
 Canonical skill and docs live in the wiki repo: `D:\Projects\synthet-llm-wiki` (`AGENTS.md`, `docs/schema.md`).

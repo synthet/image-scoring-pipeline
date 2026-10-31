@@ -79,7 +79,7 @@ High-level overviews and diagrams live under [`../architecture/`](../architectur
 
 | Document | Description |
 |----------|-------------|
-| [API_CONTRACT.md](API_CONTRACT.md) | API contract summary, response models, opt-in normalized bbox reads and process-local localization-lane diagnostics |
+| [API_CONTRACT.md](API_CONTRACT.md) | API contract summary, cached inspector overlay artifacts, response models, opt-in normalized bbox reads and process-local localization-lane diagnostics |
 | [RUNS_QUEUE_AND_RESTART.md](RUNS_QUEUE_AND_RESTART.md) | Durable queue, delegated culling controls, restart recovery, and revision 0040 deployment |
 | [RUNS_WALKTHROUGH.md](RUNS_WALKTHROUGH.md) | End-to-end walkthrough: submit → dispatcher → runners, pause/resume/retry/force, UI tabs |
 | [RUN_OPTIONS_MODE_MATRIX.md](RUN_OPTIONS_MODE_MATRIX.md) | New Run four options vs `run_mode`, dispatcher wiring, audit findings (2026-05-07), known gaps |

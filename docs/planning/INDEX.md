@@ -110,3 +110,9 @@ Related research (reports): [CLIP_MODELS_CULLING_SCORING_2026-05-23.md](../repor
 | [docs-review-restructure-reindex.md](docs-review-restructure-reindex.md) | **Planned** — restructure `docs/`, archive VILA, merge duplicates, reindex INDEX.md |
 
 **See also:** [Feature specs (planned)](../features/planned/INDEX.md) · [design/](../design/) mockups · [Main docs index](../INDEX.md)
+
+## Localization automation
+
+| Document | Description |
+|---|---|
+| [INDEX](localization/INDEX.md) | Source proposal, both generated runtime plans and owner contract review; revised contract is the current proposal. |

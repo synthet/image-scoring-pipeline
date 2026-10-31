@@ -12,6 +12,14 @@ okf_version: 0.2
 
 REST API for the Vexlum Scoring Scoring WebUI. Base path: `/api`.
 
+Image detail responses (`GET /api/images/{id}` and UUID/hash lookups) include optional
+`af_metadata` and `eye_keypoints` for preview overlays. AF uses cached camera metadata;
+`crop_box` takes precedence over `box` in display-normalized coordinates. Eye points
+come from the current primary bird region and current detected keypoint run, filtered
+to visible left/right eyes using `EYE_CONSUMER_MIN_CONF`. `eye_keypoints` contains
+`display_width`, `display_height`, and `points` (`name`, normalized `x`/`y`, `confidence`).
+Missing artifacts are null. Reading details never runs inference or modifies metadata.
+
 ## Overview
 
 | Category | Endpoints |

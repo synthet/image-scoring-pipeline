@@ -12,42 +12,43 @@
     Path to config.json. Defaults to two levels above this script (project root).
 
 .PARAMETER BackupDir
-    Destination folder for .dump files.
-    Defaults to <project root>\backups\postgres.
+    Folder that receives the dump as a real file.
+    Default: D:\Dropbox\Photos\Scoring. This script does not write to backups\postgres.
 
 .PARAMETER RetentionDays
     Delete dumps older than this many days in -BackupDir. Set to 0 to skip age cleanup.
-    Default: 30.
+    Default: 0. Used only when -MaxBackups is 0.
 
 .PARAMETER MaxBackups
     Keep at most this many newest dumps in -BackupDir. Set to 0 to skip count cleanup.
+    Default: 3.
 
 .PARAMETER MirrorDir
-    If set, copy the finished .dump here (e.g. Dropbox). Empty skips mirror.
+    Second real copy of the finished .dump (Copy-Item, not a link or junction).
+    Default: D:\Goolge Drive\Backups\image-scoring. Pass an empty string to skip.
 
 .PARAMETER MirrorRetentionDays
     When -MirrorDir is set, delete mirror copies of ${dbname}_*.dump older than this many days.
-    Set to 0 to skip mirror age cleanup. Default: 7.
+    Set to 0 to skip mirror age cleanup. Default: 0. Used only when -MirrorMaxBackups is 0.
 
 .PARAMETER MirrorMaxBackups
     When -MirrorDir is set, keep at most this many newest mirror dumps. Set to 0 to skip.
+    Default: 3.
 
 .EXAMPLE
     .\Backup-Postgres.ps1
-    .\Backup-Postgres.ps1 -RetentionDays 7
-    .\Backup-Postgres.ps1 -BackupDir D:\Backups\postgres -RetentionDays 0
-    .\Backup-Postgres.ps1 -MirrorDir "D:\Dropbox\Photos\Scoring" -MirrorRetentionDays 7
-    .\Backup-Postgres.ps1 -MaxBackups 3 -MirrorDir "D:\Dropbox\Photos\Scoring" -MirrorMaxBackups 3 -RetentionDays 0 -MirrorRetentionDays 0
+    .\Backup-Postgres.ps1 -BackupDir "D:\Dropbox\Photos\Scoring" -MirrorDir "D:\Goolge Drive\Backups\image-scoring"
+    .\Backup-Postgres.ps1 -MaxBackups 3 -MirrorMaxBackups 3 -RetentionDays 0 -MirrorRetentionDays 0
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath   = $null,
-    [string]$BackupDir    = $null,
-    [int]   $RetentionDays = 30,
-    [int]   $MaxBackups = 0,
-    [string]$MirrorDir    = $null,
-    [int]   $MirrorRetentionDays = 7,
-    [int]   $MirrorMaxBackups = 0
+    [string]$BackupDir    = "D:\Dropbox\Photos\Scoring",
+    [int]   $RetentionDays = 0,
+    [int]   $MaxBackups = 3,
+    [string]$MirrorDir    = "D:\Goolge Drive\Backups\image-scoring",
+    [int]   $MirrorRetentionDays = 0,
+    [int]   $MirrorMaxBackups = 3
 )
 
 if ([string]::IsNullOrEmpty($PSScriptRoot)) {
@@ -56,8 +57,8 @@ if ([string]::IsNullOrEmpty($PSScriptRoot)) {
 if ([string]::IsNullOrEmpty($ConfigPath)) {
     $ConfigPath = Join-Path $PSScriptRoot "..\..\config.json"
 }
-if ([string]::IsNullOrEmpty($BackupDir)) {
-    $BackupDir = Join-Path $PSScriptRoot "..\..\backups\postgres"
+if ([string]::IsNullOrWhiteSpace($BackupDir)) {
+    $BackupDir = "D:\Dropbox\Photos\Scoring"
 }
 
 Set-StrictMode -Version Latest
@@ -270,7 +271,7 @@ $sizeMB = [math]::Round((Get-Item $DumpFile).Length / 1MB, 2)
 Write-OK ('Dump complete: {0} ({1} MB)' -f $DumpFile, $sizeMB)
 
 # ---------------------------------------------------------------------------
-# Optional mirror copy (e.g. Dropbox) + mirror retention
+# Second real copy (default: D:\Goolge Drive\Backups\image-scoring). Copy-Item, never a link.
 # ---------------------------------------------------------------------------
 
 if (-not [string]::IsNullOrWhiteSpace($MirrorDir)) {

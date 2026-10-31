@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # On-demand Postgres backup — same workflow as .cursor/commands/backup-db.md
-# (merged config, primary repo folder, optional Dropbox mirror + retention).
+# (merged config, Dropbox original, separate Google Drive file copy, keep 3 in each).
 #
 # Usage (from repo root or anywhere):
 #   bash scripts/run_postgres_backup.sh
-#   MIRROR_RETENTION_DAYS=0 bash scripts/run_postgres_backup.sh
 #   BACKUP_DIR=/custom bash scripts/run_postgres_backup.sh
 #   bash scripts/run_postgres_backup.sh -- -RetentionDays 7
 #
 # Environment (optional overrides):
 #   CONFIG_PATH           — alternate config.json
-#   BACKUP_DIR            — primary dump folder (default: <repo>/backups/postgres)
-#   RETENTION_DAYS        — prune primary dumps older than N days (default: 30, 0=skip)
-#   MIRROR_DIR            — mirror folder (default: Windows D:\Dropbox\Photos\Scoring)
-#   MIRROR_RETENTION_DAYS — prune mirror dumps older than N days (default: 7, 0=no prune)
+#   BACKUP_DIR            — Dropbox dump folder (default: D:\Dropbox\Photos\Scoring)
+#   MAX_BACKUPS           — keep this many newest dumps in BACKUP_DIR (default: 3, 0=skip)
+#   RETENTION_DAYS        — age prune in BACKUP_DIR, only when MAX_BACKUPS=0 (default: 0)
+#   MIRROR_DIR            — Google Drive copy (default: D:\Goolge Drive\Backups\image-scoring)
+#   MIRROR_MAX_BACKUPS    — keep this many newest mirror dumps (default: 3, 0=skip)
+#   MIRROR_RETENTION_DAYS — age prune in MIRROR_DIR, only when MIRROR_MAX_BACKUPS=0 (default: 0)
 
 set -euo pipefail
 
@@ -21,11 +22,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PS_SCRIPT="$REPO_ROOT/scripts/powershell/Backup-Postgres.ps1"
 
-DEFAULT_MIRROR_WINDOWS='D:\Dropbox\Photos\Scoring'
+DEFAULT_BACKUP_WINDOWS='D:\Dropbox\Photos\Scoring'
+DEFAULT_MIRROR_WINDOWS='D:\Goolge Drive\Backups\image-scoring'
+BACKUP_DIR="${BACKUP_DIR:-$DEFAULT_BACKUP_WINDOWS}"
 MIRROR_DIR="${MIRROR_DIR:-$DEFAULT_MIRROR_WINDOWS}"
-MIRROR_RETENTION_DAYS="${MIRROR_RETENTION_DAYS:-7}"
-RETENTION_DAYS="${RETENTION_DAYS:-30}"
-BACKUP_DIR="${BACKUP_DIR:-}"
+MAX_BACKUPS="${MAX_BACKUPS:-3}"
+MIRROR_MAX_BACKUPS="${MIRROR_MAX_BACKUPS:-3}"
+RETENTION_DAYS="${RETENTION_DAYS:-0}"
+MIRROR_RETENTION_DAYS="${MIRROR_RETENTION_DAYS:-0}"
 CONFIG_PATH="${CONFIG_PATH:-}"
 
 is_wsl() {
@@ -117,12 +121,12 @@ path_for_param() {
 if [[ -n "${CONFIG_PATH}" ]]; then
   ARGS+=("-ConfigPath" "$(path_for_param "${CONFIG_PATH}")")
 fi
-if [[ -n "${BACKUP_DIR}" ]]; then
-  ARGS+=("-BackupDir" "$(path_for_param "${BACKUP_DIR}")")
-fi
 
+ARGS+=("-BackupDir" "$(path_for_param "${BACKUP_DIR}")")
+ARGS+=("-MaxBackups" "$MAX_BACKUPS")
 ARGS+=("-RetentionDays" "$RETENTION_DAYS")
 ARGS+=("-MirrorDir" "$MIRROR_ARG")
+ARGS+=("-MirrorMaxBackups" "$MIRROR_MAX_BACKUPS")
 ARGS+=("-MirrorRetentionDays" "$MIRROR_RETENTION_DAYS")
 
 if [[ ${#EXTRA_PS_ARGS[@]} -gt 0 ]]; then

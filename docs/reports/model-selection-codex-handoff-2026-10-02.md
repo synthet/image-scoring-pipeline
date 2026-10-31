@@ -18,7 +18,7 @@ status: historical
 > localization work. Its agent species/box labels do not satisfy this study's
 > independent human-label promotion gates.
 
-**Transcript archive:** [`codex-session-01a0f9fc-13f8-7da1-938a-6c19ddbe5f60_2.md`](../../codex-session-01a0f9fc-13f8-7da1-938a-6c19ddbe5f60_2.md) (repo root; not indexed in wiki body).
+**Transcript archive:** Preserved in [SESSION_TRANSCRIPT_DIGEST_2026-10-model-selection.md](SESSION_TRANSCRIPT_DIGEST_2026-10-model-selection.md) and [SESSION_TRANSCRIPTS_OCTOBER_2026.md](SESSION_TRANSCRIPTS_OCTOBER_2026.md).
 
 **Purpose:** freeze the production corpus, define a **blind human review** sample, and emit **exploratory** library statistics before any labels exist. This path does **not** change fusion weights or culling code.
 

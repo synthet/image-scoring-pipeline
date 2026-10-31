@@ -76,7 +76,7 @@
           "Vexlum Scoring API"
         ],
         "summary": "Start batch image scoring",
-        "description": "Initiates a batch image quality assessment job for all images in the specified directory.\n        \n        The scoring process uses a configurable ensemble of AI models, selected via the\n        `scoring.models` registry. Current production models include:\n        - **LIQE**: Learning Image Quality Evaluator (CLIP-based semantic quality)\n        - **SPAQ**: Smartphone Photography Aesthetics Quality (MUSIQ)\n        - **AVA**: Aesthetic Visual Analysis (MUSIQ)\n        - **TOPIQ**: Top-down Image Quality (no-reference)\n\n        Additional models run in shadow (stored but not fused) \u2014 e.g. **QPT V2** \u2014 and the\n        active set is config-driven. See `GET /api/models` for the live registry and per-model\n        shadow status.\n\n        Results include:\n        - Technical score (sharpness, noise, exposure)\n        - Aesthetic score (composition, appeal)\n        - General quality score (weighted combination)\n        - Rating (1-5 stars) and color label (Red/Yellow/Green/Blue/Purple)\n        \n        The job runs asynchronously. Use GET /api/scoring/status to monitor progress.\n        \n        **Path Handling:**\n        - Windows paths: `D:/Photos/2024` or `D:\\Photos\\2024`\n        - WSL paths: `/mnt/d/Photos/2024`\n        - Paths are automatically converted between formats when needed\n        \n        **Skip Logic:**\n        - If `skip_existing=True`: Images with complete scores are skipped\n        - If `force_rescore=True`: All images are re-scored regardless of existing data\n        - Incomplete scores (missing models or metadata) are always completed\n        \n        **Example Request:**\n        ```json\n        {\n            \"input_path\": \"D:/Photos/2024\",\n            \"skip_existing\": true,\n            \"force_rescore\": false\n        }\n        ```\n        \n        **Example Response:**\n        ```json\n        {\n            \"success\": true,\n            \"message\": \"Scoring job started successfully\",\n            \"data\": {\n                \"job_id\": 123,\n                \"input_path\": \"D:/Photos/2024\"\n            }\n        }\n        ```",
+        "description": "Initiates a batch image quality assessment job for all images in the specified directory.\n        \n        The scoring process uses a configurable ensemble of AI models, selected via the\n        `scoring.models` registry. Current production models include:\n        - **LIQE**: Learning Image Quality Evaluator (CLIP-based semantic quality)\n        - **SPAQ**: Smartphone Photography Aesthetics Quality (MUSIQ)\n        - **AVA**: Aesthetic Visual Analysis (MUSIQ)\n        - **TOPIQ**: Top-down Image Quality (no-reference)\n\n        Additional models run in shadow (stored but not fused) — e.g. **QPT V2** — and the\n        active set is config-driven. See `GET /api/models` for the live registry and per-model\n        shadow status.\n\n        Results include:\n        - Technical score (sharpness, noise, exposure)\n        - Aesthetic score (composition, appeal)\n        - General quality score (weighted combination)\n        - Rating (1-5 stars) and color label (Red/Yellow/Green/Blue/Purple)\n        \n        The job runs asynchronously. Use GET /api/scoring/status to monitor progress.\n        \n        **Path Handling:**\n        - Windows paths: `D:/Photos/2024` or `D:\\Photos\\2024`\n        - WSL paths: `/mnt/d/Photos/2024`\n        - Paths are automatically converted between formats when needed\n        \n        **Skip Logic:**\n        - If `skip_existing=True`: Images with complete scores are skipped\n        - If `force_rescore=True`: All images are re-scored regardless of existing data\n        - Incomplete scores (missing models or metadata) are always completed\n        \n        **Example Request:**\n        ```json\n        {\n            \"input_path\": \"D:/Photos/2024\",\n            \"skip_existing\": true,\n            \"force_rescore\": false\n        }\n        ```\n        \n        **Example Response:**\n        ```json\n        {\n            \"success\": true,\n            \"message\": \"Scoring job started successfully\",\n            \"data\": {\n                \"job_id\": 123,\n                \"input_path\": \"D:/Photos/2024\"\n            }\n        }\n        ```",
         "operationId": "start_scoring_api_scoring_start_post",
         "requestBody": {
           "content": {
@@ -113,12 +113,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Scoring runner not available"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -128,6 +122,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Scoring runner not available"
           }
         }
       }
@@ -269,12 +269,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -284,6 +278,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -323,12 +323,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -338,6 +332,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -445,12 +445,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -460,6 +454,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -497,12 +497,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -512,6 +506,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -522,7 +522,7 @@
           "Vexlum Scoring API"
         ],
         "summary": "Start bird species classification",
-        "description": "Classify bird species for images that already have the 'birds' keyword.\n\n        Images **without** the 'birds' keyword are automatically skipped \u2014 no need to\n        pre-filter. Top predictions are stored as 'species:Common Name' keywords using\n        BioCLIP 2 (zero-shot, MIT license).\n\n        The job runs asynchronously via the job queue. Monitor progress with\n        GET /api/bird-species/status.\n\n        **Requires:** `open_clip_torch` installed (`pip install open_clip_torch`).",
+        "description": "Classify bird species for images that already have the 'birds' keyword.\n\n        Images **without** the 'birds' keyword are automatically skipped — no need to\n        pre-filter. Top predictions are stored as 'species:Common Name' keywords using\n        BioCLIP 2 (zero-shot, MIT license).\n\n        The job runs asynchronously via the job queue. Monitor progress with\n        GET /api/bird-species/status.\n\n        **Requires:** `open_clip_torch` installed (`pip install open_clip_torch`).",
         "operationId": "start_bird_species_api_bird_species_start_post",
         "requestBody": {
           "content": {
@@ -551,12 +551,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -566,6 +560,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -841,12 +841,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -856,6 +850,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -897,12 +897,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -912,6 +906,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -949,12 +949,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -964,6 +958,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1007,12 +1007,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1022,6 +1016,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1094,12 +1094,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1109,6 +1103,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1148,12 +1148,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1163,6 +1157,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1201,12 +1201,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1216,6 +1210,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1350,12 +1350,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1365,6 +1359,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1403,12 +1403,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1418,6 +1412,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1458,12 +1458,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1473,6 +1467,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1522,12 +1522,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1537,6 +1531,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1586,12 +1586,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1601,6 +1595,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1650,12 +1650,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1665,6 +1659,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1723,12 +1723,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1738,6 +1732,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1796,12 +1796,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1811,6 +1805,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1869,12 +1869,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1884,6 +1878,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -1942,12 +1942,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1957,6 +1951,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2015,12 +2015,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2030,6 +2024,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2088,12 +2088,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2103,6 +2097,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2143,12 +2143,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2158,6 +2152,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2198,12 +2198,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2213,6 +2207,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2263,12 +2263,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2278,6 +2272,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2336,8 +2336,8 @@
               "anyOf": [
                 {
                   "type": "number",
-                  "maximum": 100.0,
-                  "minimum": 0.0
+                  "maximum": 100,
+                  "minimum": 0
                 },
                 {
                   "type": "null"
@@ -2428,12 +2428,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2443,6 +2437,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2508,8 +2508,8 @@
               "anyOf": [
                 {
                   "type": "number",
-                  "maximum": 1.0,
-                  "minimum": 0.0
+                  "maximum": 1,
+                  "minimum": 0
                 },
                 {
                   "type": "null"
@@ -2537,12 +2537,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2552,6 +2546,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2617,8 +2617,8 @@
               "anyOf": [
                 {
                   "type": "number",
-                  "maximum": 1.0,
-                  "minimum": 0.0
+                  "maximum": 1,
+                  "minimum": 0
                 },
                 {
                   "type": "null"
@@ -2664,12 +2664,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2679,6 +2673,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2767,8 +2767,8 @@
               "anyOf": [
                 {
                   "type": "number",
-                  "maximum": 1.0,
-                  "minimum": 0.0
+                  "maximum": 1,
+                  "minimum": 0
                 },
                 {
                   "type": "null"
@@ -2906,12 +2906,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2921,6 +2915,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -2983,12 +2983,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2998,6 +2992,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -3037,12 +3037,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3052,6 +3046,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         },
         "deprecated": true
@@ -3093,12 +3093,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3108,6 +3102,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       },
@@ -3127,8 +3127,8 @@
               "anyOf": [
                 {
                   "type": "number",
-                  "maximum": 1.0,
-                  "minimum": 0.0
+                  "maximum": 1,
+                  "minimum": 0
                 },
                 {
                   "type": "null"
@@ -3187,12 +3187,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3202,6 +3196,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -3267,8 +3267,8 @@
               "anyOf": [
                 {
                   "type": "number",
-                  "maximum": 1.0,
-                  "minimum": 0.0
+                  "maximum": 1,
+                  "minimum": 0
                 },
                 {
                   "type": "null"
@@ -3314,12 +3314,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3329,6 +3323,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -3362,7 +3362,7 @@
               "anyOf": [
                 {
                   "type": "number",
-                  "minimum": 0.0
+                  "minimum": 0
                 },
                 {
                   "type": "null"
@@ -3424,12 +3424,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3439,6 +3433,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -3472,7 +3472,7 @@
               "anyOf": [
                 {
                   "type": "number",
-                  "minimum": 0.0
+                  "minimum": 0
                 },
                 {
                   "type": "null"
@@ -3534,12 +3534,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3549,6 +3543,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -3645,8 +3645,8 @@
             "required": false,
             "schema": {
               "type": "number",
-              "maximum": 1.0,
-              "minimum": 0.0,
+              "maximum": 1,
+              "minimum": 0,
               "description": "UMAP min_dist parameter",
               "default": 0.1,
               "title": "Min Dist"
@@ -3709,12 +3709,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3724,6 +3718,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -3798,12 +3798,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3813,6 +3807,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4093,12 +4093,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4108,6 +4102,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4146,12 +4146,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4161,6 +4155,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4217,12 +4217,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4232,6 +4226,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4270,12 +4270,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4285,6 +4279,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4323,12 +4323,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4338,6 +4332,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4347,7 +4347,7 @@
         "tags": [
           "Vexlum Scoring API"
         ],
-        "summary": "Reverse geocoding for an image (coordinates \u2192 address)",
+        "summary": "Reverse geocoding for an image (coordinates → address)",
         "description": "Requires geocoding.enabled and geocoding.user_agent. Uses cached GPS in image_exif or reads from the file.",
         "operationId": "post_geocode_reverse_api_images__image_id__geocode_reverse_post",
         "parameters": [
@@ -4393,12 +4393,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4408,6 +4402,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4417,7 +4417,7 @@
         "tags": [
           "Vexlum Scoring API"
         ],
-        "summary": "Forward geocoding (address \u2192 coordinates) and update EXIF",
+        "summary": "Forward geocoding (address → coordinates) and update EXIF",
         "description": "Resolves the query via the configured provider, updates image_exif, and optionally writes tags with exiftool.",
         "operationId": "post_geocode_forward_api_images__image_id__geocode_forward_post",
         "parameters": [
@@ -4456,12 +4456,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4471,6 +4465,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4509,12 +4509,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4524,6 +4518,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       },
@@ -4532,7 +4532,7 @@
           "Vexlum Scoring API"
         ],
         "summary": "Update image metadata",
-        "description": "Updates writable metadata fields for an image: rating, label, title, description,\n        and keywords. All fields are optional \u2014 only provided fields are updated.\n\n        When `write_sidecar=true` (default), metadata is also written to the XMP sidecar\n        file and embedded tags via the tagging runner, keeping file metadata in sync with\n        the database.\n\n        **IPC contract:** Column names match the `images` table schema; do not rename\n        without also updating `electron/db.ts`.",
+        "description": "Updates writable metadata fields for an image: rating, label, title, description,\n        and keywords. All fields are optional — only provided fields are updated.\n\n        When `write_sidecar=true` (default), metadata is also written to the XMP sidecar\n        file and embedded tags via the tagging runner, keeping file metadata in sync with\n        the database.\n\n        **IPC contract:** Column names match the `images` table schema; do not rename\n        without also updating `electron/db.ts`.",
         "operationId": "update_image_api_images__image_id__patch",
         "parameters": [
           {
@@ -4570,12 +4570,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4585,6 +4579,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       },
@@ -4593,7 +4593,7 @@
           "Vexlum Scoring API"
         ],
         "summary": "Delete image record from database",
-        "description": "Removes an image record from the database and cleans up related rows\n        (culling picks, resolved paths, stack membership). The image file on disk is\n        NOT deleted by default.\n\n        Pass `delete_file=true` to also delete the source image file and its thumbnail\n        from disk. Use with caution \u2014 this is irreversible.",
+        "description": "Removes an image record from the database and cleans up related rows\n        (culling picks, resolved paths, stack membership). The image file on disk is\n        NOT deleted by default.\n\n        Pass `delete_file=true` to also delete the source image file and its thumbnail\n        from disk. Use with caution — this is irreversible.",
         "operationId": "delete_image_api_images__image_id__delete",
         "parameters": [
           {
@@ -4633,12 +4633,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4648,6 +4642,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4832,12 +4832,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4847,6 +4841,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -4910,8 +4910,8 @@
               "anyOf": [
                 {
                   "type": "number",
-                  "maximum": 1.0,
-                  "minimum": 0.0
+                  "maximum": 1,
+                  "minimum": 0
                 },
                 {
                   "type": "null"
@@ -4957,12 +4957,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4972,6 +4966,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5107,12 +5107,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5122,6 +5116,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5160,12 +5160,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5175,6 +5169,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5213,12 +5213,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5228,6 +5222,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5266,12 +5266,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5281,6 +5275,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5403,12 +5403,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5418,6 +5412,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5457,12 +5457,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5472,6 +5466,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5511,12 +5511,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5526,6 +5520,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5563,12 +5563,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5578,6 +5572,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5615,12 +5615,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5630,6 +5624,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5669,12 +5669,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5684,6 +5678,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5767,12 +5767,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5782,6 +5776,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5821,12 +5821,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5836,6 +5830,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5875,12 +5875,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5890,6 +5884,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5930,12 +5930,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5945,6 +5939,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -5983,12 +5983,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5998,6 +5992,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6036,12 +6036,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6051,6 +6045,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6089,12 +6089,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6104,6 +6098,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6142,12 +6142,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6157,6 +6151,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6195,12 +6195,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6210,6 +6204,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6220,7 +6220,7 @@
           "Vexlum Scoring API"
         ],
         "summary": "Get hierarchical folder tree",
-        "description": "Returns the folder list as a nested tree structure (rather than the flat list\n        returned by GET /api/folders). Suitable for rendering a sidebar tree widget in\n        Electron without the HTML generation done by the Gradio UI.\n\n        Each node: `{name, path, children: [...]}`. Root nodes are returned as a top-level\n        array. Platform path normalisation is applied (WSL\u2194Windows) the same way the\n        Gradio folder tree does it.",
+        "description": "Returns the folder list as a nested tree structure (rather than the flat list\n        returned by GET /api/folders). Suitable for rendering a sidebar tree widget in\n        Electron without the HTML generation done by the Gradio UI.\n\n        Each node: `{name, path, children: [...]}`. Root nodes are returned as a top-level\n        array. Platform path normalisation is applied (WSL↔Windows) the same way the\n        Gradio folder tree does it.",
         "operationId": "get_folder_tree_api_folders_tree_get",
         "responses": {
           "200": {
@@ -6252,7 +6252,7 @@
           "Vexlum Scoring API"
         ],
         "summary": "Remove empty folder subtree from DB cache",
-        "description": "Deletes the subtree rooted at ``path`` only when ``COUNT(images.folder_id \u2208 subtree)==0``. Does not delete files on disk. Descendant rows are cleared via FK cascade.",
+        "description": "Deletes the subtree rooted at ``path`` only when ``COUNT(images.folder_id ∈ subtree)==0``. Does not delete files on disk. Descendant rows are cleared via FK cascade.",
         "operationId": "delete_empty_folder_cache_route_api_folders_cache_delete",
         "requestBody": {
           "content": {
@@ -6279,12 +6279,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6294,6 +6288,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6346,12 +6346,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6361,6 +6355,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6398,12 +6398,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6413,6 +6407,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6495,12 +6495,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6510,6 +6504,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6546,12 +6546,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6561,6 +6555,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6597,12 +6597,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6612,6 +6606,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6763,12 +6763,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6778,6 +6772,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6814,12 +6814,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6829,6 +6823,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6865,12 +6865,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6880,6 +6874,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -6978,12 +6978,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6993,6 +6987,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7031,12 +7031,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7046,6 +7040,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7084,12 +7084,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7099,6 +7093,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7136,12 +7136,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7151,6 +7145,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7161,7 +7161,7 @@
           "Vexlum Scoring API"
         ],
         "summary": "Force-start a stuck Run",
-        "description": "Force-unstick a run that the normal Resume/Retry flow cannot handle.\n\nBranches on current status:\n- **running** (ghost \u2014 no live runner thread): marks interrupted, then re-enqueues.\n- **queued**: resets the dispatcher's ghost is_running flag if no runner thread\n  is actually alive, so the dispatcher can dequeue again.\n- **paused/interrupted**: delegates to the normal resume flow.\n- Terminal states: delegates to the normal retry flow.\n\nRequires ``confirm: true`` in the request body.",
+        "description": "Force-unstick a run that the normal Resume/Retry flow cannot handle.\n\nBranches on current status:\n- **running** (ghost — no live runner thread): marks interrupted, then re-enqueues.\n- **queued**: resets the dispatcher's ghost is_running flag if no runner thread\n  is actually alive, so the dispatcher can dequeue again.\n- **paused/interrupted**: delegates to the normal resume flow.\n- Terminal states: delegates to the normal retry flow.\n\nRequires ``confirm: true`` in the request body.",
         "operationId": "force_run_api_runs__run_id__force_post",
         "parameters": [
           {
@@ -7199,12 +7199,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7214,6 +7208,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7251,12 +7251,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7266,6 +7260,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7303,12 +7303,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7318,6 +7312,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7364,12 +7364,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7379,6 +7373,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7425,12 +7425,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7440,6 +7434,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7487,12 +7487,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7502,6 +7496,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7569,12 +7569,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7584,6 +7578,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7622,12 +7622,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7637,6 +7631,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7675,12 +7675,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7690,6 +7684,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7780,12 +7780,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7795,6 +7789,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7832,12 +7832,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7847,6 +7841,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7886,12 +7886,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7901,6 +7895,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7939,12 +7939,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7954,6 +7948,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -7990,12 +7990,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8005,6 +7999,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -8056,12 +8056,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8071,6 +8065,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -8132,12 +8132,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8147,6 +8141,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -8191,12 +8191,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8206,6 +8200,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -8285,12 +8285,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8300,6 +8294,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -8374,12 +8374,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8389,6 +8383,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -8429,12 +8429,6 @@
           "404": {
             "description": "Not Found - Resource not found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
-          "503": {
-            "description": "Service Unavailable - Runner not initialized"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8444,6 +8438,12 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -8741,9 +8741,6 @@
           "404": {
             "description": "Not Found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8753,6 +8750,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         }
       }
@@ -8791,9 +8791,6 @@
           "404": {
             "description": "Not Found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8803,6 +8800,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         }
       }
@@ -8859,9 +8859,6 @@
           "404": {
             "description": "Not Found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8871,6 +8868,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         }
       }
@@ -8909,9 +8909,6 @@
           "404": {
             "description": "Not Found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8921,6 +8918,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         }
       }
@@ -9103,9 +9103,6 @@
           "404": {
             "description": "Not Found"
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -9115,6 +9112,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         }
       }
@@ -9167,6 +9167,249 @@
           },
           "500": {
             "description": "RAW preview extraction/generation failure."
+          }
+        }
+      }
+    },
+    "/api/images/{image_id}/evidence": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Cached visual evidence manifest",
+        "operationId": "manifest_api_images__image_id__evidence_get",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          },
+          {
+            "name": "schema_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2,
+              "minimum": 1,
+              "default": 1,
+              "title": "Schema Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          }
+        }
+      }
+    },
+    "/api/images/{image_id}/evidence/requests": {
+      "post": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Request on-demand diagnostics",
+        "operationId": "request_api_images__image_id__evidence_requests_post",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosticRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          }
+        }
+      }
+    },
+    "/api/images/{image_id}/evidence/requests/{request_id}": {
+      "delete": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Cancel one diagnostic subscription",
+        "operationId": "cancel_api_images__image_id__evidence_requests__request_id__delete",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
+          }
+        }
+      }
+    },
+    "/api/images/{image_id}/evidence/artifacts/{artifact_id}": {
+      "get": {
+        "tags": [
+          "Vexlum Scoring API"
+        ],
+        "summary": "Read an immutable diagnostic artifact",
+        "operationId": "artifact_api_images__image_id__evidence_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Artifact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters"
+          },
+          "404": {
+            "description": "Not Found - Resource not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "description": "Service Unavailable - Runner not initialized"
           }
         }
       }
@@ -9360,7 +9603,7 @@
         },
         "type": "object",
         "title": "BirdSpeciesStartRequest",
-        "description": "Request model for starting a bird species classification job.\n\nOnly images that already have the 'birds' keyword are processed \u2014 all others are\nautomatically skipped. Top predicted species are stored as 'species:Common Name'\nkeywords using BioCLIP 2 (zero-shot, MIT license).\n\nExample:\n    {\n        \"input_path\": \"D:/Photos/2024\",\n        \"threshold\": 0.1,\n        \"top_k\": 3,\n        \"overwrite\": false\n    }",
+        "description": "Request model for starting a bird species classification job.\n\nOnly images that already have the 'birds' keyword are processed — all others are\nautomatically skipped. Top predicted species are stored as 'species:Common Name'\nkeywords using BioCLIP 2 (zero-shot, MIT license).\n\nExample:\n    {\n        \"input_path\": \"D:/Photos/2024\",\n        \"threshold\": 0.1,\n        \"top_k\": 3,\n        \"overwrite\": false\n    }",
         "example": {
           "input_path": "D:/Photos/2024",
           "overwrite": false,
@@ -9910,27 +10153,27 @@
           },
           "min_score_general": {
             "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
+            "maximum": 1,
+            "minimum": 0,
             "title": "Min Score General",
             "description": "Minimum general score.",
-            "default": 0.0
+            "default": 0
           },
           "min_score_aesthetic": {
             "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
+            "maximum": 1,
+            "minimum": 0,
             "title": "Min Score Aesthetic",
             "description": "Minimum aesthetic score.",
-            "default": 0.0
+            "default": 0
           },
           "min_score_technical": {
             "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
+            "maximum": 1,
+            "minimum": 0,
             "title": "Min Score Technical",
             "description": "Minimum technical score.",
-            "default": 0.0
+            "default": 0
           },
           "date_from": {
             "anyOf": [
@@ -10053,7 +10296,7 @@
           "query"
         ],
         "title": "GeocodeForwardRequest",
-        "description": "Forward geocoding: address string \u2192 coordinates; updates image_exif and optional file tags."
+        "description": "Forward geocoding: address string → coordinates; updates image_exif and optional file tags."
       },
       "GeocodeReverseRequest": {
         "properties": {
@@ -10084,7 +10327,7 @@
         },
         "type": "object",
         "title": "GeocodeReverseRequest",
-        "description": "Reverse geocoding: GPS in EXIF \u2192 human-readable location (Nominatim by default)."
+        "description": "Reverse geocoding: GPS in EXIF → human-readable location (Nominatim by default)."
       },
       "HTTPValidationError": {
         "properties": {
@@ -10120,8 +10363,8 @@
           },
           "budget": {
             "type": "integer",
-            "maximum": 100.0,
-            "minimum": 1.0,
+            "maximum": 100,
+            "minimum": 1,
             "title": "Budget",
             "description": "Schedules at most max(0, budget - active_running_or_queued_jobs) folder runs.",
             "default": 10
@@ -10179,15 +10422,15 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 5.0,
-                "minimum": 0.0
+                "maximum": 5,
+                "minimum": 0
               },
               {
                 "type": "null"
               }
             ],
             "title": "Rating",
-            "description": "Star rating 0\u20135 (0 = unrated)."
+            "description": "Star rating 0–5 (0 = unrated)."
           },
           "label": {
             "anyOf": [
@@ -10241,8 +10484,8 @@
             "anyOf": [
               {
                 "type": "integer",
-                "maximum": 1.0,
-                "minimum": -1.0
+                "maximum": 1,
+                "minimum": -1
               },
               {
                 "type": "null"
@@ -11111,8 +11354,8 @@
           },
           "limit": {
             "type": "integer",
-            "maximum": 500.0,
-            "minimum": 1.0,
+            "maximum": 500,
+            "minimum": 1,
             "title": "Limit",
             "description": "Maximum folder runs to queue in this drive tick.",
             "default": 50
@@ -11125,8 +11368,8 @@
           },
           "max_repeats": {
             "type": "integer",
-            "maximum": 20.0,
-            "minimum": 1.0,
+            "maximum": 20,
+            "minimum": 1,
             "title": "Max Repeats",
             "description": "Skip a folder/phase plan after this many prior terminal auto-drive attempts.",
             "default": 2
@@ -11158,8 +11401,8 @@
           },
           "limit": {
             "type": "integer",
-            "maximum": 500.0,
-            "minimum": 1.0,
+            "maximum": 500,
+            "minimum": 1,
             "title": "Limit",
             "description": "Max folder runs queued per drive tick.",
             "default": 50
@@ -11187,8 +11430,8 @@
           },
           "max_repeats": {
             "type": "integer",
-            "maximum": 20.0,
-            "minimum": 1.0,
+            "maximum": 20,
+            "minimum": 1,
             "title": "Max Repeats",
             "description": "Skip a folder/phase plan after this many prior terminal attempts.",
             "default": 2
@@ -11836,6 +12079,36 @@
           "scope_paths"
         ],
         "title": "ValidationRepairPreviewRequest"
+      },
+      "DiagnosticRequest": {
+        "properties": {
+          "layers": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "sharpness",
+                "peaking",
+                "noise",
+                "mask",
+                "head"
+              ]
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Layers"
+          },
+          "refresh": {
+            "type": "boolean",
+            "title": "Refresh",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "layers"
+        ],
+        "title": "DiagnosticRequest"
       }
     }
   },

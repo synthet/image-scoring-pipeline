@@ -55,6 +55,7 @@ rg "pattern" path/ --max-count 30
 - When **fff MCP** is connected, prefer `ffgrep`/`fffind` for repeated repo search over many shell roundtrips; one-off probes may still use `rg`/`fd`.
 - Never paste secrets into commands or logs.
 - Prefer project scripts from AGENTS.md over invented commands.
+- **Background script buffering:** In scratch Python scripts executed as background tasks or subprocesses, pass `-u` (`PYTHONUNBUFFERED=1`) or use `print(..., flush=True)` so live output is not block-buffered when redirected to files.
 
 ## Commands Requiring Confirmation
 

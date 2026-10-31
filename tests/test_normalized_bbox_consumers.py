@@ -150,6 +150,7 @@ def test_evidence_overlay_uses_the_same_authority_as_image_details(api_reads, mo
     client, normalized, _ = api_reads
     monkeypatch.setattr(localization_legacy, 'read_normalized_first_enabled', lambda: enabled)
     monkeypatch.setattr(service, '_load_grey_from_thumbnail', lambda path: np.ones((40, 20), dtype=np.uint8))
+    monkeypatch.setattr(service, '_rendition_hash', lambda *args: 'test-rendition')
 
     class Connection:
         def cursor(self):
