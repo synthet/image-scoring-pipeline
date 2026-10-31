@@ -309,6 +309,7 @@ webui.log.*
 full_diff.txt
 filtered_diff.txt
 plan.md
+!.cursor/commands/plan.md
 gallery-baseline-a11y-*.yml
 reports/gallery-visual-review/
 
