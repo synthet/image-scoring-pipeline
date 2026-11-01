@@ -467,6 +467,113 @@ def backfill_exif_dates(
     return stats
 
 
+def exiftool_supports_af() -> bool:
+    """True when the ExifTool on PATH decodes Nikon Z AF geometry (13.x+; 12.40 drops Z8 AFInfo2 0400)."""
+    version = get_exiftool_version()
+    try:
+        return version is not None and float(version.split()[0]) >= 13.0
+    except ValueError:
+        return False
+
+
+def backfill_af_metadata(
+    limit: int | None = None,
+    *,
+    after_id: int = 0,
+    model_like: str | None = "NIKON Z%",
+    path_like: str | None = None,
+    on_progress: Callable[[int, int, dict], Any] | None = None,
+) -> dict:
+    """
+    Re-extract autofocus geometry for ``image_exif`` rows whose ``af_metadata`` is NULL (#726).
+
+    ``af_metadata`` arrived with migration 0044 without a backfill, so rows cached earlier have none.
+    Reads the file only (never writes it) and merges into the cached row like
+    :func:`extract_and_upsert_exif`, so unrelated columns are kept.
+
+    Rows are taken in ``images.id`` order after ``after_id``; pass the returned ``last_id`` to get
+    the next batch. Keyset paging guarantees termination: rows that legitimately have no AF data
+    (``AFCoordinatesAvailable`` 0, bodies without AFInfo2) or whose file is missing stay NULL and
+    would otherwise be selected again forever.
+
+    Args:
+        limit: Max rows per call.
+        after_id: Only rows with ``images.id`` greater than this.
+        model_like: SQL ``LIKE`` on ``image_exif.model`` (default Nikon Z bodies; None = all models).
+        path_like: Optional SQL ``LIKE`` on ``images.file_path``.
+        on_progress: Optional ``(done_checked, total_candidates, stats_copy)``.
+
+    Returns:
+        dict: checked, updated (now has AF), no_af (re-read, camera recorded none), skipped_no_file,
+        skipped_no_exif, errors, last_id.
+    """
+    from modules import db
+
+    clauses = ["ex.af_metadata IS NULL", "i.id > ?"]
+    params: list[Any] = [int(after_id)]
+    if model_like:
+        clauses.append("ex.model LIKE ?")
+        params.append(model_like)
+    if path_like:
+        clauses.append("i.file_path LIKE ?")
+        params.append(path_like)
+    limit_clause = f" LIMIT {int(limit)}" if limit else ""
+    rows = db.get_connector().query(
+        f"""SELECT i.id AS image_id, i.file_path
+            FROM images i
+            JOIN image_exif ex ON ex.image_id = i.id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY i.id{limit_clause}""",
+        tuple(params),
+    )
+
+    stats = {
+        "checked": 0,
+        "updated": 0,
+        "no_af": 0,
+        "skipped_no_file": 0,
+        "skipped_no_exif": 0,
+        "errors": 0,
+        "last_id": int(after_id),
+    }
+    total = len(rows)
+    if on_progress is not None:
+        on_progress(0, total, dict(stats))
+
+    for row in rows:
+        stats["checked"] += 1
+        image_id = row["image_id"]
+        file_path = row["file_path"]
+        stats["last_id"] = int(image_id)
+        try:
+            resolved = utils.resolve_file_path(file_path, image_id)
+            if not resolved:
+                resolved = utils.convert_path_to_local(file_path)
+            if not resolved or not os.path.exists(resolved):
+                stats["skipped_no_file"] += 1
+                logger.debug("backfill_af_metadata skip image_id=%s: file not found (%s)", image_id, file_path)
+            else:
+                fresh = extract_exif(resolved, image_id)
+                if not fresh:
+                    stats["skipped_no_exif"] += 1
+                else:
+                    merged = _merge_exif_for_upsert(db.get_image_exif(image_id) or {}, fresh)
+                    if not db.upsert_image_exif(image_id, merged):
+                        stats["errors"] += 1
+                    elif merged.get("af_metadata"):
+                        stats["updated"] += 1
+                    else:
+                        stats["no_af"] += 1
+        except Exception as e:
+            logger.warning("backfill_af_metadata failed for image_id %s: %s", image_id, e)
+            stats["errors"] += 1
+        if on_progress is not None and (stats["checked"] % 75 == 0 or stats["checked"] >= total):
+            on_progress(stats["checked"], total, dict(stats))
+
+    logger.info("backfill_af_metadata: %s", stats)
+    return stats
+
+
 # Keys accepted by db.upsert_image_exif (excluding image_id / extracted_at).
 _IMAGE_EXIF_UPSERT_KEYS = (
     "make",
