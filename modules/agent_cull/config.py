@@ -31,6 +31,10 @@ class AgentCullAgentConfig:
     require_vision_evidence: bool = True
     prompt_template_version: str = ""
     codex_sandbox: str = "read-only"
+    # Order in which a review unit's images are shown to the judge: "score" (stack order, the
+    # default), "reverse", or "shuffle" (seeded by presentation_seed). Used to measure position bias.
+    presentation_order: str = "score"
+    presentation_seed: int = 0
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,8 @@ def load_agent_cull_config(overrides: dict[str, Any] | None = None) -> AgentCull
         require_vision_evidence=_coerce_bool(agent_raw.get("require_vision_evidence"), True),
         prompt_template_version=str(agent_raw.get("prompt_template_version") or "").strip(),
         codex_sandbox=str(agent_raw.get("codex_sandbox") or "read-only").strip() or "read-only",
+        presentation_order=str(agent_raw.get("presentation_order") or "score").strip().lower() or "score",
+        presentation_seed=_coerce_int(agent_raw.get("presentation_seed"), 0),
     )
     gates = AgentCullLocalGatesConfig(
         block_if_rejected_scores_higher=_coerce_bool(

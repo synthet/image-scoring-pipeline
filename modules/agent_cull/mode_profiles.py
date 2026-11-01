@@ -17,6 +17,8 @@ STUDY_MODE_IDS = (
     "vision_strict_strict_picks",
     "technical_focus_compare_picks",
     "vision_strict_compare_picks",
+    "reversed_order",
+    "shuffled_order",
 )
 
 
@@ -136,6 +138,18 @@ def apply_mode_profile(cfg: AgentCullConfig, mode_id: str) -> AgentCullConfig:
                 prompt_template_version="cull_redundancy_v3_vision_strict",
                 require_vision_evidence=True,
                 include_thumbnails=True,
+            ),
+        )
+    if mode in ("reversed_order", "shuffled_order"):
+        # baseline_v2 with only the presentation order changed, to measure judge position bias (#740).
+        return replace(
+            cfg,
+            agent=replace(
+                cfg.agent,
+                prompt_template_version="cull_redundancy_v2",
+                require_vision_evidence=False,
+                include_thumbnails=True,
+                presentation_order="reverse" if mode == "reversed_order" else "shuffle",
             ),
         )
     raise ValueError(f"unknown study mode: {mode_id!r}; expected one of {STUDY_MODE_IDS}")

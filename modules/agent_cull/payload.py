@@ -6,6 +6,7 @@ import hashlib
 import logging
 import math
 import os
+import random
 from statistics import mean, pstdev
 from typing import Any
 
@@ -277,6 +278,19 @@ def _serialize_model_scores(row: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return out
 
 
+def presentation_order_ids(image_ids, order: str, seed: int) -> list[int]:
+    """Images in the order shown to the judge; "score" keeps the stack order (#740)."""
+    ids = list(image_ids)
+    if order == "reverse":
+        return ids[::-1]
+    if order == "shuffle":
+        random.Random(seed).shuffle(ids)
+        return ids
+    if order != "score":
+        raise ValueError(f"unknown presentation_order {order!r} (score|reverse|shuffle)")
+    return ids
+
+
 def build_review_packet(
     unit: ReviewUnit,
     rows_by_id: dict[int, dict[str, Any]],
@@ -286,8 +300,11 @@ def build_review_packet(
 ) -> dict[str, Any]:
     images_payload: list[dict[str, Any]] = []
     thumbnail_manifest: list[dict[str, Any]] = []
+    presented_ids = presentation_order_ids(
+        unit.image_ids, cfg.agent.presentation_order, cfg.agent.presentation_seed
+    )
 
-    for image_id in unit.image_ids:
+    for image_id in presented_ids:
         row = dict(rows_by_id.get(image_id) or {})
         row["id"] = image_id
         scores_raw = {field: _safe_float(row.get(field)) for field in SCORE_FIELDS}
@@ -415,4 +432,10 @@ def build_review_packet(
             packet["picked_quality_hints"] = hints
     if score_warnings:
         packet["score_warnings"] = list(score_warnings)
+    if cfg.agent.presentation_order != "score":
+        packet["presentation"] = {
+            "order": cfg.agent.presentation_order,
+            "seed": cfg.agent.presentation_seed,
+            "image_ids": presented_ids,
+        }
     return packet
