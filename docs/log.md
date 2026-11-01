@@ -6,6 +6,20 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-10-31] created | Consolidated October 2026 session digests and master inventory
+
+Transformed all 37 exported session transcripts from the workspace root into a consolidated set of 8 thematic digests and a master cryptographic provenance catalog under `docs/reports/`:
+- `SESSION_TRANSCRIPTS_OCTOBER_2026.md`: master inventory, byte counts, line counts, and SHA-256 hashes for all 37 root transcripts.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-model-selection.md`: label-free model selection, score analytics, and within-stack correlation divergence.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-localization-stage5-shadow.md`: Stage 5 localization rollout, 4,401-image shadow comparison, 9p ExifTool retry fix, and small-crop geometry promotion.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-orientation-retag-recovery.md`: RAW portrait orientation bug #418, keyword ownership fix #586, and job 6945 retag recovery after host sleep.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-vector-space-separation-and-meta-skills.md`: 3-repeat timing baseline #416, BioCLIP vector space collision #641 (migration 0042), and resume meta-skills.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-localization-gaps-and-focus-evidence.md`: localization rollout gap analysis, 11-frame autofocus study in `docs/af-focus-evidence`, and OpenAPI contract sync.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-runtime-plan-and-phase2-execution.md`: localization runtime plan execution, 143-image `read_normalized_first` rollback drill, and Jev harness repair.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-focus-culling-and-pipeline-integration.md`: eye keypoints as culling tie-breakers, `is_image_bird_species_complete` edge case fix, and v9.2.1 release.
+- `SESSION_TRANSCRIPT_DIGEST_2026-10-neardupe-experiments-and-pilot.md`: the zero-yield near-duplicate paradox, the `paired-physical-v3-envelope`, XMP soft-culls, and the E7 pilot.
+Updated `docs/reports/SESSION_TRANSCRIPT_DIGESTS.md` and `docs/reports/INDEX.md`. Documentation only; no production state changed.
+
 ## [2026-10-29] edit | Localization active authority and independent freshness
 
 ## [2026-10-29] edit | Add observational localization authority persistence and worker (#699)
