@@ -19,7 +19,7 @@ This plan synthesizes:
 1. **Live Production Corpus Analytics**: Empirical evaluation across **77,331 images** and **11,174 burst stacks (66,308 stacked images)** from the active PostgreSQL database (`image_scoring`), referencing [`Score Analytics UI`](http://127.0.0.1:7860/ui/scores).
 2. **Multi-Model Mathematical Evaluation**: 50-bin distributions, PCA factor loadings, $18 \times 18$ pooled vs. within-cluster Spearman correlation matrices, OLS standardized regressions, greedy forward-selection minimal subsets, drop-one composite ablations, and intra-stack discriminability / tie rates.
 3. **Hardware & Cost Profiling**: Inference latency (ms/image), VRAM footprint, framework overhead (PyTorch vs. TensorFlow vs. OpenCLIP), and shared backbone amortizations.
-4. **Independent Human Ground-Truth Protocol**: Integration of the frozen study design ([Codex handoff](model-selection-codex-handoff-2026-10-02.md), transcript [`codex-session-01a0f9fc-13f8-7da1-938a-6c19ddbe5f60_2.md`](../../codex-session-01a0f9fc-13f8-7da1-938a-6c19ddbe5f60_2.md), and [`reports/model-selection-2026-10-01/`](../../reports/model-selection-2026-10-01/)), separating circular model-to-model agreement from human preference accuracy.
+4. **Independent Human Ground-Truth Protocol**: Integration of the frozen study design ([Codex handoff](model-selection-codex-handoff-2026-10-02.md), [SESSION_TRANSCRIPT_DIGEST_2026-10-model-selection.md](SESSION_TRANSCRIPT_DIGEST_2026-10-model-selection.md), and [`reports/model-selection-2026-10-01/`](../../reports/model-selection-2026-10-01/)), separating circular model-to-model agreement from human preference accuracy.
 
 ### Evidence sources (canonical — do not mix scopes)
 
