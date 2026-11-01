@@ -188,7 +188,9 @@ WHERE localization_species_output_visible(e.image_id,'embedding',e.embedding_spa
 """
 
 def upgrade():
-    op.get_bind().exec_driver_sql(SPECIES_SCHEMA_SQL)
+    # exec_driver_sql passes an empty parameter mapping, so psycopg2 %-formats the
+    # statement; escape the literal % in LIKE '%birds%' (#731).
+    op.get_bind().exec_driver_sql(SPECIES_SCHEMA_SQL.replace("%", "%%"))
 
 def downgrade():
     raise RuntimeError("species lineage requires a reviewed preservation migration")
