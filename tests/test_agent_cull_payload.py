@@ -259,3 +259,61 @@ def test_enrich_outlier_skipped_when_gate_disabled(monkeypatch):
     monkeypatch.setattr(payload, "_fetch_unit_mean_cosine", _boom)
     payload.enrich_unit_rows(rows, cfg)
     assert all("embedding_outlier_z" not in r for r in rows.values())
+
+
+# --- presentation order (#740) -------------------------------------------------
+
+def _rows_no_thumbs(ids):
+    return {i: {"id": i, "pick_status": 1 if i == ids[0] else -1, "score_general": 1.0 - i / 100} for i in ids}
+
+
+def test_presentation_order_ids_variants():
+    ids = (1, 2, 3, 4, 5, 6)
+    assert payload.presentation_order_ids(ids, "score", 0) == [1, 2, 3, 4, 5, 6]
+    assert payload.presentation_order_ids(ids, "reverse", 0) == [6, 5, 4, 3, 2, 1]
+    shuffled = payload.presentation_order_ids(ids, "shuffle", 7)
+    assert sorted(shuffled) == list(ids)
+    assert shuffled == payload.presentation_order_ids(ids, "shuffle", 7)  # seeded, reproducible
+    assert any(payload.presentation_order_ids(ids, "shuffle", s) != list(ids) for s in range(5))
+    with pytest.raises(ValueError):
+        payload.presentation_order_ids(ids, "random", 0)
+
+
+def test_default_packet_keeps_stack_order_and_has_no_presentation_block():
+    ids = (10, 11, 12)
+    packet = payload.build_review_packet(_unit(ids, [10], [11, 12]), _rows_no_thumbs(ids), AgentCullConfig())
+    assert [img["id"] for img in packet["images"]] == [10, 11, 12]
+    assert "presentation" not in packet
+
+
+def test_reversed_packet_records_the_order_sent_and_keeps_per_image_values():
+    from dataclasses import replace
+
+    ids = (10, 11, 12)
+    rows = _rows_no_thumbs(ids)
+    base = AgentCullConfig()
+    rev_cfg = replace(base, agent=replace(base.agent, presentation_order="reverse", presentation_seed=3))
+    default = payload.build_review_packet(_unit(ids, [10], [11, 12]), rows, base)
+    rev = payload.build_review_packet(_unit(ids, [10], [11, 12]), rows, rev_cfg)
+
+    sent = [img["id"] for img in rev["images"]]
+    assert sent == [12, 11, 10]
+    assert rev["presentation"] == {"order": "reverse", "seed": 3, "image_ids": sent}
+    # Only the order changes: each image's entry (incl. its within-unit z-score) is identical.
+    by_id = {img["id"]: img for img in default["images"]}
+    assert all(img == by_id[img["id"]] for img in rev["images"])
+
+
+def test_order_study_modes_and_config_loader():
+    from modules.agent_cull.config import load_agent_cull_config
+    from modules.agent_cull.mode_profiles import STUDY_MODE_IDS, apply_mode_profile
+
+    base = AgentCullConfig()
+    for mode, order in (("reversed_order", "reverse"), ("shuffled_order", "shuffle")):
+        assert mode in STUDY_MODE_IDS
+        cfg = apply_mode_profile(base, mode)
+        assert cfg.agent.presentation_order == order
+        assert cfg.agent.prompt_template_version == "cull_redundancy_v2"
+    assert apply_mode_profile(base, "vision_strict").agent.presentation_order == "score"
+    loaded = load_agent_cull_config({"agent": {"presentation_order": "Shuffle", "presentation_seed": 42}})
+    assert (loaded.agent.presentation_order, loaded.agent.presentation_seed) == ("shuffle", 42)
