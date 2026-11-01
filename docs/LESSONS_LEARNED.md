@@ -100,6 +100,20 @@ scored but the image phantom-incomplete. The old
 `score_general`. `modules/phantom_score_finalize.py` /
 `scripts/maintenance/finalize_phantom_scores.py` close it.
 
+## Culling
+
+### Whole-frame similarity finds no near-duplicates in fast bird sequences
+
+On 20–30 fps bird sequences, pixel difference, perceptual hashes and SSIM
+returned **zero** cull recommendations, although the frames looked identical.
+Subject breathing, micro-movement and camera shake displace pixels across
+the whole frame, and background parallax dominates the difference. The
+`paired-physical-v3-envelope` fixed it: align each pair with sub-pixel x/y
+shift compensation, then split the variance into subject micro-displacement
+versus background parallax. Before tuning thresholds on a zero-yield result,
+check whether the metric is measuring motion instead of content. Source:
+near-duplicate experiments, 2026-10-15 to 2026-10-31 (#597).
+
 ## Git & shell quoting
 
 ### Don't put PowerShell here-strings in the Bash tool
