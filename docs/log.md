@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-11-02] created | Owner-pick ranking evaluation: negative (#739)
+
+Added [the evaluation report](reports/owner-picks-ranking-evaluation-2026-11-02.md) and its reports-index row. Run as pre-registered (incl. R1) with `scripts/analysis/owner_picks_ranking_eval.py`: the learned ranker does not beat `score_general` on held-out years (top-1 0.371 vs 0.407); not adopted.
+
 ## [2026-11-02] edit | Owner-pick ranking pre-registration revision R1 (#739)
 
 Recorded [revision R1](planning/owner-picks-ranking-preregistration.md#revisions) before any evaluation output: a secondary capture-second label tier (exactly one DB frame per second) for 2014–2023 exports that carry no camera stem. The registered stem-and-second labels stay primary. Documentation only.
