@@ -1006,7 +1006,7 @@ def wrap_mcp_app_with_security(app):
 
 
 def get_mcp_sse_profile() -> str:
-    """SSE MCP surface: compact (search+dispatch) or full (legacy ~54 tools)."""
+    """SSE MCP surface: compact (vexlum search/resolve/execute) or full (deprecated legacy ~54 tools)."""
     raw = (os.environ.get("MCP_SSE_PROFILE") or "compact").strip().lower()
     if raw in ("full", "legacy"):
         return "full"
@@ -1048,14 +1048,14 @@ _compact_mcp_sse = None
 
 
 def _get_compact_mcp_sse():
-    """Lazy FastMCP with search+dispatch only (is-be-webui compact SSE)."""
+    """Lazy FastMCP serving the vexlum tools (search, resolve, execute + deprecated dispatch)."""
     global _compact_mcp_sse
     if _compact_mcp_sse is None:
-        from modules.mcp.names import BE_WEBUI
-        from modules.mcp.router_tools import register_compact_tools
+        from modules.vexlum import SERVER_NAME
+        from modules.vexlum.mcp_stdio import register_vexlum_tools
 
-        _compact_mcp_sse = FastMCP(BE_WEBUI, transport_security=_sse_transport_security())
-        register_compact_tools(_compact_mcp_sse)
+        _compact_mcp_sse = FastMCP(SERVER_NAME, transport_security=_sse_transport_security())
+        register_vexlum_tools(_compact_mcp_sse)
     return _compact_mcp_sse
 
 
@@ -1087,6 +1087,10 @@ def resolve_mcp_sse_app(mount_path: str = "/"):
     """Return (asgi_app, profile) where profile is compact or full."""
     profile = get_mcp_sse_profile()
     if profile == "full":
+        logger.warning(
+            "MCP_SSE_PROFILE=full is deprecated: the legacy ~54-tool surface will be removed. "
+            "vexlum search/resolve/execute covers every tool (docs/technical/VEXLUM_MCP.md)."
+        )
         return create_mcp_sse_app(mount_path=mount_path), profile
     return create_mcp_compact_sse_app(mount_path=mount_path), profile
 
@@ -1132,7 +1136,17 @@ if __name__ == "__main__":
     # Run standalone - NO print statements allowed! MCP uses stdio for JSON protocol.
     # All output must go to stderr, not stdout.
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-    logger.info("Starting Vexlum Scoring MCP server...")
+    if (os.environ.get("VEXLUM_LEGACY_FULL_STDIO") or "").strip() != "1":
+        # Deprecated entry point: serve vexlum instead of the legacy ~54-tool surface.
+        logger.warning(
+            "python -m modules.mcp_server is deprecated; starting vexlum (search/resolve/execute). "
+            "Use `python -m modules.vexlum mcp`. Set VEXLUM_LEGACY_FULL_STDIO=1 for the old tools."
+        )
+        from modules.vexlum.mcp_stdio import run_stdio
+
+        run_stdio()
+        sys.exit(0)
+    logger.info("Starting Vexlum Scoring MCP server (legacy full stdio)...")
 
     # Initialize runners for standalone mode
     try:

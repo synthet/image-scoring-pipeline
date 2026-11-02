@@ -1,12 +1,13 @@
 {
-  "_comment": "Copy to .cursor/mcp.json (gitignored). Browser automation is built into is-be-mcp (browser.* actions via search/dispatch). Uses workspaceFolder:image-scoring-pipeline for multi-root workspaces. Build: cd mcp-server && npm install && npm run build.",
+  "_comment": "Copy to .cursor/mcp.json (gitignored). vexlum is the single backend entry point: search -> resolve -> execute over Python tools, REST API (api.*), PostgreSQL (db.*) and browser (browser.*). Replaces is-be-mcp / is-be-live (deprecated). Build: cd mcp-server && npm ci && npm run build. Docs: docs/technical/VEXLUM_MCP.md.",
   "mcpServers": {
-    "is-be-mcp": {
+    "vexlum": {
       "command": "node",
       "args": [
-        "mcp-server/dist/compactIndex.js"
+        "mcp-server/dist/vexlum.js"
       ],
-      "cwd": "${workspaceFolder:image-scoring-pipeline}"
+      "cwd": "${workspaceFolder:image-scoring-pipeline}",
+      "_comment": "Destructive actions (db.execute, DELETE API, prune, ...) also need env VEXLUM_ALLOW_ELEVATED=1 here."
     },
     "fff-be": {
       "_comment": "Fast file search \u2014 must launch inside a git repo (not user home or FS root). Install: see AGENTS.md \u00a7 fff.",

@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = path.resolve(__dirname, "..", "..", "..");
 
-const WORKER_SCRIPT = path.join(PROJECT_ROOT, "scripts", "mcp", "compact_worker.py");
+/** Python core entry: `python -m modules.vexlum worker` (JSONL over stdio). */
+const WORKER_MODULE_FILE = path.join(PROJECT_ROOT, "modules", "vexlum", "__main__.py");
 const DEFAULT_VENV = "~/.venvs/tf/bin/activate";
 const DEFAULT_GPU_SHELL = "image-scoring-gpu-shell";
 
@@ -38,18 +39,25 @@ function windowsPathToWsl(winPath: string): string {
     return `/mnt/${drive}/${match[2]}`;
 }
 
-/** How the Node MCP process starts the Python compact worker. */
+/** VEXLUM_<name>, falling back to the deprecated IS_BE_MCP_<name>. */
+function envOpt(env: NodeJS.ProcessEnv, name: string): string | undefined {
+    const v = env[`VEXLUM_${name}`]?.trim() || env[`IS_BE_MCP_${name}`]?.trim();
+    return v || undefined;
+}
+
+/** How the Node host starts the Python vexlum worker. */
 export function resolveWorkerLaunch(
     env: NodeJS.ProcessEnv = process.env,
     platform: NodeJS.Platform = process.platform,
 ): WorkerLaunch {
-    const custom = env.IS_BE_MCP_WORKER_SHELL?.trim();
+    const custom = envOpt(env, "WORKER_SHELL");
     if (custom) {
         return { command: "bash", args: ["-lc", custom], mode: "custom" };
     }
 
-    if (platform === "win32" && env.IS_BE_MCP_USE_WSL?.trim() !== "1") {
-        const container = env.IS_BE_MCP_GPU_SHELL?.trim() || DEFAULT_GPU_SHELL;
+    const useWsl = platform === "win32" && envOpt(env, "USE_WSL") === "1";
+    if (platform === "win32" && !useWsl) {
+        const container = envOpt(env, "GPU_SHELL") || DEFAULT_GPU_SHELL;
         return {
             command: "docker",
             container,
@@ -62,26 +70,45 @@ export function resolveWorkerLaunch(
                 "PYTHONPATH=/app",
                 "-e",
                 "ENABLE_MCP_SERVER=1",
-                "-e",
-                "MCP_TOOL_PROFILE=compact",
+                ...passthroughEnvArgs(env),
                 container,
                 "python",
-                "/app/scripts/mcp/compact_worker.py",
+                "-m",
+                "modules.vexlum",
+                "worker",
             ],
             mode: "gpu-shell",
         };
     }
 
-    const useWsl = platform === "win32" && env.IS_BE_MCP_USE_WSL?.trim() === "1";
-    const venvActivate = env.IS_BE_MCP_VENV_ACTIVATE?.trim() || DEFAULT_VENV;
-    const wslRoot = useWsl ? windowsPathToWsl(PROJECT_ROOT) : PROJECT_ROOT;
-    const workerPath = useWsl ? `${wslRoot}/scripts/mcp/compact_worker.py` : WORKER_SCRIPT;
-    const inner = `cd '${wslRoot.replace(/'/g, `'\\''`)}' && export ENABLE_MCP_SERVER=1 && export MCP_TOOL_PROFILE=compact && source ${venvActivate} && python '${workerPath.replace(/'/g, `'\\''`)}'`;
+    const venvActivate = envOpt(env, "VENV_ACTIVATE") || DEFAULT_VENV;
+    const root = useWsl ? windowsPathToWsl(PROJECT_ROOT) : PROJECT_ROOT;
+    const inner = `cd '${root.replace(/'/g, `'\\''`)}' && export ENABLE_MCP_SERVER=1 && export PYTHONPATH=. && source ${venvActivate} && python -m modules.vexlum worker`;
 
     if (useWsl) {
         return { command: "wsl", args: ["bash", "-lc", inner], mode: "wsl" };
     }
     return { command: "bash", args: ["-lc", inner], mode: "bash" };
+}
+
+/** Policy env the Python side reads; forwarded into gpu-shell so the host config controls it. */
+const PASSTHROUGH_ENV = [
+    "VEXLUM_ALLOW_ELEVATED",
+    "VEXLUM_API_URL",
+    "VEXLUM_MAX_RESPONSE_BYTES",
+    "VEXLUM_TOKEN_SECRET",
+    "MCP_PLAYWRIGHT_ENABLED",
+];
+
+function passthroughEnvArgs(env: NodeJS.ProcessEnv): string[] {
+    const out: string[] = [];
+    for (const name of PASSTHROUGH_ENV) {
+        const v = env[name];
+        if (v !== undefined && v !== "") {
+            out.push("-e", `${name}=${v}`);
+        }
+    }
+    return out;
 }
 
 function workerShellCommand(): WorkerLaunch {
@@ -186,8 +213,8 @@ function ensureWorker(): ChildProcessWithoutNullStreams {
         return worker;
     }
 
-    if (!fs.existsSync(WORKER_SCRIPT)) {
-        throw new Error(`Python worker not found: ${WORKER_SCRIPT}`);
+    if (!fs.existsSync(WORKER_MODULE_FILE)) {
+        throw new Error(`vexlum Python core not found: ${WORKER_MODULE_FILE}`);
     }
 
     buffer = "";
@@ -221,7 +248,7 @@ function ensureWorker(): ChildProcessWithoutNullStreams {
     worker.on("exit", (code, signal) => {
         worker = null;
         rejectAllPending(
-            new Error(`Python compact worker exited (code=${code ?? "null"}, signal=${signal ?? "null"})`),
+            new Error(`vexlum Python worker exited (code=${code ?? "null"}, signal=${signal ?? "null"})`),
         );
     });
 
@@ -238,7 +265,7 @@ export async function invokePythonTool(
 
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
-            rejectPending(id, new Error(`Python compact tool '${tool}' timed out after ${timeoutMs}ms`));
+            rejectPending(id, new Error(`vexlum tool '${tool}' timed out after ${timeoutMs}ms`));
         }, timeoutMs);
 
         pendingById.set(id, { tool, resolve, reject, timer });
@@ -250,6 +277,18 @@ export async function invokePythonTool(
     });
 }
 
+/** Start the worker early (MCP server startup); it warms the catalog + tool stack itself. */
+export function warmPythonWorker(): void {
+    if (process.env.VEXLUM_WARM === "0") {
+        return;
+    }
+    try {
+        ensureWorker();
+    } catch (err) {
+        console.error(`vexlum: worker warm-up skipped: ${err instanceof Error ? err.message : String(err)}`);
+    }
+}
+
 export function shutdownPythonWorker(): void {
     if (worker && !worker.killed) {
         try {
@@ -259,7 +298,7 @@ export function shutdownPythonWorker(): void {
         }
         worker = null;
     }
-    rejectAllPending(new Error("Python compact worker shut down"));
+    rejectAllPending(new Error("vexlum Python worker shut down"));
 }
 
 process.on("exit", () => shutdownPythonWorker());

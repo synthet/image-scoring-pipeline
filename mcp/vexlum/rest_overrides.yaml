@@ -1,0 +1,64 @@
+# Vexlum REST provider overrides (modules/vexlum/providers/rest.py).
+#
+# Default tier per HTTP method: GET=read, POST/PUT/PATCH=write, DELETE=destructive.
+# Override here when the method lies about the effect (POST previews are reads) or when
+# an endpoint is more dangerous than a normal write. Keys: "METHOD /path", operationId,
+# or vexlum action_id. Fields: tier, tags, aliases, intent_examples, notes.
+version: 1
+
+operations:
+  # --- POST endpoints that only read -------------------------------------------------
+  "POST /api/runs/plan/preview":
+    tier: read
+    intent_examples: [preview stale work for a folder, what would a run do]
+  "POST /api/runs/validation-repair/preview":
+    tier: read
+  "POST /api/scope/preview":
+    tier: read
+    intent_examples: [preview scope before submitting a run]
+  "POST /api/duplicates/find":
+    tier: read
+    notes: [Deprecated endpoint; prefer api.similarity.* duplicates.]
+  "POST /api/similarity/duplicates":
+    tier: read
+    intent_examples: [find near duplicate images]
+  "POST /api/culling/agent-review/discover":
+    tier: read
+  "POST /api/images/{image_id}/geocode/reverse":
+    tier: read
+
+  # --- Common writes: better search hits ---------------------------------------------
+  "POST /api/runs/submit":
+    aliases: [submit run, start pipeline run, process folder]
+    intent_examples: [start scoring a folder, submit a new run, process newly imported folder]
+  "POST /api/scoring/start":
+    intent_examples: [start scoring job on folder]
+  "POST /api/tagging/start":
+    intent_examples: [start tagging job, generate keywords for folder]
+  "POST /api/pipeline/submit":
+    intent_examples: [submit folder to processing pipeline]
+  "PATCH /api/images/{image_id}":
+    intent_examples: [set rating on image, change color label, update image metadata]
+
+  # --- Destructive / process-level ---------------------------------------------------
+  "POST /api/shutdown":
+    tier: destructive
+    notes: [Stops the WebUI process.]
+  "POST /api/scoring/fix-db":
+    tier: destructive
+    notes: [Bulk re-score of incomplete rows.]
+  "POST /api/culling/agent-review/groups/{group_id}/apply-candidates":
+    tier: destructive
+  "POST /api/maintenance/heal/{phase_code}":
+    tier: destructive
+    notes: [Resets false completions and queues repair work.]
+  "POST /api/maintenance/recalculate-status-from-data":
+    tier: destructive
+  "POST /api/runs/{run_id}/force":
+    tier: destructive
+  "POST /api/ipc/bridge":
+    tier: destructive
+    notes: [Generic Electron IPC bridge; arbitrary channel dispatch.]
+  "POST /api/config/{section}":
+    tier: destructive
+    notes: [Overwrites a config.json section.]
