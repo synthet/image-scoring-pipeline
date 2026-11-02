@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import {
   PanelLeft,
-  Zap,
   Workflow,
   LayoutDashboard,
   Stethoscope,
@@ -78,7 +77,11 @@ export function Shell() {
         </button>
 
         <div className="flex items-center gap-2 mr-4">
-          <Zap size={16} className="text-[var(--color-accent-bright)]" />
+          {/* Vexlum Scoring mark, 16 px simplification (image-scoring-ui icons/projects/vexlum-scoring/mark-16.svg) */}
+          <svg width={20} height={20} viewBox="64 64 896 896" aria-hidden="true" className="shrink-0">
+            <rect x="64" y="64" width="896" height="896" rx="184" fill="#101014" />
+            <path d="M 224,224 H 384 L 512,576 L 640,224 H 800 L 576,800 H 448 Z" fill="#A9B7C6" />
+          </svg>
           <span className="text-sm font-semibold text-[var(--color-text-primary)]">Vexlum Scoring</span>
         </div>
 
