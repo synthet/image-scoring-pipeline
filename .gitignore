@@ -130,6 +130,8 @@ research_output/
 *.jpeg
 *.png
 !static/favicon.png
+!assets/icon-256.png
+!assets/social-preview.png
 *.gif
 *.bmp
 *.tiff
