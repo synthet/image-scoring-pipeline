@@ -1,20 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Vexlum Scoring">
-  <defs>
-    <linearGradient id="fav-bg" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1a9fff"/>
-      <stop offset="1" stop-color="#ff3d9a"/>
-    </linearGradient>
-  </defs>
-  <rect x="3" y="3" width="58" height="58" rx="14" fill="url(#fav-bg)" stroke="#fff" stroke-opacity="0.35" stroke-width="1"/>
-  <!-- Outer gauge arc (upper semicircle) -->
-  <path d="M14 42Q32 22 50 42" stroke="#fff" stroke-width="2.25" stroke-linecap="round"/>
-  <!-- Tick marks on outer scale -->
-  <path d="M15.2 38.5l1.1 1.6M19.5 30.2l1.4 1.3M25.2 24.5l1.7 1M32 22v2M38.8 24.5l-1.7 1M44.5 30.2l-1.4 1.3M48.8 38.5l-1.1 1.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity="0.95"/>
-  <!-- Inner ring -->
-  <path d="M18 42Q32 26 46 42" stroke="#fff" stroke-width="1.35" stroke-linecap="round" opacity="0.9"/>
-  <!-- Needle (~2 o'clock) -->
-  <line x1="32" y1="42" x2="41" y2="27" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
-  <circle cx="32" cy="42" r="3.2" fill="#fff"/>
-  <!-- Star below gauge -->
-  <path fill="#fff" d="M32 46.2l1.05 2.15 2.35.35-1.7 1.65.4 2.35-2.1-1.1-2.1 1.1.4-2.35-1.7-1.65 2.35-.35z"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">Vexlum Scoring — 32 px simplification</title>
+  <desc id="description">Bold V: the scoring hub and pipeline.</desc>
+  <g id="foundation">
+    <rect x="64" y="64" width="896" height="896" rx="184" fill="#101014"/>
+  </g>
+  <g id="glyph" fill="#A9B7C6" fill-rule="evenodd">
+    <path d="M 224,224 H 352 L 512,608 L 672,224 H 800 L 576,800 H 448 Z"/>
+  </g>
 </svg>
