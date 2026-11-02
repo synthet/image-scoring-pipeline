@@ -39,6 +39,12 @@ material see [../technical/INDEX.md](../technical/INDEX.md); for the source-of-t
 | [pipeline/localization-rollout.md](pipeline/localization-rollout.md) | Eight-stage rollout for early localization and reusable region artifacts: status of record (Stages 1–5 live, Stage 8 compatibility view deployed). |
 | [pipeline-architecture.md](pipeline-architecture.md) | Short summary; routes into the set above. |
 
+## Agent interface
+
+| Page | Purpose |
+|---|---|
+| [VEXLUM_MCP_ARCHITECTURE.md](VEXLUM_MCP_ARCHITECTURE.md) | vexlum MCP + CLI internals: processes, catalog, providers, executors, tier policy, worker protocol, how to add actions. Contract: [../technical/VEXLUM_MCP.md](../technical/VEXLUM_MCP.md). |
+
 ## Data layer
 
 | Page | Purpose |
