@@ -1,0 +1,65 @@
+{
+  "$comment": "Project probes for the global bg-status skill (/bg-status). Read-only: loopback HTTP GETs, regex matches over the host process list, Docker container states and file stats. Nothing in this file runs a command.",
+  "http": [
+    { "name": "WebUI health", "url": "http://127.0.0.1:7860/api/health", "fields": ["status"] },
+    {
+      "name": "Localization authority shadow scan and auto-drive",
+      "url": "http://127.0.0.1:7860/api/runs/drive/status",
+      "fields": [
+        "localization_authority.mode",
+        "localization_authority.running",
+        "localization_authority.scan_cursor",
+        "localization_authority.scan_upper_bound",
+        "localization_authority.pending",
+        "localization_authority.authority_granted",
+        "state.enabled",
+        "state.batch_in_progress",
+        "localization_lane.backlog.pending"
+      ]
+    },
+    {
+      "name": "Run queue",
+      "url": "http://127.0.0.1:7860/api/jobs/queue",
+      "fields": ["queue_size", "active_runner", "is_dispatcher_running"]
+    }
+  ],
+  "processes": [
+    { "name": "scripts running in gpu-shell (docker exec)", "pattern": "docker(\\.exe)?\"?\\s+exec\\b.*image-scoring-gpu-shell.*(python|-m\\s|\\.sh\\b)" },
+    { "name": "is-be-mcp (Node compact MCP)", "pattern": "mcp-server[\\\\/]dist[\\\\/]compactIndex\\.js" },
+    { "name": "Python MCP server", "pattern": "-m modules\\.mcp_server" },
+    { "name": "host-side WebUI (not the container)", "pattern": "\\b(webui|launch)\\.py\\b" }
+  ],
+  "containers": ["image-scoring-postgres", "image-scoring-webui", "image-scoring-gpu-shell"],
+  "paths": [
+    { "name": "webui.lock (its PID is inside image-scoring-webui)", "path": "webui.lock", "kind": "mtime" },
+    { "name": "logs/", "path": "logs", "kind": "mtime" },
+    { "name": "agent scratch", "path": ".agent/scratch", "kind": "mtime" }
+  ],
+  "container_ps": ["image-scoring-gpu-shell", "image-scoring-webui"],
+  "sql": [
+    {
+      "name": "active jobs",
+      "container": "image-scoring-postgres",
+      "query": "select id, job_type, status, current_phase, date_trunc('second', now() - coalesce(started_at, enqueued_at, created_at)) as age from jobs where status in ('queued', 'running', 'paused') order by id desc limit 10"
+    },
+    {
+      "name": "phases running over 1 h",
+      "container": "image-scoring-postgres",
+      "query": "select count(*) as stale_running from image_phase_status where status = 'running' and started_at < now() - interval '1 hour'"
+    },
+    {
+      "name": "Postgres queries running over 60 s",
+      "container": "image-scoring-postgres",
+      "query": "select pid, coalesce(nullif(application_name, ''), '-') as app, state, date_trunc('second', now() - query_start) as age, left(regexp_replace(query, '\\s+', ' ', 'g'), 80) as query from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() and state <> 'idle' and query_start < now() - interval '60 seconds' order by query_start limit 10"
+    }
+  ],
+  "log_roots": ["logs", ".agent/scratch"],
+  "slug_aliases": ["D--Projects-image-scoring-pipeline", "D--Projects-image-scoring-backend"],
+  "notes": [
+    "D:/Projects/image-scoring-pipeline is a junction to image-scoring-backend: tasks from sessions started in either folder are listed.",
+    "A quiet watch loop on the shadow scan is healthy while localization_authority.scan_cursor keeps rising between snapshots.",
+    "Processes inside the containers, active jobs and long Postgres queries show only with --exec-probes (read-only docker exec, 5 s each).",
+    "Container GPU use shows on the host only as vmmemWSL; nvidia-smi on Windows can't attribute it to a process.",
+    "The image-scoring-* containers are shared by every local session: ask the peers (ListAgents, SendMessage) before `docker compose stop`."
+  ]
+}
