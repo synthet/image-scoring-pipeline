@@ -168,6 +168,7 @@ The old [search + dispatch contract](MCP_SEARCH_DISPATCH.md) still describes `di
 
 ## Related
 
+- [vexlum architecture and extension guide](../architecture/VEXLUM_MCP_ARCHITECTURE.md) — processes, catalog internals, executors, how to add actions
 - [MCP search + dispatch contract](MCP_SEARCH_DISPATCH.md) (deprecated)
 - [MCP debugging tools](MCP_DEBUGGING_TOOLS.md) — per-tool descriptions of the `tool` source
 - [API contract](API_CONTRACT.md) — the `api` source
