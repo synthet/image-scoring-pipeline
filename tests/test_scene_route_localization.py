@@ -35,7 +35,7 @@ def calls(monkeypatch, tmp_path):
 
     monkeypatch.setattr(loc, "decode_for_localization", decode)
     monkeypatch.setattr(lr, "localize_image",
-                        lambda iid, fp, ctx, max_regions, job_id, decoded=None:
+                        lambda iid, fp, ctx, max_regions, job_id, decoded=None, reuse_unchanged=True:
                         log["detect"].append(decoded) or loc.ImageOutcome(status="detected"))
     monkeypatch.setattr(loc, "record_scene_skip",
                         lambda iid, ctx, d, scene_version, top_label, job_id=None:
