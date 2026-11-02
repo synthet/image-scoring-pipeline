@@ -282,3 +282,41 @@ def test_trailing_prose_after_json_parses():
         picked_image_ids={11},
     )
     assert result.ok is True
+
+
+# --- undeclared top-level keys (#747) -----------------------------------------
+
+def _validate(data):
+    return validate_agent_response(data, stack_id=1, sub_stack_id=None, rejected_image_ids={10}, picked_image_ids={11})
+
+
+def test_undeclared_top_level_keys_are_dropped_and_recorded():
+    data = _valid_response()
+    data.update({"review_unit_key": "stack:1", "group_confidence": 0.8, "subject_focus_checks": []})
+    result = _validate(data)
+    assert result.ok is True
+    assert result.stripped_keys == ["group_confidence", "review_unit_key", "subject_focus_checks"]
+    assert "review_unit_key" not in result.data
+    assert result.data["group_decision"] == "apply_removals"
+
+
+def test_valid_reply_without_extras_strips_nothing():
+    result = _validate(_valid_response())
+    assert result.ok is True and result.stripped_keys == []
+
+
+def test_missing_required_key_still_fails_even_with_extras_dropped():
+    data = _valid_response()
+    del data["group_decision"]
+    data["review_unit_key"] = "stack:1"
+    result = _validate(data)
+    assert result.ok is False
+    assert result.stripped_keys == ["review_unit_key"]
+
+
+def test_undeclared_key_inside_a_decision_still_fails():
+    data = _valid_response()
+    data["rejected_image_decisions"][0]["extra_nested"] = True
+    result = _validate(data)
+    assert result.ok is False
+    assert result.error_code == "schema_invalid"

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from modules.agent_cull.config import RESPONSE_SCHEMA_VERSION
+
+logger = logging.getLogger(__name__)
 
 try:
     import jsonschema
@@ -37,6 +40,8 @@ class ValidationResult:
     error_code: str | None = None
     error_message: str | None = None
     errors: list[str] = field(default_factory=list)
+    # Undeclared top-level keys dropped before validation (#747); the raw reply keeps them.
+    stripped_keys: list[str] = field(default_factory=list)
 
 
 def _load_schema() -> dict[str, Any]:
@@ -89,6 +94,15 @@ def validate_agent_response(
 ) -> ValidationResult:
     errors: list[str] = []
 
+    # Judges often echo request fields (review_unit_key, group_confidence, ...) at the top level.
+    # Drop keys the schema doesn't declare instead of rejecting an otherwise valid reply (#747);
+    # required keys and every nested additionalProperties rule stay strict.
+    allowed = set(_load_schema().get("properties", {}))
+    stripped_keys = sorted(k for k in data if k not in allowed)
+    if stripped_keys:
+        logger.info("agent cull response: dropped undeclared top-level keys %s", stripped_keys)
+        data = {k: v for k, v in data.items() if k in allowed}
+
     if data.get("schema_version") != RESPONSE_SCHEMA_VERSION:
         errors.append(f"unsupported_schema_version:{data.get('schema_version')!r}")
 
@@ -116,7 +130,10 @@ def validate_agent_response(
     decisions = data.get("rejected_image_decisions")
     if not isinstance(decisions, list):
         errors.append("rejected_image_decisions_not_array")
-        return ValidationResult(ok=False, error_code="schema_invalid", error_message="invalid decisions", errors=errors)
+        return ValidationResult(
+            ok=False, error_code="schema_invalid", error_message="invalid decisions", errors=errors,
+            stripped_keys=stripped_keys,
+        )
 
     if len(decisions) != len(rejected_image_ids):
         errors.append("rejected_decision_count_mismatch")
@@ -251,8 +268,9 @@ def validate_agent_response(
             error_code="schema_invalid",
             error_message="; ".join(errors[:8]),
             errors=errors,
+            stripped_keys=stripped_keys,
         )
-    return ValidationResult(ok=True, data=data)
+    return ValidationResult(ok=True, data=data, stripped_keys=stripped_keys)
 
 
 def _coerce_response_context(
