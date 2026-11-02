@@ -1,14 +1,12 @@
 """
-MCP router / compact server — search + dispatch (and deprecated be_* on router profile).
+DEPRECATED — MCP router / compact server (search + dispatch, be_* on router profile).
+Running this module now starts vexlum; ``create_router_mcp`` is kept for existing imports/tests.
 
-Usage:
-    python -m modules.mcp.router_server
-    MCP_TOOL_PROFILE=compact python -m modules.mcp.router_server
+Use: mcp-server/dist/vexlum.js or ``python -m modules.vexlum mcp`` (docs/technical/VEXLUM_MCP.md).
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import sys
@@ -48,5 +46,11 @@ async def run_server() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-    logger.info("Starting %s MCP server (profile=%s)...", _server_name(), os.environ.get("MCP_TOOL_PROFILE", "router"))
-    asyncio.run(run_server())
+    # DEPRECATED entry point: serve vexlum (search/resolve/execute) instead.
+    logger.warning(
+        "python -m modules.mcp.router_server is deprecated; starting vexlum. "
+        "Use `python -m modules.vexlum mcp` or mcp-server/dist/vexlum.js (docs/technical/VEXLUM_MCP.md)."
+    )
+    from modules.vexlum.mcp_stdio import run_stdio
+
+    run_stdio()

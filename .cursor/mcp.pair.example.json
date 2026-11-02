@@ -1,5 +1,5 @@
 {
-  "_comment": "Multi-root workspace MCP template. Set folder names in image-scoring-pipeline.code-workspace to match. Build both mcp-server packages before enabling.",
+  "_comment": "Multi-root workspace MCP template. Set folder names in image-scoring-pipeline.code-workspace to match. Build both mcp-server packages before enabling. Backend: vexlum (replaces is-be-mcp + is-be-live).",
   "mcpServers": {
     "is-be-mcp": {
       "command": "node",
@@ -10,13 +10,6 @@
       "command": "node",
       "args": ["mcp-server/dist/compactIndex.js"],
       "cwd": "${workspaceFolder:image-scoring-gallery}"
-    },
-    "is-be-live": {
-      "_comment": "Optional — WebUI running only",
-      "url": "http://127.0.0.1:7860/mcp/sse",
-      "headers": {
-        "Authorization": "Bearer ${env:IMGSCORE_MCP_TOKEN}"
-      }
     },
     "is-ui-live": {
       "_comment": "Optional — Electron dev running only",

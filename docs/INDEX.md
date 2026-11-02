@@ -81,7 +81,8 @@ Full categorized index for **image-scoring-pipeline**. Prefer small linked pages
 | [reference/api/API_SCHEMA_IMPLEMENTATION.md](reference/api/API_SCHEMA_IMPLEMENTATION.md) | API schema implementation notes. |
 | [reference/api/API_SCHEMA_LLM.md](reference/api/API_SCHEMA_LLM.md) | LLM-oriented API schema summary. |
 | [technical/MCP_DEBUGGING_TOOLS.md](technical/MCP_DEBUGGING_TOOLS.md) | MCP debugging tools reference. |
-| [technical/MCP_SEARCH_DISPATCH.md](technical/MCP_SEARCH_DISPATCH.md) | Compact search/dispatch/sse_status contract. |
+| [technical/VEXLUM_MCP.md](technical/VEXLUM_MCP.md) | vexlum: single backend MCP + CLI (search/resolve/execute). |
+| [technical/MCP_SEARCH_DISPATCH.md](technical/MCP_SEARCH_DISPATCH.md) | Deprecated compact search/dispatch/sse_status contract. |
 | [guides/setup/mcp-compact-servers.md](guides/setup/mcp-compact-servers.md) | Node stdio MCP setup (both repos). |
 | [../AGENTS.md](../AGENTS.md) | Agent/MCP configuration and tool inventory. |
 | [technical/AGENT_COORDINATION.md](technical/AGENT_COORDINATION.md) | Cross-repo integration protocol. |

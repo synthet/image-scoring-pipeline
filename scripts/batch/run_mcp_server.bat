@@ -1,4 +1,5 @@
 @echo off
+REM DEPRECATED: use scripts\vexlum.cmd (node mcp-server\dist\vexlum.js). The Python module this starts now serves vexlum (search/resolve/execute); see docs/technical/VEXLUM_MCP.md.
 REM Run MCP server standalone for Vexlum
 REM This starts the MCP debugging server that can be connected to from Cursor
 
