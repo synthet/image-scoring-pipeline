@@ -79,7 +79,7 @@ def patched_db(monkeypatch):
     def fake_get_db():
         return _StubConn(current_row)
 
-    def fake_update_metadata(file_path, keywords, title, description, rating, label):
+    def fake_update_metadata(file_path, keywords, title, description, rating, label, *, keywords_changed=True):
         captured["meta"] = {
             "file_path": file_path,
             "keywords": keywords,
@@ -87,6 +87,7 @@ def patched_db(monkeypatch):
             "description": description,
             "rating": rating,
             "label": label,
+            "keywords_changed": keywords_changed,
         }
         return True
 
@@ -120,6 +121,8 @@ def test_patch_pick_marks_rating_4_and_green(patched_db):
     assert patched_db["pick"] == {"image_id": 123, "pick_status": 1}
     assert patched_db["meta"]["rating"] == 4
     assert patched_db["meta"]["label"] == "Green"
+    # No `keywords` in the request: the route must not ask the DB to rewrite keywords.
+    assert patched_db["meta"]["keywords_changed"] is False
 
 
 def test_patch_reject_marks_rating_1_and_red(patched_db):
