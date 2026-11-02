@@ -10,6 +10,8 @@ okf_version: 0.2
 
 # MCP search + dispatch contract
 
+> **Deprecated (2026-11-02, [#758](https://github.com/synthet/image-scoring-pipeline/issues/758)).** The backend's single entry point is now **vexlum**: [VEXLUM_MCP.md](VEXLUM_MCP.md). `is-be-mcp` and `is-be-live` start vexlum; `dispatch` and `sse_status` remain as deprecated aliases of `execute`. This page still documents the action ids and envelopes vexlum accepts. Gallery `is-ui-*` servers are unchanged.
+
 **Authority:** Action registry [`mcp/action_registry.json`](../../mcp/action_registry.json), overlay [`mcp/actions/overlay.yaml`](../../mcp/actions/overlay.yaml). Setup: [guides/setup/mcp-compact-servers.md](../guides/setup/mcp-compact-servers.md). Planning: [planning/mcp-search-dispatch.md](../planning/mcp-search-dispatch.md).
 
 ## Preferred agent entry point

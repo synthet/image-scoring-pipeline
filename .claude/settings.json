@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "mcp__vexlum__search",
+      "mcp__vexlum__resolve",
       "mcp__is-be-mcp__search",
       "mcp__is-be-mcp__dispatch",
       "mcp__is-be-mcp__sse_status",
@@ -90,6 +92,7 @@
     ]
   },
   "enabledMcpjsonServers": [
+    "vexlum",
     "is-be-mcp"
   ],
   "disabledMcpjsonServers": [

@@ -54,7 +54,9 @@ Verified patterns from [AGENTS.md](../AGENTS.md), [.agent/INFRA_QUICKSTART.md](I
 
 ## Inventory maintenance
 
-- Regenerate MCP table in AGENTS.md when tools change: `python scripts/generate_mcp_tool_inventory.py --update-docs AGENTS.md docs/technical/MCP_DEBUGGING_TOOLS.md`
+- Regenerate the legacy MCP tool table when tools change: `python scripts/generate_mcp_tool_inventory.py --update-docs docs/technical/MCP_DEBUGGING_TOOLS.md` (add `AGENTS.md` for the local, gitignored copy)
+- Refresh the vexlum catalog counts in `docs/technical/VEXLUM_MCP.md` when tools, `openapi.yaml` or `mcp/vexlum/rest_overrides.yaml` change: `python scripts/generate_mcp_tool_inventory.py --update-vexlum-doc` (CI runs `--check-vexlum-doc`)
+- vexlum CLI: `scripts\vexlum.cmd status`, `scripts\vexlum.cmd search "…"`, `scripts\vexlum.cmd exec <action_id> --args "{…}"` (see `docs/technical/VEXLUM_MCP.md`)
 
 ## Agent CLI skills
 

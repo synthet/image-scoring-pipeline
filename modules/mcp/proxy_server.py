@@ -1,12 +1,12 @@
 """
-MCP proxy stdio server (compact): local search+dispatch with optional WebUI SSE proxying.
+DEPRECATED — MCP proxy stdio server (compact search+dispatch). Running this module now
+starts vexlum; ``create_proxy_mcp`` is kept for existing imports/tests.
 
-Legacy Python stdio entrypoint. Prefer Node: mcp-server/dist/compactIndex.js
+Use: mcp-server/dist/vexlum.js or ``python -m modules.vexlum mcp`` (docs/technical/VEXLUM_MCP.md).
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
 
@@ -90,5 +90,11 @@ async def run_server() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-    logger.info("Starting %s MCP proxy server (stdio, compact)...", BE_MCP)
-    asyncio.run(run_server())
+    # DEPRECATED entry point: serve vexlum (search/resolve/execute) instead.
+    logger.warning(
+        "python -m modules.mcp.proxy_server is deprecated; starting vexlum. "
+        "Use `python -m modules.vexlum mcp` or mcp-server/dist/vexlum.js (docs/technical/VEXLUM_MCP.md)."
+    )
+    from modules.vexlum.mcp_stdio import run_stdio
+
+    run_stdio()

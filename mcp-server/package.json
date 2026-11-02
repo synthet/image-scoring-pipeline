@@ -1,13 +1,16 @@
 {
-    "name": "image-scoring-pipeline-mcp",
-    "version": "2.1.0",
-    "description": "Compact stdio MCP for Vexlum Scoring (is-be-mcp): search, dispatch, sse_status via Python worker bridge",
-    "main": "dist/compactIndex.js",
+    "name": "vexlum",
+    "version": "3.0.0",
+    "description": "vexlum: single search/resolve/execute MCP server + CLI for Vexlum Scoring (Python core in gpu-shell, Playwright host)",
+    "main": "dist/vexlum.js",
+    "bin": {
+        "vexlum": "dist/vexlum.js"
+    },
     "type": "module",
     "scripts": {
         "build": "tsc && node ../scripts/generate_playwright_registry.mjs",
-        "test:unit": "npm run build && node --test dist/names.test.js dist/utils/pythonBridge.test.js dist/utils/proxyDispatch.test.js dist/utils/playwrightBridge.test.js",
-        "start": "node dist/compactIndex.js"
+        "test:unit": "npm run build && node --test dist/names.test.js dist/cli.test.js dist/utils/pythonBridge.test.js dist/utils/proxyDispatch.test.js dist/utils/playwrightBridge.test.js",
+        "start": "node dist/vexlum.js"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.0.1"

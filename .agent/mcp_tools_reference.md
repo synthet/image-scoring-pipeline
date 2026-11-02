@@ -4,9 +4,9 @@ This document tracks the tools registered in [`modules/mcp_server.py`](../module
 
 ## Connection modes
 
-- **Backend:** **`is-be-mcp`** (default), optional **`is-be-live`** (SSE) — copy [`.cursor/mcp.example.json`](../.cursor/mcp.example.json) → `.cursor/mcp.json`
+- **Backend:** **`vexlum`** (`search` → `resolve` → `execute`; contract [docs/technical/VEXLUM_MCP.md](../docs/technical/VEXLUM_MCP.md)) — copy [`.cursor/mcp.example.json`](../.cursor/mcp.example.json) → `.cursor/mcp.json`. Every tool below is reachable through it; `resolve("<tool name>")` returns the `action_id`. `is-be-mcp` / `is-be-live` are deprecated and start vexlum.
 - **Gallery (sibling repo):** **`is-ui-router`**, **`is-ui-local`**, **`is-ui-api`**, **`is-ui-live`** — see gallery `mcp.example.json`
-- **`execute_code`**: requires **`is-be-live`** and `ENABLE_MCP_EXECUTE_CODE=1` on the WebUI process.
+- **`execute_code`** (`maintenance.execute_code`): runs only inside the WebUI process (`/mcp/sse`) with `ENABLE_MCP_EXECUTE_CODE=1`.
 
 ## Postgres query patterns (operators)
 

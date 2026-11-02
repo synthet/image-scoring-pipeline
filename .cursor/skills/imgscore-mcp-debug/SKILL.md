@@ -1,6 +1,6 @@
 ---
 name: imgscore-mcp-debug
-description: Routine read-only debugging for the image-scoring Python backend via MCP—is-be-mcp search+dispatch, scoring/tagging failures, job errors, Postgres questions, DB integrity, and config sanity.
+description: Routine read-only debugging for the image-scoring Python backend via MCP—vexlum search/resolve/execute, scoring/tagging failures, job errors, Postgres questions, DB integrity, and config sanity.
 ---
 
 # imgscore-mcp-debug
@@ -9,31 +9,33 @@ Read-only triage for **image-scoring-pipeline** using MCP. **Do not** mutate DB/
 
 ## Preferred entry
 
-**`is-be-mcp`**: **`search(query)`** → **`dispatch(action_id, arguments)`**. Contract: [MCP_SEARCH_DISPATCH.md](../../../docs/technical/MCP_SEARCH_DISPATCH.md). When `search` returns several plausible actions, ask **`jev-rw-systemone`** to pick one before `dispatch`. Protocol: [jev-mcp](../jev-mcp/SKILL.md).
+**`vexlum`**: **`search(query)`** → **`resolve(action_id)`** → **`execute(action_id, arguments)`**. Contract: [VEXLUM_MCP.md](../../../docs/technical/VEXLUM_MCP.md). When `search` returns several plausible actions, ask **`jev-rw-systemone`** to pick one before `execute`. Protocol: [jev-mcp](../jev-mcp/SKILL.md). Read-tier actions need no confirmation; leave `confirmed` unset during triage.
 
 ## Server keys
 
 | Key | Use |
 |-----|-----|
-| **`is-be-mcp`** | **Default** — `search`, `dispatch` |
-| **`is-be-live`** | Legacy raw tools via `MCP_SSE_PROFILE=full`; `execute_code` when enabled |
+| **`vexlum`** | **Default** — `search`, `resolve`, `execute` (tools, `api.*`, `db.*`, `browser.*`) |
+| `is-be-mcp`, `is-be-live` | Deprecated; both serve the vexlum tools |
 
 Gallery sibling: **`is-ui-local`** `gallery_status`, **`is-ui-api`** `api_*`.
 
 ## Start here
 
-1. **`search`**("scoring errors") → **`dispatch("diagnostics.get_error_summary", {})`**
-2. **`dispatch("diagnostics.check_database_health", {})`**, **`dispatch("diagnostics.validate_config", {})`**
-3. **`dispatch("jobs.get_failed_images", {"limit": 20})`**, **`dispatch("jobs.get_run_diagnostics", {"run_id": N})`** when run id known
-4. **`dispatch("logs.search_logs", {"pattern": "error|failed"})`**, **`dispatch("logs.read_debug_log", {"lines": 100})`**
+1. **`execute("system.status", {})`** — DB, WebUI API and SSE reachability
+2. **`search`**("scoring errors") → **`execute("diagnostics.get_error_summary", {})`**
+3. **`execute("diagnostics.check_database_health", {})`**, **`execute("diagnostics.validate_config", {})`**
+4. **`execute("jobs.get_failed_images", {"limit": 20})`**, **`execute("jobs.get_run_diagnostics", {"run_id": N})`** when run id known
+5. **`execute("logs.search_logs", {"pattern": "error|failed"})`**, **`execute("logs.read_debug_log", {"lines": 100})`**
+6. Ad hoc SQL: **`execute("db.schema", …)`** then **`execute("db.query", {"query": "SELECT …"})`** (read-only)
 
 ## High-risk (avoid unless asked)
 
-On **`is-be-live`** SSE: `execute_code`, `run_processing_job`, `set_config_value`, `prune_missing_files`, …
+Write and destructive tiers: `maintenance.execute_code`, `maintenance.run_processing_job`, `maintenance.set_config_value`, `maintenance.prune_missing_files`, `db.execute`, `DELETE` / `POST` `api.*`, … `resolve` shows the tier; destructive ones also need `VEXLUM_ALLOW_ELEVATED=1` and a dry-run token.
 
 ## HTTP fallback when MCP is down
 
-When **`is-be-mcp`** fails live discovery, probe the WebUI REST API directly (prefer `curl.exe` + file bodies on Windows — see [`agent-data-config`](../agent-data-config/SKILL.md)).
+When **`vexlum`** fails to load, probe the WebUI REST API directly. While it works, the same endpoints are `api.*` actions (`search("…", source="api")`); otherwise call them (prefer `curl.exe` + file bodies on Windows — see [`agent-data-config`](../agent-data-config/SKILL.md)).
 
 **Confirmed read endpoints:**
 
@@ -74,6 +76,6 @@ When investigating auto-drive ticks (e.g. dashboard showing "Last tick: queued 0
 ## References
 
 - [AGENTS.md](../../../AGENTS.md)
-- [MCP_SEARCH_DISPATCH.md](../../../docs/technical/MCP_SEARCH_DISPATCH.md)
+- [VEXLUM_MCP.md](../../../docs/technical/VEXLUM_MCP.md)
 - [.agent/mcp_tools_reference.md](../../mcp_tools_reference.md)
 - [workflows/safe_mcp_diagnostics.md](../../workflows/safe_mcp_diagnostics.md)

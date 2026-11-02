@@ -339,6 +339,7 @@ def main():
             "mcp_client_allowlist": mcp_client_allowlist,
             "mount_error": mcp_mount_error,
             "sse_profile": mcp_sse_profile,
+            "server": "vexlum" if mcp_sse_profile == "compact" else mcp_sse_profile,
             "expected_sse_url": f"http://127.0.0.1:{server_port}/mcp/sse",
             "server_host": server_host,
             "server_port": server_port,
