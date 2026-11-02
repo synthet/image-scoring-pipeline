@@ -1,4 +1,5 @@
 @echo off
+REM DEPRECATED: use scripts\vexlum.cmd (node mcp-server\dist\vexlum.js). The Python module this starts now serves vexlum (search/resolve/execute); see docs/technical/VEXLUM_MCP.md.
 REM Standalone MCP stdio for Cursor (Windows .venv). No pause — stdio must stay open.
 setlocal enabledelayedexpansion
 

@@ -1096,3 +1096,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-10-30] updated | Visual evidence diagnostics API (#714)
 
 - 2026-10-30: updated - `technical/VISUAL_EVIDENCE_API.md` (schema v2 manifest, request/artifact/cancel endpoints; subject and head layers use the selected, fresh bird region) and `technical/API_CONTRACT.md` (image detail `af_metadata` / `eye_keypoints` from the selected region).
+
+## [2026-11-02] added | vexlum single MCP + CLI entry point (#758)
+
+- 2026-11-02: added - `technical/VEXLUM_MCP.md` (search/resolve/execute contract, tier policy, catalog sources, CLI, deprecated surfaces); deprecation banner on `technical/MCP_SEARCH_DISPATCH.md`; `technical/INDEX.md`, `INDEX.md` and `CANONICAL_SOURCES.md` route to it.

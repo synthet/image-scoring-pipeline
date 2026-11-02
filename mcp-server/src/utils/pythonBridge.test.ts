@@ -32,13 +32,24 @@ describe("pythonBridge response routing", () => {
         assert.deepEqual(out, { status: "success" });
     });
 
-    it("windows default starts the worker in gpu-shell", () => {
+    it("windows default starts the vexlum worker in gpu-shell", () => {
         const launch = resolveWorkerLaunch({}, "win32");
         assert.equal(launch.mode, "gpu-shell");
         assert.equal(launch.command, "docker");
         assert.equal(launch.container, "image-scoring-gpu-shell");
-        assert.ok(launch.args.includes("python"));
-        assert.ok(launch.args.includes("/app/scripts/mcp/compact_worker.py"));
+        const tail = launch.args.slice(-4);
+        assert.deepEqual(tail, ["python", "-m", "modules.vexlum", "worker"]);
+    });
+
+    it("forwards vexlum policy env into gpu-shell", () => {
+        const launch = resolveWorkerLaunch({ VEXLUM_ALLOW_ELEVATED: "1", UNRELATED: "x" }, "win32");
+        assert.ok(launch.args.includes("VEXLUM_ALLOW_ELEVATED=1"));
+        assert.ok(!launch.args.some((a) => a.startsWith("UNRELATED")));
+    });
+
+    it("VEXLUM_GPU_SHELL overrides the container; IS_BE_MCP_GPU_SHELL still honoured", () => {
+        assert.equal(resolveWorkerLaunch({ VEXLUM_GPU_SHELL: "c1" }, "win32").container, "c1");
+        assert.equal(resolveWorkerLaunch({ IS_BE_MCP_GPU_SHELL: "c2" }, "win32").container, "c2");
     });
 
     it("IS_BE_MCP_USE_WSL=1 keeps the Ubuntu venv worker", () => {
@@ -46,5 +57,6 @@ describe("pythonBridge response routing", () => {
         assert.equal(launch.mode, "wsl");
         assert.equal(launch.command, "wsl");
         assert.ok(launch.args.some((arg) => arg.includes("~/.venvs/tf/bin/activate")));
+        assert.ok(launch.args.some((arg) => arg.includes("python -m modules.vexlum worker")));
     });
 });

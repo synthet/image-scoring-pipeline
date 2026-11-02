@@ -9,6 +9,7 @@ import {
 export interface DispatchProxyOptions {
     dryRun?: boolean;
     confirmed?: boolean;
+    confirmToken?: string;
     requestId?: string;
     allowDeprecated?: boolean;
     expectedVersion?: number;
@@ -36,35 +37,16 @@ function handlerErrorEnvelope(
     };
 }
 
-export async function dispatchWithPlaywrightProxy(
+/** Python validates + applies policy; a playwright_delegate reply is executed here in Node. */
+async function completeDelegate(
     actionId: string,
-    args: Record<string, unknown> | null,
-    opts: DispatchProxyOptions = {},
+    local: Record<string, unknown>,
+    opts: DispatchProxyOptions,
 ): Promise<Record<string, unknown>> {
+    if (!isPlaywrightDelegate(local) || opts.dryRun) {
+        return local;
+    }
     const requestId = opts.requestId;
-
-    if (!isPlaywrightEnabled() && actionId.startsWith("browser.")) {
-        return playwrightDisabledError(actionId, requestId);
-    }
-
-    const local = await invokePythonTool("dispatch", {
-        action_id: actionId,
-        arguments: args ?? {},
-        dry_run: opts.dryRun === true,
-        confirmed: opts.confirmed === true,
-        request_id: requestId,
-        allow_deprecated: opts.allowDeprecated === true,
-        expected_version: opts.expectedVersion,
-    });
-
-    if (!isPlaywrightDelegate(local)) {
-        return local;
-    }
-
-    if (opts.dryRun) {
-        return local;
-    }
-
     if (!isPlaywrightEnabled()) {
         return playwrightDisabledError(actionId, requestId);
     }
@@ -93,16 +75,55 @@ export async function dispatchWithPlaywrightProxy(
             action_id: actionId,
             action_version: local.action_version,
             request_id: rid,
+            source: "browser",
+            tier: local.tier ?? "read",
             side_effect_level: local.side_effect_level ?? "read_only",
             dry_run: false,
             summary: `Playwright ${legacyTool} completed.`,
             data,
         };
     } catch (err) {
-        return playwrightUnavailableError(
-            actionId,
-            rid,
-            err instanceof Error ? err.message : String(err),
-        );
+        return playwrightUnavailableError(actionId, rid, err instanceof Error ? err.message : String(err));
     }
+}
+
+/** vexlum `execute` with browser.* delegated to the Playwright child. */
+export async function executeWithPlaywrightProxy(
+    actionId: string,
+    args: Record<string, unknown> | null,
+    opts: DispatchProxyOptions = {},
+): Promise<Record<string, unknown>> {
+    if (!isPlaywrightEnabled() && actionId.startsWith("browser.")) {
+        return playwrightDisabledError(actionId, opts.requestId);
+    }
+    const local = await invokePythonTool("execute", {
+        action_id: actionId,
+        arguments: args ?? {},
+        dry_run: opts.dryRun === true,
+        confirmed: opts.confirmed === true,
+        confirm_token: opts.confirmToken,
+        request_id: opts.requestId,
+    });
+    return completeDelegate(actionId, local, opts);
+}
+
+/** @deprecated old is-be-mcp `dispatch`; routed to the Python dispatch alias (adds a warning). */
+export async function dispatchWithPlaywrightProxy(
+    actionId: string,
+    args: Record<string, unknown> | null,
+    opts: DispatchProxyOptions = {},
+): Promise<Record<string, unknown>> {
+    if (!isPlaywrightEnabled() && actionId.startsWith("browser.")) {
+        return playwrightDisabledError(actionId, opts.requestId);
+    }
+    const local = await invokePythonTool("dispatch", {
+        action_id: actionId,
+        arguments: args ?? {},
+        dry_run: opts.dryRun === true,
+        confirmed: opts.confirmed === true,
+        request_id: opts.requestId,
+        allow_deprecated: opts.allowDeprecated === true,
+        expected_version: opts.expectedVersion,
+    });
+    return completeDelegate(actionId, local, opts);
 }

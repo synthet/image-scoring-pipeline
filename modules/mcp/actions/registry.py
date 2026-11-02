@@ -270,9 +270,9 @@ def require_action(action_id: str, registry: dict[str, Any] | None = None) -> di
         return entry
     suggestions = suggest_actions(action_id, registry=registry, limit=5)
     hint = (
-        "Call search(query, include_schemas=True) on is-be-mcp before dispatch. "
-        "Legacy raw tool names work only when registered (legacy_tool_name) or via "
-        "is-be-webui with MCP_SSE_PROFILE=full."
+        "Use vexlum: search(query) -> resolve(action_id) -> execute(action_id, arguments). "
+        "vexlum covers every legacy tool, the REST API (api.*) and PostgreSQL (db.*). "
+        "See docs/technical/VEXLUM_MCP.md."
     )
     raise UnknownActionError(
         f"Unknown action_id: {action_id}",

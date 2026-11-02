@@ -1,88 +1,93 @@
 ---
 name: image-scoring-mcp
-description: Vexlum Scoring MCP — compact search+dispatch on is-be-mcp / is-be-live and gallery is-ui-mcp / is-ui-live.
+description: Vexlum Scoring MCP — backend vexlum (search → resolve → execute over tools, REST, PostgreSQL, browser) and gallery is-ui-mcp / is-ui-live.
 ---
 
 # Vexlum Scoring MCP server
 
-**Compact contract:** [docs/technical/MCP_SEARCH_DISPATCH.md](../../../docs/technical/MCP_SEARCH_DISPATCH.md). Action registry: [`mcp/action_registry.json`](../../../mcp/action_registry.json). Full legacy index: [`.agent/mcp_tools_reference.md`](../../mcp_tools_reference.md). **Safe triage:** [`.agent/workflows/safe_mcp_diagnostics.md`](../../workflows/safe_mcp_diagnostics.md).
+**Contract:** [docs/technical/VEXLUM_MCP.md](../../../docs/technical/VEXLUM_MCP.md). Old ids and envelopes: [MCP_SEARCH_DISPATCH.md](../../../docs/technical/MCP_SEARCH_DISPATCH.md) (deprecated). Action registry: [`mcp/action_registry.json`](../../../mcp/action_registry.json). Full legacy index: [`.agent/mcp_tools_reference.md`](../../mcp_tools_reference.md). **Safe triage:** [`.agent/workflows/safe_mcp_diagnostics.md`](../../workflows/safe_mcp_diagnostics.md).
 
-## Critical rules (is-be-mcp)
+## Critical rules (vexlum)
 
-1. **Only two tools exist on compact MCP:** `search` and `dispatch`. There is no `execute_sql`, `get_error_summary`, or other raw tool name — those are **legacy** names from `modules/mcp_server.py` or AGENTS.md.
-2. **Always `search` before `dispatch`** when the action is not already known. Use `search(..., include_schemas=True)` to read required args.
-3. **`dispatch` takes `action_id` strings** in the form `category.name` (e.g. `diagnostics.get_error_summary`). Bare legacy names like `execute_sql` are accepted when they match `legacy_tool_name` in the registry.
-4. **On `unknown_action`**, read `details.suggestions` and `details.hint` in the error envelope — do not guess another `category.tool` id from AGENTS.md.
-5. **Writes / maintenance / `execute_code`** are not on compact stdio. Use **`is-be-live`** with `MCP_SSE_PROFILE=full` for the legacy ~54-tool surface.
-6. When `search` returns several plausible `action_id`s, ask Jev to pick one (include a `none` option) before `dispatch`. Protocol: [jev-mcp](../jev-mcp/SKILL.md). Config rerank (`typesafe.mcp_search_rerank`) is a separate server-side path and stays off unless enabled.
+1. **Three tools:** `search`, `resolve`, `execute`. `dispatch` and `sse_status` are deprecated aliases. There is no raw `execute_sql` or `get_error_summary` tool — those are legacy names; pass them to `resolve` to get the `action_id`.
+2. **`search` → `resolve` → `execute`** when the action is not already known. `resolve` returns the input schema, tier, `requires` and an example call. `search(..., include_schemas=True)` also returns schemas.
+3. **Ids:** `category.name` for Python tools (`diagnostics.get_error_summary`), `api.<tag>.<operationId>` for REST, `db.schema|query|execute`, `browser.*`, `system.status|categories`. `resolve` also accepts legacy tool names, REST `operationId`s and `"METHOD /path"`.
+4. **On `unknown_action`**, read `details.suggestions` and `details.hint` — do not guess another id from AGENTS.md.
+5. **Tiers:** `read` runs immediately. `write` needs `confirmed=true` (preview first with `dry_run=true`). `destructive` (`db.execute`, `DELETE` API, `maintenance.prune_missing_files`, `maintenance.rebase_file_paths`, `maintenance.execute_code`, `browser.run_code_unsafe`) needs `VEXLUM_ALLOW_ELEVATED=1` on the vexlum process, a `dry_run=true` that returns `data.confirm_token`, then `confirmed=true` with that token and the same arguments. Run writes only when the user asked for them.
+6. When `search` returns several plausible `action_id`s, ask Jev to pick one (include a `none` option) before `execute`. Protocol: [jev-mcp](../jev-mcp/SKILL.md). Config rerank (`typesafe.mcp_search_rerank`) is a separate server-side path and stays off unless enabled.
 
 ## Setup
 
-Copy [`.cursor/mcp.example.json`](../../../.cursor/mcp.example.json) → `.cursor/mcp.json`. Attach **`is-be-mcp`** (Node `mcp-server/dist/compactIndex.js`; the Python worker runs in `image-scoring-gpu-shell` on Windows). Set `IS_BE_MCP_USE_WSL=1` only when Ubuntu `~/.venvs/tf` should be used instead. Add **`is-be-live`** when WebUI is running.
+Copy [`.cursor/mcp.example.json`](../../../.cursor/mcp.example.json) → `.cursor/mcp.json`. Build `cd mcp-server && npm ci && npm run build`, then attach **`vexlum`** (Node `mcp-server/dist/vexlum.js`; the Python worker runs in `image-scoring-gpu-shell` on Windows). Set `VEXLUM_USE_WSL=1` only when Ubuntu `~/.venvs/tf` should be used instead. `api.*` actions need the WebUI running (`webui_unavailable` otherwise); `db.*` and most tools only need PostgreSQL.
+
+CLI with the same catalog: `scripts\vexlum.cmd search|resolve|exec|list|status` (TS host, includes `browser.*`) or `python -m modules.vexlum …` in gpu-shell.
 
 ## Preferred workflow (backend)
 
 ```text
 search("why did scoring fail")                    # step 1 — required when unsure
-dispatch("diagnostics.get_error_summary", {})     # step 2 — use action_id from search
+resolve("diagnostics.get_error_summary")          # step 2 — schema, tier, example
+execute("diagnostics.get_error_summary", {})      # step 3
 ```
 
-## Compact dispatchable actions (is-be-mcp)
+## Common tool actions
 
-Regenerate from overlay: `python scripts/generate_mcp_tool_inventory.py --update-action-registry`.
+The catalog also has every REST operation (`search("…", source="api")`) and `db.*`. Counts: [VEXLUM_MCP.md](../../../docs/technical/VEXLUM_MCP.md#catalog-sources).
 
-| action_id | Use for |
-|-----------|---------|
-| `diagnostics.run_doctor` | `scripts/doctor.py` equivalent (`no_gpu`, `json`) |
-| `diagnostics.get_error_summary` | Failed jobs, missing scores, stale running |
-| `diagnostics.check_database_health` | Orphans, duplicates, integrity |
-| `diagnostics.validate_config` | Config structure + optional DB ping |
-| `diagnostics.get_database_engine_info` | Engine, connector, ping |
-| `diagnostics.verify_environment` | Host, Python, deps |
-| `diagnostics.get_model_status` | GPU / model load |
-| `diagnostics.diagnose_phase_consistency` | **Requires `image_id`**; optional `folder_path` |
-| `diagnostics.get_stale_running_phase_status` | IPS rows stuck `running` |
-| `logs.read_debug_log` | Tail `debug.log` |
-| `logs.get_server_log_tail` | Tail `webui.log` / `debug.log` |
-| `logs.search_logs` | Regex grep on log tails |
-| `config.get_config` | Redacted config |
-| `jobs.get_failed_images` | Images **missing score columns** (not per-job failures) |
-| `jobs.get_image_pipeline_failures` | **`job_image_actions` failed** for one image (`image_id` or `file_path`) |
-| `jobs.get_run_diagnostics` | Post-run audit (`run_id`) |
-| `jobs.get_runner_status` | In-process runners (WebUI process; often empty on stdio MCP) |
-| `jobs.get_recent_jobs` | Job history |
-| `jobs.get_job_details` | One job by `job_id` |
-| `data.query_images` | Filtered listing (folder, scores, keywords) |
-| `data.get_image_details` | Full row by `file_path` |
-| `data.get_db_schema` | Postgres `information_schema` (before SQL) |
-| `data.execute_sql` | Read-only `SELECT` / `WITH … SELECT` (`query`, optional `params`) |
-| `data.get_embedding_stats` | Embedding coverage |
-| `support.export_debug_bundle` | Redacted zip — `confirmed=True` |
-| `browser.navigate` | Playwright — open URL (e.g. WebUI `http://127.0.0.1:7860/ui/`) |
-| `browser.snapshot` | Playwright — accessibility page snapshot |
-| `browser.click` | Playwright — click element (`target` from snapshot) |
-| `browser.run_code_unsafe` | Playwright RCE — **`confirmed=True`** only |
+| action_id | Tier | Use for |
+|-----------|------|---------|
+| `system.status` | read | Catalog counts, DB, WebUI API and SSE reachability |
+| `diagnostics.run_doctor` | read | `scripts/doctor.py` equivalent (`no_gpu`, `json`) |
+| `diagnostics.get_error_summary` | read | Failed jobs, missing scores, stale running |
+| `diagnostics.check_database_health` | read | Orphans, duplicates, integrity |
+| `diagnostics.validate_config` | read | Config structure + optional DB ping |
+| `diagnostics.get_database_engine_info` | read | Engine, connector, ping |
+| `diagnostics.verify_environment` | read | Host, Python, deps |
+| `diagnostics.get_model_status` | read | GPU / model load |
+| `diagnostics.diagnose_phase_consistency` | read | **Requires `image_id`**; optional `folder_path` |
+| `diagnostics.get_stale_running_phase_status` | read | IPS rows stuck `running` |
+| `logs.read_debug_log` | read | Tail `debug.log` |
+| `logs.get_server_log_tail` | read | Tail `webui.log` / `debug.log` |
+| `logs.search_logs` | read | Regex grep on log tails |
+| `config.get_config` | read | Redacted config |
+| `jobs.get_failed_images` | read | Images **missing score columns** (not per-job failures) |
+| `jobs.get_image_pipeline_failures` | read | **`job_image_actions` failed** for one image (`image_id` or `file_path`) |
+| `jobs.get_run_diagnostics` | read | Post-run audit (`run_id`) |
+| `jobs.get_runner_status` | read | In-process runners (WebUI process; often empty from stdio) |
+| `jobs.get_recent_jobs` | read | Job history |
+| `jobs.get_job_details` | read | One job by `job_id` |
+| `data.query_images` | read | Filtered listing (folder, scores, keywords) |
+| `data.get_image_details` | read | Full row by `file_path` |
+| `data.get_database_stats` / `data.get_folder_tree` / `data.get_stacks_summary` | read | Former full-profile-only tools |
+| `db.schema` | read | Postgres `information_schema` (before SQL) |
+| `db.query` | read | One `SELECT` / `WITH … SELECT` (`query`, optional `params`, `max_rows`) |
+| `db.execute` | destructive | One write/DDL statement; dry run executes and rolls back |
+| `data.get_embedding_stats` | read | Embedding coverage |
+| `support.export_debug_bundle` | write | Redacted zip |
+| `maintenance.run_processing_job` | write | Needs in-process runners (WebUI); from gpu-shell prefer `api.*` job endpoints |
+| `browser.navigate` / `browser.snapshot` | read | Playwright — open URL, accessibility snapshot |
+| `browser.click` | write | Playwright — click element (`target` from snapshot) |
+| `browser.run_code_unsafe` | destructive | Playwright RCE |
 
 ### Common mistakes
 
 | Wrong | Right |
 |-------|-------|
-| `dispatch("execute_sql", …)` without registry | `dispatch("data.execute_sql", …)` or legacy name `execute_sql` (resolved automatically) |
-| `dispatch("data.execute_sql", …)` when not in registry | Run registry update; or `is-be-live` full profile |
-| `dispatch("diagnostics.diagnose_phase_consistency", {"folder_path": "…"})` only | **Must include `image_id`**; use `data.query_images` to find candidates first |
+| `execute("execute_sql", …)` | Works (legacy name resolves), but prefer `db.query` |
+| `db.query` with `UPDATE`/`DELETE` | Rejected — `db.execute` (destructive tier) |
+| Retrying a destructive call with changed args and the old token | Dry-run again; the token is bound to the exact arguments (10 min TTL) |
+| `execute("diagnostics.diagnose_phase_consistency", {"folder_path": "…"})` only | **Must include `image_id`**; use `data.query_images` to find candidates first |
 | `jobs.get_failed_images` for one image job trace | `jobs.get_image_pipeline_failures` with `image_id` or `file_path` |
-| Raw tool name from AGENTS.md inventory | `search("…")` → use returned `action_id` |
+| Raw tool name from AGENTS.md inventory | `resolve("<name>")` → use the returned `action_id` |
 
 ## Server keys
 
 | Key | Tools |
 |-----|-------|
-| **`is-be-mcp`** | **`search`**, **`dispatch`** (stdio; WSL launcher default) |
-| **`is-be-live`** | Same compact tools via SSE; **`MCP_SSE_PROFILE=full`** for legacy raw tools + `execute_code` |
+| **`vexlum`** | **`search`**, **`resolve`**, **`execute`** (stdio; gpu-shell worker) |
+| `is-be-mcp`, `is-be-live` | **Deprecated** — both now serve the vexlum tools |
 | **`is-ui-mcp`** | Gallery — **`search`**, **`dispatch`** |
 | **`is-ui-live`** | Gallery SSE — live IPC when Electron dev is running |
-
-Legacy profile servers (`is-be-diag`, `is-ui-router`, …) are **not** in default configs.
 
 ## Workflows
 
@@ -90,42 +95,49 @@ Legacy profile servers (`is-be-diag`, `is-ui-router`, …) are **not** in defaul
 
 ```text
 search("scoring failure")
-dispatch("diagnostics.get_error_summary", {})
-dispatch("jobs.get_failed_images", {"limit": 20})
-dispatch("logs.search_logs", {"pattern": "error|failed"})
+execute("diagnostics.get_error_summary", {})
+execute("jobs.get_failed_images", {"limit": 20})
+execute("logs.search_logs", {"pattern": "error|failed"})
 ```
 
 ### Per-image pipeline failure
 
 ```text
 search("pipeline failures for image")
-dispatch("jobs.get_image_pipeline_failures", {"file_path": "/mnt/d/Photos/…/DSC_0001.NEF"})
-dispatch("data.get_image_details", {"file_path": "/mnt/d/Photos/…/DSC_0001.NEF"})
+execute("jobs.get_image_pipeline_failures", {"file_path": "/mnt/d/Photos/…/DSC_0001.NEF"})
+execute("data.get_image_details", {"file_path": "/mnt/d/Photos/…/DSC_0001.NEF"})
 ```
 
-### Custom SQL (compact)
+### Custom SQL
 
 ```text
-search("execute sql")
-dispatch("data.get_db_schema", {"table_name_prefix": "image"})
-dispatch("data.execute_sql", {"query": "SELECT COUNT(*) FROM images WHERE …", "params": []})
+execute("db.schema", {"table_name_prefix": "image"})
+execute("db.query", {"query": "SELECT COUNT(*) FROM images WHERE …", "params": []})
+```
+
+### REST endpoint
+
+```text
+search("start scoring for a folder", source="api")
+resolve("api.<tag>.<operationId>")                 # path/query params top-level, JSON body in `body`
+execute("api.<tag>.<operationId>", {...}, dry_run=true)
+execute("api.<tag>.<operationId>", {...}, confirmed=true)
 ```
 
 ### Export debug bundle
 
 ```text
-search("export debug bundle")
-dispatch("support.export_debug_bundle", {}, confirmed=True)
+execute("support.export_debug_bundle", {}, confirmed=true)
 ```
 
-### Browser automation (Playwright via is-be-mcp)
+### Browser automation (Playwright via vexlum)
 
 No separate **`playwright`** MCP server — use **`browser.*`** actions:
 
 ```text
 search("browser navigate webui")
-dispatch("browser.navigate", {"url": "http://127.0.0.1:7860/ui/"}, dry_run=true)
-dispatch("browser.snapshot", {})
+execute("browser.navigate", {"url": "http://127.0.0.1:7860/ui/"})
+execute("browser.snapshot", {})
 ```
 
 Disable with `MCP_PLAYWRIGHT_ENABLED=0`. Regenerate registry: `node scripts/generate_playwright_registry.mjs`.
@@ -134,8 +146,8 @@ Disable with `MCP_PLAYWRIGHT_ENABLED=0`. Regenerate registry: `node scripts/gene
 
 1. **`is-ui-mcp`** → `search("gallery status")` → `dispatch("local.gallery_status", {})`
 2. **`is-ui-mcp`** → `dispatch("api.api_health", {})` when backend WebUI is up
-3. Pipeline/DB triage on **`is-be-mcp`**
+3. Pipeline/DB triage on **`vexlum`**
 
 ## execute_code
 
-Requires WebUI with **`MCP_SSE_PROFILE=full`** and **`ENABLE_MCP_EXECUTE_CODE=1`**. Assign to `result` to return a value.
+`maintenance.execute_code` (destructive) works only inside the WebUI process (`/mcp/sse`) with **`ENABLE_MCP_EXECUTE_CODE=1`**. Assign to `result` to return a value.
