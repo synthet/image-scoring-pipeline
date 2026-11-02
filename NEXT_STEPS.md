@@ -1,6 +1,35 @@
 # Localization rollout — next steps
 
-## Current handoff — 2026-10-15
+## Current handoff — 2026-11-02
+
+**Production is at schema 0048 and the localization authority is in shadow mode.**
+- 0048 was applied on 2026-11-01 after a restore-verified backup and a rehearsal on a restored copy. The
+  0047 migration bug was fixed in #732.
+- The frozen R2 policy is registered for the v1 producer (`bird_detect_v1.pt`). `authority_granted` is
+  false and there are no approvals.
+- With the WebUI running, the shadow scan evaluates about 11,900 runs per hour in run-ID order. All
+  evaluations so far are v0 runs, which correctly abstain as out of scope. v1 runs start at ID 97,877.
+  Status is on [#694](https://github.com/synthet/image-scoring-pipeline/issues/694).
+- Safety: there have been no selection writes since shadow mode started. The bird-box and selection
+  fingerprints match the baseline taken after the 2026-11-01 approved hard deletes.
+
+**Open items, all owned outside this handoff:**
+
+| Item | Waiting on | Unblock condition |
+|---|---|---|
+| Authority activation | The qualification gate ([#694](https://github.com/synthet/image-scoring-pipeline/issues/694)): calibration stopped with 1 of 3 judges qualified | Three qualified judges, a real scoped qualification receipt, then explicit owner approval. The runbook has no override. |
+| Eye-quality failure types (closed eye, nictitating membrane, catchlight present) | Owner of [image-scoring-model#7](https://github.com/synthet/image-scoring-model/issues/7) | A few hundred labelled eye crops; the labelling route isn't decided. |
+| External-survey cross-check in the near-duplicate docs | Owner of [image-scoring-skills#23](https://github.com/synthet/image-scoring-skills/issues/23) | The track owner folds the mapping into the study docs. |
+| Rename the checkout folder to `image-scoring-pipeline` | Processes using the folder ([#756](https://github.com/synthet/image-scoring-pipeline/issues/756), Blocked) | Close or move the Claude Code sessions, MCP children and Warp tabs whose working directory is the junction, then the hub session retries. |
+
+**Settled since 2026-10-31:**
+- #739, learning the within-stack rank from owner exports: negative. See
+  [the report](docs/reports/owner-picks-ranking-evaluation-2026-11-02.md).
+- #740, judge order bias: 4.1%, so score order stays the default.
+- #747, judge-reply validation: fixed.
+- #726, the AF backfill: done.
+
+## Handoff — 2026-10-15
 
 **Stage 5 is live.** The production refresh finished and its final verification passed:
 - `bird_species.use_regions: true` and floor 0.5 are set in live `config.json`.
