@@ -14,6 +14,7 @@ Use these files as authority before adding or changing APIs, database fields, ph
 
 | Topic | Authoritative file(s) |
 |---|---|
+| Cross-repo vision terms (burst, stack, same moment, sharpness, box format) | [hub `vision-terms-contract.md`](https://github.com/synthet/image-scoring/blob/main/docs/specs/vision-terms-contract.md) |
 | REST API contract | [technical/API_CONTRACT.md](technical/API_CONTRACT.md), [reference/api/openapi.yaml](reference/api/openapi.yaml), [reference/api/API.md](reference/api/API.md), [modules/api/](../modules/api/) |
 | Application config (`config.json`, `environment.json`) | [technical/CONFIG.md](technical/CONFIG.md), [modules/config.py](../modules/config.py), [config.example.json](../config.example.json) |
 | OpenAPI generation / schema artifact | [reference/api/openapi.yaml](reference/api/openapi.yaml), [openapi.json](../openapi.json), [reference/api/API_SCHEMA_IMPLEMENTATION.md](reference/api/API_SCHEMA_IMPLEMENTATION.md) |
