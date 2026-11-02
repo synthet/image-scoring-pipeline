@@ -4,7 +4,7 @@ title: Owner-pick within-stack ranking — pre-registration
 description: "Frozen design for #739: learn within-stack ranking weights from the owner's own export picks, with label source, features, model, metrics, baselines and the adoption threshold fixed before any evaluation output is read."
 resource: docs/planning/owner-picks-ranking-preregistration.md
 tags: [planning, culling, ranking, labels, preregistration]
-timestamp: 2026-11-01T00:00:00Z
+timestamp: 2026-11-02T00:00:00Z
 okf_version: 0.2
 status: pre-registered
 ---
@@ -118,4 +118,18 @@ If not adopted, record the result and close #739 as a negative finding.
 
 ## Revisions
 
-None yet.
+### R1 (2026-11-02): capture-second tier, added before any evaluation output
+
+**Context.** The required pair census (#739, AC-2a) found, with the registered stem-and-second rule:
+- 178 eligible stacks and 1,249 pairs, from **2025 and 2026 only**;
+- the 405 exports from 2014–2023 are named `YYYYMMDD_####` and carry no camera stem, so the rule matches none of them;
+- the DB does hold about 12,000 RAW frames from 2013–2023, about 7,900 of them stacked;
+- 2024 is absent from the DB.
+
+**Change.** A second, **secondary** label tier admits an export by capture second alone. This mirrors the near-duplicate study's conservative capture-second rule. Burst-safety condition: an export counts only when **exactly one** DB frame has that capture second. If several frames share the second, the export is dropped rather than guessed.
+
+**Unchanged:**
+- The primary analysis, metrics, baselines and adoption rule use the registered stem-and-second labels only.
+- The secondary tier is reported separately: pooled with the primary labels, and by year. It can't satisfy the adoption rule by itself.
+
+**State at revision time.** Only the pair counts required before fitting had been read. No model was fitted and no evaluation output existed.
