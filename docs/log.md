@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-11-01] created | Owner-pick within-stack ranking pre-registration (#739)
+
+Added [the pre-registration](planning/owner-picks-ranking-preregistration.md) and its row in the planning index. It fixes the design before any evaluation output is read: export picks as primary labels (carousel picks only as a secondary tier with a recorded owner decision), frozen within-stack features, a pairwise logistic model, leave-one-year-out top-1 against four baselines, and the adoption rule. Documentation only.
+
 ## [2026-10-31] created | Consolidated October 2026 session digests and master inventory
 
 Transformed all 37 exported session transcripts from the workspace root into a consolidated set of 8 thematic digests and a master cryptographic provenance catalog under `docs/reports/`:
