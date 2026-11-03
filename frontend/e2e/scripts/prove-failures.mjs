@@ -163,6 +163,52 @@ export const BREAKS = [
     replace: 'reconnectTimer.current = null',
     grep: 'a dropped live socket shows Reconnecting',
   },
+  // Journey 5 — persistence
+  {
+    name: 'persist-diagnostic-pref-not-saved',
+    file: 'src/hooks/useDiagnostics.ts',
+    find: 'try { localStorage.setItem(`diagnostic-${name}`, String(clamped)); }',
+    replace: 'try { void name; }',
+    grep: 'diagnostic overlay opacity and dimming survive',
+  },
+  {
+    name: 'persist-db-table-not-in-url',
+    file: 'src/components/db/DbTableSidebar.tsx',
+    find: 'to={dbExplorerPath(table)}',
+    replace: "to={dbExplorerPath('')}",
+    grep: 'the DB explorer keeps the selected table',
+  },
+  // Journey 6 — security (each break adds a real HTML sink or a bad request)
+  {
+    name: 'sec-keyword-html-sink',
+    file: 'src/components/keywords/TagCloud.tsx',
+    find: '            {label}',
+    replace: '            <span dangerouslySetInnerHTML={{ __html: label }} />',
+    grep: 'keywords and folder names from the API render as text',
+  },
+  {
+    // The Logs page renders messages through LogMessageWithImageLinks (components/ui/
+    // StatusLogFilePanel.tsx); components/logs/StatusLogFilePanel.tsx is an unused copy.
+    name: 'sec-log-html-sink',
+    file: 'src/utils/logMessageLinks.tsx',
+    find: '<span key={i}>{s.text}</span>',
+    replace: '<span key={i} dangerouslySetInnerHTML={{ __html: s.text }} />',
+    grep: 'log lines from the Logs page and the live run log',
+  },
+  {
+    name: 'sec-image-foreign-path',
+    file: 'src/pages/ImageInspectorPage.tsx',
+    find: 'if (full) return `/source-image?path=${encodeURIComponent(full)}`',
+    replace: "if (full) return '/source-image?path=%2Fetc%2Fpasswd'",
+    grep: 'image endpoints are requested only with paths the API supplied',
+  },
+  {
+    name: 'sec-new-tab-without-rel',
+    file: 'src/components/layout/Shell.tsx',
+    find: 'to={to}',
+    replace: 'to={to} target="_blank"',
+    grep: 'links that open a new tab use rel',
+  },
   {
     name: 'contract-undocumented-call',
     file: 'src/api/runs.ts',

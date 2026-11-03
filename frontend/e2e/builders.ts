@@ -181,7 +181,11 @@ export function installPages(api: ApiFake, images: Image[] = [image(1), image(2)
     .on('GET', '/api/runs/{run_id}/stages', { json: [stage(1, 'indexing'), stage(2, 'metadata'), stage(3, 'scoring', { state: 'running', completed_at: null })] })
     .on('GET', '/api/runs/folder-buckets', { json: folderBuckets() })
     .on('GET', '/api/images', ({ query }) => ({ json: imageList(images, Number(query.get('page') ?? 1), Number(query.get('page_size') ?? 50)) }))
-    .on('GET', '/api/images/{image_id}', ({ params }) => ({ json: imageDetail(Number(params.image_id)) }))
+    .on('GET', '/api/images/{image_id}', ({ params }) => {
+      const id = Number(params.image_id)
+      const found = images.find((i) => i.id === id)
+      return { json: found ? ({ ...imageDetail(id), ...found } as ImageDetail) : imageDetail(id) }
+    })
     .on('GET', '/api/images/{image_id}/neighbors', ({ params }) => {
       const id = Number(params.image_id)
       const neighbors: NeighborResponse = { prev_id: id > 1 ? id - 1 : null, next_id: id < images.length ? id + 1 : null }
@@ -207,6 +211,27 @@ export function installPages(api: ApiFake, images: Image[] = [image(1), image(2)
 }
 
 const TERMINAL: Run['status'][] = ['completed', 'failed', 'canceled', 'interrupted']
+
+type DbRow = Record<string, unknown>
+
+/**
+ * POST /api/db/query (undocumented, #770) answered from in-memory tables, by the SQL the DB
+ * explorer sends (src/api/db.ts): table list, COUNT(*), SELECT * … LIMIT/OFFSET.
+ */
+export function dbBackend(api: ApiFake, tables: Record<string, DbRow[]>): void {
+  api.onUndocumented('POST', '/api/db/query', '#770', ({ body }) => {
+    const sql = String((body as { sql?: string })?.sql ?? '')
+    if (/information_schema\.tables/i.test(sql)) {
+      return { json: { rows: Object.keys(tables).sort().map((table_name) => ({ table_name })) } }
+    }
+    const table = /FROM\s+"([^"]+)"/i.exec(sql)?.[1]
+    const rows = table ? tables[table] ?? [] : []
+    if (/COUNT\(\*\)/i.test(sql)) return { json: { rows: [{ count: rows.length }] } }
+    const limit = Number(/LIMIT\s+(\d+)/i.exec(sql)?.[1] ?? rows.length)
+    const offset = Number(/OFFSET\s+(\d+)/i.exec(sql)?.[1] ?? 0)
+    return { json: { rows: rows.slice(offset, offset + limit), rowcount: rows.length } }
+  })
+}
 
 /** Runs shown by default: one running (#3), one completed (#2), one failed (#1). Fresh per call. */
 export function defaultRuns(): Run[] {
