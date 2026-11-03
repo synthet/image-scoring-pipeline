@@ -209,6 +209,36 @@ export const BREAKS = [
     replace: 'to={to} target="_blank"',
     grep: 'links that open a new tab use rel',
   },
+  // Journey 7 — accessibility
+  {
+    name: 'a11y-new-violation-unnamed-nav-link',
+    file: 'src/components/layout/Shell.tsx',
+    find: 'label="Runs" />',
+    replace: 'label="" />',
+    grep: 'axe: runs list has no accessibility violations beyond its known baseline',
+  },
+  {
+    name: 'a11y-nav-links-unfocusable',
+    file: 'src/components/layout/Shell.tsx',
+    find: 'to={to}',
+    replace: 'to={to} tabIndex={-1}',
+    grep: 'Tab moves through the Runs page controls',
+  },
+  {
+    name: 'a11y-diagnostics-focus-not-returned',
+    file: 'src/components/Diagnostics/DiagnosticControls.tsx',
+    find: "root.current?.querySelector('button')?.focus();",
+    replace: 'void 0;',
+    grep: 'the diagnostic overlays dialog takes focus',
+  },
+  {
+    // (modal={false} is not a break: Radix FocusScope loops Tab even for non-modal dialogs.)
+    name: 'a11y-atlas-dialog-focus-not-returned',
+    file: 'src/features/embedding-atlas/components/ProjectionSettingsDialog.tsx',
+    find: '<Dialog.Content className=',
+    replace: '<Dialog.Content onCloseAutoFocus={(e) => e.preventDefault()} className=',
+    grep: 'the Atlas projection settings dialog keeps Tab inside',
+  },
   {
     name: 'contract-undocumented-call',
     file: 'src/api/runs.ts',
