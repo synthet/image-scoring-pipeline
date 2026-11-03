@@ -3,8 +3,9 @@
  * Fail-path proofs for the UI E2E suite.
  *
  * For each break below: apply it to the product source, rebuild the e2e bundle, run the test
- * that covers that path and require it to FAIL; then restore the file. Afterwards the tracked
- * tree under frontend/src must be unchanged (git diff --exit-code).
+ * that covers that path and require it to FAIL; then restore the file. Every edited file must be
+ * unmodified in git before the run and again afterwards. A test must also fail alone: the line
+ * reports how many tests failed, which should be 1.
  *
  *   npm run e2e:prove                 all breaks
  *   npm run e2e:prove -- smoke-root   only the named break(s)
@@ -12,14 +13,19 @@
  * A break must match its `find` text exactly once, so a refactor that moves the code makes the
  * proof fail loudly instead of silently testing nothing.
  */
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const FRONTEND = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const isWin = process.platform === 'win32'
-const npx = isWin ? 'npx.cmd' : 'npx'
+// Run the tools' Node entry points directly: no shell, so `-g` patterns with spaces stay whole.
+const BIN = {
+  vite: path.join(FRONTEND, 'node_modules/vite/bin/vite.js'),
+  playwright: path.join(FRONTEND, 'node_modules/@playwright/test/cli.js'),
+  vitest: path.join(FRONTEND, 'node_modules/vitest/vitest.mjs'),
+}
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /**
  * runner 'playwright' (default): rebuild the e2e bundle, run tests matching `grep`.
@@ -33,6 +39,129 @@ export const BREAKS = [
     find: '<Route index element={<Navigate to="/runs" replace />} />',
     replace: '<Route index element={<Navigate to="/dashboard" replace />} />',
     grep: 'opening /ui/ lands on the runs list',
+  },
+  // Journey 1 — shell
+  {
+    name: 'shell-route-wrong-page',
+    file: 'src/App.tsx',
+    find: '<Route path="/birds" element={<BirdsPage />} />',
+    replace: '<Route path="/birds" element={<KeywordsPage />} />',
+    grep: 'route /ui/birds renders',
+  },
+  {
+    name: 'shell-settings-redirect',
+    file: 'src/App.tsx',
+    find: '<Route path="/settings" element={<Navigate to="/diagnostics" replace />} />',
+    replace: '<Route path="/settings" element={<Navigate to="/runs" replace />} />',
+    grep: '/ui/settings redirects',
+  },
+  {
+    name: 'shell-deep-link-param',
+    file: 'src/pages/KeywordImagesPage.tsx',
+    find: "const keyword = (rawValue ?? '').trim()",
+    replace: "const keyword = encodeURIComponent(rawValue ?? '')",
+    grep: 'deep link /ui/birds/Grey%20Heron survives a reload',
+  },
+  // Journey 2 — gates
+  {
+    name: 'gates-db-nav-ungated',
+    file: 'src/components/layout/Shell.tsx',
+    find: '{isDbExplorerEnabled && (',
+    replace: '{true && (',
+    grep: 'with both gates off',
+  },
+  {
+    name: 'gates-atlas-nav-hidden',
+    file: 'src/components/layout/Shell.tsx',
+    find: '{isEmbeddingMapEnabled && (',
+    replace: '{false && (',
+    grep: 'with both gates on',
+  },
+  {
+    name: 'gates-db-default-off',
+    file: 'src/hooks/useConfig.ts',
+    find: 'isDbExplorerEnabled: config?.db_explorer_enabled ?? true,',
+    replace: 'isDbExplorerEnabled: config?.db_explorer_enabled ?? false,',
+    grep: 'db_explorer_enabled defaults to on',
+  },
+  // Journey 3 — runs
+  {
+    name: 'runs-history-query',
+    file: 'src/pages/RunsPage.tsx',
+    find: 'history: true,',
+    replace: 'history: false,',
+    grep: 'runs list shows the running run under Active',
+  },
+  {
+    name: 'runs-progress-ignored',
+    file: 'src/utils/adaptBackendMessage.ts',
+    find: 'items_done: Number(data.current ?? 0),',
+    replace: 'items_done: 0,',
+    grep: 'progress pushed over the WebSocket',
+  },
+  {
+    name: 'runs-live-status-no-refetch',
+    file: 'src/hooks/useWebSocket.ts',
+    find: 'if (bumpRuns) store.bumpRunsVersion()',
+    replace: 'void bumpRuns',
+    grep: 'a status change pushed live moves the run off Active',
+  },
+  {
+    name: 'runs-log-order',
+    file: 'src/stores/wsStore.ts',
+    find: 'const next = existing.length >= 500 ? [...existing.slice(1), e] : [...existing, e]',
+    replace: 'const next = existing.length >= 500 ? [...existing.slice(1), e] : [e, ...existing]',
+    grep: 'run detail shows the run, its stages, and live log lines',
+  },
+  {
+    name: 'runs-cancel-wrong-endpoint',
+    file: 'src/pages/RunDetailPage.tsx',
+    find: 'const cancelMut = useMutation({ mutationFn: () => runsApi.cancel(id), onSuccess: invalidate })',
+    replace: 'const cancelMut = useMutation({ mutationFn: () => runsApi.pause(id), onSuccess: invalidate })',
+    grep: 'cancelling a running run sends',
+  },
+  // Journey 4 — backend unavailable
+  {
+    name: 'down-blank-not-found',
+    file: 'src/pages/RunDetailPage.tsx',
+    find: '<p className="text-sm text-[var(--color-danger)]">Run #{id} not found</p>',
+    replace: '<p className="text-sm text-[var(--color-danger)]"></p>',
+    grep: 'with /api answering 500, no page is blank',
+  },
+  {
+    name: 'down-no-loading-state',
+    file: 'src/pages/RunDetailPage.tsx',
+    find: '  if (runLoading) {',
+    replace: '  if (false) {',
+    grep: 'requests that hang leave the shell',
+  },
+  {
+    name: 'down-retry-noop',
+    file: 'src/pages/DiagnosticsPage.tsx',
+    find: '<Button variant="secondary" onClick={() => refetch()} className="mt-4">',
+    replace: '<Button variant="secondary" onClick={() => undefined} className="mt-4">',
+    grep: 'Diagnostics and Logs recover through Retry',
+  },
+  {
+    name: 'down-reload-no-data',
+    file: 'src/pages/RunsPage.tsx',
+    find: "queryFn: () => runsApi.list({ limit: 200, status: 'running,paused,queued,pending' }),",
+    replace: 'queryFn: async () => [],',
+    grep: 'the runs list recovers on reload',
+  },
+  {
+    name: 'down-ws-no-reconnect-after-refusal',
+    file: 'src/hooks/useWebSocket.ts',
+    find: 'reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY_MS)',
+    replace: 'reconnectTimer.current = null',
+    grep: 'when a refused WebSocket is accepted again',
+  },
+  {
+    name: 'down-ws-no-reconnect-after-drop',
+    file: 'src/hooks/useWebSocket.ts',
+    find: 'reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY_MS)',
+    replace: 'reconnectTimer.current = null',
+    grep: 'a dropped live socket shows Reconnecting',
   },
   {
     name: 'contract-undocumented-call',
@@ -54,17 +183,21 @@ export const BREAKS = [
   },
 ]
 
-function run(cmd, args, opts = {}) {
-  return spawnSync(cmd, args, { cwd: FRONTEND, stdio: 'pipe', encoding: 'utf8', shell: isWin, ...opts })
+function run(tool, args) {
+  return spawnSync(process.execPath, [BIN[tool], ...args], { cwd: FRONTEND, stdio: 'pipe', encoding: 'utf8' })
 }
 
 function build() {
-  const r = run(npx, ['vite', 'build', '--config', 'e2e/vite.e2e.config.ts'])
+  const r = run('vite', ['build', '--config', 'e2e/vite.e2e.config.ts'])
   if (r.status !== 0) throw new Error(`e2e build failed:\n${r.stdout}\n${r.stderr}`)
 }
 
-function gitClean() {
-  execFileSync('git', ['diff', '--exit-code', '--quiet', '--', 'src'], { cwd: FRONTEND })
+/** Every file a break edits must be unmodified in git, before and after. */
+function gitClean(files) {
+  for (const f of new Set(files)) {
+    const r = spawnSync('git', ['diff', '--quiet', '--', f], { cwd: FRONTEND })
+    if (r.status !== 0) throw new Error(`${f} has uncommitted changes; commit or restore it before proving breaks`)
+  }
 }
 
 const wanted = process.argv.slice(2)
@@ -74,7 +207,7 @@ if (wanted.length && selected.length !== wanted.length) {
   process.exit(2)
 }
 
-gitClean()
+gitClean(selected.map((b) => b.file))
 const results = []
 for (const brk of selected) {
   const file = path.join(FRONTEND, brk.file)
@@ -89,24 +222,26 @@ for (const brk of selected) {
     let t
     let ran
     if (brk.runner === 'vitest') {
-      t = run(npx, ['vitest', 'run', brk.vitestFile, '-t', brk.grep])
+      t = run('vitest', ['run', brk.vitestFile, '-t', brk.grep])
       ran = /Tests\s+.*\d+ (passed|failed)/.test(t.stdout.replace(/\x1b\[[0-9;]*m/g, ''))
     } else {
       build()
-      t = run(npx, ['playwright', 'test', '-c', 'e2e/playwright.config.ts', '-g', brk.grep, '--reporter=line'])
+      t = run('playwright', ['test', '-c', 'e2e/playwright.config.ts', '-g', escapeRegex(brk.grep), '--reporter=line'])
       ran = /\d+ (passed|failed)/.test(t.stdout)
     }
+    const counts = /(\d+) failed/.exec(t.stdout)?.[1]
+    brk.detail = counts ? `${counts} failed` : ''
     results.push({
       name: brk.name,
       ok: ran && t.status !== 0,
-      why: !ran ? 'no test matched the grep' : t.status !== 0 ? 'test failed as required' : 'TEST STILL PASSED',
+      why: !ran ? 'no test matched the grep' : t.status !== 0 ? `test failed as required (${brk.detail || 'nonzero exit'})` : 'TEST STILL PASSED',
     })
   } finally {
     writeFileSync(file, original)
   }
 }
 if (selected.some((b) => b.runner !== 'vitest')) build() // leave a bundle built from the real source
-gitClean()
+gitClean(selected.map((b) => b.file))
 
 for (const r of results) console.log(`${r.ok ? 'PROVEN ' : 'NOT PROVEN'}  ${r.name}: ${r.why}`)
 process.exit(results.every((r) => r.ok) ? 0 : 1)
