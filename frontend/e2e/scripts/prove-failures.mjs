@@ -239,6 +239,28 @@ export const BREAKS = [
     replace: '<Dialog.Content onCloseAutoFocus={(e) => e.preventDefault()} className=',
     grep: 'the Atlas projection settings dialog keeps Tab inside',
   },
+  // Journey 8 — layout (representative size: 1440×900 @1x)
+  {
+    name: 'layout-wide-header',
+    file: 'src/components/layout/Shell.tsx',
+    find: 'flex h-12 items-center gap-3',
+    replace: 'flex h-12 min-w-[1500px] items-center gap-3',
+    grep: '1440×900 @1x main screens have no horizontal page overflow',
+  },
+  {
+    name: 'layout-status-off-screen',
+    file: 'src/components/layout/ConnectionStatus.tsx',
+    find: '<div className="flex items-center gap-1.5">',
+    replace: '<div className="flex items-center gap-1.5 fixed -right-40">',
+    grep: '1440×900 @1x header controls are inside the viewport',
+  },
+  {
+    name: 'layout-sidebar-toggle-noop',
+    file: 'src/stores/uiStore.ts',
+    find: 'toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),',
+    replace: 'toggleSidebar: () => set((s) => ({ sidebarOpen: s.sidebarOpen })),',
+    grep: '1440×900 @1x the folder sidebar closes and opens again',
+  },
   {
     name: 'contract-undocumented-call',
     file: 'src/api/runs.ts',
