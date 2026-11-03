@@ -85,6 +85,15 @@ describe('useWebSocket', () => {
     expect(live).toHaveLength(1)
   })
 
+  it.fails('#774: with every attempt refused, the status reaches offline after INITIAL_OFFLINE_MS', () => {
+    renderHook(() => useWebSocket())
+    for (let elapsed = 0; elapsed <= 14_000; elapsed += 2000) {
+      FakeSocket.instances[FakeSocket.instances.length - 1].fail()
+      vi.advanceTimersByTime(2000)
+    }
+    expect(useWsStore.getState().connectionStatus).toBe('offline')
+  })
+
   it.fails('#773: unmounting while CONNECTING does not call close() on the connecting socket', () => {
     const { unmount } = renderHook(() => useWebSocket())
     unmount()

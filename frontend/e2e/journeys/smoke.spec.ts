@@ -5,7 +5,7 @@ test('opening /ui/ lands on the runs list with the active run shown', async ({ p
 
   await expect(page).toHaveURL(/\/ui\/runs$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Runs' })).toBeVisible()
-  // DEFAULT_RUNS has exactly one running run (#3); the Active tab lists it.
+  // defaultRuns() has exactly one running run (#3); the Active tab lists it.
   await expect(page.getByText('#3', { exact: true })).toBeVisible()
   await expect(page.getByText('#2', { exact: true })).toHaveCount(0)
 

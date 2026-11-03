@@ -86,6 +86,29 @@ export class ApiFake {
     return this
   }
 
+  /**
+   * Fake an endpoint the SPA calls but openapi.json does not document. Requires the issue that
+   * tracks the gap (see src/test/contract.test.ts KNOWN_UNDOCUMENTED); recorded in `undocumented`.
+   */
+  onUndocumented(method: string, template: string, issue: string, reply: ApiHandler | ApiReply): this {
+    const m = method.toUpperCase()
+    if (hasTemplate(m, template)) throw new Error(`${m} ${template} is documented; use on()`)
+    if (!/^#\d+$/.test(issue)) throw new Error(`onUndocumented needs a tracking issue like '#770', got '${issue}'`)
+    const { regex, paramNames } = compileTemplate(template)
+    const handler: ApiHandler = typeof reply === 'function' ? reply : () => reply
+    this.handlers.push({ method: m, template, regex, paramNames, handler })
+    this.undocumented.add(`${m} ${template} (${issue})`)
+    return this
+  }
+
+  readonly undocumented = new Set<string>()
+
+  /**
+   * While set, every request (registered or not) gets this reply instead — the backend is down.
+   * Requests are still logged; none count as unexpected. `null` restores normal handling.
+   */
+  outage: ApiReply | null = null
+
   /** Let a documented endpoint go unanswered (404) without failing the test. */
   allowUnhandled(method: string, template: string): this {
     this.allowed.add(`${method.toUpperCase()} ${template}`)
@@ -101,7 +124,7 @@ export class ApiFake {
     const handle = (route: Route) => this.handle(route, origin)
     await page.route('**/api/**', handle)
     await page.route('**/public/api/**', handle)
-    await page.route('**/source-image/**', handle)
+    await page.route(/\/source-image(?:[/?]|$)/, handle)
   }
 
   private async handle(route: Route, origin: string): Promise<void> {
@@ -113,9 +136,25 @@ export class ApiFake {
     }
     const method = request.method().toUpperCase()
     const documented = operationFor(method, url.pathname)?.template ?? null
+    if (this.outage) {
+      const o = this.outage
+      this.requests.push({ method, path: url.pathname + url.search, template: documented, status: o.abort ? 0 : (o.status ?? 503), handled: false })
+      if (o.delayMs) await new Promise((r) => setTimeout(r, o.delayMs))
+      if (o.abort) await route.abort('connectionrefused').catch(() => undefined)
+      else
+        await route
+          .fulfill({ status: o.status ?? 503, contentType: 'application/json', body: JSON.stringify(o.json ?? { detail: 'backend down (test)' }) })
+          .catch(() => undefined)
+      return
+    }
+    // A documented path resolves to exactly one template (literal segments win, so
+    // /api/jobs/recent never reaches a /api/jobs/{job_id} handler); undocumented paths match by regex.
     const match = [...this.handlers]
       .reverse()
-      .map((h) => ({ h, m: h.method === method ? h.regex.exec(url.pathname) : null }))
+      .map((h) => ({
+        h,
+        m: h.method === method && (documented === null || h.template === documented) ? h.regex.exec(url.pathname) : null,
+      }))
       .find((x) => x.m)
 
     if (!match) {
@@ -157,24 +196,47 @@ export class ApiFake {
   }
 }
 
-export type WsMode = 'accept' | 'refuse'
+/** Closed local port: a WebSocket to it fails the handshake for real (no network traffic). */
+const REFUSED_WS_URL = 'ws://127.0.0.1:9/ws/updates'
 
 export class WsFake {
-  mode: WsMode = 'accept'
   connections = 0
   readonly clientMessages: string[] = []
   private open: WebSocketRoute[] = []
+  private page: Page | null = null
 
-  async attach(page: Page): Promise<void> {
-    await page.routeWebSocket(/\/ws\/updates$/, (ws) => this.onConnect(ws))
+  async attach(page: Page, origin: string): Promise<void> {
+    this.page = page
+    const wsOrigin = origin.replace(/^http/, 'ws').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // Register the route first: it installs Playwright's WebSocket mock, which the patch below
+    // must wrap (a patch installed earlier would be replaced by the mock).
+    await page.routeWebSocket(new RegExp(`^${wsOrigin}/ws/updates$`), (ws) => this.onConnect(ws))
+    // Playwright cannot refuse a routed handshake (a mocked socket always opens), so refusal is
+    // done in the page: while window.__wsRefuse is true, new /ws/updates sockets are pointed at a
+    // closed local port and fail exactly like a backend that is down.
+    await page.addInitScript((refusedUrl) => {
+      const w = window as unknown as { __wsRefuse?: boolean; WebSocket: typeof WebSocket }
+      const Original = w.WebSocket
+      w.WebSocket = class extends Original {
+        constructor(url: string | URL, protocols?: string | string[]) {
+          super(w.__wsRefuse && String(url).endsWith('/ws/updates') ? refusedUrl : url, protocols)
+        }
+      }
+    }, REFUSED_WS_URL)
+  }
+
+  /**
+   * Refuse (true) or accept (false) new connections. Call before page.goto to refuse from the
+   * first visit; call later to take the backend down or bring it back.
+   */
+  async setRefuse(refuse: boolean): Promise<void> {
+    const page = this.page!
+    await page.addInitScript((v) => ((window as unknown as { __wsRefuse?: boolean }).__wsRefuse = v), refuse)
+    await page.evaluate((v) => ((window as unknown as { __wsRefuse?: boolean }).__wsRefuse = v), refuse).catch(() => undefined)
   }
 
   private onConnect(ws: WebSocketRoute): void {
     this.connections += 1
-    if (this.mode === 'refuse') {
-      void ws.close({ code: 1011, reason: 'refused by test' })
-      return
-    }
     // No connectToServer(): the socket is fully mocked and opens immediately.
     this.open.push(ws)
     ws.onMessage((m) => this.clientMessages.push(String(m)))
@@ -249,9 +311,9 @@ export const test = base.extend<Fixtures>({
     await use(api)
   },
 
-  ws: async ({ page }, use) => {
+  ws: async ({ page, baseURL }, use) => {
     const ws = new WsFake()
-    await ws.attach(page)
+    await ws.attach(page, new URL(baseURL ?? 'http://127.0.0.1').origin)
     await use(ws)
   },
 
