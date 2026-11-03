@@ -21,7 +21,11 @@ const FRONTEND = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const isWin = process.platform === 'win32'
 const npx = isWin ? 'npx.cmd' : 'npx'
 
-/** @type {{ name: string, file: string, find: string, replace: string, grep: string }[]} */
+/**
+ * runner 'playwright' (default): rebuild the e2e bundle, run tests matching `grep`.
+ * runner 'vitest': run `vitestFile` with `-t grep` (no rebuild).
+ * @type {{ name: string, file: string, find: string, replace: string, grep: string, runner?: 'playwright'|'vitest', vitestFile?: string }[]}
+ */
 export const BREAKS = [
   {
     name: 'smoke-root',
@@ -29,6 +33,24 @@ export const BREAKS = [
     find: '<Route index element={<Navigate to="/runs" replace />} />',
     replace: '<Route index element={<Navigate to="/dashboard" replace />} />',
     grep: 'opening /ui/ lands on the runs list',
+  },
+  {
+    name: 'contract-undocumented-call',
+    file: 'src/api/runs.ts',
+    find: 'get: (id: number) => api.get<Run>(`/jobs/${id}`),',
+    replace: 'get: (id: number) => api.get<Run>(`/jobz/${id}`),',
+    grep: 'every call is documented',
+    runner: 'vitest',
+    vitestFile: 'src/test/contract.test.ts',
+  },
+  {
+    name: 'ws-no-reconnect',
+    file: 'src/hooks/useWebSocket.ts',
+    find: 'reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY_MS)',
+    replace: 'reconnectTimer.current = null',
+    grep: 'reconnects after a live socket closes',
+    runner: 'vitest',
+    vitestFile: 'src/hooks/useWebSocket.test.tsx',
   },
 ]
 
@@ -64,9 +86,16 @@ for (const brk of selected) {
   }
   try {
     writeFileSync(file, original.replace(brk.find, brk.replace))
-    build()
-    const t = run(npx, ['playwright', 'test', '-c', 'e2e/playwright.config.ts', '-g', brk.grep, '--reporter=line'])
-    const ran = /\d+ (passed|failed)/.test(t.stdout)
+    let t
+    let ran
+    if (brk.runner === 'vitest') {
+      t = run(npx, ['vitest', 'run', brk.vitestFile, '-t', brk.grep])
+      ran = /Tests\s+.*\d+ (passed|failed)/.test(t.stdout.replace(/\x1b\[[0-9;]*m/g, ''))
+    } else {
+      build()
+      t = run(npx, ['playwright', 'test', '-c', 'e2e/playwright.config.ts', '-g', brk.grep, '--reporter=line'])
+      ran = /\d+ (passed|failed)/.test(t.stdout)
+    }
     results.push({
       name: brk.name,
       ok: ran && t.status !== 0,
@@ -76,7 +105,7 @@ for (const brk of selected) {
     writeFileSync(file, original)
   }
 }
-build() // leave a bundle built from the real source
+if (selected.some((b) => b.runner !== 'vitest')) build() // leave a bundle built from the real source
 gitClean()
 
 for (const r of results) console.log(`${r.ok ? 'PROVEN ' : 'NOT PROVEN'}  ${r.name}: ${r.why}`)
