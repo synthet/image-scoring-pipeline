@@ -261,6 +261,57 @@ export const BREAKS = [
     replace: 'toggleSidebar: () => set((s) => ({ sidebarOpen: s.sidebarOpen })),',
     grep: '1440×900 @1x the folder sidebar closes and opens again',
   },
+  // Journey 9 — large data
+  {
+    name: 'ld-unbounded-page',
+    file: 'src/components/images/ImageBrowsePanel.tsx',
+    find: 'page_size: pageSize,',
+    replace: 'page_size: 5000,',
+    grep: 'images the Images page renders one bounded page of rows',
+  },
+  {
+    name: 'ld-slow-first-row',
+    file: 'src/api/gallery.ts',
+    find: 'return api.get<ImageListResponse>(`/images?${q.toString()}`)',
+    replace: 'return new Promise((r) => setTimeout(r, 4000)).then(() => api.get<ImageListResponse>(`/images?${q.toString()}`))',
+    grep: 'the first row appears within',
+  },
+  {
+    name: 'ld-table-not-scrollable',
+    file: 'src/components/images/ImageBrowsePanel.tsx',
+    find: '<div className="flex-1 min-h-0 overflow-auto">',
+    replace: '<div className="flex-1 min-h-0 overflow-hidden">',
+    grep: 'mouse-wheel scrolling reaches the last row',
+  },
+  {
+    name: 'ld-pager-stops-early',
+    file: 'src/components/images/ImageBrowsePanel.tsx',
+    find: 'const canNext = totalPages > 0 && page < totalPages',
+    replace: 'const canNext = totalPages > 0 && page < Math.min(totalPages, 10)',
+    grep: 'images is reachable through the pager',
+  },
+  // Journey 10 — long operations
+  {
+    name: 'lo-progress-not-stored',
+    file: 'src/hooks/useWebSocket.ts',
+    find: 'store.setRunProgress(event)',
+    replace: 'void event',
+    grep: 'live progress climbs to the end',
+  },
+  {
+    name: 'lo-detail-not-invalidated',
+    file: 'src/pages/RunDetailPage.tsx',
+    find: 'if (runsVersion === 0) return',
+    replace: 'if (runsVersion >= 0) return',
+    grep: 'a run that fails mid-way shows Failed',
+  },
+  {
+    name: 'lo-cancel-shown-after-cancel',
+    file: 'src/pages/RunDetailPage.tsx',
+    find: "{(run.status === 'pending' || run.status === 'running' || run.status === 'queued' || run.status === 'paused') && (",
+    replace: "{(run.status !== 'completed') && (",
+    grep: 'a run cancelled during progress stays Canceled',
+  },
   {
     name: 'contract-undocumented-call',
     file: 'src/api/runs.ts',

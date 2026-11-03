@@ -91,9 +91,9 @@ test('cancelling a running run sends POST /api/runs/{id}/cancel and the page sho
   await page.goto('/ui/runs/3')
   await expect(page.getByRole('heading', { level: 1, name: 'Run #3' })).toBeVisible()
   await ws.waitForOpen()
-  await page.getByRole('button', { name: 'Cancel' }).click()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
 
   await expect.poll(() => api.calls('POST', '/api/runs/{run_id}/cancel').map((c) => c.path)).toEqual(['/api/runs/3/cancel'])
   await expect(page.getByText('Canceled', { exact: true }).first()).toBeVisible({ timeout: LIVE_MS })
-  await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0)
 })
