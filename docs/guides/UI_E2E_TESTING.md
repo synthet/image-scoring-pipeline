@@ -23,7 +23,7 @@ From `frontend/`, on the Windows host or any machine with Node:
 | `npx playwright install chromium` | Once, after `npm ci --legacy-peer-deps` |
 | `npm run e2e` | Tier 1: build into `e2e/.build`, run all journeys |
 | `npm run e2e:run` | Tier 1 again without rebuilding (add `-g "text"` to filter) |
-| `npm run e2e:typecheck` | Type-check the harness and specs |
+| `npm run e2e:typecheck` | Type-check the app, Vitest tests, harness and specs (safe: unlike `npm run build`, it writes nothing to `static/app`) |
 | `npm run e2e:prove` | Fail-path proofs: break the product, require the test to fail, restore (`-- <name>` for one) |
 | `npm run e2e:live` | Tier 2: real WebUI against `image_scoring_test` (needs Docker and the `db` service) |
 | `npm test -- src/test/contract.test.ts` | Contract check (also part of `npm test`) |
