@@ -15,7 +15,7 @@
     "e2e:build": "vite build --config e2e/vite.e2e.config.ts",
     "e2e": "npm run e2e:build && playwright test -c e2e/playwright.config.ts",
     "e2e:run": "playwright test -c e2e/playwright.config.ts",
-    "e2e:typecheck": "tsc -p e2e/tsconfig.json",
+    "e2e:typecheck": "tsc -b && tsc -p e2e/tsconfig.json",
     "e2e:prove": "node e2e/scripts/prove-failures.mjs",
     "e2e:live": "node e2e/scripts/run-live.mjs"
   },
