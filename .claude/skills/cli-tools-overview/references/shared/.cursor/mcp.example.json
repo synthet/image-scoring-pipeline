@@ -8,7 +8,7 @@
       "approval_required": true,
       "approval_note": "Required before executing shell commands, modifying files, or dispatching write-capable tools.",
       "command": "node",
-      "args": ["../subagent-orchestrator/agent-orchestrator/dist/index.js"],
+      "args": ["../synthet-agent-swarm/agent-orchestrator/dist/index.js"],
       "env": { "WORKSPACE_ROOT": "${workspaceFolder}" }
     },
     "proj-ro-fff": {

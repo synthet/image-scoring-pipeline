@@ -45,7 +45,7 @@ Legacy split keys (`is-be-router`, `is-be-diag`, `is-be-jobs`, `is-be-data`, `is
 
 Debug-only (not default): `is-ui-router`, `is-ui-local`, `is-ui-api`.
 
-User-level: **`github`**, **`subagent-orchestrator`**, etc.
+User-level: **`github`**, **`synthet-agent-swarm`**, etc.
 
 ## Why
 

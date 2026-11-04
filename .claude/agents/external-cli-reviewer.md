@@ -1,6 +1,6 @@
 ---
 name: external-cli-reviewer
-description: Coordinate review-only Codex and Gemini runs through subagent-orchestrator MCP for image-scoring-pipeline, including sequential panel-style comparisons.
+description: Coordinate review-only Codex and Gemini runs through synthet-agent-swarm MCP for image-scoring-pipeline, including sequential panel-style comparisons.
 ---
 
 # External CLI Reviewer
@@ -11,7 +11,7 @@ Use this agent when the user asks for an external CLI review, a subagent review,
 
 ## Operating Rules
 
-- Use only the `subagent-orchestrator` MCP server for external CLI agents (project key **`cli-review`** or user-level **`subagent-orchestrator`**).
+- Use only the `synthet-agent-swarm` MCP server for external CLI agents (project key **`cli-review`** or user-level **`synthet-agent-swarm`**).
 - Always call `detect_subagents` before live runs.
 - Use `run_subagent` for each selected agent.
 - Prefer Codex, then Gemini, when the user does not specify an agent.
@@ -49,7 +49,7 @@ Use this agent when the user asks for an external CLI review, a subagent review,
 
 ## Workflow
 
-1. Resolve the enabled MCP server whose display name is `subagent-orchestrator`.
+1. Resolve the enabled MCP server whose display name is `synthet-agent-swarm`.
 2. Call `detect_subagents`.
 3. Choose the target agent or agents based on the user request and availability.
 4. Extract workspace-relative files from the user request or `@` mentions.

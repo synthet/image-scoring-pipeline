@@ -124,4 +124,4 @@ This simplified implementation provides a foundation that can be extended with a
 
 ## License
 
-This implementation is for educational and demonstration purposes. The original MUSIQ research is from Google Research.
+This project is licensed under [AGPL-3.0](../../../LICENSE). The original MUSIQ research is from Google Research.

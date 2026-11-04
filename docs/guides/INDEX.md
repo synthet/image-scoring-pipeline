@@ -19,6 +19,8 @@ Operator and environment documentation.
 
 | Guide | Description |
 |-------|-------------|
+| [UI_E2E_TESTING.md](UI_E2E_TESTING.md) | Run and extend the UI E2E (Playwright) suite for the `/ui/` SPA: hermetic and live tiers, the fake backend, fail-path proofs, budgets. |
+| [UI_E2E_TEST_CATALOG.md](UI_E2E_TEST_CATALOG.md) | Every UI E2E and contract test: what it asserts, its status, and the defects it tracks. |
 | [BIRD_CROP_LABELLING.md](BIRD_CROP_LABELLING.md) | Fill the 236-row within-burst verdict set — the bird-crop study's only non-circular ground truth |
 | [CULLING_EMBEDDING_BACKFILL.md](CULLING_EMBEDDING_BACKFILL.md) | Backfill culling embeddings (OpenCLIP L/14) and verify coverage |
 | [REMOTE_GPU_RUNNER.md](REMOTE_GPU_RUNNER.md) | Run phase inference remotely with local-service and embedded fallback, bounded uploads, and config checks; host keeps DB/XMP writes |

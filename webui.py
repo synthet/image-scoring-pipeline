@@ -44,6 +44,15 @@ _DEFAULT_LOG_MAX_BYTES = 10 * 1024 * 1024
 _DEFAULT_LOG_BACKUP_COUNT = 5
 
 
+def _webui_lock_path() -> str:
+    """Lock file the gallery reads to discover the API. Default: webui.lock in the working directory.
+
+    WEBUI_LOCK_FILE lets a second instance (the UI E2E live tier) run without overwriting and
+    then deleting the developer's lock.
+    """
+    return (os.environ.get("WEBUI_LOCK_FILE") or "").strip() or "webui.lock"
+
+
 def _webui_rotation_from_config(app_config: dict) -> tuple[int, int]:
     """Return (max_bytes, backup_count) for RotatingFileHandler from system.* keys."""
     system = (app_config or {}).get("system") or {}
@@ -549,7 +558,7 @@ def main():
     import json
     import atexit
     
-    lock_file = "webui.lock"
+    lock_file = _webui_lock_path()
     try:
         with open(lock_file, "w") as f:
             json.dump({"pid": os.getpid(), "port": server_port}, f)
