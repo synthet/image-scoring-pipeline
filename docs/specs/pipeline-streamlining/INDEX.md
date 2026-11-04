@@ -31,6 +31,7 @@ numbered `AC-n`, which the `validate-implementation` skill verifies later.
 | 05 | [Scene route](05-scene-route.md) | #412 | research → feature | 01 (soft) |
 | 06 | [Species beyond birds](06-multi-taxon-species.md) | #413 | research → feature | 03, 05 |
 | 07 | [Blockers, decisions and suggestions](07-blockers-and-decisions.md) | #417 | register | — |
+| 08 | [Bird box agreement](08-bird-box-agreement.md) | #780 | feature (shadow) | 03 |
 
 ## Dependencies
 
