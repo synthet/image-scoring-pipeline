@@ -86,7 +86,9 @@ Recorded 2026-11-03: owner, delegated to Jev (jev-1.14.0).
 - **Selected regions:** also score the region of an active production selection, because that is what consumers read (p 0.85). See AC-12.
 - **First run:** the keep-one dev and pilot shoots, then a stratified sample across camera and lens as a second run (0.73). The keep-one shoots show the effect on the most exposed consumer, but they over-represent long-lens bird shoots, so the first run alone does not predict the whole library.
 
-## Open questions
+Recorded 2026-11-03: owner go-ahead on the suggested bar.
 
-- **OPEN QUESTION 1 (owner):** What result would justify a promotion spec? This is a gate, so it stays with the owner. It should be set before the first run's numbers are read.
-- **OPEN QUESTION 2 (for `/plan`):** Where is a selected region's score stored when that region is not on the current `bird` run?
+- **Promotion bar, set before any shadow results:** a promotion spec is justified if false-eye regions fall by at least a third and fewer than 2% of confirmed birds are lost. Measure both on a fixed random sample drawn before review: 100 regions below the limit and 100 at or above it, with the owner judging each as bird or not and each stored eye as real or false.
+- **Selected-region storage:** in the `bird_agreement` run, appended after the last rank with `provider_class_id` `agree:selected:<region_id>`. No migration.
+
+Implementation plan: [bird-box-agreement-plan.md](../../planning/bird-box-agreement-plan.md).
