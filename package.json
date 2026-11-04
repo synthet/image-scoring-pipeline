@@ -1,6 +1,7 @@
 {
   "name": "image-scoring-pipeline-contract-tools",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "api:types:generate": "node scripts/generate-api-types.mjs",

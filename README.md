@@ -583,4 +583,4 @@ This tool uses a simplified approach for CPU-only inference:
 
 ---
 
-**License**: This implementation is for educational and demonstration purposes. The original MUSIQ research is from Google Research.
+**License**: [AGPL-3.0](LICENSE), because this project depends on Ultralytics YOLO. Dependencies and model weights keep their own terms: `pyiqa` is under the PolyForm Noncommercial License 1.0.0, and the CUB-200-2011 images behind the bird models are described as limited to non-commercial research and education. Check those terms before commercial use. The original MUSIQ research is from Google Research.
