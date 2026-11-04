@@ -49,7 +49,9 @@ KEYPOINT_NAMES: tuple[str, ...] = (
 #: ``visible`` in the table is the provider's own permissive gate (``min_kpt_conf``) and is kept
 #: for calibration. The 2026-09-27 spot check (docs/reports/eye-keypoint-spot-check-2026-09-27.md)
 #: found eyes below 0.8 almost always wrong (90% off the eye) and above it ~74% on or within one
-#: eye-width. A starting point to re-fit against owner-checked points.
+#: eye-width. The owner-labelled floor sweep (image-scoring-model
+#: docs/reports/eye-model-benchmark-2026-11-03.md) found no reason to change it: raising it loses
+#: real eyes and does not remove false eyes on detector false positives.
 EYE_CONSUMER_MIN_CONF = 0.8
 
 STATUS_DETECTED = "detected"
