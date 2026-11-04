@@ -23,8 +23,8 @@ Done means every spec 08 acceptance criterion passes, the parity check (AC-9) ha
 |---|---|
 | `modules/localization_agreement.py` | New: crop building, agreement score, config hash, run writing |
 | `modules/detectors/rtmdet.py` | Read only; use `load_rtmdet` with a low threshold, no retry |
-| `scripts/backfill_bird_agreement.py` | New: backfill, modelled on `scripts/backfill_region_keypoints.py` |
-| `scripts/analysis/bird_agreement_report.py` | New: per-shoot table (AC-7) |
+| `modules/localization_agreement_runner.py` | New: stores runs, per-shoot summary |
+| `scripts/backfill_bird_agreement.py` | New: backfill and `--report` (AC-7), modelled on `scripts/backfill_region_keypoints.py` |
 | `scripts/research/detector_benchmark/agreement_parity.py` | New: AC-9 check against the model repository's calibration predictions |
 | `config.example.json` | `localization.agreement`: `enabled` false, `crop_pad` 0.25, `min_iou` 0.3 |
 | `tests/test_localization_agreement.py`, `tests/test_backfill_bird_agreement.py` | New |
@@ -36,7 +36,7 @@ No migration: `write_run` stores this under the new `bird_agreement` key.
 1. **Score function, no I/O.** Given a region, a crop box and RTMDet boxes, return the highest bird score with IoU ≥ 0.3 against the region, or 0.0. `iou()` in `modules/localization_cascade.py` is reused.
 2. **Provider.** Load RTMDet with `threshold` 0.05 and `retry_threshold` None, and keep boxes where `cls` is `bird`. The 0.60 cascade setting would hide scores near the 0.10 limit. This is a separate provider instance, so the cascade is unaffected.
 3. **Parity check (AC-9), before any library run.** If it fails at 95%, stop and revisit the limit. Do not tune it on the test set.
-4. **Storage.** One `bird_agreement` run per image. Each region is copied with its source rank and coordinates, `confidence` holds the agreement score, and `provider_class_id` is `agree:rtmdet_crop`. A selected region that is not on the current `bird` run is appended after the last rank with `provider_class_id` `agree:selected:<region_id>`.
+4. **Storage.** One unpublished `bird_agreement` run per image (AC-13). Each region is copied with its source rank and coordinates, `confidence` holds the agreement score, and `provider_class_id` is `agree:region:<region_id>`. A selected region that is not on the current `bird` run is appended after the last rank with `provider_class_id` `agree:selected:<region_id>`.
 5. **Backfill.** Decode once, compare rendition hashes (AC-11), skip when unchanged (AC-6), score, write. Failures become `retryable_error` (AC-10). `--dry-run`, `--folder`, `--image-ids` and `--limit` follow the keypoint backfill.
 6. **Report (AC-7).** Applies the 0.10 limit at read time (AC-8).
 7. **First run.** Keep-one dev and pilot shoots, then the stratified sample.
@@ -44,9 +44,9 @@ No migration: `write_run` stores this under the new `bird_agreement` key.
 
 ## Risks
 
-- **`image_regions` readers.** Those seen go through a run id or a selection. Task: list every reader and confirm none picks up `bird_agreement` rows. Spec 03's `coco` rows set the precedent.
+- **Readers.** Checked: keep-one reads every current run, which is why runs are unpublished (AC-13). Pipeline readers are safe.
 - **Selected regions on an older rendition.** Coordinates may not match the decoded pixels. These images are recorded as `retryable_error` under AC-11, not scored.
-- **Keep-one input identity.** `bird_agreement` adds no keypoint or `bird` run, so its receipts should not change. Confirm once.
+- **Keep-one input identity.** Unpublished runs stay out of its snapshots, so its receipts do not change.
 - **GPU contention.** The run shares the card with other jobs. Run it bounded and resumable.
 
 ## Constitution check
@@ -70,7 +70,7 @@ In `tests/test_backfill_bird_agreement.py`:
 - `test_rendition_mismatch_is_retryable` (AC-11)
 - `test_selected_region_is_appended` (AC-12)
 
-The report gets `test_report_counts_and_denominators` (AC-7) and `test_limit_applies_at_read_time` (AC-8).
+The report tests `test_report_counts_and_denominators` (AC-7) and `test_limit_applies_at_read_time` (AC-8) are in the same file.
 
 ## Task breakdown
 
