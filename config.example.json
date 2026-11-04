@@ -286,6 +286,9 @@
         "enabled": true
       }
     },
+    "agreement": {
+      "enabled": false
+    },
     "keypoints": {
       "bird_head": {
         "enabled": false,
