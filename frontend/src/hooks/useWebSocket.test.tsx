@@ -83,11 +83,12 @@ describe('useWebSocket', () => {
     const wrapper = ({ children }: { children: ReactNode }) => <StrictMode>{children}</StrictMode>
     renderHook(() => useWebSocket(), { wrapper })
     vi.advanceTimersByTime(10_000)
+    for (const socket of FakeSocket.instances) socket.open()
     const live = FakeSocket.instances.filter((s) => s.readyState !== FakeSocket.CLOSED)
     expect(live).toHaveLength(1)
   })
 
-  it.fails('#774: with every attempt refused, the status reaches offline after INITIAL_OFFLINE_MS', () => {
+  it('#774: with every attempt refused, the status reaches offline after INITIAL_OFFLINE_MS', () => {
     renderHook(() => useWebSocket())
     for (let elapsed = 0; elapsed <= 14_000; elapsed += 2000) {
       FakeSocket.instances[FakeSocket.instances.length - 1].fail()
@@ -96,10 +97,50 @@ describe('useWebSocket', () => {
     expect(useWsStore.getState().connectionStatus).toBe('offline')
   })
 
-  it.fails('#773: unmounting while CONNECTING does not call close() on the connecting socket', () => {
+  it('#774: a socket that never answers still reaches offline', () => {
+    renderHook(() => useWebSocket())
+    vi.advanceTimersByTime(12_000)
+    expect(useWsStore.getState().connectionStatus).toBe('offline')
+  })
+
+  it('#774: stays offline across failed retries and goes live when a socket opens', () => {
+    renderHook(() => useWebSocket())
+    vi.advanceTimersByTime(12_000)
+    for (let retry = 0; retry < 3; retry += 1) {
+      FakeSocket.instances[FakeSocket.instances.length - 1].fail()
+      expect(useWsStore.getState().connectionStatus).toBe('offline')
+      vi.advanceTimersByTime(2000)
+      expect(useWsStore.getState().connectionStatus).toBe('offline')
+    }
+    FakeSocket.instances[FakeSocket.instances.length - 1].open()
+    expect(useWsStore.getState().connectionStatus).toBe('live')
+  })
+
+  it('#774: after a live session drops, reaches offline after RECONNECT_OFFLINE_MS', () => {
+    renderHook(() => useWebSocket())
+    FakeSocket.instances[0].open()
+    FakeSocket.instances[0].close()
+    for (let elapsed = 0; elapsed < 14_000; elapsed += 2000) {
+      vi.advanceTimersByTime(2000)
+      expect(useWsStore.getState().connectionStatus).toBe('connecting')
+      FakeSocket.instances[FakeSocket.instances.length - 1].fail()
+    }
+    vi.advanceTimersByTime(1000)
+    expect(useWsStore.getState().connectionStatus).toBe('offline')
+  })
+
+  it('#773: unmounting while CONNECTING does not call close() on the connecting socket', () => {
     const { unmount } = renderHook(() => useWebSocket())
     unmount()
     expect(FakeSocket.instances[0].closedWhileConnecting).toBe(false)
+  })
+
+  it('#773: a socket abandoned while CONNECTING closes as soon as it opens', () => {
+    const { unmount } = renderHook(() => useWebSocket())
+    unmount()
+    FakeSocket.instances[0].open()
+    expect(FakeSocket.instances[0].readyState).toBe(FakeSocket.CLOSED)
+    expect(useWsStore.getState().connectionStatus).not.toBe('live')
   })
 
   it('a failed handshake schedules one reconnect and does not close a connecting socket', () => {

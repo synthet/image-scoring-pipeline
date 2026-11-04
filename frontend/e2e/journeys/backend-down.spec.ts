@@ -90,7 +90,6 @@ test('the runs list recovers on reload when the backend comes back', async ({ pa
 })
 
 test('a refused WebSocket shows Connecting… and then Offline after INITIAL_OFFLINE_MS', async ({ page, ws, allowErrors }) => {
-  test.fail(true, '#774: the offline timer restarts on every failed reconnect, so Offline never shows')
   allowErrors.push(refusedSocket)
   await ws.setRefuse(true)
   await page.goto('/ui/runs')
