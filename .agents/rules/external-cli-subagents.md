@@ -1,6 +1,6 @@
 ---
 trigger: model_decision
-description: "Use subagent-orchestrator MCP for external CLI reviews; review-only, no secrets, no raw codex/gemini shell by default."
+description: "Use synthet-agent-swarm MCP for external CLI reviews; review-only, no secrets, no raw codex/gemini shell by default."
 ---
 
 # External CLI sub-agents
@@ -9,10 +9,10 @@ External CLI agents (Codex, Gemini, Claude) are **review and tie-breaker** tools
 
 ## How to invoke
 
-- Use MCP server **subagent-orchestrator** tools only:
+- Use MCP server **synthet-agent-swarm** tools only:
   - `detect_subagents` — check availability first
   - `run_subagent` — run one review
-- Project MCP key (if configured): **`cli-review`** (`../subagent-orchestrator/agent-orchestrator/dist/index.js`). Cursor may also merge user-level **`subagent-orchestrator`**; confirm via `SERVER_METADATA.json` (`serverName`: `subagent-orchestrator`).
+- Project MCP key (if configured): **`cli-review`** (`../synthet-agent-swarm/agent-orchestrator/dist/index.js`). Cursor may also merge user-level **`synthet-agent-swarm`**; confirm via `SERVER_METADATA.json` (`serverName`: `synthet-agent-swarm`).
 - Read tool schemas under `mcps/*/tools/` before calling.
 
 ## Do not

@@ -26,16 +26,16 @@
 | [.cursor/mcp.json](../.cursor/mcp.json) | Workspace MCP (`scoring`, `webui`, `gallery`, optional `cli-review`) | MCP | active | AGENTS.md | Reload Cursor after key renames |
 | [.cursor/skills/*/SKILL.md](../.cursor/skills/) | Canonical skills (AST10) | coding, MCP | active | SKILL_INVENTORY | Mirror to `.claude/skills/` |
 | [.cursor/agents/*.md](../.cursor/agents/) | Subagent role YAML | coding | active | AGENTS.md | Keep synced to `.claude/agents/` |
-| [.cursor/rules/external-cli-subagents.mdc](../.cursor/rules/external-cli-subagents.mdc) | External Codex/Gemini review safety | governance | active | subagent-orchestrator | Intent-only pack; enforcement in the harness `PreToolUse(run_subagent)` hook |
+| [.cursor/rules/external-cli-subagents.mdc](../.cursor/rules/external-cli-subagents.mdc) | External Codex/Gemini review safety | governance | active | synthet-agent-swarm | Intent-only pack; enforcement in the harness `PreToolUse(run_subagent)` hook |
 | [.cursor/rules/graphify.mdc](../.cursor/rules/graphify.mdc) | Soft Graphify architecture-graph guidance (`alwaysApply: false`) | coding | active | Graphify-Labs/graphify | Intent-only: served by the Jev harness hook, not mirrored; optional third-party CLI |
-| [.cursor/skills/subagent-review/](../.cursor/skills/subagent-review/) | MCP external review workflow | workflow | active | `../subagent-orchestrator` | Mirror `.claude/skills/` |
+| [.cursor/skills/subagent-review/](../.cursor/skills/subagent-review/) | MCP external review workflow | workflow | active | `../synthet-agent-swarm` | Mirror `.claude/skills/` |
 | [sync_assistant_trees.py](../scripts/sync_assistant_trees.py) | Cursor→Claude mirror + `--check` CI gate | workflow | active | synthet-code-framework | Run after `.cursor/` edits |
 | [scripts/agent_harness/](../scripts/agent_harness/) | Jev agent harness: hooks (context packs, permissions, review sensitivity) + CLI (`budget`, `route`, `subgoal`, `bundle`). Session agents that do not run the hooks ask the same questions on `jev-rw-systemone` | governance, workflow | active | [docs/technical/JEV_AGENT_HARNESS.md](../docs/technical/JEV_AGENT_HARNESS.md), [`.cursor/skills/jev-mcp/SKILL.md`](../.cursor/skills/jev-mcp/SKILL.md) | Config `.agent/jev_harness.json`; gallery hooks call this copy |
 | [.cursor/rules/footguns-*.mdc](../.cursor/rules/) | Per-area footguns (db, migrations, api, tests), path-scoped | backend, testing | active | docs/LESSONS_LEARNED.md | Update when a lesson graduates |
 | [docs/ai-workflow/README.md](../docs/ai-workflow/README.md) | SDLC loop + phase gates + asset map | workflow | active | synthet-code-framework | Cursor-first variant |
 | [docs/raw/framework-adoption-port-manifest.md](../docs/raw/framework-adoption-port-manifest.md) | Cherry-pick manifest from framework audit | governance | active | synthet-code-framework | Update when porting more assets |
 | [.github/workflows/agent-infra.yml](../.github/workflows/agent-infra.yml) | Assistant tree drift + frontmatter + secrets CI | governance | active | synthet-code-framework | None |
-| [docs/technical/EXTERNAL_CLI_REVIEWS.md](../docs/technical/EXTERNAL_CLI_REVIEWS.md) | Setup for imgscore-subagent-orchestrator MCP | cross-repo | active | sibling orchestrator | None |
+| [docs/technical/EXTERNAL_CLI_REVIEWS.md](../docs/technical/EXTERNAL_CLI_REVIEWS.md) | Setup for synthet-agent-swarm MCP | cross-repo | active | sibling orchestrator | None |
 | [.claude/skills/*/SKILL.md](../.claude/skills/) | Claude mirror of skills | coding | duplicate-of | `.cursor/skills/` | Same-PR sync |
 | [.claude/commands/*.md](../.claude/commands/) | Claude slash commands | workflow | partial-mirror | `.cursor/commands/` | Same paired commands; backend-only `/release`, `/backup-db` |
 | [.claude/agents/*.md](../.claude/agents/) | Claude mirror of agents | coding | duplicate-of | `.cursor/agents/` | Same-PR sync |
