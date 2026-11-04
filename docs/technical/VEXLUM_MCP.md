@@ -112,6 +112,7 @@ The Node host starts the Python worker (`python -m modules.vexlum worker`) as so
 | `VEXLUM_USE_WSL=1` | Run the worker in WSL with `VEXLUM_VENV_ACTIVATE` (default `~/.venvs/tf`) |
 | `VEXLUM_WORKER_SHELL` | Custom `bash -lc` command line |
 | `VEXLUM_HIDE_DEPRECATED=1` | List only `search`, `resolve`, `execute` |
+| `MCP_PLAYWRIGHT_HEADED=1` | Show the browser for `browser.*` actions, for example for a manual login (default: headless) |
 
 `VEXLUM_ALLOW_ELEVATED`, `VEXLUM_API_URL`, `VEXLUM_MAX_RESPONSE_BYTES`, `VEXLUM_TOKEN_SECRET` and `MCP_PLAYWRIGHT_ENABLED` are forwarded into gpu-shell. Set them on the MCP server entry, not inside the container.
 
