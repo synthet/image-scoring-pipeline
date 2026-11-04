@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Project license** (#796): the project is now licensed under AGPL-3.0, because it depends on Ultralytics YOLO. `pyiqa` and the CUB-derived bird models keep their own terms.
+
 ## [9.2.1] - 2026-10-26
 
 ### Added
