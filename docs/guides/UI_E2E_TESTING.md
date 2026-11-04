@@ -28,6 +28,8 @@ From `frontend/`, on the Windows host or any machine with Node:
 | `npm run e2e:live` | Tier 2: real WebUI against `image_scoring_test` (needs Docker and the `db` service) |
 | `npm test -- src/test/contract.test.ts` | Contract check (also part of `npm test`) |
 
+Runs are headless: no browser window opens, so a run doesn't take focus from the desktop. To watch one test, add `--headed` (`npm run e2e:run -- --headed -g "text"`).
+
 Traces and failure screenshots go to `frontend/e2e/test-results/`. Layout screenshots are attached to each test (`npx playwright show-report e2e/playwright-report` in CI artifacts).
 
 ## Two tiers

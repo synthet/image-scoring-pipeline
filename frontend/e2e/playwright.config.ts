@@ -32,6 +32,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: './playwright-report' }]] : 'list',
   use: {
+    // No browser window, so a run never takes focus from the desktop. `--headed` overrides this.
+    headless: true,
     baseURL: LIVE ? process.env.UI_E2E_LIVE_URL : BASE_URL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
