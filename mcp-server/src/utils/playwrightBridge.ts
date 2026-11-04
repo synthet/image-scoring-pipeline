@@ -15,6 +15,12 @@ export function resolvePlaywrightPackage(): string {
     return process.env.MCP_PLAYWRIGHT_PACKAGE?.trim() || DEFAULT_PACKAGE;
 }
 
+/** `@playwright/mcp` is headed by default; MCP_PLAYWRIGHT_HEADED=1 keeps the window, e.g. for a manual login. */
+export function playwrightArgs(): string[] {
+    const args = ["-y", resolvePlaywrightPackage()];
+    return process.env.MCP_PLAYWRIGHT_HEADED?.trim() === "1" ? args : [...args, "--headless"];
+}
+
 function npxCommand(): string {
     return process.platform === "win32" ? "npx.cmd" : "npx";
 }
@@ -73,7 +79,7 @@ async function ensureClient(): Promise<Client> {
     connectPromise = (async () => {
         const transport = new StdioClientTransport({
             command: npxCommand(),
-            args: ["-y", resolvePlaywrightPackage()],
+            args: playwrightArgs(),
             env: process.env as Record<string, string>,
         });
         const nextClient = new Client({ name: "is-be-mcp-playwright", version: "2.3.0" });
