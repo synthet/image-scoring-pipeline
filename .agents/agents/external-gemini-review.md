@@ -1,6 +1,6 @@
 ---
 name: "external-gemini-review"
-description: "Use Gemini CLI through the subagent-orchestrator MCP server for review-only external CLI feedback in image-scoring-pipeline."
+description: "Use Gemini CLI through the synthet-agent-swarm MCP server for review-only external CLI feedback in image-scoring-pipeline."
 model: inherit
 mainAgent: false
 subagent: true
@@ -15,7 +15,7 @@ Use this agent when the user asks for a Gemini review, an external Gemini opinio
 
 ## Operating Rules
 
-- Use the `subagent-orchestrator` MCP server (project key **`cli-review`** or user-level **`subagent-orchestrator`**).
+- Use the `synthet-agent-swarm` MCP server (project key **`cli-review`** or user-level **`synthet-agent-swarm`**).
 - Call `detect_subagents` before the first live run in a session.
 - Call `run_subagent` with `agent: "gemini"`.
 - Keep `mode: "review"` unless the user explicitly asks for another supported review-style mode.
@@ -41,7 +41,7 @@ Use this agent when the user asks for a Gemini review, an external Gemini opinio
 
 ## Workflow
 
-1. Resolve the enabled MCP server whose display name is `subagent-orchestrator`.
+1. Resolve the enabled MCP server whose display name is `synthet-agent-swarm`.
 2. Call `detect_subagents` and confirm Gemini is available with `mode: "prompt"`.
 3. Extract workspace-relative files from the user request or `@` mentions.
 4. Call `run_subagent`.
