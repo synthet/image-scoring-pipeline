@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetDiagnosticsSessionForTests, useDiagnostics } from './useDiagnostics';
 import { DIAGNOSTIC_LAYERS, type DiagnosticManifest, type DiagnosticTransport } from '../types/diagnostics';
 
@@ -16,6 +16,9 @@ function transport(): DiagnosticTransport {
 
 describe('diagnostic viewer state', () => {
     beforeEach(() => { localStorage.clear(); resetDiagnosticsSessionForTests(); });
+    // Vitest globals are off, so Testing Library's auto-cleanup is not registered: without this the
+    // hook stays mounted and React can schedule work after jsdom is torn down (#785).
+    afterEach(cleanup);
 
     it('does not request computation until a layer is selected', async () => {
         const api = transport();

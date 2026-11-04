@@ -1104,3 +1104,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-11-02] added | vexlum architecture and extension guide (#767)
 
 - 2026-11-02: added - `architecture/VEXLUM_MCP_ARCHITECTURE.md` (process topology, catalog record and snapshot cache, providers, executors, tier policy internals, worker protocol, Playwright delegate, extension recipes, test map, deprecation plan); linked from `architecture/INDEX.md` and `technical/VEXLUM_MCP.md`.
+
+## [2026-11-03] added | UI E2E (Playwright) suite (#769)
+
+- 2026-11-03: added - `guides/UI_E2E_TESTING.md` (tiers, harness, faking REST and the WebSocket, adding a journey, budgets) and `guides/UI_E2E_TEST_CATALOG.md` (every test, status, known defects); linked from `guides/INDEX.md`.

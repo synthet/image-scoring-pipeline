@@ -1,9 +1,27 @@
 {
-  "_comment": "Claude Code: copy to .mcp.json (gitignored). Browser automation via search/dispatch (browser.*). Build: cd mcp-server && npm install && npm run build.",
+  "_comment": "Claude Code: copy to .mcp.json (gitignored). Browser automation via search/execute (browser.*). Build: cd mcp-server && npm install && npm run build.",
   "mcpServers": {
-    "is-be-mcp": {
+    "vexlum": {
+      "_comment": "Pipeline search/resolve/execute entry point (image-scoring-pipeline docs/technical/VEXLUM_MCP.md). Build first: cd image-scoring-pipeline/mcp-server && npm ci && npm run build.",
+      "side_effects": "write-capable",
+      "approval_required": true,
+      "approval_note": "execute can run pipeline actions; destructive ones also need VEXLUM_ALLOW_ELEVATED=1 on this entry.",
+      "type": "stdio",
       "command": "node",
-      "args": ["mcp-server/dist/compactIndex.js"]
+      "args": [
+        "mcp-server/dist/vexlum.js"
+      ]
+    },
+    "driftara": {
+      "_comment": "Gallery search/resolve/execute entry point (image-scoring-gallery docs/technical/DRIFTARA_MCP.md). Build first: cd image-scoring-gallery/mcp-server && npm ci && npm run build.",
+      "side_effects": "write-capable",
+      "approval_required": true,
+      "approval_note": "execute can run gallery actions; write tiers need confirmation, and elevated ones also need DRIFTARA_ALLOW_ELEVATED=1 in the gallery app's environment.",
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${IMAGE_SCORING_GALLERY_DIR:-../image-scoring-gallery}/mcp-server/dist/driftara.js"
+      ]
     }
   }
 }

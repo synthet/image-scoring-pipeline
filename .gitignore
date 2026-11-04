@@ -286,7 +286,7 @@ heal_test_results.json
 # ML feature cache (regenerated at runtime)
 thumbnails/feature_cache/
 
-# External sub-agent run outputs (subagent-orchestrator MCP)
+# External sub-agent run outputs (synthet-agent-swarm MCP)
 .agent-runs/
 
 # Graphify local knowledge graph (optional; build with `graphify .`)

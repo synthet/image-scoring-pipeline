@@ -35,7 +35,7 @@
 - Jev (`jev-rw-systemone`) `state` omits secrets, tokens, and raw `.env` contents. Jev may tighten allow → ask → deny. It must not relax a deny or an ask. Protocol: [`.cursor/skills/jev-mcp/SKILL.md`](../.cursor/skills/jev-mcp/SKILL.md).
 - On shared machines, SSE MCP attaches to a live WebUI; do not assume an isolated process.
 
-## External CLI reviews (subagent-orchestrator)
+## External CLI reviews (synthet-agent-swarm)
 
 - Review-only: never set `allowWrites: true` on `run_subagent` (rejected in v0.1).
 - Selected source files are sent to **Codex / Gemini** per their provider policies; do not use for proprietary code you cannot export.

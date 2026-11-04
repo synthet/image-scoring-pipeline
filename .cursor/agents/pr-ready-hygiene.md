@@ -44,7 +44,7 @@ When all checks are green and the PR is ready to open:
 
 ## External review (optional)
 
-For a second opinion before opening a large PR, the user may run **`/run-subagent-review`** (review-only via subagent-orchestrator MCP); that does not replace ruff/pytest here.
+For a second opinion before opening a large PR, the user may run **`/run-subagent-review`** (review-only via synthet-agent-swarm MCP); that does not replace ruff/pytest here.
 
 ## Escalation
 

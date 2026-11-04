@@ -17,7 +17,7 @@ Existing terminals and agent shells may still see the old PATH until restart.
 |------|----------|-------------|
 | **Shell CLI** | `fd`, `rg`, `bat`, `jq`, `yq`, `ruff`, `sg` | On PATH in agent shell (WSL for Python scripts) |
 | **Project MCP** | `is-be-mcp`, optional `fff-be` | [`.cursor/mcp.json`](../../../mcp.example.json) + `cd mcp-server && npm run build` |
-| **User MCP** | `github`, `subagent-orchestrator` | `~/.cursor/mcp.json` per [mcp.user.example.json](../../../.cursor/mcp.user.example.json) — **not** fff |
+| **User MCP** | `github`, `synthet-agent-swarm` | `~/.cursor/mcp.json` per [mcp.user.example.json](../../../.cursor/mcp.user.example.json) — **not** fff |
 | **IDE built-in** | Grep, SemanticSearch, Glob | Always available in Cursor; no install |
 | **Project-local** | `pytest`, `ruff` in WSL venvs | `~/.venvs/tf` or `~/.venvs/image-scoring-tests` |
 

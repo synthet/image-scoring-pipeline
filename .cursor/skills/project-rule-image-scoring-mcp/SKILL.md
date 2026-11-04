@@ -15,7 +15,7 @@ When the user asks about **debugging**, **investigating failures**, **database h
 | **`is-be-*`** | backend | **`is-be-mcp`**, optional **`is-be-live`** |
 | **`is-ui-*`** | gallery | **`is-ui-mcp`**, optional **`is-ui-live`** |
 
-User `~/.cursor/mcp.json`: **`github`**, **`subagent-orchestrator`**, etc. — **not** `is-be-*` / `is-ui-*`. Project keys: copy **`mcp.example.json`** → **`.cursor/mcp.json`** in each repo.
+User `~/.cursor/mcp.json`: **`github`**, **`synthet-agent-swarm`**, etc. — **not** `is-be-*` / `is-ui-*`. Project keys: copy **`mcp.example.json`** → **`.cursor/mcp.json`** in each repo.
 
 ## Compact dispatch (default)
 
