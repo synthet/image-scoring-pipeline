@@ -3,9 +3,6 @@
     "allow": [
       "mcp__vexlum__search",
       "mcp__vexlum__resolve",
-      "mcp__is-be-mcp__search",
-      "mcp__is-be-mcp__dispatch",
-      "mcp__is-be-mcp__sse_status",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
@@ -92,8 +89,7 @@
     ]
   },
   "enabledMcpjsonServers": [
-    "vexlum",
-    "is-be-mcp"
+    "vexlum"
   ],
   "disabledMcpjsonServers": [
     "playwright",

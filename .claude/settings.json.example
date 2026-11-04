@@ -2,9 +2,6 @@
   "_comment": "Tracked default (settings.json). Machine overrides: copy settings.local.json.example \u2192 settings.local.json (gitignored). Put absolute hook paths and personal MCP keys only in settings.local.json. Claude Code MCP: copy .mcp.json.example \u2192 .mcp.json. Hooks: .claude/HOOKS.md.",
   "permissions": {
     "allow": [
-      "mcp__is-be-mcp__search",
-      "mcp__is-be-mcp__dispatch",
-      "mcp__is-be-mcp__sse_status",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
@@ -91,7 +88,7 @@
     ]
   },
   "enabledMcpjsonServers": [
-    "is-be-mcp"
+    "vexlum"
   ],
   "disabledMcpjsonServers": [
     "playwright",
