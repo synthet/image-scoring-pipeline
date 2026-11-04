@@ -63,6 +63,7 @@ Full categorized index for **image-scoring-pipeline**. Prefer small linked pages
 | [architecture/pipeline/terminology-map.md](architecture/pipeline/terminology-map.md) | Cross-naming traversal table for every phase. |
 | [EXPORT_PIPELINE.md](EXPORT_PIPELINE.md) | Export and output paths hub. |
 | [guides/CULLING_EMBEDDING_BACKFILL.md](guides/CULLING_EMBEDDING_BACKFILL.md) | Culling embedding backfill, sub-stack rebuild, library-wide re-cluster rollout. |
+| [guides/UI_E2E_TESTING.md](guides/UI_E2E_TESTING.md) | UI E2E (Playwright) suite for the `/ui/` SPA; test catalog in [guides/UI_E2E_TEST_CATALOG.md](guides/UI_E2E_TEST_CATALOG.md). |
 | [guides/REMOTE_GPU_RUNNER.md](guides/REMOTE_GPU_RUNNER.md) | Remote GPU runner: offload phase inference to a container on another PC. |
 | [technical/PIPELINE_TERMINOLOGY.md](technical/PIPELINE_TERMINOLOGY.md) | Canonical phase codes, `stage_codes` submit tokens, and UI labels. |
 | [technical/PIPELINE_PHASE_RUNNERS.md](technical/PIPELINE_PHASE_RUNNERS.md) | Runner behavior by phase. |
