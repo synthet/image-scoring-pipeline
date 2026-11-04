@@ -5,6 +5,7 @@ import {
     isPlaywrightEnabled,
     playwrightDisabledError,
     playwrightUnavailableError,
+    playwrightArgs,
     resolvePlaywrightPackage,
 } from "./playwrightBridge.js";
 import { isPlaywrightDelegate } from "./proxyDispatch.js";
@@ -27,6 +28,21 @@ describe("playwrightBridge helpers", () => {
     it("resolvePlaywrightPackage defaults to @playwright/mcp@latest", () => {
         delete process.env.MCP_PLAYWRIGHT_PACKAGE;
         assert.equal(resolvePlaywrightPackage(), "@playwright/mcp@latest");
+    });
+
+    it("playwrightArgs runs headless by default", () => {
+        delete process.env.MCP_PLAYWRIGHT_HEADED;
+        delete process.env.MCP_PLAYWRIGHT_PACKAGE;
+        assert.deepEqual(playwrightArgs(), ["-y", "@playwright/mcp@latest", "--headless"]);
+    });
+
+    it("playwrightArgs shows the browser with MCP_PLAYWRIGHT_HEADED=1", () => {
+        process.env.MCP_PLAYWRIGHT_HEADED = "1";
+        try {
+            assert.deepEqual(playwrightArgs(), ["-y", "@playwright/mcp@latest"]);
+        } finally {
+            delete process.env.MCP_PLAYWRIGHT_HEADED;
+        }
     });
 
     it("playwrightUnavailableError shape", () => {
