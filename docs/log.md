@@ -1100,3 +1100,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-11-02] added | vexlum single MCP + CLI entry point (#758)
 
 - 2026-11-02: added - `technical/VEXLUM_MCP.md` (search/resolve/execute contract, tier policy, catalog sources, CLI, deprecated surfaces); deprecation banner on `technical/MCP_SEARCH_DISPATCH.md`; `technical/INDEX.md`, `INDEX.md` and `CANONICAL_SOURCES.md` route to it.
+
+## [2026-11-03] added | UI E2E (Playwright) suite (#769)
+
+- 2026-11-03: added - `guides/UI_E2E_TESTING.md` (tiers, harness, faking REST and the WebSocket, adding a journey, budgets) and `guides/UI_E2E_TEST_CATALOG.md` (every test, status, known defects); linked from `guides/INDEX.md`.
