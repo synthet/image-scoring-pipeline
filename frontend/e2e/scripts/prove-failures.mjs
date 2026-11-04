@@ -333,7 +333,7 @@ export const BREAKS = [
 ]
 
 function run(tool, args) {
-  return spawnSync(process.execPath, [BIN[tool], ...args], { cwd: FRONTEND, stdio: 'pipe', encoding: 'utf8' })
+  return spawnSync(process.execPath, [BIN[tool], ...args], { cwd: FRONTEND, stdio: 'pipe', encoding: 'utf8', windowsHide: true })
 }
 
 function build() {
@@ -344,7 +344,7 @@ function build() {
 /** Every file a break edits must be unmodified in git, before and after. */
 function gitClean(files) {
   for (const f of new Set(files)) {
-    const r = spawnSync('git', ['diff', '--quiet', '--', f], { cwd: FRONTEND })
+    const r = spawnSync('git', ['diff', '--quiet', '--', f], { cwd: FRONTEND, windowsHide: true })
     if (r.status !== 0) throw new Error(`${f} has uncommitted changes; commit or restore it before proving breaks`)
   }
 }

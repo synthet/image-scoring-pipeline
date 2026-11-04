@@ -50,7 +50,7 @@ function rootFingerprint() {
 }
 
 function docker(args) {
-  return spawnSync('docker', args, { cwd: REPO, encoding: 'utf8' })
+  return spawnSync('docker', args, { cwd: REPO, encoding: 'utf8', windowsHide: true })
 }
 
 async function waitForHealth(url, container) {
@@ -103,6 +103,7 @@ try {
   const t = spawnSync(process.execPath, [PLAYWRIGHT, 'test', '-c', 'e2e/playwright.config.ts', ...process.argv.slice(2)], {
     cwd: FRONTEND,
     stdio: 'inherit',
+    windowsHide: true,
     env: { ...process.env, UI_E2E_LIVE: '1', UI_E2E_LIVE_URL: url },
   })
   status = t.status ?? 1
