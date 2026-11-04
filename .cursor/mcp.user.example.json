@@ -1,4 +1,4 @@
 {
-  "_comment": "User-level ~/.cursor/mcp.json only — cross-repo tools (github, subagent-orchestrator). Do NOT put fff here (needs project git cwd). Use each repo's .cursor/mcp.json with fff-be / fff-gallery.",
+  "_comment": "User-level ~/.cursor/mcp.json only — cross-repo tools (github, synthet-agent-swarm). Do NOT put fff here (needs project git cwd). Use each repo's .cursor/mcp.json with fff-be / fff-gallery.",
   "mcpServers": {}
 }

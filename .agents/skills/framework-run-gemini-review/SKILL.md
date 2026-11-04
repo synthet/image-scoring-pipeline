@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /run-gemini-review — Run Gemini review (MCP)
 
-Delegate a **review-only** task to **Gemini CLI** through the **subagent-orchestrator** MCP server. Do **not** run `gemini -p` directly in the terminal unless the user explicitly asks to bypass the orchestrator.
+Delegate a **review-only** task to **Gemini CLI** through the **synthet-agent-swarm** MCP server. Do **not** run `gemini -p` directly in the terminal unless the user explicitly asks to bypass the orchestrator.
 
 ## Inputs
 
