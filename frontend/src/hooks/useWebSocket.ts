@@ -25,11 +25,15 @@ export function useWebSocket() {
       }
     }
 
-    function scheduleOfflineAfterDelay() {
-      clearOfflineTimer()
-      const wasEverLive = useWsStore.getState().wasEverLive
+    /** One timer per outage: retries must not restart it, and only onopen ends it. */
+    function markDisconnected() {
+      const { connectionStatus, wasEverLive, setConnectionConnecting } = useWsStore.getState()
+      if (connectionStatus === 'offline') return
+      setConnectionConnecting()
+      if (offlineTimer.current) return
       const delay = wasEverLive ? RECONNECT_OFFLINE_MS : INITIAL_OFFLINE_MS
       offlineTimer.current = setTimeout(() => {
+        offlineTimer.current = null
         if (cancelled) return
         if (useWsStore.getState().connectionStatus === 'live') return
         useWsStore.getState().setConnectionOffline()
@@ -38,7 +42,7 @@ export function useWebSocket() {
 
     function connect() {
       if (cancelled) return
-      useWsStore.getState().setConnectionConnecting()
+      markDisconnected()
       const ws = new WebSocket(WS_URL)
       wsRef.current = ws
 
@@ -64,8 +68,7 @@ export function useWebSocket() {
 
       ws.onclose = () => {
         if (cancelled) return
-        useWsStore.getState().setConnectionConnecting()
-        scheduleOfflineAfterDelay()
+        markDisconnected()
         reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY_MS)
       }
 
@@ -102,7 +105,10 @@ export function useWebSocket() {
       cancelled = true
       clearOfflineTimer()
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
-      wsRef.current?.close()
+      const ws = wsRef.current
+      // close() on a CONNECTING socket logs a browser error, so let it open first.
+      if (ws?.readyState === WebSocket.CONNECTING) ws.onopen = () => ws.close()
+      else ws?.close()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 }

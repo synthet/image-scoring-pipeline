@@ -25,8 +25,6 @@ Tier 1 total: 98 tests in 12 spec files. Tier 2: 5 tests. Fail-path proofs: 40 b
 | [#770](https://github.com/synthet/image-scoring-pipeline/issues/770) | `POST /api/db/query` and `GET /api/status/log-tails` are missing from `openapi.json` (mounted in `modules/ui/app.py`) | `contract.test.ts` `KNOWN_UNDOCUMENTED`; `api.onUndocumented` | Document them |
 | [#771](https://github.com/synthet/image-scoring-pipeline/issues/771) | `openapi.json` has 12 operations `openapi.yaml` lacks | Issue only | Regenerate; add a drift check |
 | [#772](https://github.com/synthet/image-scoring-pipeline/issues/772) | `run_progress`, `stage_transition`, `queue_update`, `work_item_done` handled but never broadcast | `contract.test.ts` `KNOWN_NOT_EMITTED` | Emit them, or remove the branches |
-| [#773](https://github.com/synthet/image-scoring-pipeline/issues/773) | `useWebSocket` closes a socket that is still `CONNECTING` on unmount | `useWebSocket.test.tsx` | Defer the close to `onopen` |
-| [#774](https://github.com/synthet/image-scoring-pipeline/issues/774) | The connection label never reaches Offline while reconnects keep failing | `backend-down.spec.ts`, `useWebSocket.test.tsx` | Start the offline timer once per outage |
 | [#775](https://github.com/synthet/image-scoring-pipeline/issues/775) | A 5xx shows as "not found" or an empty list on six pages | `backend-down.spec.ts` | Handle `isError` separately |
 | [#776](https://github.com/synthet/image-scoring-pipeline/issues/776) | Unnamed icon buttons (incl. Cancel run), colour-only link, unlabeled spinners | `a11y.spec.ts` | `aria-label`, underline, `role="status"` |
 | [#777](https://github.com/synthet/image-scoring-pipeline/issues/777) | Muted text `#6d6d6d` fails AA contrast on every page | `a11y.spec.ts` | Raise the token in `image-scoring-ui`; replace local literals |
@@ -81,7 +79,7 @@ Tier 1 total: 98 tests in 12 spec files. Tier 2: 5 tests. Fail-path proofs: 40 b
 | requests that hang leave the shell and a loading state, not a blank page or a verdict | Nav, loading icon, no premature "not found" | Pass |
 | Diagnostics and Logs recover through Retry when the backend comes back | Retry restores content | Pass |
 | the runs list recovers on reload when the backend comes back | Reload restores the list (the product's recovery: 30 s poll or reload) | Pass |
-| a refused WebSocket shows Connecting… and then Offline after INITIAL_OFFLINE_MS | Label reaches Offline | Defect #774 |
+| a refused WebSocket shows Connecting… and then Offline after INITIAL_OFFLINE_MS | Label reaches Offline | Pass |
 | when a refused WebSocket is accepted again the shell goes Live without a reload | Reconnect loop recovers | Pass |
 | a dropped live socket shows Reconnecting… and reconnects | Label sequence; two connections | Pass |
 
@@ -164,8 +162,7 @@ Exports and uploads: the SPA has none.
 | known gap #770 (2 calls) | | Defect #770 |
 | `contract.test.ts`: every handled type is broadcast by the backend, apart from the known gaps | WebSocket types vs `modules/` | Pass |
 | known gap #772 (4 types) | | Defect #772 |
-| `useWebSocket.test.tsx`: connect, reconnect, StrictMode double mount, failed handshake | Lifecycle | Pass |
-| `useWebSocket.test.tsx`: #773, #774 | | Defects |
+| `useWebSocket.test.tsx`: connect, reconnect, StrictMode double mount, failed handshake, offline timing, abandoned socket | Lifecycle | Pass |
 
 **Not provable statically:** `job_cancel_requested`, `job_canceled`, `job_pending`, `job_queued`, `job_restarting`. They are `job_<status>` events, and some `update_job_status()` calls pass a variable status. The test reports them and does not fail.
 
