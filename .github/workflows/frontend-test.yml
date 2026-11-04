@@ -4,10 +4,12 @@ on:
   pull_request:
     paths:
       - 'frontend/**'
+      - 'openapi.json'
       - '.github/workflows/frontend-test.yml'
   merge_group:
     paths:
       - 'frontend/**'
+      - 'openapi.json'
       - '.github/workflows/frontend-test.yml'
 
 jobs:
@@ -45,3 +47,51 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  ui-e2e:
+    name: UI E2E (Playwright, hermetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: image-scoring-pipeline/frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: image-scoring-pipeline
+
+      - name: Checkout design package (image-scoring-ui)
+        uses: actions/checkout@v4
+        with:
+          repository: synthet/image-scoring-ui
+          path: image-scoring-ui
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: image-scoring-pipeline/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Type-check the harness
+        run: npm run e2e:typecheck
+
+      - name: Run the suite
+        run: npm run e2e
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-report
+          path: |
+            image-scoring-pipeline/frontend/e2e/playwright-report
+            image-scoring-pipeline/frontend/e2e/test-results
+          retention-days: 7

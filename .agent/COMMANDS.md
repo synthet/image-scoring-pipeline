@@ -42,6 +42,12 @@ Verified patterns from [AGENTS.md](../AGENTS.md), [.agent/INFRA_QUICKSTART.md](I
 - Skill: `.cursor/skills/docs-wiki/SKILL.md`
 - After substantive doc moves: append [docs/log.md](../docs/log.md)
 
+## UI E2E (Playwright)
+
+- Hermetic suite for the `/ui/` SPA: `npm --prefix frontend run e2e` (first time: `npx playwright install chromium` in `frontend/`)
+- Fail-path proofs: `npm --prefix frontend run e2e:prove`; live tier on `image_scoring_test`: `npm --prefix frontend run e2e:live`
+- Never run `npm run build` to prepare it: that rewrites the tracked `static/app`. Guide: `docs/guides/UI_E2E_TESTING.md`
+
 ## MCP / support
 
 - Tool schemas: `mcps/<server>/tools/<tool>.json` (see [.cursor/rules/mcp-schema-check.mdc](../.cursor/rules/mcp-schema-check.mdc))
