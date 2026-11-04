@@ -50,7 +50,7 @@ After a shadow run on chosen shoots, the owner can see for each shoot how many s
 
 ## User stories
 
-- As the owner, I want per-shoot agreement numbers so that I can decide on promotion from my own library, not only from a labelled sample. (AC-3, AC-4, AC-7, AC-8)
+- As the owner, I want per-shoot agreement numbers so that I can decide on promotion from my own library, not only from a labelled sample. (AC-3, AC-4, AC-7, AC-8, AC-12)
 - As a pipeline maintainer, I want the result stored with its provider identity so that a re-run or a changed model is detectable. (AC-5, AC-6)
 - As a consumer owner, I want nothing to change until a promotion decision so that shadow runs are safe. (AC-1, AC-2, AC-10, AC-11)
 - As a reviewer, I want proof that the pipeline's RTMDet behaves like the benchmark's so that the measured results apply. (AC-9)
@@ -68,6 +68,7 @@ After a shadow run on chosen shoots, the owner can see for each shoot how many s
 - **AC-9:** Before the first library run, a parity check shall show the pipeline's ONNX RTMDet and the benchmark's RTMDet giving the same pass or fail at the 0.10 limit on at least 95% of the regions in the model repository's calibration sample.
 - **AC-10:** If RTMDet fails on an image, then the backfill shall record a `retryable_error` run for that image and continue with the next one.
 - **AC-11:** If the decoded rendition hash differs from the `bird` run's rendition hash, then the backfill shall record a `retryable_error` run for that image.
+- **AC-12:** When an image has an active production selection, the backfill shall also record an agreement score for the selected region.
 
 ## Assumptions and dependencies
 
@@ -77,8 +78,15 @@ After a shadow run on chosen shoots, the owner can see for each shoot how many s
 - Coordinates: regions are normalised to the display rendition. The benchmark used 2048 px renditions; `/plan` should confirm the crop source matches.
 - The model repository's calibration data is local to that repository, so AC-9 is a local check, not CI.
 
+## Decisions
+
+Recorded 2026-11-03: owner, delegated to Jev (jev-1.14.0).
+
+- **Regions:** check every region of the `bird` run, as the benchmark did (p 0.74). This shows whether another box was the real bird.
+- **Selected regions:** also score the region of an active production selection, because that is what consumers read (p 0.85). See AC-12.
+- **First run:** the keep-one dev and pilot shoots, then a stratified sample across camera and lens as a second run (0.73). The keep-one shoots show the effect on the most exposed consumer, but they over-represent long-lens bird shoots, so the first run alone does not predict the whole library.
+
 ## Open questions
 
-- **OPEN QUESTION 1:** Check every region or only rank 0? AC-3 says every region, as the benchmark did. Consumers read rank 0 or the selected region, so rank 0 alone would cost less but says nothing about whether another box was the real bird.
-- **OPEN QUESTION 2:** Do images with an active production selection use the selected region, as `--selected-by` does for keypoints? The benchmark did not cover this.
-- **OPEN QUESTION 3:** Which shoots make up the first shadow run, and what result would justify a promotion spec?
+- **OPEN QUESTION 1 (owner):** What result would justify a promotion spec? This is a gate, so it stays with the owner. It should be set before the first run's numbers are read.
+- **OPEN QUESTION 2 (for `/plan`):** Where is a selected region's score stored when that region is not on the current `bird` run?
