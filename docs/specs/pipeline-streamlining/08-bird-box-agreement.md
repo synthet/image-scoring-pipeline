@@ -52,7 +52,7 @@ After a shadow run on chosen shoots, the owner can see for each shoot how many s
 
 - As the owner, I want per-shoot agreement numbers so that I can decide on promotion from my own library, not only from a labelled sample. (AC-3, AC-4, AC-7, AC-8, AC-12)
 - As a pipeline maintainer, I want the result stored with its provider identity so that a re-run or a changed model is detectable. (AC-5, AC-6)
-- As a consumer owner, I want nothing to change until a promotion decision so that shadow runs are safe. (AC-1, AC-2, AC-10, AC-11)
+- As a consumer owner, I want nothing to change until a promotion decision so that shadow runs are safe. (AC-1, AC-2, AC-10, AC-11, AC-13)
 - As a reviewer, I want proof that the pipeline's RTMDet behaves like the benchmark's so that the measured results apply. (AC-9)
 
 ## Acceptance criteria
@@ -62,17 +62,19 @@ After a shadow run on chosen shoots, the owner can see for each shoot how many s
 - **AC-3:** When the backfill processes an image with a current `detected` `bird` run, the system shall record one agreement score for each region of that run.
 - **AC-4:** The agreement score for a region shall be the highest RTMDet bird score among boxes found on that region's crop, padded by 25%, whose IoU with the region is at least 0.3, and 0.0 when there are none.
 - **AC-5:** The `bird_agreement` run shall store a detector config hash that covers the RTMDet weights hash, crop padding, IoU limit and the `bird` run's detector config hash.
-- **AC-6:** When a current `bird_agreement` run already exists for the same config hash, rendition hash and source hash, the backfill shall skip that image.
+- **AC-6:** When the newest `bird_agreement` run for an image, unless it is a `retryable_error`, has the same config hash, rendition hash and source hash, the backfill shall skip that image.
 - **AC-7:** The report script shall print, per shoot, the counts of regions, regions at or above the agreement limit, regions below it, and consumer-visible eyes on regions below it, with their denominators.
 - **AC-8:** The agreement limit of 0.10 shall apply only in the report, so that stored scores stay valid if the limit changes.
 - **AC-9:** Before the first library run, a parity check shall show the pipeline's ONNX RTMDet and the benchmark's RTMDet giving the same pass or fail at the 0.10 limit on at least 95% of the regions in the model repository's calibration sample.
 - **AC-10:** If RTMDet fails on an image, then the backfill shall record a `retryable_error` run for that image and continue with the next one.
 - **AC-11:** If the decoded rendition hash differs from the `bird` run's rendition hash, then the backfill shall record a `retryable_error` run for that image.
 - **AC-12:** When an image has an active production selection, the backfill shall also record an agreement score for the selected region.
+- **AC-13:** The backfill shall store every `bird_agreement` run with `is_current` false.
 
 ## Assumptions and dependencies
 
-- `write_run` can store this under a new `detector_key` with no migration. Consumers filter on `detector_key`, so they do not see it. `/plan` should confirm this for every reader, including any query that does not filter.
+- `write_run` can store this under a new `detector_key` with no migration.
+- **Readers do not all filter on `detector_key`.** Keep-one's `subject_snapshot` takes every current run of an image, and `subject_evidence` requires exactly one detected run, so a current `bird_agreement` run would make those frames ambiguous and trip its input-identity check. AC-13 avoids this with `write_run(publish=False)`: the newest attempt per image is the live one. Pipeline readers were checked; those without a detector filter are a counter, a log line and a script that reaches regions through keypoint runs.
 - **Agreement is not available today.** The cascade adopts YOLO's boxes on a `detected` run and does not run RTMDet there, so this is a new pass.
 - **The two RTMDet paths differ.** The benchmark uses the PyTorch model with no score threshold and the bird class only. `modules/detectors/rtmdet.py` is ONNX, filters to animal classes and defaults to a 0.60 threshold, which would hide every score near 0.10. The check needs its own low threshold and the raw bird score, which is why AC-9 exists.
 - Coordinates: regions are normalised to the display rendition. The benchmark used 2048 px renditions; `/plan` should confirm the crop source matches.
