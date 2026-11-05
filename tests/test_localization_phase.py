@@ -43,7 +43,7 @@ def test_ac1_localization_follows_metadata_with_metadata_as_only_prereq():
 
 
 def test_ac2_localization_is_preferred_before_its_consumers():
-    assert phases.PHASE_PREFERRED_BEFORE["localization"] == ("scoring", "keywords", "bird_species")
+    assert phases.PHASE_PREFERRED_BEFORE["localization"] == ("scoring", "bird_species")
 
 
 @pytest.mark.parametrize("consumer, satisfied", [
