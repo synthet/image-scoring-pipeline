@@ -147,5 +147,6 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | [model-suitability-audit-2026-10-25](model-suitability-audit-2026-10-25.md) | External audit of the model-suitability export: no independent culling labels, within-stack agreement collapse, composite-distorted partial correlation; defects #685–#687. |
 | [localization-continuation-2026-10-19](localization-continuation-2026-10-19.md) | Interrupted repair, historical box drift, local reader/outage fixes and fresh-backup admission preparation awaiting checkpoint/runtime acceptance. |
 | [localization-promotion-gate-2026-10-26](localization-promotion-gate-2026-10-26.md) | Hook repair verified, backfill/cohort freeze complete and WebUI restored; only Antigravity passes the 18/20 calibration threshold. |
+| [localization-rollout-summary-2026-11-04](localization-rollout-summary-2026-11-04.md) | Latest localization rollout overview: intentions, goal, background, live status, specs and features, and blockers. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)

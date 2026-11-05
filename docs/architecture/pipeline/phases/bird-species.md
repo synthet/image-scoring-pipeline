@@ -18,6 +18,9 @@ Localises a bird in the frame and classifies it to species. The only phase with 
 scope**: it applies solely to images already carrying the `birds` discovery keyword, which is why
 it sits downstream of `keywords`.
 
+The sub-steps below show the embedded detector path. Images with an active selection use the
+selected region instead; see [localization-diagrams.md](../localization-diagrams.md).
+
 ## Sub-steps
 
 ```mermaid

@@ -57,6 +57,7 @@ in a **Known gaps** section.
 | `culling` | [phases/culling.md](phases/culling.md) | `SelectionRunner` (fallback `ClusteringRunner`) |
 | `keywords` | [phases/keywords.md](phases/keywords.md) | `TaggingRunner` |
 | `bird_species` | [phases/bird-species.md](phases/bird-species.md) | `BirdSpeciesRunner` |
+| [localization-diagrams](localization-diagrams.md) | Data model, box to consumer flow, authority lifecycle, and the gates holding each stage. |
 
 ## Related canonical sources
 
