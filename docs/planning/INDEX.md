@@ -81,6 +81,7 @@ pointer; do not use these old tiers to reprioritize or select current work.
 | [ONNX_CONVERSION_FEASIBILITY.md](models/ONNX_CONVERSION_FEASIBILITY.md) | ONNX export feasibility per model, pros/cons, phased plan (MUSIQ is the hard one) |
 | [localization-region-scores-and-backfill.md](localization-region-scores-and-backfill.md) | Bbox vs region-IQA backfill; parallel full-frame vs crop score storage (synthesis) |
 | [localization-stage4-slice1-status.md](localization-stage4-slice1-status.md) | Historical #387 slice-1 evidence; current tasks route to the rollout/handoff rather than its superseded branch instructions |
+| [localization-rollout-plan-2026-11-04.md](localization-rollout-plan-2026-11-04.md) | Current localization plan: the production rule, target workflow against what is built, corrections, phases and action items. |
 | [subject-aware-culling-evidence.md](subject-aware-culling-evidence.md) | **Proposal** (evidence, ranker, explainability; idea→issue map vs pipeline streamlining) — region/keypoint/mask-conditioned evidence, code-owned burst ranker, 0.5 s burst split; mapped onto localization Stages 2–7  |
 | [af-focus-evidence](af-focus-evidence.md) | Proposal: Nikon AF geometry, eye evidence and shadow evaluation for within-group culling |
 | [pipeline-streamlining.md](pipeline-streamlining.md) | Target design with delivered foundations: #594 cascade persistence/gates merged, small-species activation blocked; remaining consumer/storage/fusion gates stay explicit |
