@@ -13,6 +13,9 @@ okf_version: 0.2
 The structural contract: which phases exist, what order they run in, what must happen before
 what, and which code object actually executes each one.
 
+The `localization` phase and how its boxes reach consumers are drawn in
+[localization-diagrams.md](localization-diagrams.md).
+
 ## Phase codes
 
 `modules/phases.py:27-38`:

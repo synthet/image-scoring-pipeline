@@ -13,6 +13,9 @@ okf_version: 0.2
 Where phase state lives. PostgreSQL + pgvector is the primary engine; this repository is the
 schema authority via `modules/db_postgres.py` and `migrations/versions/`.
 
+Localization runs, regions, selections and authority tables are drawn in
+[localization-diagrams.md](localization-diagrams.md).
+
 ## Entity relationships
 
 ```mermaid

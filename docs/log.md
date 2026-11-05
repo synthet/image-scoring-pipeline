@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-11-04] created | Localization rollout plan, diagrams and summary (#808)
+
+Added [the plan](planning/localization-rollout-plan-2026-11-04.md), [the diagrams](architecture/pipeline/localization-diagrams.md) and [the summary](reports/localization-rollout-summary-2026-11-04.md). Updated the status and current order in the rollout page, and linked the diagrams from the phase graph, persistence and bird species pages.
+
 ## [2026-11-02] created | Owner-pick ranking evaluation: negative (#739)
 
 Added [the evaluation report](reports/owner-picks-ranking-evaluation-2026-11-02.md) and its reports-index row. Run as pre-registered (incl. R1) with `scripts/analysis/owner_picks_ranking_eval.py`: the learned ranker does not beat `score_general` on held-out years (top-1 0.371 vs 0.407); not adopted.
