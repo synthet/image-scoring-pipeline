@@ -56,7 +56,7 @@ The first plan (W1–W6) had errors. A check against the code and live data foun
 | 1 | Goal: "the 28,475 runs get promoted" | R2 accepts **6,504** runs. 21,032 v0 runs abstain with `unknown_producer_scope`, and 4,146 bird-tagged images are `no_detection`. Promoting R2 alone cannot reach detector retirement. Add W1.6 (below) |
 | 2 | W1.1 "Cursor: run the 20 controls" | Cursor already has **2 accepted controls (p01, p02), marked do-not-rerun**. Run the remaining 18 through **ACP**, because its CLI launcher rejected the prompts |
 | 3 | W1.1 "Gemini needs an API key" | Gemini now uses OAuth and failed 3 times, most recently in its ACP session. Make no Gemini calls without owner approval (Oct 27 log). Treat it as its own diagnosis |
-| 4 | (missing) | **Antigravity**, the only qualified judge, was listed as unavailable in an Oct 27 probe. Check that it runs before anything else |
+| 4 | (missing) | **Antigravity**, the only qualified judge, was listed as unavailable in an Oct 27 probe. Discovery found it available on 2026-11-05 (`agy` 1.4.12); no judge run was made |
 | 5 | W1.4 "consensus at ≥ 3 votes" | Use the frozen wording: **3 matching, or 2 when exactly 3 judges qualify** (read from the frozen rule artifact) |
 | 6 | W1.2 / W1.3 fallbacks (new control draw, owner labels) | They would fail authority approval: the docs require 3 judges, and R2 checks the original answer key. Either keep the current protocol, or change the qualification code under a new pre-registration. **Owner decides** |
 | 7 | W1.5 "tranches via `promote_localization_selections.py`" | Use the **authority path**: `register-policy` → `import-reservations` → `approve-policy` → `set-freshness on` → `activate`. Rehearse it on a restored backup first (Jev 0.83). Manifests bypass lineage and species convergence, and the production rule now rules them out |
@@ -107,7 +107,7 @@ The first plan (W1–W6) had errors. A check against the code and live data foun
 Each phase lists its **steps** and the **jobs** it runs. Jobs are tagged GPU, CPU, DB-write or calibration (calibration means judges or labels, used once). 🛑 marks a hard stop that needs the owner.
 
 ### Phase A: Calibrate R2 and activate automatic selection (#694, #638)
-1. **Preflight** (read-only): check the frozen artifacts against `freeze-receipt-20261026.json`; scan cursor; mode `shadow`; 0 approvals; `bird_bbox` and selection fingerprints. The artifacts, mode and approvals are verified. The chunk markers, fingerprint baseline and Claude image-read hook are still to check.
+1. **Preflight** (read-only): check the frozen artifacts against `freeze-receipt-20261026.json`; scan cursor; mode `shadow`; 0 approvals; `bird_bbox` and selection fingerprints. Done on 2026-11-05 and posted on #694: artifacts, mode, approvals, both fingerprints and Antigravity availability. The chunk marker files were not found, and the Claude image-read hook needs a fresh session.
 2. **Restart the WebUI** 🛑 with `docker compose up -d webui` once no #780 shoot is running. Let the shadow scan finish: about 2,400 runs remain. Find out why it stopped first (exit 137 after exactly 5 hours, not out of memory, not revived by `unless-stopped`). Check two things before restarting: the live config sends `localization` and `bird_species` to the remote runner, while the rollout doc says localization isn't on that rollout; and the cascade is enabled, so new images can add multi-current runs.
 3. **Qualify judges** (calibration): Antigravity availability check → Cursor via ACP on the remaining 18 controls → Gemini only after an approved diagnosis. Bar unchanged: ≥ 18/20 correct, ≥ 95% parsed.
 4. **Judge the frozen 390-frame sample once** (calibration): `promotion_694_gate.py`, with the frozen consensus rule; Jev settles split votes at ≥ 0.7, after a dry run and cost approval 🛑. Report per-band Wilson bounds as observed.
@@ -190,11 +190,13 @@ Each phase lists its **steps** and the **jobs** it runs. Jobs are tagged GPU, CP
 - [ ] 🛑 Approve each authority step: approve-policy, freshness, activate. Later, `read_normalized_first` and `embedded_detector=false`.
 
 ### Agent (any session; claim on the board first)
-- [ ] Phase A preflight: chunk markers, fingerprint baseline, Claude image-read hook.
-- [ ] Antigravity availability check.
+- [x] Phase A preflight: fingerprint baseline matches; results on #694.
+- [ ] Locate the backfill chunk markers, and check the Claude image-read hook in a fresh session.
+- [x] Antigravity availability check.
 - [x] File new issues: #809 to #814.
-- [ ] Update #345's status block, and the rollout doc's "What is left", to match this plan.
-- [ ] PRs for #681, #682, #319, and the `detector_key` reader filter.
+- [x] Update #345's status block, and the rollout doc's "What is left", to match this plan.
+- [x] PRs for #681, #682 and #319 (#818, #816, #817).
+- [ ] The `detector_key` reader filter, in `image-scoring-skills`.
 - [x] Close #321 as stale. Re-check #491.
 - [ ] Rehearse the authority path on a restored backup, ahead of a #694 pass.
 
