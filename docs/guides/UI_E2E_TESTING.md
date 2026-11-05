@@ -131,7 +131,7 @@ Known problems that are not whole tests stay in a baseline: `KNOWN_*` in `contra
 
 Budgets have about 4× headroom for a loaded machine; the gallery's equivalent measured 0.2–0.9 s idle and 2.6 s under load.
 
-Run time: Tier 1 is 98 tests in 6.1–6.5 min. Tier 2 is 5 tests in 7–13 s, about 40 s with container start.
+Run time: Tier 1 is 100 tests in about 6 min. Tier 2 is 5 tests in 7–13 s, about 40 s with container start.
 
 ## Credential scan of the bundle
 

@@ -7,6 +7,7 @@ import { galleryApi } from '@/api/gallery'
 import { stacksApi } from '@/api/stacks'
 import { ImageBrowsePanel } from '@/components/images/ImageBrowsePanel'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/ui/QueryError'
 import { folderPath, imageInspectorPath } from '@/utils/routes'
 
 export function StackPage() {
@@ -14,14 +15,14 @@ export function StackPage() {
   const stackId = parseInt(stackIdParam ?? '', 10)
   const navigate = useNavigate()
 
-  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+  const { data: analytics, isLoading: analyticsLoading, isError: analyticsError, refetch: refetchAnalytics } = useQuery({
     queryKey: ['stack', stackId, 'analytics'],
     queryFn: () => stacksApi.analytics(stackId),
     enabled: Number.isFinite(stackId) && stackId > 0,
     retry: false,
   })
 
-  const { data: probeImages } = useQuery({
+  const { data: probeImages, isError: probeError, refetch: refetchProbe } = useQuery({
     queryKey: ['stack', stackId, 'probe'],
     queryFn: () => galleryApi.list({ stack_id: stackId, page: 1, page_size: 1 }),
     enabled: Number.isFinite(stackId) && stackId > 0,
@@ -37,6 +38,7 @@ export function StackPage() {
   }, [analytics?.stack_name, stackId])
 
   const memberCount = analytics?.member_count ?? probeImages?.total ?? 0
+  const detailsFailed = analyticsError && probeError && !analytics && !probeImages
 
   if (!Number.isFinite(stackId) || stackId <= 0) {
     return (
@@ -81,6 +83,15 @@ export function StackPage() {
               <h1 className="text-base font-semibold text-[var(--color-text-primary)] truncate">{title}</h1>
               <span className="text-xs text-[var(--color-text-muted)] font-mono shrink-0">#{stackId}</span>
             </div>
+            {detailsFailed ? (
+              <QueryError
+                message="Could not load stack details."
+                onRetry={() => {
+                  void refetchAnalytics()
+                  void refetchProbe()
+                }}
+              />
+            ) : (
             <p className="text-xs text-[var(--color-text-muted)]">
               {memberCount.toLocaleString()} image{memberCount !== 1 ? 's' : ''}
               {analytics?.best_image_id ? (
@@ -95,6 +106,7 @@ export function StackPage() {
                 </>
               ) : null}
             </p>
+            )}
             {folderId != null && (
               <p className="text-xs mt-1">
                 <Link to={folderPath(folderId)} className="text-[var(--color-accent-bright)] hover:underline">

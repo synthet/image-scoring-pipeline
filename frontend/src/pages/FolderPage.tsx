@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, FolderOpen, Loader2, MapPin, Play } from 'lucide-react'
+import { isNotFound } from '@/api/client'
 import { foldersApi, folderPhasesToBucketPhases } from '@/api/folders'
 import { cullingApi } from '@/features/culling/api/culling'
 import { ImageBrowsePanel } from '@/components/images/ImageBrowsePanel'
 import { PipelinePhaseIconsRow } from '@/components/phases/PipelinePhaseIconsRow'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/ui/QueryError'
 import { useUiStore } from '@/stores/uiStore'
 import { stackPath } from '@/utils/routes'
 
@@ -26,7 +28,7 @@ export function FolderPage() {
   const setSelectedScopePath = useUiStore((s) => s.setSelectedScopePath)
   const openNewRun = useUiStore((s) => s.openNewRun)
 
-  const { data: folder, isLoading, isError } = useQuery({
+  const { data: folder, isLoading, error: folderError, refetch: refetchFolder } = useQuery({
     queryKey: ['folder', folderId],
     queryFn: () => foldersApi.get(folderId),
     enabled: Number.isFinite(folderId) && folderId > 0,
@@ -76,7 +78,11 @@ export function FolderPage() {
     )
   }
 
-  if (isError || !folder) {
+  if (!folder && folderError && !isNotFound(folderError)) {
+    return <QueryError message={`Could not load folder #${folderId}.`} onRetry={() => refetchFolder()} className="p-6" />
+  }
+
+  if (!folder || isNotFound(folderError)) {
     return (
       <div className="p-6 space-y-3">
         <p className="text-sm text-[var(--color-danger)]">Folder #{folderId} not found</p>

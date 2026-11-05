@@ -16,7 +16,7 @@ Every test in `frontend/e2e/`, plus the contract and WebSocket tests in Vitest. 
 - **Pass:** the behavior is asserted and must hold.
 - **Defect #N:** marked `test.fail` / `it.fails`. It passes while the defect exists and turns red once the fix lands; then remove the marker.
 
-Tier 1 total: 98 tests in 12 spec files. Tier 2: 5 tests. Fail-path proofs: 40 breaks in `frontend/e2e/scripts/prove-failures.mjs`, each failing exactly one test. Parametrized groups are proven by one representative.
+Tier 1 total: 100 tests in 12 spec files. Tier 2: 5 tests. Fail-path proofs: 40 breaks in `frontend/e2e/scripts/prove-failures.mjs`, each failing exactly one test. Parametrized groups are proven by one representative.
 
 ## Known defects
 
@@ -25,7 +25,6 @@ Tier 1 total: 98 tests in 12 spec files. Tier 2: 5 tests. Fail-path proofs: 40 b
 | [#770](https://github.com/synthet/image-scoring-pipeline/issues/770) | `POST /api/db/query` and `GET /api/status/log-tails` are missing from `openapi.json` (mounted in `modules/ui/app.py`) | `contract.test.ts` `KNOWN_UNDOCUMENTED`; `api.onUndocumented` | Document them |
 | [#771](https://github.com/synthet/image-scoring-pipeline/issues/771) | `openapi.json` has 12 operations `openapi.yaml` lacks | Issue only | Regenerate; add a drift check |
 | [#772](https://github.com/synthet/image-scoring-pipeline/issues/772) | `run_progress`, `stage_transition`, `queue_update`, `work_item_done` handled but never broadcast | `contract.test.ts` `KNOWN_NOT_EMITTED` | Emit them, or remove the branches |
-| [#775](https://github.com/synthet/image-scoring-pipeline/issues/775) | A 5xx shows as "not found" or an empty list on six pages | `backend-down.spec.ts` | Handle `isError` separately |
 | [#776](https://github.com/synthet/image-scoring-pipeline/issues/776) | Unnamed icon buttons (incl. Cancel run), colour-only link, unlabeled spinners | `a11y.spec.ts` | `aria-label`, underline, `role="status"` |
 | [#777](https://github.com/synthet/image-scoring-pipeline/issues/777) | Muted text `#6d6d6d` fails AA contrast on every page | `a11y.spec.ts` | Raise the token in `image-scoring-ui`; replace local literals |
 | [#778](https://github.com/synthet/image-scoring-pipeline/issues/778) | New Run and Drive to Complete modals: no dialog role or focus handling; Drive ignores Escape | `a11y.spec.ts` | Radix `Dialog` |
@@ -75,7 +74,9 @@ Tier 1 total: 98 tests in 12 spec files. Tier 2: 5 tests. Fail-path proofs: 40 b
 | Test | Asserts | Status |
 |---|---|---|
 | with /api answering 500, no page is blank and none throws | 12 routes settle on visible text | Pass |
-| a 500 is reported as an error, not as "not found" or as no data | No misleading empty/not-found text | Defect #775 |
+| a 500 is reported as an error, not as "not found" or as no data | Error and Retry shown, no misleading empty/not-found text | Pass |
+| a real 404 still says "not found" | Run and Folder keep their not-found text, no error shown | Pass |
+| a failed page recovers through Retry when the backend comes back | Images table returns after Retry | Pass |
 | requests that hang leave the shell and a loading state, not a blank page or a verdict | Nav, loading icon, no premature "not found" | Pass |
 | Diagnostics and Logs recover through Retry when the backend comes back | Retry restores content | Pass |
 | the runs list recovers on reload when the backend comes back | Reload restores the list (the product's recovery: 30 s poll or reload) | Pass |
