@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-11-05] edit | Record the bird box agreement outcome (#780)
+
+The owner review missed the promotion bar, so agreement stays a shadow measurement. Updated [the plan](planning/localization-rollout-plan-2026-11-04.md), [the diagrams](architecture/pipeline/localization-diagrams.md), the rollout status, and spec 08 and its plan. Recorded that the WebUI stopped because the laptop slept.
+
 ## [2026-11-04] created | Localization rollout plan, diagrams and summary (#808)
 
 Added [the plan](planning/localization-rollout-plan-2026-11-04.md), [the diagrams](architecture/pipeline/localization-diagrams.md) and [the summary](reports/localization-rollout-summary-2026-11-04.md). Updated the status and current order in the rollout page, and linked the diagrams from the phase graph, persistence and bird species pages.
