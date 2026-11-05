@@ -6,10 +6,12 @@ resource: docs/planning/bird-box-agreement-plan.md
 tags: [planning, localization, detection, rtmdet, shadow]
 timestamp: 2026-11-03T00:00:00Z
 okf_version: 0.2
-status: proposed
+status: done
 ---
 
 # Bird box agreement plan
+
+**Finished 2026-11-05: the bar was not met.** See the outcome in [spec 08](../specs/pipeline-streamlining/08-bird-box-agreement.md).
 
 **Spec:** [08](../specs/pipeline-streamlining/08-bird-box-agreement.md) · **Issue:** #780
 
