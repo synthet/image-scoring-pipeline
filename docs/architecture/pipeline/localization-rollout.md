@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-11-05T03:10:00Z
+timestamp: 2026-11-05T18:30:00Z
 okf_version: 0.2
 status: stable
 ---
@@ -48,11 +48,13 @@ Diagrams of the data model, box flow, authority lifecycle and stage gates are in
   may calibrate it but are never a production step. #345 is reopened.
 - **Authority runtime delivered and dormant** (#697 to #710, migrations 0045 to 0048). Production is at
   0048. Shadow scan: 6,504 R2 accepts, stopped at cursor 239,048 of 241,459 because the WebUI has been
-  down since 2026-11-03.
+  down since the laptop slept on 2026-11-03.
 - **Coverage.** 4,665 active selections. R2 alone cannot reach detector removal, because 21,032 v0 runs
   are outside its producer scope (#810).
 - **#780 shadow agreement.** Code merged in #802 and #803, full-size AC-9 passed at 129 of 131, and the
-  first run is in progress. Rows are unpublished.
+  owner review missed the bar: 12.0% of false-eye regions removed, 2.6% of birds lost. Agreement stays a
+  shadow measurement. About 72% of false-eye regions are real birds with a misplaced eye mark, which moves
+  to `image-scoring-model#48`.
 - **Gate tooling.** `promotion_694_gate.py` merged in #807. One of three judges has qualified.
 
 **Status 2026-10-26 ([promotion-gate continuation](../../reports/localization-promotion-gate-2026-10-26.md)):**
@@ -417,7 +419,7 @@ holds the phases and owner decisions. In short:
    rehearse the authority path on a restored backup, and the owner approves each activation step.
 2. Close the coverage gap automatically (#809, #810), then observe the compatibility release and
    retire the embedded detector (#638).
-3. Finish #780's first run and the owner's sample review, which calibrates the agreement limit.
+3. Eye placement on real birds, which is the larger false-eye problem (`image-scoring-model#48`).
 4. Route by subject class (#811), and the lane gaps: retry timing and the cascade pilot recovery policy.
 
 The #660 rebuild, the WebUI start on v9.2.0, the #653 hold field, the gallery consumer, the
