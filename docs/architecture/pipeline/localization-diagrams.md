@@ -4,7 +4,7 @@ title: Localization Rollout Diagrams
 description: Four views of the localization rollout that its other docs don't draw - the data model, how a detector box reaches consumers, the authority lifecycle, and the gates holding each stage.
 resource: architecture/pipeline/localization-diagrams.md
 tags: [pipeline, architecture, localization, bird-detection, rollout, diagrams]
-timestamp: 2026-11-05T03:10:00Z
+timestamp: 2026-11-05T18:30:00Z
 okf_version: 0.2
 ---
 
@@ -182,12 +182,11 @@ flowchart TB
     cov --> det["Retire BioCLIP's<br/>embedded detector"]
     det --> s8["8 Retire bird_bbox<br/>#638"]
     rel["Compatibility release<br/>observed with no regressions"] --> s8
-    s780["#780 RTMDet agreement<br/>first run in progress"] -.-> eyes["Promotion spec<br/>for agreed boxes"]
+    s780["#780 RTMDet agreement<br/>bar not met, stays in shadow"]
 
     b1["1 of 3 judges qualified"]:::block --> cov
     b2["Small-crop species<br/>0.8123 against 0.85, #610"]:::block --> s5
     b3["About 300 labelled bursts<br/>do not exist, #415"]:::block --> s6
-    b4["Owner review of<br/>100 + 100 regions"]:::block --> eyes
     b5["WebUI stopped<br/>since 2026-11-03"]:::block -.-> cov
 
     classDef done fill:#e0ebf4,stroke:#2c5476,color:#17222b
@@ -198,12 +197,12 @@ flowchart TB
     class s1,s2,s3 done
     class s4,s5 live
     class s7,s780 shadow
-    class s6,cov,det,s8,rel,eyes wait
+    class s6,cov,det,s8,rel wait
 ```
 
 - Even if #694 passes, R2 accepts 6,504 runs. That leaves the 21,032 v0 runs (out of producer scope) and the 4,146 bird-tagged no-detection images uncovered, so detector retirement may need another rule or a relocalization pass (#810).
-- #780 is a side measurement. It does not gate #694 or Stage 8.
-- The WebUI stop only pauses the shadow scan, which is about 2,400 runs from the end. It does not block approval.
+- #780 is finished. The owner review missed the bar (12.0% of false-eye regions removed, 2.6% of birds lost), so agreement stays a shadow measurement. It never gated #694 or Stage 8.
+- The WebUI stopped when the laptop went to sleep on 2026-11-03. That only pauses the shadow scan, which is about 2,400 runs from the end, and does not block approval.
 
 ## Sources
 

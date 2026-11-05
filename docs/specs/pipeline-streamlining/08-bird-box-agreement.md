@@ -6,12 +6,16 @@ resource: docs/specs/pipeline-streamlining/08-bird-box-agreement.md
 tags: [specs, localization, detection, keypoints, rtmdet, shadow]
 timestamp: 2026-11-03T00:00:00Z
 okf_version: 0.2
-status: proposed
+status: done
 ---
 
 # Spec 08: bird box agreement
 
 **Issue:** #780 · **Hub:** [INDEX.md](INDEX.md) · **Depends on:** spec 03, #426
+
+## Outcome
+
+Finished on 2026-11-05 and **the promotion bar was not met**: 12.0% of false-eye regions removed (bar: at least a third) and 2.6% of confirmed birds lost (bar: under 2%). No promotion spec follows, the second run is dropped, and agreement stays a shadow measurement. Rates are weighted to the pool, because the sample took 100 regions from each side of the limit. Details are on #780.
 
 ## Summary
 
