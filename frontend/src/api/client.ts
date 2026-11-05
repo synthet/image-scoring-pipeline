@@ -8,6 +8,11 @@ export class ApiError extends Error {
   }
 }
 
+/** True for an HTTP 404, the one failure that means the thing really is missing. */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404
+}
+
 /** Extract FastAPI `detail` from JSON error body; otherwise return raw text. */
 export function parseApiErrorDetail(text: string): string {
   const t = text.trim()

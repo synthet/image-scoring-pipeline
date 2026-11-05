@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, FolderOpen, Pause, Play, XCircle, RotateCcw, Loader2,
 } from 'lucide-react'
+import { isNotFound } from '@/api/client'
 import { runsApi } from '@/api/runs'
 import { RunBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,6 +13,7 @@ import { StagePanel } from '@/components/runs/StagePanel'
 import { LogPanel } from '@/components/runs/LogPanel'
 import { RunQueuePayloadPanel } from '@/components/runs/RunQueuePayloadPanel'
 import { ReportPanel } from '@/components/runs/ReportPanel'
+import { QueryError } from '@/components/ui/QueryError'
 import { useWsStore } from '@/stores/wsStore'
 import type { StageCode } from '@/types/api'
 import { STAGE_DISPLAY } from '@/types/api'
@@ -27,7 +29,7 @@ export function RunDetailPage() {
 
   const [selectedStage, setSelectedStage] = useState<string | null>(null)
 
-  const { data: run, isLoading: runLoading } = useQuery({
+  const { data: run, isLoading: runLoading, error: runError, refetch: refetchRun } = useQuery({
     queryKey: runDetailQueryKey(id),
     queryFn: () => runsApi.get(id),
     refetchInterval: 30000, // watchdog only; WS invalidation is primary
@@ -107,6 +109,10 @@ export function RunDetailPage() {
         <Loader2 size={20} className="text-[var(--color-accent-bright)] animate-spin" />
       </div>
     )
+  }
+
+  if (!run && runError && !isNotFound(runError)) {
+    return <QueryError message={`Could not load run #${id}.`} onRetry={() => refetchRun()} className="p-6" />
   }
 
   if (!run) {
