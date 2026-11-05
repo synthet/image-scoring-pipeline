@@ -116,6 +116,12 @@ PHASE_ATTEMPT_BEFORE: dict[str, tuple[str, ...]] = {
     PhaseCode.LOCALIZATION.value: (PhaseCode.SCORING.value,),
 }
 
+# Attempt-before edges that stay inert until the consumer reads the producer's output.  Scoring
+# reads no region until spec 04 ships, so waiting for the detector would gain nothing (#681).
+PHASE_ATTEMPT_BEFORE_CONFIG_KEYS: dict[str, str] = {
+    PhaseCode.LOCALIZATION.value: "scoring.subject.enabled",
+}
+
 # Phases that are registered but gated by a config flag.  While the flag is false the
 # phase is omitted from public phase lists and any submission naming it is rejected
 # (#387 decision 1).  Registering it anyway keeps the vocabulary, executor and schema in
@@ -129,6 +135,16 @@ def is_phase_enabled(phase: "PhaseCode | str") -> bool:
     """False only for a config-gated phase whose flag is off.  Ungated phases are enabled."""
     code = phase.value if isinstance(phase, PhaseCode) else str(phase or "").strip().lower()
     key = PHASE_ENABLED_CONFIG_KEYS.get(code)
+    if key is None:
+        return True
+    from modules import config
+
+    return bool(config.get_config_value(key, default=False))
+
+
+def attempt_edge_enabled(producer: str) -> bool:
+    """False while a gated attempt-before edge's flag is off.  Ungated edges are enabled."""
+    key = PHASE_ATTEMPT_BEFORE_CONFIG_KEYS.get(producer)
     if key is None:
         return True
     from modules import config
@@ -347,8 +363,9 @@ def insert_attempt_before(
     """Return ``phase_values`` with attempt-before producers inserted (spec 02 AC-4 to AC-6).
 
     A producer from :data:`PHASE_ATTEMPT_BEFORE` goes immediately ahead of the first
-    requested consumer when it is enabled (AC-5), not already planned, and some image in
-    ``scope_paths`` lacks a current attempt (``pending``, default :func:`attempt_pending`).
+    requested consumer when it is enabled (AC-5), its edge is on (:func:`attempt_edge_enabled`),
+    it is not already planned, and some image in ``scope_paths`` lacks a current attempt
+    (``pending``, default :func:`attempt_pending`).
     Without scope paths (image-id selectors) the plan is returned unchanged, matching the
     prerequisite gate.  ``/api/runs/submit``, ``/api/pipeline/submit`` and heal call this before
     ``assert_prereqs_for_scope`` so identical requests produce identical plans (AC-13).
@@ -367,7 +384,7 @@ def insert_attempt_before(
         if producer in plan:
             continue
         index = next((i for i, code in enumerate(plan) if code in consumers), None)
-        if index is None or not is_phase_enabled(producer):
+        if index is None or not is_phase_enabled(producer) or not attempt_edge_enabled(producer):
             continue
         if check(producer, paths):
             plan.insert(index, producer)
