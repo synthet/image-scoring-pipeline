@@ -102,7 +102,6 @@ def phase_prerequisites(code: str) -> tuple[str, ...]:
 PHASE_PREFERRED_BEFORE: dict[str, tuple[str, ...]] = {
     PhaseCode.LOCALIZATION.value: (
         PhaseCode.SCORING.value,
-        PhaseCode.KEYWORDS.value,
         PhaseCode.BIRD_SPECIES.value,
     ),
 }
