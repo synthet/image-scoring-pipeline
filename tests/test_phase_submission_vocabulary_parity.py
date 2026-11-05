@@ -191,6 +191,7 @@ def test_runs_submit_inserts_localization_ahead_of_scoring(
     api_client, scope, stub_enqueue, gated_phases_enabled, monkeypatch,
 ):
     """#407 AC-4/AC-13: a scoring run over images without a localization attempt localizes first."""
+    monkeypatch.setattr("modules.phases.attempt_edge_enabled", lambda _producer: True)
     monkeypatch.setattr("modules.phases.attempt_pending", lambda producer, _paths: producer == "localization")
 
     r = api_client.post(
@@ -201,6 +202,21 @@ def test_runs_submit_inserts_localization_ahead_of_scoring(
     assert stub_enqueue[-1]["phases"] == ["localization", "scoring"]
     assert stub_enqueue[-1]["phase_code"] == "localization"
     assert stub_enqueue[-1]["job_type"] == "localization"
+
+
+def test_runs_submit_scoring_skips_localization_by_default(
+    api_client, scope, stub_enqueue, gated_phases_enabled, monkeypatch,
+):
+    """#681: until spec 04 ships, a scoring run does not wait for the detector."""
+    monkeypatch.setattr("modules.phases.attempt_edge_enabled", lambda _producer: False)
+    monkeypatch.setattr("modules.phases.attempt_pending", lambda producer, _paths: producer == "localization")
+
+    r = api_client.post(
+        "/api/runs/submit",
+        json={"scope_type": "folder_recursive", "scope_paths": [scope], "stages": ["scoring"]},
+    )
+    assert r.status_code == 200, r.text
+    assert stub_enqueue[-1]["phases"] == ["scoring"]
 
 
 @pytest.mark.parametrize("phase", GATED_PHASES)
