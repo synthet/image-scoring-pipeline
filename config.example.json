@@ -259,8 +259,7 @@
     "padding": 0.1,
     "imgsz": 640,
     "max_det": 10,
-    "device": "auto",
-    "fail_open": true
+    "device": "auto"
   },
   "bird_species": {
     "use_regions": false,
