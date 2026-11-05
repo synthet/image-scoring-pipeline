@@ -1,7 +1,8 @@
 """Attempt-before planning (#407, spec 02 AC-3 to AC-5, AC-8, AC-13).
 
-``insert_attempt_before`` is pure apart from two seams -- ``is_phase_enabled`` and the
-``pending`` check -- so every case here stubs both and needs no database.  Whether a given
+``insert_attempt_before`` is pure apart from three seams -- ``is_phase_enabled``,
+``attempt_edge_enabled`` and the ``pending`` check -- so every case here stubs them and needs no
+database.  Whether a given
 localization status counts as an attempt (AC-6, AC-7) is decided by the run planner and is
 covered by the Postgres suites, not here.
 """
@@ -14,6 +15,8 @@ import pytest
 
 from modules.phases import (
     PHASE_ATTEMPT_BEFORE,
+    PHASE_ATTEMPT_BEFORE_CONFIG_KEYS,
+    attempt_edge_enabled,
     insert_attempt_before,
     missing_prerequisites,
 )
@@ -24,6 +27,7 @@ SCOPE = ["/photos/2026"]
 @pytest.fixture
 def localization_enabled(monkeypatch):
     monkeypatch.setattr("modules.phases.is_phase_enabled", lambda _phase: True)
+    monkeypatch.setattr("modules.phases.attempt_edge_enabled", lambda _producer: True)
 
 
 def _pending(answer: bool, calls: list | None = None):
@@ -89,6 +93,49 @@ def test_no_consumer_or_already_planned_is_left_alone(localization_enabled):
         "scoring",
     ]
     assert calls == []
+
+
+def test_scoring_edge_is_gated_on_subject_aware_scoring():
+    assert PHASE_ATTEMPT_BEFORE_CONFIG_KEYS == {"localization": "scoring.subject.enabled"}
+
+
+def _config(monkeypatch, values):
+    monkeypatch.setattr(
+        "modules.config.get_config_value",
+        lambda key, default=None, **_kw: values.get(key, default),
+    )
+
+
+def test_edge_is_off_by_default(monkeypatch):
+    _config(monkeypatch, {})
+    assert attempt_edge_enabled("localization") is False
+
+
+def test_edge_follows_its_flag(monkeypatch):
+    _config(monkeypatch, {"scoring.subject.enabled": True})
+    assert attempt_edge_enabled("localization") is True
+
+
+def test_ungated_edge_is_enabled(monkeypatch):
+    _config(monkeypatch, {})
+    assert attempt_edge_enabled("metadata") is True
+
+
+def test_flag_off_leaves_plan_unchanged(monkeypatch):
+    """#681: scoring reads no region yet, so it must not wait for the detector."""
+    monkeypatch.setattr("modules.phases.is_phase_enabled", lambda _phase: True)
+    _config(monkeypatch, {})
+    calls = []
+    plan = insert_attempt_before(["scoring"], SCOPE, pending=_pending(True, calls))
+    assert plan == ["scoring"]
+    assert calls == []
+
+
+def test_flag_on_inserts_the_producer(monkeypatch):
+    monkeypatch.setattr("modules.phases.is_phase_enabled", lambda _phase: True)
+    _config(monkeypatch, {"scoring.subject.enabled": True})
+    plan = insert_attempt_before(["scoring"], SCOPE, pending=_pending(True))
+    assert plan == ["localization", "scoring"]
 
 
 def test_attempt_edge_is_never_a_missing_prerequisite():
