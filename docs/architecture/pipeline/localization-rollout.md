@@ -4,7 +4,7 @@ title: Early Localization — Eight-Stage Rollout
 description: Staged rollout for moving bird/object localization ahead of downstream inference while preserving full-frame semantics and pipeline convergence.
 resource: architecture/pipeline/localization-rollout.md
 tags: [pipeline, architecture, localization, bird-detection, rollout]
-timestamp: 2026-10-26T00:00:00Z
+timestamp: 2026-11-05T03:10:00Z
 okf_version: 0.2
 status: stable
 ---
@@ -22,7 +22,7 @@ current graph and its implementation are documented in [phase-graph.md](phase-gr
 
 ## Consolidated status (2026-10-04)
 
-This page is the status of record, with operational updates through 2026-10-26.
+This page is the status of record, with operational updates through 2026-11-05.
 Epic #345's issue body still describes September 2026
 (the live import "not yet run", stage 4 "open questions pending"). Replacing that body
 needs a token that can edit issues; this page and #527 are the update.
@@ -35,6 +35,25 @@ are folded into the table, not into a second rollout:
 - [blockers and decision register](../../specs/pipeline-streamlining/07-blockers-and-decisions.md)
   (historical snapshot 2026-09-25, with a 2026-10-04 delta at the top)
 - [subject-aware culling evidence](../../planning/subject-aware-culling-evidence.md)
+- [updated rollout plan, 2026-11-04](../../planning/localization-rollout-plan-2026-11-04.md), with the owner's production rule
+
+Diagrams of the data model, box flow, authority lifecycle and stage gates are in
+[localization-diagrams.md](localization-diagrams.md).
+
+**Status 2026-11-05 ([rollout summary](../../reports/localization-rollout-summary-2026-11-04.md)):**
+
+- **Partly in production.** Localization runs on new images and region BioCLIP is live. Automatic
+  promotion is in `shadow` with 0 approvals, and `bird_bbox` is still the production read.
+- **Owner direction (2026-11-04).** The target is a fully automated workflow. Judge panels and labels
+  may calibrate it but are never a production step. #345 is reopened.
+- **Authority runtime delivered and dormant** (#697 to #710, migrations 0045 to 0048). Production is at
+  0048. Shadow scan: 6,504 R2 accepts, stopped at cursor 239,048 of 241,459 because the WebUI has been
+  down since 2026-11-03.
+- **Coverage.** 4,665 active selections. R2 alone cannot reach detector removal, because 21,032 v0 runs
+  are outside its producer scope (#810).
+- **#780 shadow agreement.** Code merged in #802 and #803, full-size AC-9 passed at 129 of 131, and the
+  first run is in progress. Rows are unpublished.
+- **Gate tooling.** `promotion_694_gate.py` merged in #807. One of three judges has qualified.
 
 **Status 2026-10-26 ([promotion-gate continuation](../../reports/localization-promotion-gate-2026-10-26.md)):**
 
@@ -390,14 +409,16 @@ geometry-only: small-crop species failed its gate, so their species stays legacy
 
 ### What is left
 
-**Current order (2026-10-26):**
+**Current order (2026-11-05):** the [updated plan](../../planning/localization-rollout-plan-2026-11-04.md)
+holds the phases and owner decisions. In short:
 
-1. Complete the v9.2.0 compatibility release observation; WebUI is restored and recovery verified,
-   but its earlier live start alone does not establish the full gate.
-2. Raise selection coverage through **#694**, which supersedes closed #683: two more vision judges
-   must meet the unchanged 18/20 calibration threshold before the frozen fresh sample can be judged.
-   No promotion or BioCLIP detector removal can proceed from the current one-qualified-judge pilot.
-3. Then the lane gaps: retry timing and the cascade pilot recovery policy.
+1. Calibrate R2 once through **#694**, which supersedes closed #683: two more vision judges must meet
+   the unchanged 18/20 calibration threshold before the frozen fresh sample can be judged. Then
+   rehearse the authority path on a restored backup, and the owner approves each activation step.
+2. Close the coverage gap automatically (#809, #810), then observe the compatibility release and
+   retire the embedded detector (#638).
+3. Finish #780's first run and the owner's sample review, which calibrates the agreement limit.
+4. Route by subject class (#811), and the lane gaps: retry timing and the cascade pilot recovery policy.
 
 The #660 rebuild, the WebUI start on v9.2.0, the #653 hold field, the gallery consumer, the
 rollback drill, the disagreement review (6 held, 0 unselected after the 2026-10-25 recount) and
