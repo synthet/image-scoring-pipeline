@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { galleryApi, type ImageFilters } from '@/api/gallery'
 import { useUiStore } from '@/stores/uiStore'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/ui/QueryError'
 import { ImageEmbeddingsRow } from '@/components/images/EmbeddingSpaceChip'
 import { PHASES_HEADER_HINT, PipelinePhaseIconsRow } from '@/components/phases/PipelinePhaseIconsRow'
 import { imageInspectorPath } from '@/utils/routes'
@@ -110,7 +111,7 @@ export function ImageBrowsePanel({
     setPage(1)
   }, [folderPath, stackId, keyword, keywordExact, pageSize, sortBy, order, phaseStatusFilter, unscoredOnly, dataGapFilter])
 
-  const { data, isLoading, isFetching, isPlaceholderData } = useQuery({
+  const { data, isLoading, isFetching, isPlaceholderData, isError, refetch } = useQuery({
     queryKey: [
       queryKeyPrefix,
       'browse',
@@ -146,6 +147,7 @@ export function ImageBrowsePanel({
   const totalPages = data?.total_pages ?? 0
   const total = data?.total ?? 0
   const images: Image[] = data?.images ?? []
+  const loadFailed = isError && images.length === 0
 
   const canPrev = page > 1
   const canNext = totalPages > 0 && page < totalPages
@@ -244,7 +246,8 @@ export function ImageBrowsePanel({
         {isLoading && !isPlaceholderData && (
           <div className="p-4 text-sm text-[var(--color-text-muted)]">Loading…</div>
         )}
-        {!isLoading && images.length === 0 && (
+        {loadFailed && <QueryError message="Could not load images." onRetry={() => refetch()} className="p-4" />}
+        {!isLoading && !loadFailed && images.length === 0 && (
           <div className="p-4 text-sm text-[var(--color-text-muted)]">{emptyMessage}</div>
         )}
         {images.length > 0 && (

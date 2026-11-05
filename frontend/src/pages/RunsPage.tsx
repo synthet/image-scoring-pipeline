@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { runsApi } from '@/api/runs'
 import { RunCard } from '@/components/runs/RunCard'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/ui/QueryError'
 import { useWsStore } from '@/stores/wsStore'
 import { useUiStore } from '@/stores/uiStore'
 import { ChevronLeft, ChevronRight, Inbox, Plus, Square, Zap } from 'lucide-react'
@@ -64,7 +65,7 @@ export function RunsPage() {
     })
   }
 
-  const { data: activeRuns, isLoading: activeLoading } = useQuery({
+  const { data: activeRuns, isLoading: activeLoading, isError: activeError, refetch: refetchActive } = useQuery({
     queryKey: ['runs', 'active', runsVersion],
     queryFn: () => runsApi.list({ limit: 200, status: 'running,paused,queued,pending' }),
     refetchInterval: 30000,
@@ -77,7 +78,7 @@ export function RunsPage() {
   })
   const overview: Run[] = Array.isArray(overviewPayload) ? overviewPayload : []
 
-  const { data: historyPayload, isLoading: historyLoading } = useQuery({
+  const { data: historyPayload, isLoading: historyLoading, isError: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['runs', 'history', historyPage, runsVersion],
     queryFn: () =>
       runsApi.list({
@@ -128,6 +129,7 @@ export function RunsPage() {
           : []
 
   const listLoading = tab === 'history' ? historyLoading : (tab === 'active' || tab === 'queue' ? activeLoading : overviewLoading)
+  const listFailed = displayed.length === 0 && (tab === 'history' ? historyError : activeError)
   const historyHasPrev = tab === 'history' && historyPage > 0
   const historyHasNext =
     tab === 'history' && historyPayload && 'total' in historyPayload
@@ -180,7 +182,14 @@ export function RunsPage() {
         <div className="text-sm text-[var(--color-text-muted)]">Loading…</div>
       )}
 
-      {!listLoading && displayed.length === 0
+      {listFailed && (
+        <QueryError
+          message="Could not load runs."
+          onRetry={() => (tab === 'history' ? refetchHistory() : refetchActive())}
+        />
+      )}
+
+      {!listLoading && !listFailed && displayed.length === 0
         && (tab !== 'history' || historyPayload !== undefined) && (
         <EmptyState tab={tab} onNewRun={() => openNewRun()} />
       )}

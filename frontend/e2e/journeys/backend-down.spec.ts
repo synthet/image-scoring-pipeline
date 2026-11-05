@@ -2,6 +2,7 @@
  * Journey 4 — backend unavailable: REST failing or hanging, the live-updates WebSocket refused
  * or dropped, and recovery when the backend returns.
  */
+import type { Page } from '@playwright/test'
 import { test, expect, type AllowedError } from '../fixtures'
 import { installPages } from '../builders'
 
@@ -10,10 +11,16 @@ const resourceErrors: AllowedError = {
   pattern: /Failed to load resource: the server responded with a status of 50\d/,
   reason: 'the browser logs every failed request while the backend is down',
 }
+const missingResource: AllowedError = {
+  pattern: /Failed to load resource: the server responded with a status of 404/,
+  reason: 'the browser logs a 404 for the run or folder that does not exist',
+}
 const refusedSocket: AllowedError = {
   pattern: /WebSocket connection to 'ws:\/\/127\.0\.0\.1:9\/ws\/updates' failed/,
   reason: 'the browser logs each refused handshake (the fake points refused sockets at a closed port)',
 }
+
+const loadError = (page: Page) => page.getByRole('alert').filter({ hasText: 'Could not load' })
 
 const MAIN_ROUTES = ['/ui/runs', '/ui/runs/3', '/ui/dashboard', '/ui/images', '/ui/images/1', '/ui/folder/1', '/ui/stacks/1',
   '/ui/birds', '/ui/keywords/bird', '/ui/diagnostics', '/ui/logs', '/ui/db']
@@ -29,7 +36,6 @@ test('with /api answering 500, no page is blank and none throws', async ({ page,
 })
 
 test('a 500 is reported as an error, not as "not found" or as no data', async ({ page, api, allowErrors }) => {
-  test.fail(true, '#775: Runs, Run detail, Folder, Images, Stack and Keyword pages show 5xx as not found / empty')
   allowErrors.push(resourceErrors)
   api.outage = { status: 500 }
   const misleading: [string, RegExp][] = [
@@ -37,13 +43,38 @@ test('a 500 is reported as an error, not as "not found" or as no data', async ({
     ['/ui/runs/3', /Run #3 not found/],
     ['/ui/folder/1', /Folder #1 not found/],
     ['/ui/images', /No images in this scope/],
+    ['/ui/stacks/1', /^0 images/],
     ['/ui/keywords/bird', /No images for this keyword/],
   ]
   for (const [route, text] of misleading) {
     await page.goto(route)
-    await page.waitForTimeout(1500) // let the failed queries settle
+    // Queries retry once, so wait for the error itself: a page still loading shows neither text.
+    await expect(loadError(page).first(), `${route} must report the failure`).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Retry' }).first()).toBeVisible()
     await expect.soft(page.getByText(text), `${route} must not claim "${text.source}" when the backend fails`).toHaveCount(0)
   }
+})
+
+test('a real 404 still says "not found"', async ({ page, api, allowErrors }) => {
+  allowErrors.push(missingResource)
+  api.outage = { status: 404 }
+  for (const [route, text] of [['/ui/runs/3', 'Run #3 not found'], ['/ui/folder/1', 'Folder #1 not found']]) {
+    await page.goto(route)
+    await expect(page.getByText(text)).toBeVisible()
+    await expect(loadError(page)).toHaveCount(0)
+  }
+})
+
+test('a failed page recovers through Retry when the backend comes back', async ({ page, api, allowErrors }) => {
+  allowErrors.push(resourceErrors)
+  installPages(api)
+  api.outage = { status: 500 }
+  await page.goto('/ui/images')
+  await expect(loadError(page)).toBeVisible()
+  api.outage = null
+  await page.getByRole('button', { name: 'Retry' }).click()
+  await expect(loadError(page)).toHaveCount(0)
+  await expect(page.getByRole('table')).toBeVisible()
 })
 
 test('requests that hang leave the shell and a loading state, not a blank page or a verdict', async ({ page, api }) => {
