@@ -935,7 +935,7 @@ convergence without changing downstream results.
 
 - Add `localization` after `metadata` in canonical order.
 - Hard prerequisite: `metadata`.
-- Preferred-before consumers: `scoring`, `keywords`, and `bird_species`.
+- Preferred-before consumers: `scoring` and `bird_species`.
 - Default scope: every new or source-changed metadata-complete image.
 - Initial provider: the existing bird YOLO detector.
 - Persist every accepted region up to `max_regions_per_class`, ranked deterministically.
