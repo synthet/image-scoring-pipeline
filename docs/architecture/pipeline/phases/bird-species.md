@@ -170,7 +170,6 @@ would drop the image out of scope and it could never be reprocessed.
 | `bird_detection.confidence` | Minimum detection confidence |
 | `bird_detection.padding` | Crop expansion fraction |
 | `bird_detection.imgsz` / `max_det` / `device` | YOLO inference parameters |
-| `bird_detection.fail_open` | Continue when the detector is unavailable |
 | `auto_drive.bird_backlog_quota_threshold` | Backlog size that triggers reserved drive slots |
 | `auto_drive.bird_backlog_reserve_ratio` | Fraction of batch slots reserved |
 
