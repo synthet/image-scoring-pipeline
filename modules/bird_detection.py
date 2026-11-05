@@ -29,7 +29,6 @@ Config section ``bird_detection`` (see ``config.example.json``):
     imgsz       — YOLO inference image size (default 640)
     max_det     — maximum detections per image (default 10)
     device      — "auto" | "cpu" | "cuda" (default "auto")
-    fail_open   — on load/inference error, fall back to whole image (default true)
 """
 
 import logging
@@ -227,7 +226,6 @@ class BirdDetector:
         self.padding = float(config.get("padding", _DEFAULT_PADDING))
         self.imgsz = int(config.get("imgsz", _DEFAULT_IMGSZ))
         self.max_det = int(config.get("max_det", _DEFAULT_MAX_DET))
-        self.fail_open = bool(config.get("fail_open", True))
 
         cfg_device = device or config.get("device") or "auto"
         if cfg_device == "auto":
