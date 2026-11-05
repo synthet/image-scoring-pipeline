@@ -140,7 +140,7 @@ def test_detector_config_defaults():
     assert det.padding == 0.10
     assert det.imgsz == 640
     assert det.max_det == 10
-    assert det.fail_open is True
+    assert not hasattr(det, "fail_open")
 
 
 def test_detector_config_overrides():

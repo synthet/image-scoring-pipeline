@@ -316,7 +316,7 @@ class BioCLIPClassifier:
 
         Returns the ``BirdDetector`` when enabled and available, else ``None``.
         On the first call it loads the YOLO model; if the detector is disabled in
-        config or its dependencies/weights are unavailable (and ``fail_open``),
+        config or its dependencies/weights are unavailable,
         it is marked ``disabled`` and never retried per image.
         """
         if self._detector_state == "enabled":
