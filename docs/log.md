@@ -1116,3 +1116,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-11-03] added | UI E2E (Playwright) suite (#769)
 
 - 2026-11-03: added - `guides/UI_E2E_TESTING.md` (tiers, harness, faking REST and the WebSocket, adding a journey, budgets) and `guides/UI_E2E_TEST_CATALOG.md` (every test, status, known defects); linked from `guides/INDEX.md`.
+
+## [2026-11-05] updated | Remote GPU runner update procedure
+
+- 2026-11-05: updated - `guides/REMOTE_GPU_RUNNER.md` (new "Update a runner" section: API version lockstep, compose token requirement, direct `check_phase` verification, cold first health call, building over SSH on Windows).
