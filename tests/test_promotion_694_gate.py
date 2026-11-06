@@ -192,3 +192,89 @@ def test_blind_evidence_rejects_exif_original_names_and_changed_pixels(tmp_path)
     hashes[files[0]] = gate.sha256(tmp_path / files[0])
     with pytest.raises(ValueError, match="private metadata"):
         gate.verify_blind_files(tmp_path, item, hashes)
+
+
+def control_answers():
+    return {f"c{n:02}": {"usable": True} for n in range(1, 21)}
+
+
+def control_votes(correct, parsed=20):
+    tokens = list(control_answers())[:parsed]
+    return {t: vote("usable" if n < correct else "poor_crop") for n, t in enumerate(tokens)}
+
+
+def chain_fixture(tmp_path, agent="cursor", **judge):
+    path, panel, items = panel_fixture(tmp_path)
+    panel["stages"]["run"]["judges"][0].update(agent=agent, **judge)
+    path.write_text(json.dumps(panel))
+    return path, items
+
+
+def test_seats_are_the_frozen_four_tools():
+    assert set(gate.SEATS) == {"claude", "codex", "cursor", "antigravity"}
+    assert "gemini" not in gate.JUDGES
+    assert all(len(chain) == 3 for chain in gate.SEATS.values())
+
+
+def test_chain_groups_votes_by_model_and_records_it(tmp_path):
+    path, items = chain_fixture(tmp_path, model="grok-4.7", reportedModel="grok-4.7[fast=true]")
+    votes, proof, _ = gate.collect_panels(tmp_path, [path], items, ("cursor",), chains=gate.SEATS)
+    assert votes["cursor"]["grok-4.7"]["p01"] == vote()
+    assert proof[0]["model"] == "grok-4.7"
+
+
+@pytest.mark.parametrize("judge,message", [
+    ({}, "outside its chain"),
+    ({"model": "gpt-6.1-sol"}, "outside its chain"),
+    ({"model": "grok-4.7"}, "different model"),
+    ({"model": "grok-4.7", "reportedModel": "composer-2.5[fast=true]"}, "different model"),
+])
+def test_chain_rejects_unproven_models(tmp_path, judge, message):
+    path, items = chain_fixture(tmp_path, **judge)
+    with pytest.raises(ValueError, match=message):
+        gate.collect_panels(tmp_path, [path], items, ("cursor",), chains=gate.SEATS)
+
+
+def test_technical_failure_reaches_the_next_model():
+    stats, allowed = gate.qualify_seat({"a": {}, "b": control_votes(20)}, control_answers(), ("a", "b", "c"))
+    assert allowed == ["b"]
+    assert stats["a"]["parsed"] == 0
+
+
+def test_too_few_parsed_replies_is_technical():
+    _, allowed = gate.qualify_seat({"a": control_votes(18, parsed=18), "b": control_votes(19)},
+                                   control_answers(), ("a", "b"))
+    assert allowed == ["b"]
+
+
+def test_bar_failure_ends_the_seat():
+    _, allowed = gate.qualify_seat({"a": control_votes(17)}, control_answers(), ("a", "b"))
+    assert allowed == []
+
+
+def test_fallback_after_a_bar_failure_is_rejected():
+    with pytest.raises(ValueError, match="after a bar failure"):
+        gate.qualify_seat({"a": control_votes(17), "b": control_votes(20)}, control_answers(), ("a", "b"))
+
+
+def test_a_takeover_model_must_pass_the_same_draw():
+    _, allowed = gate.qualify_seat({"a": control_votes(20), "b": control_votes(18)}, control_answers(), ("a", "b"))
+    assert allowed == ["a", "b"]
+    _, allowed = gate.qualify_seat({"a": control_votes(20), "b": control_votes(17)}, control_answers(), ("a", "b"))
+    assert allowed == ["a"]
+
+
+def test_seat_votes_keep_only_qualified_models():
+    assert gate.seat_votes({"a": {"v001": vote()}, "b": {"v002": vote()}, "c": {}}, ["a", "b"]).keys() == {"v001", "v002"}
+    with pytest.raises(ValueError, match="did not qualify"):
+        gate.seat_votes({"a": {"v001": vote()}}, ["b"])
+    with pytest.raises(ValueError, match="duplicate accepted"):
+        gate.seat_votes({"a": {"v001": vote()}, "b": {"v001": vote()}}, ["a", "b"])
+
+
+def test_consensus_follows_the_number_of_qualified_seats():
+    three = {"claude": vote(), "codex": vote(), "cursor": vote("poor_crop")}
+    assert gate.resolve_votes(three) == "usable"
+    four = {**three, "antigravity": vote("poor_crop")}
+    assert gate.resolve_votes(four) is None
+    assert gate.resolve_votes({**four, "cursor": vote()}) == "usable"
