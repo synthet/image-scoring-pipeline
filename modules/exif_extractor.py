@@ -5,6 +5,7 @@ Uses exiftool -j (JSON output) to extract standard tags. Maps ExifTool tag names
 to IMAGE_EXIF column names. Requires exiftool in PATH.
 """
 
+import datetime
 import json
 import logging
 import math
@@ -605,6 +606,16 @@ _IMAGE_EXIF_UPSERT_KEYS = (
 )
 
 
+def _is_same_second_reread(stored: Any, fresh: Any) -> bool:
+    """True when ``fresh`` is exiftool's whole-second reading of a stored time with a fraction."""
+    if not isinstance(stored, datetime.datetime) or not stored.microsecond:
+        return False
+    try:
+        return datetime.datetime.strptime(str(fresh)[:19], "%Y:%m:%d %H:%M:%S") == stored.replace(microsecond=0)
+    except ValueError:
+        return False
+
+
 def _merge_exif_for_upsert(existing: dict | None, fresh: dict) -> dict:
     """Merge a full EXIF row with a fresh exiftool dict so partial extractions do not wipe columns."""
     merged: dict = {}
@@ -612,7 +623,10 @@ def _merge_exif_for_upsert(existing: dict | None, fresh: dict) -> dict:
         for k in _IMAGE_EXIF_UPSERT_KEYS:
             if k in existing:
                 merged[k] = existing[k]
+    stored_time = merged.get("date_time_original")
     merged.update(fresh)
+    if _is_same_second_reread(stored_time, fresh.get("date_time_original")):
+        merged["date_time_original"] = stored_time
     return merged
 
 
