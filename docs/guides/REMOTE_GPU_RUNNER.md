@@ -4,7 +4,7 @@ title: Remote GPU runner
 description: Run a phase's model inference in a Docker container on another PC. The host sends the full input, the runner returns the full output, and the host keeps every database and XMP write.
 resource: guides/REMOTE_GPU_RUNNER.md
 tags: [docs, guides, gpu, remote, docker, runner, okf]
-timestamp: 2026-10-03T00:00:00Z
+timestamp: 2026-11-05T00:00:00Z
 okf_version: 0.3
 ---
 
@@ -60,6 +60,36 @@ The construction point is the only branch: `new_keyword_scorer()`, `new_caption_
 Runner environment: `GPU_RUNNER_TOKEN` (required unless bound to loopback), `GPU_RUNNER_HOST`, `GPU_RUNNER_PORT`, `GPU_RUNNER_MAX_BODY_MB` (default 256), `GPU_RUNNER_MAX_CONCURRENCY` (default 4 admitted requests; beyond it the runner answers 503 and the host backs off), `GPU_RUNNER_UPLOAD_TIMEOUT_SECONDS` (default 60 seconds to receive the whole upload), and `GPU_RUNNER_IDLE_EXIT_SECONDS` (default 0 = off; see [Idle recycle](#idle-recycle)). Inference itself runs one request at a time. Authentication, declared size, config fingerprint, and admission are checked before parsing an upload; streamed bytes are also capped. `/healthz` remains available without an inference admission slot.
 
 To change these limits in Docker Compose, export the corresponding variable before starting the container. The concurrency limit includes requests waiting for inference and uploads still being received; choose it with the maximum body size and available RAM in mind.
+
+## Update a runner
+
+The host and runner must share `API_VERSION` (`modules/remote_gpu/contract.py`). When it differs, every remote phase fails and fallback does not apply, so update the runner together with the host.
+
+1. Confirm the runner is idle: `docker logs -t image-scoring-gpu-runner` shows no recent `POST /v1/` lines.
+2. Run `git pull --ff-only origin master` on the GPU PC. Git refuses to overwrite local edits or untracked files, so stash the edits, move colliding untracked files out of the repo, pull, then restore the stash.
+3. Build and recreate only the runner:
+
+   ```powershell
+   docker compose -f docker-compose.gpu-runner.yml build gpu-runner
+   docker compose -f docker-compose.gpu-runner.yml up -d --no-deps --no-build gpu-runner
+   ```
+
+   Every compose command that reads this file needs `GPU_RUNNER_TOKEN`, including `build`. Keep it in the git-ignored `.env` on the GPU PC, or set it in the shell as in setup step 4.
+4. From the host, call `GpuRunnerClient.check_phase(phase)` for each remote phase. Use `GpuRunnerClient` directly: `ready_client()` goes through the fallback chain, where the embedded backend passes without contacting the runner.
+5. Score one small folder. `check_phase` covers the API version and phase config, not model weights, so a new model file missing from `./models` shows up only here.
+
+After a restart, the first `/v1/health` call can exceed `timeouts.health_seconds` (30 seconds was not enough in one update), and later calls answer normally. Repeat step 4 before starting a batch, so a cold runner does not send the first images to a fallback backend.
+
+### Building over SSH on Windows
+
+With Docker Desktop and key-based SSH, a build can stop at `error getting credentials ... A specified logon session does not exist`, because that logon cannot reach Windows Credential Manager. Build from an interactive session on the GPU PC when you can.
+
+The base image is public, so an SSH build can pull it anonymously. For that one process:
+
+- Point `DOCKER_CONFIG` at a temporary folder whose `config.json` sets `cliPluginsExtraDirs` to the user's `.docker\cli-plugins` folder. Without it, `docker compose` is not found.
+- Remove the folder holding `docker-credential-wincred.exe` from `PATH`, and call `docker.exe` by its full path. An empty config is not enough, because the CLI selects wincred on its own when it finds the helper.
+
+Start long builds as a detached process so they do not depend on the SSH session. If `pip` fails partway through a download with an SSL error, run the build again.
 
 ## Configure the host
 
