@@ -17,19 +17,15 @@ import { config, installPages } from '../builders'
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 
 type Baseline = Record<string, { issue: string; maxNodes: number }>
-const NAMES = '#776'
 const CONTRAST = '#777'
 
 /** Page → route and known violations (rule → issue, element count observed 2026-11-02). */
 const PAGES: Record<string, { route: string; known: Baseline }> = {
-  'runs list': { route: '/ui/runs', known: { 'button-name': { issue: NAMES, maxNodes: 1 }, 'color-contrast': { issue: CONTRAST, maxNodes: 4 } } },
-  'run detail': { route: '/ui/runs/3', known: { 'button-name': { issue: NAMES, maxNodes: 1 }, 'color-contrast': { issue: CONTRAST, maxNodes: 22 } } },
+  'runs list': { route: '/ui/runs', known: { 'color-contrast': { issue: CONTRAST, maxNodes: 4 } } },
+  'run detail': { route: '/ui/runs/3', known: { 'color-contrast': { issue: CONTRAST, maxNodes: 22 } } },
   images: { route: '/ui/images', known: { 'color-contrast': { issue: CONTRAST, maxNodes: 8 } } },
-  'image inspector': {
-    route: '/ui/images/1',
-    known: { 'color-contrast': { issue: CONTRAST, maxNodes: 5 }, 'link-in-text-block': { issue: NAMES, maxNodes: 1 } },
-  },
-  folder: { route: '/ui/folder/1', known: { 'button-name': { issue: NAMES, maxNodes: 1 }, 'color-contrast': { issue: CONTRAST, maxNodes: 10 } } },
+  'image inspector': { route: '/ui/images/1', known: { 'color-contrast': { issue: CONTRAST, maxNodes: 5 } } },
+  folder: { route: '/ui/folder/1', known: { 'color-contrast': { issue: CONTRAST, maxNodes: 10 } } },
   keywords: { route: '/ui/keywords', known: { 'color-contrast': { issue: CONTRAST, maxNodes: 3 } } },
   birds: { route: '/ui/birds', known: { 'color-contrast': { issue: CONTRAST, maxNodes: 3 } } },
   diagnostics: { route: '/ui/diagnostics', known: { 'color-contrast': { issue: CONTRAST, maxNodes: 4 } } },
@@ -57,14 +53,13 @@ for (const [name, { route, known }] of Object.entries(PAGES)) {
   })
 }
 
-for (const [rule, issue] of [['button-name', NAMES], ['link-in-text-block', NAMES], ['color-contrast', CONTRAST]] as const) {
+for (const rule of ['button-name', 'link-in-text-block', 'color-contrast']) {
   test(`axe: no page fails ${rule}`, async ({ page, api, allowErrors }) => {
-    test.fail(true, `${issue}: ${rule} violations on the main pages`)
+    if (rule === 'color-contrast') test.fail(true, `${CONTRAST}: ${rule} violations on the main pages`)
     allowErrors.push(evidence404)
     installPages(api)
     api.allowUnhandled('GET', '/api/images/{image_id}/evidence')
-    for (const [name, { route, known }] of Object.entries(PAGES)) {
-      if (!known[rule]) continue
+    for (const [name, { route }] of Object.entries(PAGES)) {
       const { violations } = await scan(page, route)
       expect.soft(violations.filter((v) => v.id === rule).length, `${name}: ${rule}`).toBe(0)
     }
