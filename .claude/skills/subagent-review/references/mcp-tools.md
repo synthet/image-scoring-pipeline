@@ -22,6 +22,7 @@ Each row has `id`, `title`, `command`, `available`, `transports`, `modelFlag`, a
 | `files` | no | Workspace-relative. Max 20 |
 | `harnesses` | no | Omit for every available harness. `antigravity` is `agy`. `agent` is `cursor` |
 | `model` | no | Fails the whole call with `model_unsupported` when a selected harness has no `--model` flag |
+| `modelChains` | no | Ordered models per harness, such as `{"codex": ["a", "b"]}`. Replaces `model`. Moves on only when a run fails or returns nothing |
 | `transport` | no | `auto` (default), `cli`, or `acp` |
 | `mode` | no | `review` by default. `judge` is one blind vote |
 | `timeoutMs` | no | Clamped to the configured maximum |

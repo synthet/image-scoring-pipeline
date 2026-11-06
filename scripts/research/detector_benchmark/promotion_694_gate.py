@@ -16,12 +16,21 @@ from collections import Counter
 from pathlib import Path
 
 RULE_SHA256 = "541b17bed8f287482cb485cfb58fae3e144106c1e82b077fa3c5787e588d735a"
-ANSWER_SHA256 = "f60e9ad7a21ee68f2e2a1985dd37528e69b1cb44c00606f61a90ce909c20a76c"
+ANSWER_SHA256 = "fc1a5cab985cc566e23db2f69fe61309f4c6a4dadf180e56d3018136c24d7d3f"
 FREEZE_SHA256 = "acc44121e591e24477a65e49f12e13cc63ac8836d1ddba2c4bfdf3d3bdafe170"
-CALIBRATION_SHA256 = "a29c705508470933ef1b0dac5b02a75579b6d7cf73a1aa65bf3934c8589d3af1"
-HISTORICAL_SHA256 = "2bda7632b0b4811f69b154f024d6f0d0b11c7694580293bb12bbe9d3843c3671"
+CALIBRATION_SHA256 = "11a64a57545afa6de38fe2976c4fbe9b8a67e158ce52e49e608dfb8dc121a73c"
+AMENDMENT_SHA256 = "c3a466ea739580ec269ce802466e436c1101b3a1c1d093081e8569ae7511c763"
+JUDGE_FREEZE_SHA256 = "7a3684661f1dfcb3c55db1fcc199b010396870b878cf0ff2bee6a23a4cf7fd0c"
 BANDS = ("large", "medium", "small")
-JUDGES = ("antigravity", "gemini", "cursor")
+# Frozen fallback chains, in order. Cursor uses the base names of its ACP session model option.
+SEATS = {
+    "claude": ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"),
+    "codex": ("gpt-6.1-sol", "gpt-6-sol", "gpt-5.6-sol"),
+    "cursor": ("grok-4.7", "grok-4.6", "composer-2.5"),
+    "antigravity": ("gemini-4-argon-high", "gemini-4-argon-medium", "gemini-3.8-flash-high"),
+}
+JUDGES = tuple(SEATS)
+MIN_PARSED = 19
 LABELS = {"usable", "poor_crop", "wrong_target", "no_bird"}
 FROZEN = ("rule-frozen-20261026.json", "cohort-frozen-20261026.json",
           "exclusions-frozen-20261026.json", "sample-frozen-20261026.json")
@@ -138,11 +147,52 @@ def calibration_stats(votes, answers):
         correct += same
         confusion["tp" if same and expected else "tn" if same else "fn" if expected else "fp"] += 1
     return {"parsed": len(votes), "correct": correct, "total": 20,
-            "qualified": len(votes) >= 19 and correct >= 18, "confusion": dict(confusion)}
+            "qualified": len(votes) >= MIN_PARSED and correct >= 18, "confusion": dict(confusion)}
 
 
-def collect_panels(repo, panel_paths, items, allowed_judges):
-    """Check image identity and raw receipts before accepting any batch votes."""
+def qualify_seat(by_model, answers, chain):
+    """Walk a seat's chain. Only a technical failure may reach the next model."""
+    stats, allowed, bar_failed = {}, [], False
+    for model in chain:
+        if model not in by_model:
+            continue
+        if bar_failed:
+            raise ValueError("fallback after a bar failure")
+        stats[model] = calibration_stats(by_model[model], answers)
+        if stats[model]["qualified"]:
+            allowed.append(model)
+        elif stats[model]["parsed"] >= MIN_PARSED and not allowed:
+            bar_failed = True
+    return stats, allowed
+
+
+def seat_votes(by_model, allowed):
+    """Merge a seat's votes, keeping only models that passed the control draw."""
+    merged = {}
+    for model, rows in by_model.items():
+        if rows and model not in allowed:
+            raise ValueError("vote from a model that did not qualify")
+        if merged.keys() & rows.keys():
+            raise ValueError("duplicate accepted judgments")
+        merged.update(rows)
+    return merged
+
+
+def receipt_model(agent, judge, chains):
+    model = judge.get("model")
+    if model not in chains[agent]:
+        raise ValueError("judge model outside its chain")
+    reported = str(judge.get("reportedModel") or "").split("[")[0]
+    if agent == "cursor" and judge["ok"] and reported != model:
+        raise ValueError("session reported a different model")
+    return model
+
+
+def collect_panels(repo, panel_paths, items, allowed_judges, chains=None):
+    """Check image identity and raw receipts before accepting any batch votes.
+
+    With chains, votes are grouped by seat and then by model.
+    """
     expected = {r["id"]: r for r in items}
     if len(expected) != len(items):
         raise ValueError("duplicate manifest IDs")
@@ -172,6 +222,10 @@ def collect_panels(repo, panel_paths, items, allowed_judges):
                 raise ValueError("reused raw receipt")
             seen.add(raw)
             proof = {"agent": agent, "file": str(raw.relative_to(repo)), "sha256": sha256(raw)}
+            bucket = votes[agent]
+            if chains is not None:
+                proof["model"] = receipt_model(agent, judge, chains)
+                bucket = votes[agent].setdefault(proof["model"], {})
             evidence.append(proof)
             if not judge["ok"]:
                 failures.append({**proof, "error": "nonzero run"})
@@ -181,9 +235,9 @@ def collect_panels(repo, panel_paths, items, allowed_judges):
             except ValueError as exc:
                 failures.append({**proof, "error": str(exc)})
                 continue
-            if votes[agent].keys() & batch_votes.keys():
+            if bucket.keys() & batch_votes.keys():
                 raise ValueError("duplicate accepted judgments")
-            votes[agent].update(batch_votes)
+            bucket.update(batch_votes)
     return votes, evidence, failures
 
 
@@ -233,34 +287,39 @@ def analyze_bands(frames, labels):
     return result
 
 
+def verify_amendment(root):
+    path = root / "freeze-receipt-judges-20261105.json"
+    if sha256(path) != JUDGE_FREEZE_SHA256:
+        raise ValueError("judge freeze receipt changed")
+    receipt = read_json(path)
+    if (receipt["amendment_sha256"] != AMENDMENT_SHA256
+            or sha256(inside(root, receipt["amendment"])) != AMENDMENT_SHA256):
+        raise ValueError("judge amendment changed")
+
+
 def calibration_report(root, repo, panels):
     frozen, _ = verify_frozen(root)
-    if sha256(root / "calibration-manifest-20261026.json") != CALIBRATION_SHA256:
+    verify_amendment(root)
+    if sha256(root / "calibration-r2-manifest-20261105.json") != CALIBRATION_SHA256:
         raise ValueError("calibration image manifest changed")
-    manifest = read_json(root / "calibration-manifest-20261026.json")
+    manifest = read_json(root / "calibration-r2-manifest-20261105.json")
     if manifest["rule_sha256"] != RULE_SHA256:
         raise ValueError("calibration rule changed")
-    verify_hashes(root / "calibration-blind-20261026", manifest["sha256"])
-    key = root / "calibration-answer-key-20261026.json"
+    verify_hashes(root / "calibration-r2-blind-20261105", manifest["sha256"])
+    key = root / "calibration-r2-answer-key-20261105.json"
     if sha256(key) != ANSWER_SHA256:
         raise ValueError("owner answer key changed")
     answers = read_json(key)
     if set(answers) != {r["id"] for r in manifest["items"]}:
         raise ValueError("calibration manifest IDs changed")
-    historical_path = root / "calibration-complete-20261026.json"
-    if sha256(historical_path) != HISTORICAL_SHA256:
-        raise ValueError("historical calibration changed")
-    historical = read_json(historical_path)
-    for row in historical["evidence"]:
-        verify_hashes(repo, {row["file"]: row["sha256"]})
-    votes, evidence, failures = collect_panels(repo, panels, manifest["items"], ("gemini", "cursor"))
-    stats = dict(historical["stats"])
-    for judge, rows in votes.items():
-        stats[judge] = calibration_stats(rows, answers)
-    qualified = [j for j in JUDGES if stats.get(j, {}).get("qualified")]
-    return {"status": "qualified" if len(qualified) == 3 else "blocked_insufficient_judges",
-            "stats": stats, "qualified_judges": qualified, "frozen_files": frozen["files"],
-            "historical_sha256": sha256(historical_path), "evidence": evidence,
+    votes, evidence, failures = collect_panels(repo, panels, manifest["items"], JUDGES, chains=SEATS)
+    stats, allowed = {}, {}
+    for judge, chain in SEATS.items():
+        stats[judge], allowed[judge] = qualify_seat(votes[judge], answers, chain)
+    qualified = [j for j in JUDGES if allowed[j]]
+    return {"status": "qualified" if len(qualified) >= 3 else "blocked_insufficient_judges",
+            "stats": stats, "qualified_judges": qualified, "allowed_models": allowed,
+            "frozen_files": frozen["files"], "evidence": evidence,
             "failures": failures, "owner_labels_unchanged": True, "fresh_validation_labels": 0}
 
 
@@ -280,6 +339,7 @@ def main():
     args = parser.parse_args()
     root, repo = args.root.resolve(), Path(__file__).resolve().parents[3]
     frozen, sample = verify_frozen(root)
+    verify_amendment(root)
     if args.command == "verify":
         print(json.dumps({"status": "verified", "frames": len(sample), "files": frozen["files"]}))
         return
@@ -293,7 +353,7 @@ def main():
             raise ValueError("calibration receipt lacks panel provenance")
         calibration = calibration_report(root, repo, panel_paths)
         if calibration["status"] != "qualified" or calibration["evidence"] != prior.get("evidence"):
-            raise ValueError("three qualified judges with intact receipts required")
+            raise ValueError("at least three qualified judges with intact receipts required")
         manifest = read_json(args.manifest)
         if manifest["frozen_files"] != frozen["files"]:
             raise ValueError("validation manifest belongs to different frozen inputs")
@@ -309,14 +369,16 @@ def main():
                 if row[key] != by_id[row["image_id"]][key]:
                     raise ValueError("validation identity changed")
             verify_blind_files(repo, row, manifest["sha256"])
-        votes, evidence, failures = collect_panels(repo, args.panel, items, JUDGES)
+        qualified = calibration["qualified_judges"]
+        votes, evidence, failures = collect_panels(repo, args.panel, items, qualified, chains=SEATS)
+        merged = {j: seat_votes(votes[j], calibration["allowed_models"][j]) for j in qualified}
         adjudications = read_json(args.adjudications) if args.adjudications else {}
         if not set(adjudications) <= {r["id"] for r in items}:
             raise ValueError("adjudication outside validation manifest")
         labels, disputes = {}, []
         for item in items:
             token = item["id"]
-            row_votes = {j: votes[j].get(token) for j in JUDGES}
+            row_votes = {j: merged[j].get(token) for j in qualified}
             labels[token] = resolve_votes(row_votes, adjudications.get(token))
             if resolve_votes(row_votes) is None:
                 disputes.append({"id": token, "votes": row_votes})
