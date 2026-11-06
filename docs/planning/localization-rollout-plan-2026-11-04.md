@@ -4,7 +4,7 @@ title: Localization Rollout Plan (2026-11-04)
 description: The owner's production rule, the target workflow against what is built, corrections to the first blocker plan, and the phased plan, issues and action items for epic #345.
 resource: planning/localization-rollout-plan-2026-11-04.md
 tags: [planning, localization, rollout, authority, automation]
-timestamp: 2026-11-06T02:30:00Z
+timestamp: 2026-11-06T04:00:00Z
 okf_version: 0.2
 status: proposed
 ---
@@ -60,8 +60,8 @@ The first plan (W1–W6) had errors. A check against the code and live data foun
 | 5 | W1.4 "consensus at ≥ 3 votes" | Use the frozen wording: **3 matching, or 2 when exactly 3 judges qualify** (read from the frozen rule artifact) |
 | 6 | W1.2 / W1.3 fallbacks (new control draw, owner labels) | They would fail authority approval: the docs require 3 judges, and R2 checks the original answer key. Either keep the current protocol, or change the qualification code under a new pre-registration. **Owner decides** |
 | 7 | W1.5 "tranches via `promote_localization_selections.py`" | Use the **authority path**: `register-policy` → `import-reservations` → `approve-policy` → `set-freshness on` → `activate`. Rehearse it on a restored backup first (Jev 0.83). Manifests bypass lineage and species convergence, and the production rule now rules them out |
-| 8 | (missing) | Gate tooling: `promotion_694_gate.py` now follows the frozen four-seat amendment: `claude`, `codex`, `agent` and `agy`, each with a model chain. At least 3 seats must qualify. It needs swarm PR #3 for model pinning and model receipts |
-| 9 | (missing) | The shadow scan stopped at cursor **239,048 of 241,459** when the WebUI stopped on 2026-11-03. `bird_agreement` rows push `max(id)` higher without adding work R2 can judge. Restarting with `docker compose up -d webui` (not `docker start`) is an **owner decision**, and the restart risks are in Phase A step 2 |
+| 8 | (missing) | Gate tooling: `promotion_694_gate.py` now follows the frozen four-seat amendment: `claude`, `codex`, `agent` and `agy`, each with a model chain. At least 3 seats must qualify. Swarm PRs #3 and #4 are merged, which gives it model pinning and model receipts |
+| 9 | (missing) | The shadow scan stopped at cursor **239,048 of 241,459** when the WebUI stopped on 2026-11-03. `bird_agreement` rows push `max(id)` higher without adding work R2 can judge. The WebUI has since restarted and the first sweep finished (Phase A step 2) |
 | 10 | Judges as the gate on promotion | Under the rule, judges **calibrate R2 once**, and the outcome is recorded as observed. Promotion is then automatic in `active` mode, for the backlog and new images alike |
 
 ### W2: #780 bird box agreement
@@ -108,12 +108,27 @@ Each phase lists its **steps** and the **jobs** it runs. Jobs are tagged GPU, CP
 
 ### Phase A: Calibrate R2 and activate automatic selection (#694, #638)
 1. **Preflight** (read-only): check the frozen artifacts against `freeze-receipt-20261026.json`; scan cursor; mode `shadow`; 0 approvals; `bird_bbox` and selection fingerprints. Done on 2026-11-05 and posted on #694: artifacts, mode, approvals, both fingerprints and Antigravity availability. The chunk marker files were not found, and the Claude image-read hook needs a fresh session.
-2. **Restart the WebUI** 🛑 with `docker compose up -d webui` once no #780 shoot is running. Let the shadow scan finish: about 2,400 runs remain. It stopped when the laptop went to sleep at 00:00 local on 2026-11-03, not because of a service fault, so keep the machine awake during long jobs. Check two things before restarting: the live config sends `localization` and `bird_species` to the remote runner, while the rollout doc says localization isn't on that rollout; and the cascade is enabled, so new images can add multi-current runs.
-3. **Qualify judges** (calibration): four seats sit one new 20-item control draw, once each, on a model pinned by a smoke check. A model moves to the next in its chain only for a technical failure; a bar failure ends the seat. Bar unchanged: ≥ 18/20 correct, ≥ 95% parsed.
-4. **Judge the frozen 390-frame sample once** (calibration): `promotion_694_gate.py`, with the frozen consensus rule; Jev settles split votes at ≥ 0.7, after a dry run and cost approval 🛑. Report per-band Wilson bounds as observed.
+2. **Restart the WebUI:** done on 2026-11-05, with `gpu_runner.enabled` false. The first R2 sweep finished, and a second pass is running (cursor 129,914 of 255,878 on 2026-11-06). The scan had stopped when the laptop went to sleep at 00:00 local on 2026-11-03, not because of a service fault, so keep the machine awake during long jobs. Still to check: the cascade was enabled, so new images can add multi-current runs.
+3. **Qualify judges** (calibration): **ran on 2026-11-05 and stopped; result below.** Four seats sit one new 20-item control draw, once each, on a model pinned by a smoke check. A model moves to the next in its chain only for a technical failure; a bar failure ends the seat. Bar unchanged: ≥ 18/20 correct, ≥ 95% parsed.
+4. **Judge the frozen 390-frame sample once** (calibration): not reached. `promotion_694_gate.py`, with the frozen consensus rule; Jev settles split votes at ≥ 0.7, after a dry run and cost approval 🛑. Report per-band Wilson bounds as observed.
 5. **On pass:** rehearse the authority path on a restored backup → `import-reservations` → `approve-policy` 🛑 → `set-freshness on` 🛑 → `activate` 🛑. From then on, R2 applies automatically to the backlog and to new images, once they are bird-tagged and match its exact producer scope. A detector config change needs a new policy.
 6. **On fail:** record it, and pre-register the next rule (R3 single-box, or R1 after a scene pass).
 7. **Recount coverage** on #638.
+
+**Result of step 3 (2026-11-05): stopped at `blocked_insufficient_judges`.** One seat qualified, and the amendment needs at least 3.
+
+| Seat | Model | Correct | `usable` | `poor_crop` | `wrong_target` |
+|---|---|---|---|---|---|
+| Codex | `gpt-6.1-sol` | 18/20, qualified | 6/6 | 4/6 | 8/8 |
+| Antigravity | `gemini-3.8-flash-high` | 17/20 | 6/6 | 3/6 | 8/8 |
+| Cursor | `grok-4.7` | 15/20 | 4/6 | 3/6 | 8/8 |
+| Claude | `claude-opus-5-5` | 14/20 | 6/6 | 0/6 | 8/8 |
+
+- Every seat parsed 20/20 and caught all 8 `wrong_target` frames. Every miss except Cursor's two on `usable` was a `poor_crop` frame the judge passed.
+- Both Argon models hit the `agy` quota (429, about 60 hours to reset), so Flash, the last in that chain, sat the seat.
+- No judge saw the frozen sample, so R2 itself was not judged and step 6 doesn't apply. The amendment says to stop and report, not draw again.
+- Don't rerun a seat or model on this draw. The gate walks chains by order, not time, so it would accept an Argon receipt added now, even though Flash already failed the bar.
+- The next route is an owner decision (section 6).
 
 ### Phase B: Close the coverage gap automatically (#809, #810)
 1. **Scene-route backfill** (GPU job, SigLIP2): classify the 20,844 cohort images with no scene label. Then make the route run in the backfill, repair and recovery lanes, not only the WebUI runner.
@@ -186,7 +201,8 @@ Still open: commit the parity script (owner clears the hook block).
 ## 6. Action items
 
 ### Owner
-- [ ] 🛑 Decide whether to restart the WebUI (`docker compose up -d webui`) once no #780 shoot is running.
+- [x] 🛑 Decide whether to restart the WebUI: restarted on 2026-11-05.
+- [ ] 🛑 Choose the next route for #694: the four-seat panel stopped with 1 of the 3 seats it needs.
 - [x] 🛑 Choose the judge-protocol route for #694: four-seat amendment, frozen 2026-11-05.
 - [ ] 🛑 Approve the Jev cost after the dry run.
 - [ ] 🛑 Choose for the 21,032 v0 runs: relocalize with v1, or a v0-producer policy.
