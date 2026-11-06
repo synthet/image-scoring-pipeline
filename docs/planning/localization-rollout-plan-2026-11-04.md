@@ -4,7 +4,7 @@ title: Localization Rollout Plan (2026-11-04)
 description: The owner's production rule, the target workflow against what is built, corrections to the first blocker plan, and the phased plan, issues and action items for epic #345.
 resource: planning/localization-rollout-plan-2026-11-04.md
 tags: [planning, localization, rollout, authority, automation]
-timestamp: 2026-11-05T03:10:00Z
+timestamp: 2026-11-06T02:30:00Z
 okf_version: 0.2
 status: proposed
 ---
@@ -55,12 +55,12 @@ The first plan (W1–W6) had errors. A check against the code and live data foun
 |---|---|---|
 | 1 | Goal: "the 28,475 runs get promoted" | R2 accepts **6,504** runs. 21,032 v0 runs abstain with `unknown_producer_scope`, and 4,146 bird-tagged images are `no_detection`. Promoting R2 alone cannot reach detector retirement. Add W1.6 (below) |
 | 2 | W1.1 "Cursor: run the 20 controls" | Cursor already has **2 accepted controls (p01, p02), marked do-not-rerun**. Run the remaining 18 through **ACP**, because its CLI launcher rejected the prompts |
-| 3 | W1.1 "Gemini needs an API key" | Gemini now uses OAuth and failed 3 times, most recently in its ACP session. Make no Gemini calls without owner approval (Oct 27 log). Treat it as its own diagnosis |
-| 4 | (missing) | **Antigravity**, the only qualified judge, was listed as unavailable in an Oct 27 probe. Discovery found it available on 2026-11-05 (`agy` 1.4.12); no judge run was made |
+| 3 | W1.1 "Gemini needs an API key" | Gemini CLI is dropped. Google refuses personal sign-in with `-32000`: "This client is no longer supported for Gemini Code Assist for individuals." The owner ruled on 2026-11-05 that `agy` replaces it, and the API key route is not taken |
+| 4 | (missing) | **Antigravity** was the only qualified judge. That 19/20 ran an unrecorded model on an older `agy`, so it stays as history and doesn't count towards the new panel |
 | 5 | W1.4 "consensus at ≥ 3 votes" | Use the frozen wording: **3 matching, or 2 when exactly 3 judges qualify** (read from the frozen rule artifact) |
 | 6 | W1.2 / W1.3 fallbacks (new control draw, owner labels) | They would fail authority approval: the docs require 3 judges, and R2 checks the original answer key. Either keep the current protocol, or change the qualification code under a new pre-registration. **Owner decides** |
 | 7 | W1.5 "tranches via `promote_localization_selections.py`" | Use the **authority path**: `register-policy` → `import-reservations` → `approve-policy` → `set-freshness on` → `activate`. Rehearse it on a restored backup first (Jev 0.83). Manifests bypass lineage and species convergence, and the production rule now rules them out |
-| 8 | (missing) | Gate tooling: `promotion_694_gate.py` is now on master through **PR #807 (a417f915)**. It fixes `JUDGES` to Antigravity, Gemini and Cursor, so all three must qualify for it to report `qualified`. The Cursor and Gemini fixes are still uncommitted in `synthet-agent-swarm` and must land first |
+| 8 | (missing) | Gate tooling: `promotion_694_gate.py` now follows the frozen four-seat amendment: `claude`, `codex`, `agent` and `agy`, each with a model chain. At least 3 seats must qualify. It needs swarm PR #3 for model pinning and model receipts |
 | 9 | (missing) | The shadow scan stopped at cursor **239,048 of 241,459** when the WebUI stopped on 2026-11-03. `bird_agreement` rows push `max(id)` higher without adding work R2 can judge. Restarting with `docker compose up -d webui` (not `docker start`) is an **owner decision**, and the restart risks are in Phase A step 2 |
 | 10 | Judges as the gate on promotion | Under the rule, judges **calibrate R2 once**, and the outcome is recorded as observed. Promotion is then automatic in `active` mode, for the backlog and new images alike |
 
@@ -109,7 +109,7 @@ Each phase lists its **steps** and the **jobs** it runs. Jobs are tagged GPU, CP
 ### Phase A: Calibrate R2 and activate automatic selection (#694, #638)
 1. **Preflight** (read-only): check the frozen artifacts against `freeze-receipt-20261026.json`; scan cursor; mode `shadow`; 0 approvals; `bird_bbox` and selection fingerprints. Done on 2026-11-05 and posted on #694: artifacts, mode, approvals, both fingerprints and Antigravity availability. The chunk marker files were not found, and the Claude image-read hook needs a fresh session.
 2. **Restart the WebUI** 🛑 with `docker compose up -d webui` once no #780 shoot is running. Let the shadow scan finish: about 2,400 runs remain. It stopped when the laptop went to sleep at 00:00 local on 2026-11-03, not because of a service fault, so keep the machine awake during long jobs. Check two things before restarting: the live config sends `localization` and `bird_species` to the remote runner, while the rollout doc says localization isn't on that rollout; and the cascade is enabled, so new images can add multi-current runs.
-3. **Qualify judges** (calibration): Antigravity availability check → Cursor via ACP on the remaining 18 controls → Gemini only after an approved diagnosis. Bar unchanged: ≥ 18/20 correct, ≥ 95% parsed.
+3. **Qualify judges** (calibration): four seats sit one new 20-item control draw, once each, on a model pinned by a smoke check. A model moves to the next in its chain only for a technical failure; a bar failure ends the seat. Bar unchanged: ≥ 18/20 correct, ≥ 95% parsed.
 4. **Judge the frozen 390-frame sample once** (calibration): `promotion_694_gate.py`, with the frozen consensus rule; Jev settles split votes at ≥ 0.7, after a dry run and cost approval 🛑. Report per-band Wilson bounds as observed.
 5. **On pass:** rehearse the authority path on a restored backup → `import-reservations` → `approve-policy` 🛑 → `set-freshness on` 🛑 → `activate` 🛑. From then on, R2 applies automatically to the backlog and to new images, once they are bird-tagged and match its exact producer scope. A detector config change needs a new policy.
 6. **On fail:** record it, and pre-register the next rule (R3 single-box, or R1 after a scene pass).
@@ -187,8 +187,8 @@ Still open: commit the parity script (owner clears the hook block).
 
 ### Owner
 - [ ] 🛑 Decide whether to restart the WebUI (`docker compose up -d webui`) once no #780 shoot is running.
-- [ ] 🛑 Choose the judge-protocol route for #694: current protocol (add Cursor via ACP and Gemini), or a new pre-registration with a code change.
-- [ ] 🛑 Approve the Gemini diagnosis, and the Jev cost after the dry run.
+- [x] 🛑 Choose the judge-protocol route for #694: four-seat amendment, frozen 2026-11-05.
+- [ ] 🛑 Approve the Jev cost after the dry run.
 - [ ] 🛑 Choose for the 21,032 v0 runs: relocalize with v1, or a v0-producer policy.
 - [ ] Run the secrets check in the parity worktree, then have the parity script committed.
 - [x] Assign the #780 sample draw, then review the 200 regions.
@@ -212,7 +212,7 @@ Owner approval is required for:
 - any `select_region` or `revoke_selection` outside the authority path;
 - `read_normalized_first` or `embedded_detector` changes;
 - changing a frozen rule, sample, bar or seed;
-- paid Jev runs beyond a dry run, and Gemini calls;
+- paid Jev runs beyond a dry run;
 - WebUI restarts while a shoot or scan is running;
 - GPU backfills over more than a 200-image pilot;
 - hard deletes;

@@ -1120,3 +1120,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-11-05] updated | Remote GPU runner update procedure
 
 - 2026-11-05: updated - `guides/REMOTE_GPU_RUNNER.md` (new "Update a runner" section: API version lockstep, compose token requirement, direct `check_phase` verification, cold first health call, building over SSH on Windows).
+
+## [2026-11-05] updated | #694 judge panel amendment
+
+- 2026-11-05: updated - `planning/localization-rollout-plan-2026-11-04.md` (Gemini CLI dropped after Google refused personal sign-in; four-seat judge panel with model chains frozen; the gate follows it).
