@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from modules import db
+from modules.capture_key import capture_key_from_exif
 from modules.api_models import (
     ImportRegisterRequest,
 )
@@ -117,9 +118,11 @@ def create_import_register_router() -> APIRouter:
                     skipped += 1
                 else:
                     image_uuid = None
+                    frame_key = None
                     try:
                         exif_data = extract_exif(fp)
                         if exif_data:
+                            frame_key = capture_key_from_exif(exif_data)
                             uid = exif_data.get("image_unique_id")
                             if uid and isinstance(uid, str) and uid.strip():
                                 image_uuid = uid.strip()
@@ -132,7 +135,7 @@ def create_import_register_router() -> APIRouter:
                         pass
 
                     if image_uuid != "ALREADY_IN_DB":
-                        if db.is_image_in_deleted_blocklist(fp, file_name, image_uuid):
+                        if db.is_image_in_deleted_blocklist(fp, file_name, image_uuid, capture_key=frame_key):
                             skipped += 1
                             image_uuid = "ALREADY_IN_DB"
                     if image_uuid != "ALREADY_IN_DB":
