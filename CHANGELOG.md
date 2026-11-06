@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Tombstone capture key** (#821): `deleted_images.capture_key` records camera model, shutter count and capture second, so a deleted frame can be recognised at a new path. The import route checks it. A frame whose row was removed can no longer be imported at a different path until its tombstones are cleared.
 
+### Fixed
+- **Capture time sub-seconds** (#827): an EXIF re-read of the same second no longer drops a stored fraction from `date_time_original`.
+
 ### Changed
 - **Project license** (#796): the project is now licensed under AGPL-3.0, because it depends on Ultralytics YOLO. `pyiqa` and the CUB-derived bird models keep their own terms.
 
