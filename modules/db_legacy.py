@@ -2841,10 +2841,11 @@ def find_image_id_by_uuid(image_uuid):
     return row["id"] if row else None
 
 
-def is_image_in_deleted_blocklist(file_path, file_name, image_uuid=None, image_hash=None):
+def is_image_in_deleted_blocklist(file_path, file_name, image_uuid=None, image_hash=None, capture_key=None):
     """
     True if this file matches a prior deletion recorded in deleted_images (Sync/Import skip).
-    Matches (file_name + image_uuid), content hash, or original_path (normalized variants).
+    Matches (file_name + image_uuid), content hash, original_path (normalized variants),
+    or capture key. The key is checked last so a database without the column keeps the others.
     """
     try:
         u = image_uuid.strip() if image_uuid and isinstance(image_uuid, str) else None
@@ -2883,6 +2884,13 @@ def is_image_in_deleted_blocklist(file_path, file_name, image_uuid=None, image_h
             row = get_connector().query_one(
                 "SELECT 1 AS x FROM deleted_images WHERE original_path = ?",
                 (p,),
+            )
+            if row:
+                return True
+        if capture_key:
+            row = get_connector().query_one(
+                "SELECT 1 AS x FROM deleted_images WHERE capture_key = ?",
+                (capture_key,),
             )
             if row:
                 return True
