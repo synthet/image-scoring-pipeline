@@ -31,12 +31,30 @@ def initialize_review_schema(cur, *, conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_deleted_images_file_uuid ON deleted_images(file_name, image_uuid) "
         "WHERE image_uuid IS NOT NULL;"
     )
+    # Capture key (#821, migration 0049). Format contract: modules/capture_key.py.
+    cur.execute("ALTER TABLE deleted_images ADD COLUMN IF NOT EXISTS capture_key VARCHAR(255);")
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_deleted_images_capture_key ON deleted_images(capture_key) "
+        "WHERE capture_key IS NOT NULL;"
+    )
+    cur.execute("""
+    CREATE OR REPLACE FUNCTION image_capture_key(p_image_id INTEGER)
+    RETURNS VARCHAR AS $$
+        SELECT btrim(model) || '|' || shutter_count::text || '|'
+               || to_char(date_time_original, 'YYYY-MM-DD"T"HH24:MI:SS')
+        FROM image_exif
+        WHERE image_id = p_image_id
+          AND btrim(model) <> ''
+          AND shutter_count > 0
+          AND date_time_original IS NOT NULL;
+    $$ LANGUAGE sql STABLE;
+    """)
     cur.execute("""
     CREATE OR REPLACE FUNCTION trg_record_deleted_image_fn()
     RETURNS TRIGGER AS $$
     BEGIN
-        INSERT INTO deleted_images (original_id, image_uuid, image_hash, file_name, original_path)
-        VALUES (OLD.id, OLD.image_uuid, OLD.image_hash, OLD.file_name, OLD.file_path);
+        INSERT INTO deleted_images (original_id, image_uuid, image_hash, file_name, original_path, capture_key)
+        VALUES (OLD.id, OLD.image_uuid, OLD.image_hash, OLD.file_name, OLD.file_path, image_capture_key(OLD.id));
         RETURN OLD;
     END;
     $$ LANGUAGE plpgsql;

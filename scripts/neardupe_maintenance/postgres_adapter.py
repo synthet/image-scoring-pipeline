@@ -258,14 +258,17 @@ class PostgresAdapter:
                 0
             ]
             with self.conn.cursor() as c:
+                # direct_tables removes image_exif below, so the trigger's own row
+                # has no capture key. This row must be written first to carry it.
                 c.execute(
-                    "INSERT INTO deleted_images(original_id,image_uuid,image_hash,file_name,original_path) VALUES (%s,%s,%s,%s,%s) RETURNING id",
+                    "INSERT INTO deleted_images(original_id,image_uuid,image_hash,file_name,original_path,capture_key) VALUES (%s,%s,%s,%s,%s,image_capture_key(%s)) RETURNING id",
                     (
                         image["id"],
                         image["image_uuid"],
                         image["image_hash"],
                         image["file_name"],
                         image["file_path"],
+                        image["id"],
                     ),
                 )
                 tombstone = c.fetchone()[0]
