@@ -1124,3 +1124,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-11-05] updated | #694 judge panel amendment
 
 - 2026-11-05: updated - `planning/localization-rollout-plan-2026-11-04.md` (Gemini CLI dropped after Google refused personal sign-in; four-seat judge panel with model chains frozen; the gate follows it).
+
+## [2026-11-05] updated | #694 judge panel result
+
+- 2026-11-05: updated - `planning/localization-rollout-plan-2026-11-04.md` and `architecture/pipeline/localization-rollout.md` (four-seat panel stopped with one seat qualified; the frozen sample is unjudged; the next route is an owner decision; WebUI restart marked done).
