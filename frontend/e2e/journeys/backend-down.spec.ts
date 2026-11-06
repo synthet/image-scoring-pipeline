@@ -82,9 +82,7 @@ test('requests that hang leave the shell and a loading state, not a blank page o
   await page.goto('/ui/runs/3')
   await expect(page.getByRole('navigation').getByRole('link', { name: 'Runs' })).toBeVisible()
   await page.waitForTimeout(2000)
-  // The loading spinner is an unlabeled icon (no role/name — see the accessibility catalog), so
-  // the check is structural: an icon in main, and no premature "not found".
-  await expect(page.locator('main svg').first()).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Loading' })).toBeVisible()
   await expect(page.getByText('Run #3 not found')).toHaveCount(0)
   await expect(page.getByRole('heading', { level: 1, name: 'Run #3' })).toHaveCount(0)
   api.outage = null
