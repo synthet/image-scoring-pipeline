@@ -1124,3 +1124,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-11-05] updated | #694 judge panel amendment
 
 - 2026-11-05: updated - `planning/localization-rollout-plan-2026-11-04.md` (Gemini CLI dropped after Google refused personal sign-in; four-seat judge panel with model chains frozen; the gate follows it).
+
+## [2026-11-07] updated | Sync submits the full stage plan (#831)
+
+- 2026-11-07: updated - `technical/ELECTRON_SYNC_IMPORT_AND_PHASES.md` (Sync now submits all six stages and no longer marks Discovery done, because only the backend computes `image_hash`; added frontmatter).
