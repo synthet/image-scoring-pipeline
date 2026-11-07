@@ -40,6 +40,8 @@ class ClusteringEngine(IClusteringEngine):
         self.status_message = "Idle"
         self.current = 0
         self.total = 0
+        self.blocked_missing_hash = 0
+        self.all_blocked = False
         self._ensure_cache_dir()
         self._load_cache()
 
@@ -492,6 +494,8 @@ class ClusteringEngine(IClusteringEngine):
         # Mark as running at start
         self.is_running = True
         self.status_message = "Starting..."
+        self.blocked_missing_hash = 0
+        self.all_blocked = False
         self.current = 0
         self.total = 0
         
@@ -514,8 +518,12 @@ class ClusteringEngine(IClusteringEngine):
             self.status_message = "Idle"
             
     def _filter_runnable_cluster_rows(self, rows, force_rescan, job_id):
-        """Return rows eligible for clustering; heal stuck RUNNING when folder is all-current."""
+        """Return (rows eligible for clustering, count blocked by a missing image_hash).
+
+        Heals stuck RUNNING when the folder is all-current.
+        """
         runnable_rows = []
+        blocked = 0
         for r in rows:
             decision = explain_phase_run_decision(
                 r['id'],
@@ -529,6 +537,7 @@ class ClusteringEngine(IClusteringEngine):
                         "[Clustering] Skipping image_id=%s: missing image_hash. Run Indexing phase first.",
                         r["id"],
                     )
+                    blocked += 1
                     continue
                 if r.get("score_general") is None:
                     logger.warning(
@@ -543,7 +552,7 @@ class ClusteringEngine(IClusteringEngine):
                     decision.get("reason"),
                 )
 
-        if not runnable_rows:
+        if not runnable_rows and not blocked:
             for r in rows:
                 st = (db.get_image_phase_statuses(r["id"]) or {}).get("culling") or {}
                 if (st.get("status") or "").strip() != PhaseStatus.RUNNING:
@@ -567,7 +576,7 @@ class ClusteringEngine(IClusteringEngine):
                     )
                 except Exception:
                     pass
-        return runnable_rows
+        return runnable_rows, blocked
 
     def _cluster_images_impl(
         self,
@@ -742,7 +751,14 @@ class ClusteringEngine(IClusteringEngine):
                 break
             rows = by_folder[folder]
             self._load_capture_times(rows)
-            runnable_rows = self._filter_runnable_cluster_rows(rows, force_rescan, job_id)
+            runnable_rows, blocked = self._filter_runnable_cluster_rows(rows, force_rescan, job_id)
+            self.blocked_missing_hash += blocked
+            if blocked:
+                blocked_msg = f"{blocked} image(s) in {folder} have no image_hash. Run Discovery first."
+                logger.warning("[Clustering] %s", blocked_msg)
+                yield update_status(blocked_msg, processed_count, len(images_rows))
+                if not runnable_rows:
+                    continue
 
             if not runnable_rows:
                 logger.warning(
@@ -1084,6 +1100,7 @@ class ClusteringEngine(IClusteringEngine):
             except Exception as e:
                 logging.debug(f"Failed to broadcast event: {e}")
 
+        self.all_blocked = self.blocked_missing_hash > 0 and processed_count == 0
         new_stacks = total_clusters - initial_stack_count
         if new_stacks == 0 and processed_count > 0:
             msg = (
@@ -1212,6 +1229,11 @@ class ClusteringRunner:
                     self.status_message = str(msg_tuple)
                     log(str(msg_tuple))
             
+            if self.engine.all_blocked:
+                raise RuntimeError(
+                    f"{self.engine.blocked_missing_hash} image(s) have no image_hash. Run Discovery first."
+                )
+
             if job_id:
                 db.update_job_status(job_id, "completed", log="\n".join(self.log_history))
                 event_manager.broadcast_threadsafe("job_completed", {

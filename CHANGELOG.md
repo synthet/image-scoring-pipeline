@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tombstone capture key** (#821): `deleted_images.capture_key` records camera model, shutter count and capture second, so a deleted frame can be recognised at a new path. The import route checks it. A frame whose row was removed can no longer be imported at a different path until its tombstones are cleared.
 
 ### Fixed
+- **Culling with no image hash** (#829): images with no `image_hash` are no longer reported as "all images current". A culling job fails with a count when none of its images can run. When only some can't, it reports them and leaves them out of clustering and picks.
 - **Capture time sub-seconds** (#827): an EXIF re-read of the same second no longer drops a stored fraction from `date_time_original`.
 
 ### Changed
