@@ -1,3 +1,12 @@
+---
+type: Technical Reference
+title: Electron sync import and pipeline phase semantics
+description: What Driftara Gallery Sync writes and submits, and how that maps to image_phase_status, jobs and the pipeline stages.
+resource: technical/ELECTRON_SYNC_IMPORT_AND_PHASES.md
+tags: [gallery, sync, import, pipeline, phases]
+timestamp: 2026-11-07T00:00:00Z
+okf_version: 0.2
+---
 # Electron sync import and pipeline phase semantics
 
 How **Driftara Gallery** “**Sync from device**” interacts with PostgreSQL **`image_phase_status`**, **`jobs`**, and the Python pipeline — and how that relates to product stage names (`phase_code` vs UI).
@@ -23,12 +32,13 @@ The React **Image Inspector** (`/ui/images/:id`) lists **internal codes** (e.g. 
 After a successful **import** step of sync, the gallery:
 
 1. Inserts **`images`** rows (destination paths).
-2. Calls **`markImageIndexingPhaseDone`** (gallery `electron/db.ts`) so **`image_phase_status`** for phase **`indexing`** is **`done`** for those ids.
-3. Invokes **`scheduleProcessingForImages`**, which:
-   - Submits **`metadata`**, **`score`**, **`tag`**, **`cluster`** (maps to `phase_code`: `metadata`, `scoring`, `keywords`, `culling`) — **not** `indexing`, because Discovery is already marked complete locally.
-   - **As of gallery v7.7 (G5):** also calls **`markImagePhasesPending(imageIds)`** in the **API-success** branch, not only on failure. This pre-seeds **`image_phase_status`** rows with **`status = 'not_started'`** for `metadata`, `scoring`, `keywords`, `culling` so the full pipeline is visible immediately, and so runners see a non-empty scope when they iterate IPS rows. Insert uses `ON CONFLICT DO NOTHING` — safe to call repeatedly; never downgrades a row the backend has already advanced.
+2. Invokes **`scheduleProcessingForImages`**, which:
+   - Submits **`indexing`**, **`metadata`**, **`score`**, **`cluster`**, **`tag`**, **`bird_species`** (maps to `phase_code`: `indexing`, `metadata`, `scoring`, `culling`, `keywords`, `bird_species`). `indexing` must stay in the plan: only the backend computes **`image_hash`**, and clustering skips any image without one.
+   - **As of gallery v7.7 (G5):** also calls **`markImagePhasesPending(imageIds)`** in the **API-success** branch, not only on failure. This pre-seeds **`image_phase_status`** rows with **`status = 'not_started'`** for `indexing`, `metadata`, `scoring`, `keywords`, `culling` so the full pipeline is visible immediately, and so runners see a non-empty scope when they iterate IPS rows. Insert uses `ON CONFLICT DO NOTHING` — safe to call repeatedly; never downgrades a row the backend has already advanced.
 
-So seeing **`indexing` → Done** for a just-imported image is **expected**. After G5, all four downstream phases will have **`not_started`** rows from the moment the API submit succeeds, instead of appearing only when each runner first touches the image.
+So a just-imported image shows **`indexing`** as **`not_started`** until the backend has computed its hash. Those phases have **`not_started`** rows from the moment the API submit succeeds, instead of appearing only when each runner first touches the image.
+
+The gallery no longer marks **`indexing`** done at import ([image-scoring-gallery#262](https://github.com/synthet/image-scoring-gallery/issues/262)). That false flag satisfied the prerequisite gate while **`image_hash`** was still empty. **`/api/import/register`** still marks it done, and the planner re-runs Discovery there because a `done` row with no hash counts as incomplete.
 
 ## Jobs and queues
 
@@ -90,4 +100,4 @@ End-to-end monitoring of one full sync→pipeline run surfaced three issues that
 
 - **[AGENT_COORDINATION.md](AGENT_COORDINATION.md)** — cross-repo contracts.
 - **[RUNS_WALKTHROUGH.md](RUNS_WALKTHROUGH.md)** — runs and queue behavior.
-- **Gallery** — `electron/scheduleProcessing.ts`, `electron/db.ts` (`markImageIndexingPhaseDone`, `markImagePhasesPending`, `getImagePhaseStatuses`).
+- **Gallery** — `electron/scheduleProcessing.ts`, `electron/db.ts` (`markImagePhasesPending`, `getImagePhaseStatuses`).
