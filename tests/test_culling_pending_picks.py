@@ -56,7 +56,7 @@ def _resolve(monkeypatch, tmp_path, images):
     return runner._resolve_culling_scope(str(tmp_path), False, None, lambda *_a: None)
 
 
-IMAGES = [{"id": 1, "score_general": 0.7}, {"id": 2, "score_general": None}]
+IMAGES = [{"id": 1, "image_hash": "h1", "score_general": 0.7}, {"id": 2, "image_hash": "h2", "score_general": None}]
 
 
 def test_runner_drops_unscored_by_default(monkeypatch, tmp_path, flag):

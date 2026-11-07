@@ -433,6 +433,9 @@ class SelectionService:
                     
                 # 3. Reload images with stack_ids
                 images = filter_image_rows_for_nef_policy(db.get_images_by_folder(folder))
+                if not cfg.force_rescan:
+                    # Clustering skips an image with no hash, so it can't be picked yet (#829).
+                    images = [img for img in images if img.get("image_hash")]
                 if not images:
                     continue
 

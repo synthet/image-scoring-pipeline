@@ -144,7 +144,32 @@ class SelectionRunner:
                     )
                     if decision['should_run']:
                         images_for_phase.append(img)
+                # Clustering skips these, so they are blocked rather than current (#829).
+                unhashed = [img for img in images_for_phase if not img.get("image_hash")]
+                if unhashed and len(unhashed) == len(images_for_phase):
+                    return "missing_image_hash", images, images_for_phase
+                if unhashed:
+                    log(
+                        f"Warning: {len(unhashed)} image(s) have no image_hash and will be left "
+                        "out of clustering and picks. Run Discovery first.",
+                        "WARNING",
+                    )
+                    blocked_ids = {img["id"] for img in unhashed}
+                    images = [img for img in images if img["id"] not in blocked_ids]
+                    images_for_phase = [img for img in images_for_phase if img["id"] not in blocked_ids]
         return "ok", images, images_for_phase
+
+    def _abort_culling(self, job_id, status_message: str, job_message: str) -> None:
+        """Fail the job. Completing it would re-trigger auto-drive post-audit follow-ups
+        while culling phase rows stay not_started."""
+        with self._lock:
+            self._status_message = status_message
+        if job_id:
+            db.update_job_status(job_id, "failed", job_message)
+            event_manager.broadcast_threadsafe("job_completed", {
+                "job_id": job_id,
+                "status": "failed",
+            })
 
     def _run_internal(
         self,
@@ -223,20 +248,19 @@ class SelectionRunner:
                     "Aborting Selection/Culling phase. Run 'Scoring' first.",
                     "ERROR",
                 )
-                with self._lock:
-                    self._status_message = "Failed: missing prerequisites"
-                if job_id:
-                    # Do not mark completed — that re-triggers auto-drive post-audit
-                    # follow-ups while culling phase rows stay not_started.
-                    db.update_job_status(
-                        job_id,
-                        "failed",
-                        "Culling aborted: missing score_general (run scoring / finalize phantoms first)",
-                    )
-                    event_manager.broadcast_threadsafe("job_completed", {
-                        "job_id": job_id,
-                        "status": "failed",
-                    })
+                self._abort_culling(
+                    job_id,
+                    "Failed: missing prerequisites",
+                    "Culling aborted: missing score_general (run scoring / finalize phantoms first)",
+                )
+                return
+            if scope_status == "missing_image_hash":
+                message = (
+                    f"Culling aborted: {len(images_for_phase)} image(s) have no image_hash "
+                    "(run Discovery first)"
+                )
+                log(message, "ERROR")
+                self._abort_culling(job_id, "Failed: missing image_hash", message)
                 return
         except Exception as pe:
             log(f"Phase status eligibility check error: {pe}")
