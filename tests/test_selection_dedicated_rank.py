@@ -123,7 +123,7 @@ def test_run_flag_controls_within_stack_order(monkeypatch, enabled, expected_pic
 
     def images():
         return [
-            {"id": i, "stack_id": 100, "score_general": 1.0 - i / 10, "file_path": f"/m/{i}.jpg"}
+            {"id": i, "image_hash": "h", "stack_id": 100, "score_general": 1.0 - i / 10, "file_path": f"/m/{i}.jpg"}
             for i in (1, 2, 3, 4)
         ]
 

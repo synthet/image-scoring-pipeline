@@ -94,6 +94,9 @@ class ITaggingEngine(ABC):
 
 
 class IClusteringEngine(ABC):
+    blocked_missing_hash = 0
+    all_blocked = False
+
     """Yields progress tuples (message, current, total) like ClusteringEngine.cluster_images."""
 
     @abstractmethod

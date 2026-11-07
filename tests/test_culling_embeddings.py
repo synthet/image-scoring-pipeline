@@ -87,8 +87,8 @@ def test_selection_calls_ensure_when_two_level_enabled():
     svc = SelectionService()
     cfg = SelectionConfig(two_level_enabled=True)
     mock_images = [
-        {"id": 1, "stack_id": 100, "score_general": 0.9, "file_path": "/mock/1.jpg"},
-        {"id": 2, "stack_id": 100, "score_general": 0.8, "file_path": "/mock/2.jpg"},
+        {"id": 1, "image_hash": "h", "stack_id": 100, "score_general": 0.9, "file_path": "/mock/1.jpg"},
+        {"id": 2, "image_hash": "h", "stack_id": 100, "score_general": 0.8, "file_path": "/mock/2.jpg"},
     ]
 
     def mock_cluster(*args, **kwargs):
@@ -123,8 +123,8 @@ def test_selection_skips_ensure_when_two_level_disabled():
     svc = SelectionService()
     cfg = SelectionConfig(two_level_enabled=False)
     mock_images = [
-        {"id": 1, "stack_id": 100, "score_general": 0.9, "file_path": "/mock/1.jpg"},
-        {"id": 2, "stack_id": 100, "score_general": 0.8, "file_path": "/mock/2.jpg"},
+        {"id": 1, "image_hash": "h", "stack_id": 100, "score_general": 0.9, "file_path": "/mock/1.jpg"},
+        {"id": 2, "image_hash": "h", "stack_id": 100, "score_general": 0.8, "file_path": "/mock/2.jpg"},
     ]
 
     def mock_cluster(*args, **kwargs):
