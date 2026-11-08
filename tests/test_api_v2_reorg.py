@@ -219,3 +219,34 @@ def test_import_register_no_backfill_when_indexing_already_done(monkeypatch):
 
     assert response.status_code == 200
     assert len(phase_calls) == 0
+
+
+def test_import_register_passes_capture_key_to_the_blocklist(monkeypatch):
+    seen = {}
+
+    def blocklist(fp, file_name, image_uuid=None, **kwargs):
+        seen.update(kwargs)
+        return True
+
+    def register(*args):
+        raise AssertionError("a tombstoned frame must not be registered")
+
+    monkeypatch.setattr(os.path, "isdir", lambda x: True)
+    monkeypatch.setattr(os, "listdir", lambda x: ["DSC_1.NEF"])
+    monkeypatch.setattr(os.path, "isfile", lambda x: True)
+    monkeypatch.setattr(db, "get_or_create_folder", lambda x: 1)
+    monkeypatch.setattr(db, "find_image_id_by_path", lambda x: None)
+    monkeypatch.setattr(db, "is_image_in_deleted_blocklist", blocklist)
+    monkeypatch.setattr(db, "register_image_for_import", register)
+    monkeypatch.setattr("modules.ui.security._check_rate_limit", lambda x: None)
+    monkeypatch.setattr(
+        "modules.exif_extractor.extract_exif",
+        lambda x: {"model": "NIKON Z 8", "shutter_count": 12345, "date_time_original": "2026:01:19 14:56:04"},
+    )
+
+    with _build_client() as client:
+        response = client.post("/api/import/register", json={"folder_path": "test/path"})
+
+    assert response.status_code == 200
+    assert seen == {"capture_key": "NIKON Z 8|12345|2026-01-19T14:56:04"}
+    assert response.json()["data"]["added"] == 0
