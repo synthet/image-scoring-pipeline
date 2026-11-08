@@ -37,8 +37,8 @@ What this changes in the current rollout:
 | Workflow step | Target | As built (2026-11-04) | Correction / gap | Issues |
 |---|---|---|---|---|
 | **Decode** | One rendition per image, shared by every phase | Rendition descriptor and crop cache (#375). Each phase still decodes on its own | Decode once | #406 |
-| **Scene / object detection** | Classify every image before detection | SigLIP2 zero-shot route, `scene_route.enabled`, p(bird) ≥ 0.065. Runs only in the WebUI localization runner. 20,844 of the 28,475 cohort images have no scene label because the library backfill skips it | Run the route in **every** lane: backfill, repair, recovery | #412 (closed, met its scope); #809 |
-| **Route by subject type** | Pick the detector and species model per subject class | Two outcomes only: bird → wildlife detectors, otherwise `disabled` with reason `scene_route` | Add subject classes (bird, mammal, insect, reptile, people, landscape, other), each mapped to a detector set and species model. Spec 05 already says the route "chooses which detector and species model run" | #413; spec 05/06; #811 |
+| **Scene / object detection** | Classify every image before detection | SigLIP2 zero-shot route, `scene_route.enabled`, p(bird) ≥ 0.065. Runs in `LocalizationRunner`, which covers the WebUI, repair, recovery and, since 2026-10-23, the library backfill (it queues localization jobs). Two scripts call the detector directly and skip it. 20,844 of the 28,475 cohort images have no scene label; the likely cause, not yet checked, is legacy v0 runs imported without a detection pass | Label the backlog with a scene-only pass, and route the two direct callers | #412 (closed, met its scope); #809 |
+| **Route by subject type** | Pick the detector and species model per subject class | The classifier already scores 9 subject classes (`scene_v2`) and stores every probability in `image_scene_labels`. Only `wildlife_bird` has a route (to the `bird` detector); every other image is `disabled` with reason `scene_route` | Map each class to a detector set and species model, each with its own calibrated threshold and gate. Decide SR-1 first: the code routes on every label above its threshold, while the decision register says top label. Spec 05 already says the route "chooses which detector and species model run" | #413; spec 05/06; #811 |
 | **Boxes** | Versioned runs per provider | `bird_detect_v1` @ 640 is live. Cascade (YOLO → RTMDet → refine) runs in shadow and is no consumer's region source. `bird_agreement` is a shadow backfill | Give the cascade a selection gate, and keep agreement out of localization (the bar was not met, Phase C) | #408 (closed), #780 |
 | **Masks / keypoints** | Region-linked artifacts | Eye keypoints are live (`image_keypoint_runs`). No masks | Masks are still to do | #426 |
 | **Selection: which box counts** | Automatic, rule-driven | 4,665 active selections (about 12% of bird-tagged images, or 9% of images with a current detected bird run), from manifests plus 19 from the 2026-10-23 box review. Authority is in shadow, with 1 policy, 0 reservations and 0 approvals | Calibrate R2, then activate. Add a v0-producer rule or relocalization for the 21,032 abstentions | #694 (reopened), #638, #810 |
@@ -131,7 +131,7 @@ Each phase lists its **steps** and the **jobs** it runs. Jobs are tagged GPU, CP
 - The next route is an owner decision (section 6).
 
 ### Phase B: Close the coverage gap automatically (#809, #810)
-1. **Scene-route backfill** (GPU job, SigLIP2): classify the 20,844 cohort images with no scene label. Then make the route run in the backfill, repair and recovery lanes, not only the WebUI runner.
+1. **Scene-route backfill** (GPU job, SigLIP2): classify the 20,844 cohort images with no scene label, using the scene-only `scripts/research/scene_route/classify_cohort.py` after a timed 200-image pilot. The backfill, repair and recovery lanes already go through the router. Route the two scripts that call `localize_image` directly (`scripts/backfill_region_keypoints.py`, `scripts/maintenance/shadow_rescan_bird_v1_misses.py`), or have them record a skip reason.
 2. **v0 producer** (decision 🛑): either relocalize the 21,032 v0 runs with v1 (GPU job, measured with a timed 200-image pilot first), or freeze an R2 policy for the v0 producer under its own calibration.
 3. **No-detection recovery**: use the migration 0048 targeted recovery for the 4,146 bird-tagged `no_detection` images (at 2048 px or with the cascade, per #416 timing).
 4. **Recount**, then go to Phase E.
@@ -149,9 +149,9 @@ The first run scored 13,742 of 13,744 frames, and the owner reviewed the fixed 2
 Still open: commit the parity script (owner clears the hook block).
 
 ### Phase D: Route by subject type (#811; #413, #426, #408)
-1. Extend the scene-route prompt set to subject classes and benchmark it on owner-labelled images (calibration). Measure false skips per class.
+1. The prompt set already has the subject classes: `scene_v2` has 9, and the opt-in `scene_v3` adds `marine_mammal`. Decide SR-1 (route on the top label, or on every label above its own threshold as the code does), then calibrate per-class thresholds on owner-labelled images (calibration) and measure false skips per class. The 2026-10-02 benchmark's weak classes: vehicles (precision 0.36, 15 images), other animal (recall 0.58), landscape (recall 0.67).
 2. Map each class to detectors (bird: YOLO; mammal: RTMDet COCO-animal; others: the open-vocabulary benchmark in #408's out-of-scope note) and to a species model (#413 two-level BioCLIP).
-3. Give the cascade its own selection gate, so it becomes a region source for non-bird classes.
+3. Give the cascade its own selection gate, so it becomes a region source for non-bird classes. Today it runs in shadow on every image, including those the route skipped.
 4. Add mask and keypoint providers per class (#426).
 5. Make species entry route-driven instead of `birds`-keyword-driven (G-2).
 

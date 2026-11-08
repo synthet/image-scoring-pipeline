@@ -1128,3 +1128,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-11-05] updated | #694 judge panel result
 
 - 2026-11-05: updated - `planning/localization-rollout-plan-2026-11-04.md` and `architecture/pipeline/localization-rollout.md` (four-seat panel stopped with one seat qualified; the frozen sample is unjudged; the next route is an owner decision; WebUI restart marked done).
+
+## [2026-11-07] updated | scene route facts (#809, #811)
+
+- 2026-11-07: updated - `planning/localization-rollout-plan-2026-11-04.md` (scene route already covers backfill, repair and recovery; two scripts bypass it; the classifier already has 9 subject classes and only the bird route is wired; SR-1 conflicts with the multi-label code).
