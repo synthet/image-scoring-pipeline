@@ -20,10 +20,10 @@ def test_selection_two_level_path_mocked():
     e3 = np.array([0.0, 1.0], dtype=np.float32).tobytes()
 
     mock_images = [
-        {"id": 1, "stack_id": 100, "score_general": 0.9, "file_path": "/mock/1.jpg"},
-        {"id": 2, "stack_id": 100, "score_general": 0.8, "file_path": "/mock/2.jpg"},
-        {"id": 3, "stack_id": 100, "score_general": 0.7, "file_path": "/mock/3.jpg"},
-        {"id": 4, "stack_id": 100, "score_general": 0.6, "file_path": "/mock/4.jpg"},
+        {"id": 1, "image_hash": "h", "stack_id": 100, "score_general": 0.9, "file_path": "/mock/1.jpg"},
+        {"id": 2, "image_hash": "h", "stack_id": 100, "score_general": 0.8, "file_path": "/mock/2.jpg"},
+        {"id": 3, "image_hash": "h", "stack_id": 100, "score_general": 0.7, "file_path": "/mock/3.jpg"},
+        {"id": 4, "image_hash": "h", "stack_id": 100, "score_general": 0.6, "file_path": "/mock/4.jpg"},
     ]
 
     def mock_cluster(*args, **kwargs):

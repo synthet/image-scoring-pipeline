@@ -1,0 +1,93 @@
+[
+  {
+    "name": "exiftool date",
+    "model": "NIKON Z 8",
+    "shutter_count": 12345,
+    "date_time_original": "2026:01:19 14:56:04",
+    "expected": "NIKON Z 8|12345|2026-01-19T14:56:04"
+  },
+  {
+    "name": "catalog date, shutter count as text",
+    "model": "NIKON Z 6_2",
+    "shutter_count": "5599",
+    "date_time_original": "2025-05-03 14:20:48",
+    "expected": "NIKON Z 6_2|5599|2025-05-03T14:20:48"
+  },
+  {
+    "name": "ISO date with T",
+    "model": "NIKON D90",
+    "shutter_count": 77,
+    "date_time_original": "2019-07-01T08:09:10",
+    "expected": "NIKON D90|77|2019-07-01T08:09:10"
+  },
+  {
+    "name": "sub-seconds are dropped",
+    "model": "NIKON Z 8",
+    "shutter_count": 12345,
+    "date_time_original": "2026:01:19 14:56:04.52",
+    "expected": "NIKON Z 8|12345|2026-01-19T14:56:04"
+  },
+  {
+    "name": "time zone offset is dropped",
+    "model": "NIKON Z 8",
+    "shutter_count": 12345,
+    "date_time_original": "2026:01:19 14:56:04.52-06:00",
+    "expected": "NIKON Z 8|12345|2026-01-19T14:56:04"
+  },
+  {
+    "name": "model is trimmed",
+    "model": "  NIKON Z 8 ",
+    "shutter_count": 12345,
+    "date_time_original": "2026:01:19 14:56:04",
+    "expected": "NIKON Z 8|12345|2026-01-19T14:56:04"
+  },
+  {
+    "name": "no model",
+    "model": null,
+    "shutter_count": 12345,
+    "date_time_original": "2026:01:19 14:56:04",
+    "expected": null
+  },
+  {
+    "name": "blank model",
+    "model": "   ",
+    "shutter_count": 12345,
+    "date_time_original": "2026:01:19 14:56:04",
+    "expected": null
+  },
+  {
+    "name": "no shutter count",
+    "model": "NIKON Z 8",
+    "shutter_count": null,
+    "date_time_original": "2026:01:19 14:56:04",
+    "expected": null
+  },
+  {
+    "name": "zero shutter count",
+    "model": "NIKON Z 8",
+    "shutter_count": 0,
+    "date_time_original": "2026:01:19 14:56:04",
+    "expected": null
+  },
+  {
+    "name": "shutter count that is not a number",
+    "model": "NIKON Z 8",
+    "shutter_count": "n/a",
+    "date_time_original": "2026:01:19 14:56:04",
+    "expected": null
+  },
+  {
+    "name": "no date",
+    "model": "NIKON Z 8",
+    "shutter_count": 12345,
+    "date_time_original": null,
+    "expected": null
+  },
+  {
+    "name": "camera wrote an empty date",
+    "model": "NIKON Z 8",
+    "shutter_count": 12345,
+    "date_time_original": "0000:00:00 00:00:00",
+    "expected": null
+  }
+]
