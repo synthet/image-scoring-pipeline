@@ -414,9 +414,11 @@ geometry-only: small-crop species failed its gate, so their species stays legacy
 **Current order (2026-11-05):** the [updated plan](../../planning/localization-rollout-plan-2026-11-04.md)
 holds the phases and owner decisions. In short:
 
-1. Calibrate R2 once through **#694**, which supersedes closed #683: two more vision judges must meet
-   the unchanged 18/20 calibration threshold before the frozen fresh sample can be judged. Then
-   rehearse the authority path on a restored backup, and the owner approves each activation step.
+1. Calibrate R2 once through **#694**, which supersedes closed #683. The four-seat panel stopped on
+   2026-11-05 with 1 of the 3 seats it needs at the unchanged 18/20 threshold, so the frozen fresh
+   sample is unjudged and the next route is an owner decision. After a panel qualifies and R2
+   passes, rehearse the authority path on a restored backup, and the owner approves each
+   activation step.
 2. Close the coverage gap automatically (#809, #810), then observe the compatibility release and
    retire the embedded detector (#638).
 3. Eye placement on real birds, which is the larger false-eye problem (`image-scoring-model#48`).
