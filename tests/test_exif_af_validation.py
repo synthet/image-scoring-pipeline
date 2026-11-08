@@ -1,5 +1,6 @@
 """AF evidence must not discard unrelated EXIF or serialize non-finite numbers."""
 
+import datetime
 import json
 from types import SimpleNamespace
 
@@ -129,3 +130,35 @@ def test_unrelated_partial_extraction_preserves_cached_af():
     merged = exif_extractor._merge_exif_for_upsert(previous, {"iso": 400})
     assert merged["af_metadata"] == previous["af_metadata"]
     assert merged["f_number"] == 8
+
+
+def test_reread_of_the_same_second_keeps_the_stored_fraction():
+    stored = datetime.datetime(2026, 10, 17, 14, 26, 3, 370000)
+    merged = exif_extractor._merge_exif_for_upsert(
+        {"date_time_original": stored},
+        {"date_time_original": "2026:10:17 14:26:03", "iso": 400},
+    )
+    assert merged["date_time_original"] == stored
+    assert merged["iso"] == 400
+
+
+@pytest.mark.parametrize(
+    "stored, fresh",
+    [
+        (datetime.datetime(2026, 10, 17, 14, 26, 3, 370000), "2026:10:17 14:26:04"),
+        (datetime.datetime(2026, 10, 17, 14, 26, 3), "2026:10:17 14:26:03"),
+        ("2026:10:17 14:26:03", "2026:10:17 14:26:03"),
+        (None, "2026:10:17 14:26:03"),
+    ],
+)
+def test_fresh_capture_time_wins_otherwise(stored, fresh):
+    merged = exif_extractor._merge_exif_for_upsert(
+        {"date_time_original": stored}, {"date_time_original": fresh}
+    )
+    assert merged["date_time_original"] == fresh
+
+
+def test_partial_read_leaves_the_stored_capture_time():
+    stored = datetime.datetime(2026, 10, 17, 14, 26, 3, 370000)
+    merged = exif_extractor._merge_exif_for_upsert({"date_time_original": stored}, {"iso": 400})
+    assert merged["date_time_original"] == stored
