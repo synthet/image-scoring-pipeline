@@ -89,10 +89,10 @@ def test_selection_service_with_diversity_mocked():
     # e4 is missing
 
     mock_images = [
-        {"id": 1, "stack_id": 100, "score_general": 90, "file_path": "/mock/1.jpg"},
-        {"id": 2, "stack_id": 100, "score_general": 80, "file_path": "/mock/2.jpg"},
-        {"id": 3, "stack_id": 100, "score_general": 70, "file_path": "/mock/3.jpg"},
-        {"id": 4, "stack_id": 100, "score_general": 60, "file_path": "/mock/4.jpg"},
+        {"id": 1, "image_hash": "h", "stack_id": 100, "score_general": 90, "file_path": "/mock/1.jpg"},
+        {"id": 2, "image_hash": "h", "stack_id": 100, "score_general": 80, "file_path": "/mock/2.jpg"},
+        {"id": 3, "image_hash": "h", "stack_id": 100, "score_general": 70, "file_path": "/mock/3.jpg"},
+        {"id": 4, "image_hash": "h", "stack_id": 100, "score_general": 60, "file_path": "/mock/4.jpg"},
     ]
 
     def mock_cluster(*args, **kwargs):
