@@ -133,8 +133,9 @@ class SceneRouter:
         else:
             self.classifier = SceneClassifier(self.backend)
 
-    def localize(self, image_id: int, file_path: str, ctx, *, max_regions: int, job_id: int,
-                 reuse_unchanged: bool = True) -> ImageOutcome:
+    def localize(self, image_id: int, file_path: str, ctx, *, max_regions: int, job_id: int | None = None,
+                 reuse_unchanged: bool = True, decoded=None) -> ImageOutcome:
+        """``decoded`` lets a caller that already decoded ``file_path`` (the keypoint backfill) skip a second decode."""
         from modules.localization import DecodeError, decode_for_localization, record_scene_skip
         from modules.scene_route import detectors_to_run, save_scene_label
 
@@ -142,12 +143,13 @@ class SceneRouter:
             return localize_image(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id, decoded=decoded,
                                   reuse_unchanged=reuse_unchanged)
 
-        if not file_path or not os.path.exists(file_path):
-            return detect()  # records file_missing
-        try:
-            decoded = decode_for_localization(file_path)
-        except DecodeError:
-            return detect()  # records the decode failure the usual way
+        if decoded is None:
+            if not file_path or not os.path.exists(file_path):
+                return detect()  # records file_missing
+            try:
+                decoded = decode_for_localization(file_path)
+            except DecodeError:
+                return detect()  # records the decode failure the usual way
         try:
             result = self.classifier.classify(decoded.image)
             save_scene_label(image_id, result, backend=self.backend,
@@ -161,6 +163,20 @@ class SceneRouter:
             return detect(decoded)
         return record_scene_skip(image_id, ctx, decoded, scene_version=result.version,
                                  top_label=result.top_label, job_id=job_id)
+
+
+def scene_router_or_none() -> SceneRouter | None:
+    """The scene router when ``scene_route.enabled`` is on, else None. For lanes outside the runner (#809)."""
+    settings = scene_route_settings()
+    return SceneRouter(settings) if settings["enabled"] else None
+
+
+def localize_routed(router: SceneRouter | None, image_id: int, file_path: str, ctx, *, max_regions: int,
+                    decoded=None, job_id: int | None = None) -> ImageOutcome:
+    """Localize through the scene route when it is on, else straight to the detector (#809)."""
+    if router is None:
+        return localize_image(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id, decoded=decoded)
+    return router.localize(image_id, file_path, ctx, max_regions=max_regions, job_id=job_id, decoded=decoded)
 
 
 class LocalizationRunner:

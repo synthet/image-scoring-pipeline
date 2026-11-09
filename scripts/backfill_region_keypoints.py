@@ -150,13 +150,14 @@ def main() -> int:
         write_keypoint_run,
     )
     from modules.localization import (
+        STATUS_DISABLED,
         DecodeError,
         decode_for_localization,
         load_detector_context,
         localization_config,
-        localize_image,
         max_regions_per_class,
     )
+    from modules.localization_runner import localize_routed, scene_router_or_none
     from modules.rendition import COORD_SPACE_DISPLAY
 
     loc_cfg = localization_config()
@@ -170,6 +171,8 @@ def main() -> int:
     if dctx is not None and dctx.load_error:
         logger.error("bird detector unavailable: %s", dctx.load_error)
         return 2
+    # Localizing a missing image goes through the scene route like every other lane (#809).
+    router = scene_router_or_none() if dctx is not None and not a.dry_run else None
 
     ids = [int(x) for x in a.image_ids.split(",") if x.strip()]
     rows = fetch_candidates(a.folder.strip(), ids, a.limit, a.all_boxes, selected_by)
@@ -216,8 +219,11 @@ def main() -> int:
             if dctx is None or a.dry_run:
                 counts["no_matching_localization"] += 1
                 continue
-            localize_image(image_id, path, dctx, max_regions=max_regions_per_class(loc_cfg),
-                           decoded=decoded)
+            outcome = localize_routed(router, image_id, path, dctx, max_regions=max_regions_per_class(loc_cfg),
+                                      decoded=decoded)
+            if router is not None and outcome.status == STATUS_DISABLED:
+                counts["scene_route_skip"] += 1
+                continue
             cur = primary_region(image_id)
             if not cur or cur.get("rendition_hash") != want_hash:
                 counts["localization_failed"] += 1

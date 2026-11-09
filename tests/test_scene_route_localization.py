@@ -84,3 +84,46 @@ def test_scene_route_is_off_by_default(monkeypatch):
 
     monkeypatch.setattr(config, "get_config_section", lambda name: {})
     assert sr.scene_route_settings() == {"enabled": False, "backend": "hf_clip_b32", "run_thresholds": {}}
+
+
+# --- #809: every lane goes through the scene route when it is on ---
+
+def test_a_given_decode_is_reused_and_job_id_is_optional(calls):
+    router = _router(_Classifier(bird=0.4), {"wildlife_bird": 0.3})
+    out = router.localize(1, str(calls["dir"] / "ok.jpg"), None, max_regions=10, decoded=calls["decoded"])
+    assert out.status == "detected" and calls["decode"] == 0 and calls["detect"] == [calls["decoded"]]
+
+
+def test_a_given_decode_still_records_the_scene_skip(calls):
+    router = _router(_Classifier(bird=0.1), {"wildlife_bird": 0.3})
+    out = router.localize(1, str(calls["dir"] / "ok.jpg"), None, max_regions=10, decoded=calls["decoded"])
+    assert out.status == "disabled" and calls["decode"] == 0 and calls["skip"] and calls["detect"] == []
+
+
+def test_localize_routed_without_a_router_goes_straight_to_the_detector(calls):
+    out = lr.localize_routed(None, 1, str(calls["dir"] / "ok.jpg"), None, max_regions=10, decoded=calls["decoded"])
+    assert out.status == "detected" and calls["detect"] == [calls["decoded"]] and calls["saved"] == []
+
+
+def test_localize_routed_with_a_router_classifies_first(calls):
+    router = _router(_Classifier(bird=0.1), {"wildlife_bird": 0.3})
+    out = lr.localize_routed(router, 1, str(calls["dir"] / "ok.jpg"), None, max_regions=10)
+    assert out.status == "disabled" and calls["saved"] == ["landscape"] and calls["detect"] == []
+
+
+def test_scene_router_or_none_follows_the_config(monkeypatch):
+    monkeypatch.setattr(lr, "scene_route_settings", lambda: {"enabled": False, "backend": "x", "run_thresholds": {}})
+    assert lr.scene_router_or_none() is None
+    monkeypatch.setattr(lr, "scene_route_settings", lambda: {"enabled": True, "backend": "x", "run_thresholds": {}})
+    monkeypatch.setattr(lr, "SceneRouter", lambda settings: ("router", settings["backend"]))
+    assert lr.scene_router_or_none() == ("router", "x")
+
+
+@pytest.mark.parametrize("script", ["scripts/backfill_region_keypoints.py",
+                                    "scripts/maintenance/shadow_rescan_bird_v1_misses.py"])
+def test_direct_detector_callers_now_go_through_the_route(script):
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / script).read_text(encoding="utf-8")
+    assert "localize_routed(" in source and "scene_router_or_none(" in source
+    assert "localize_image(" not in source
