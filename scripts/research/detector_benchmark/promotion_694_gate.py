@@ -4,6 +4,7 @@ Run in gpu-shell: python -m scripts.research.detector_benchmark.promotion_694_ga
     verify | calibrate --panel <panel.json> --output <new.json>
     analyze --calibration <new.json> --manifest <blind-manifest.json>
             --panel <panel.json> [--adjudications <json>] --output <new.json>
+    calibrate-r3 --panel <panel.json> --output <new.json>
 All outputs are local, create-only artifacts; frozen inputs are never rewritten.
 """
 from __future__ import annotations
@@ -13,6 +14,7 @@ import hashlib
 import json
 import math
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 RULE_SHA256 = "541b17bed8f287482cb485cfb58fae3e144106c1e82b077fa3c5787e588d735a"
@@ -21,6 +23,8 @@ FREEZE_SHA256 = "acc44121e591e24477a65e49f12e13cc63ac8836d1ddba2c4bfdf3d3bdafe17
 CALIBRATION_SHA256 = "11a64a57545afa6de38fe2976c4fbe9b8a67e158ce52e49e608dfb8dc121a73c"
 AMENDMENT_SHA256 = "c3a466ea739580ec269ce802466e436c1101b3a1c1d093081e8569ae7511c763"
 JUDGE_FREEZE_SHA256 = "7a3684661f1dfcb3c55db1fcc199b010396870b878cf0ff2bee6a23a4cf7fd0c"
+# Rubric amendment, 2026-11-08 revision 2 (freeze-receipt-rubric-20261108.json).
+R3_FREEZE_SHA256 = "16d6571ec17d52b794a5028556273365972cfeeeff4a7013a8222a6bbf1b87ce"
 BANDS = ("large", "medium", "small")
 # Frozen fallback chains, in order. Cursor uses the base names of its ACP session model option.
 SEATS = {
@@ -188,10 +192,63 @@ def receipt_model(agent, judge, chains):
     return model
 
 
-def collect_panels(repo, panel_paths, items, allowed_judges, chains=None):
+def parse_time(value):
+    moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if moment.tzinfo is None:
+        raise ValueError("receipt time has no timezone")
+    return moment
+
+
+def bind_receipt(repo, judge, rubric, locked_at):
+    """Tie one judge receipt to the locked draw: frozen rubric in its prompt, same model, started after the lock."""
+    path = inside(repo, f"{judge['outputDir']}/result.json")
+    result = read_json(path)
+    if rubric not in str(result.get("prompt") or ""):
+        raise ValueError("receipt prompt lacks the frozen rubric")
+    if result.get("model") != judge.get("model"):
+        raise ValueError("receipt model differs from its panel record")
+    started = parse_time(result.get("startedAt"))
+    if started < locked_at:
+        raise ValueError("receipt started before the controls were locked")
+    return {"started_at": started.isoformat(), "result_sha256": sha256(path)}
+
+
+def attempt_order(evidence, seat, chain):
+    """A seat's models in start order. Each attempt must come later in the chain, with no overlap in time."""
+    spans = {}
+    for proof in evidence:
+        if proof["agent"] != seat:
+            continue
+        moment = parse_time(proof["started_at"])
+        first, last = spans.get(proof["model"], (moment, moment))
+        spans[proof["model"]] = (min(first, moment), max(last, moment))
+    ordered = sorted(spans, key=lambda model: spans[model][0])
+    for earlier, later in zip(ordered, ordered[1:]):
+        if chain.index(later) <= chain.index(earlier) or spans[earlier][1] > spans[later][0]:
+            raise ValueError("seat attempts out of chain order")
+    return ordered
+
+
+def qualify_seat_in_time(by_model, answers, ordered):
+    """Attempts in start order. After a scored bar failure, later attempts are rejected and the seat stays failed."""
+    stats, allowed, rejected, ended = {}, [], [], False
+    for model in ordered:
+        if ended:
+            rejected.append(model)
+            continue
+        stats[model] = calibration_stats(by_model.get(model, {}), answers)
+        if stats[model]["qualified"]:
+            allowed.append(model)
+        elif stats[model]["parsed"] >= MIN_PARSED and not allowed:
+            ended = True
+    return stats, allowed, rejected
+
+
+def collect_panels(repo, panel_paths, items, allowed_judges, chains=None, binding=None):
     """Check image identity and raw receipts before accepting any batch votes.
 
-    With chains, votes are grouped by seat and then by model.
+    With chains, votes are grouped by seat and then by model. With binding (rubric, locked_at),
+    every receipt must also pass bind_receipt.
     """
     expected = {r["id"]: r for r in items}
     if len(expected) != len(items):
@@ -226,6 +283,8 @@ def collect_panels(repo, panel_paths, items, allowed_judges, chains=None):
             if chains is not None:
                 proof["model"] = receipt_model(agent, judge, chains)
                 bucket = votes[agent].setdefault(proof["model"], {})
+            if binding is not None:
+                proof.update(bind_receipt(repo, judge, *binding))
             evidence.append(proof)
             if not judge["ok"]:
                 failures.append({**proof, "error": "nonzero run"})
@@ -323,12 +382,63 @@ def calibration_report(root, repo, panels):
             "failures": failures, "owner_labels_unchanged": True, "fresh_validation_labels": 0}
 
 
+def verify_r3_lock(root):
+    """Check the rubric freeze, replay the owner's label validation, and check the locked draw against both."""
+    from scripts.research.detector_benchmark import promotion_694_controls as controls
+
+    if sha256(root / controls.FREEZE) != R3_FREEZE_SHA256:
+        raise ValueError("rubric freeze receipt changed")
+    freeze, candidates, stored, _ = controls.load_frozen(root)
+    if sha256(inside(root, freeze["amendment"])) != freeze["amendment_sha256"]:
+        raise ValueError("rubric amendment changed")
+    lock = read_json(root / controls.LOCK)
+    files = lock["files"]
+    verify_hashes(root, {entry["path"]: entry["sha256"] for entry in files.values()})
+    if files["rubric"]["sha256"] != freeze["rubric_sha256"]:
+        raise ValueError("locked rubric differs from the frozen rubric")
+    locked_at = parse_time(lock["locked_at"])
+    if locked_at <= parse_time(freeze["frozen_at"]):
+        raise ValueError("lock precedes the freeze")
+    state = controls.replay(candidates, read_json(inside(root, files["validation"]["path"]))["reviews"], stored)
+    if not state["complete"]:
+        raise ValueError("label validation is not complete")
+    answers = read_json(inside(root, files["answer_key"]["path"]))
+    confirmed = {(stratum, image_id) for stratum, ids in state["confirmed"].items() for image_id in ids}
+    if len(answers) != 20 or {(a["grade"], a["image_id"]) for a in answers.values()} != confirmed:
+        raise ValueError("answer key differs from the confirmed controls")
+    if any(a["usable"] != (a["grade"] == "usable") for a in answers.values()):
+        raise ValueError("answer key usable flag differs from its grade")
+    manifest = read_json(inside(root, files["manifest"]["path"]))
+    if {r["id"] for r in manifest["items"]} != set(answers) or manifest["rubric_sha256"] != freeze["rubric_sha256"]:
+        raise ValueError("manifest differs from the answer key or the frozen rubric")
+    verify_hashes(root / controls.BLIND, manifest["sha256"])
+    rubric = inside(root, freeze["rubric"]).read_text(encoding="utf-8").strip()
+    return {"answers": answers, "manifest": manifest, "locked_at": locked_at, "rubric": rubric,
+            "lock_sha256": sha256(root / controls.LOCK)}
+
+
+def calibration_report_r3(root, repo, panels):
+    """One control draw per seat under the 2026-11-08 rubric, with receipts bound to the locked draw."""
+    locked = verify_r3_lock(root)
+    votes, evidence, failures = collect_panels(repo, panels, locked["manifest"]["items"], JUDGES, chains=SEATS,
+                                               binding=(locked["rubric"], locked["locked_at"]))
+    stats, allowed, rejected = {}, {}, {}
+    for judge, chain in SEATS.items():
+        ordered = attempt_order(evidence, judge, chain)
+        stats[judge], allowed[judge], rejected[judge] = qualify_seat_in_time(votes[judge], locked["answers"], ordered)
+    qualified = [j for j in JUDGES if allowed[j]]
+    return {"status": "qualified" if len(qualified) >= 3 else "blocked_insufficient_judges",
+            "stats": stats, "qualified_judges": qualified, "allowed_models": allowed,
+            "rejected_fallbacks": rejected, "lock_sha256": locked["lock_sha256"], "evidence": evidence,
+            "failures": failures, "owner_labels_unchanged": True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(".agent/scratch/promotion-694"))
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("verify")
-    for action in ("calibrate", "analyze"):
+    for action in ("calibrate", "analyze", "calibrate-r3"):
         cmd = sub.add_parser(action)
         cmd.add_argument("--panel", type=Path, action="append", required=True)
         cmd.add_argument("--output", type=Path, required=True)
@@ -345,6 +455,8 @@ def main():
         return
     if args.command == "calibrate":
         result = calibration_report(root, repo, args.panel)
+    elif args.command == "calibrate-r3":
+        result = calibration_report_r3(root, repo, args.panel)
     else:
         # Recompute qualification from the recorded raw replies, never trust an edited pass flag.
         prior = read_json(args.calibration)
