@@ -1,8 +1,11 @@
 """Frozen gate guards; synthetic votes never replace the private owner labels."""
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
+from PIL import Image
 
+from scripts.research.detector_benchmark import promotion_694_controls as controls
 from scripts.research.detector_benchmark import promotion_694_gate as gate
 
 
@@ -278,3 +281,139 @@ def test_consensus_follows_the_number_of_qualified_seats():
     four = {**three, "antigravity": vote("poor_crop")}
     assert gate.resolve_votes(four) is None
     assert gate.resolve_votes({**four, "cursor": vote()}) == "usable"
+
+
+# --- #694 rubric amendment (2026-11-08, revision 2): receipts bound to the locked draw ---
+
+FROZEN_AT = datetime(2026, 11, 8, 6, 0, tzinfo=timezone.utc)
+LOCKED_AT = datetime(2026, 11, 9, 6, 0, tzinfo=timezone.utc)
+RUBRIC = "Grade the red box.\nusable: whole bird inside.\n"
+
+
+def run_receipt(tmp_path, name="run1", started=LOCKED_AT + timedelta(minutes=5), prompt=None, model="grok-4.7"):
+    run = tmp_path / name
+    run.mkdir()
+    (run / "result.json").write_text(json.dumps({
+        "startedAt": started.isoformat().replace("+00:00", "Z"), "model": model,
+        "prompt": f"Task header\n{RUBRIC if prompt is None else prompt}\nReturn JSON."}))
+    return {"agent": "cursor", "ok": True, "model": model, "outputDir": name}
+
+
+def test_receipt_started_before_the_freeze_is_rejected(tmp_path):
+    judge = run_receipt(tmp_path, started=FROZEN_AT - timedelta(hours=1))
+    with pytest.raises(ValueError, match="before the controls were locked"):
+        gate.bind_receipt(tmp_path, judge, RUBRIC.strip(), LOCKED_AT)
+
+
+def test_receipt_after_the_freeze_but_before_the_lock_is_rejected(tmp_path):
+    judge = run_receipt(tmp_path, started=FROZEN_AT + timedelta(hours=1))
+    with pytest.raises(ValueError, match="before the controls were locked"):
+        gate.bind_receipt(tmp_path, judge, RUBRIC.strip(), LOCKED_AT)
+
+
+def test_receipt_after_the_lock_with_the_frozen_rubric_is_bound(tmp_path):
+    judge = run_receipt(tmp_path)
+    proof = gate.bind_receipt(tmp_path, judge, RUBRIC.strip(), LOCKED_AT)
+    assert proof["result_sha256"] == gate.sha256(tmp_path / "run1" / "result.json")
+    assert gate.parse_time(proof["started_at"]) > LOCKED_AT
+
+
+def test_prompt_with_a_different_rubric_is_rejected(tmp_path):
+    judge = run_receipt(tmp_path, prompt="usable if most of the bird is inside")
+    with pytest.raises(ValueError, match="frozen rubric"):
+        gate.bind_receipt(tmp_path, judge, RUBRIC.strip(), LOCKED_AT)
+
+
+def test_receipt_model_must_match_its_panel_record(tmp_path):
+    judge = run_receipt(tmp_path, model="grok-4.6")
+    judge["model"] = "grok-4.7"
+    with pytest.raises(ValueError, match="model differs"):
+        gate.bind_receipt(tmp_path, judge, RUBRIC.strip(), LOCKED_AT)
+
+
+def evidence(seat, *attempts):
+    return [{"agent": seat, "model": model, "started_at": (LOCKED_AT + timedelta(minutes=m)).isoformat()}
+            for model, minutes in attempts for m in minutes]
+
+
+def test_post_lock_fallback_after_a_scored_bar_failure_is_rejected_and_the_seat_stays_failed():
+    ordered = gate.attempt_order(evidence("claude", ("a", [1, 2]), ("b", [10])), "claude", ("a", "b", "c"))
+    stats, allowed, rejected = gate.qualify_seat_in_time(
+        {"a": control_votes(17), "b": control_votes(20)}, control_answers(), ordered)
+    assert allowed == [] and rejected == ["b"] and "b" not in stats
+
+
+def test_post_lock_fallback_after_a_technical_failure_is_accepted():
+    ordered = gate.attempt_order(evidence("claude", ("a", [1]), ("b", [10])), "claude", ("a", "b", "c"))
+    _, allowed, rejected = gate.qualify_seat_in_time(
+        {"a": control_votes(18, parsed=18), "b": control_votes(19)}, control_answers(), ordered)
+    assert allowed == ["b"] and rejected == []
+
+
+@pytest.mark.parametrize("attempts", [
+    (("b", [1]), ("a", [10])),          # a later chain model started first
+    (("a", [1, 20]), ("b", [10])),      # attempts interleaved in time
+])
+def test_attempts_out_of_chain_order_are_rejected(attempts):
+    with pytest.raises(ValueError, match="out of chain order"):
+        gate.attempt_order(evidence("claude", *attempts), "claude", ("a", "b", "c"))
+
+
+def locked_fixture(tmp_path, monkeypatch):
+    """A synthetic frozen-and-locked r3 draw, built with the real controls module."""
+    root = tmp_path / "promo"
+    source = tmp_path / "bird_v1_owner_labels" / "box_page"
+    for kind in ("full", "crop"):
+        (source / kind).mkdir(parents=True)
+    root.mkdir()
+    rows = ([{"image_id": str(i), "box_label": "wrong_target"} for i in range(1, 9)]
+            + [{"image_id": str(i), "box_label": "poor_crop"} for i in range(100, 110)]
+            + [{"image_id": str(i), "box_label": "usable"} for i in range(200, 210)])
+    with (source / "box_labels.csv").open("w", newline="", encoding="utf-8") as handle:
+        handle.write("image_id,run_id,region_id,box_label\n")
+        handle.writelines(f"{r['image_id']},1,1,{r['box_label']}\n" for r in rows)
+    for r in rows:
+        for kind in ("full", "crop"):
+            Image.new("RGB", (8, 8), (7, 8, 9)).save(source / kind / f"{r['image_id']}.jpg")
+    wrong = {f"w{i}": {"image_id": i, "grade": "wrong_target", "usable": False} for i in range(1, 9)}
+    strata = controls.candidate_lists(rows, [wrong, wrong], set(), "seed")
+    candidates = {"seed": "seed", "review_order_seed": "order", "strata": strata}
+    (root / "candidates.json").write_text(json.dumps(candidates))
+    (root / "rubric.txt").write_text(RUBRIC)
+    (root / "amendment.md").write_text("amendment")
+    freeze = {"amendment": "amendment.md", "amendment_sha256": gate.sha256(root / "amendment.md"),
+              "rubric": "rubric.txt", "rubric_sha256": gate.sha256(root / "rubric.txt"),
+              "candidates": "candidates.json", "candidates_sha256": gate.sha256(root / "candidates.json"),
+              "source_labels_sha256": gate.sha256(source / "box_labels.csv"), "frozen_at": FROZEN_AT.isoformat()}
+    (root / controls.FREEZE).write_text(json.dumps(freeze))
+    monkeypatch.setattr(gate, "R3_FREEZE_SHA256", gate.sha256(root / controls.FREEZE))
+    stored = {r["image_id"]: r["box_label"] for r in rows}
+    first = controls.replay(candidates, [], stored)["next_round"]
+    reviews = [{**item, "round": 1, "blind": stored[str(item["image_id"])], "stored": stored[str(item["image_id"])],
+                "decision": "confirmed"} for item in first]
+    (root / controls.VALIDATION).write_text(json.dumps({"reviews": reviews}))
+    controls.lock(root, candidates, stored, root / controls.VALIDATION, source, root / "rubric.txt", repo=tmp_path)
+    return root
+
+
+def test_locked_draw_verifies_and_carries_the_rubric_and_lock_time(tmp_path, monkeypatch):
+    root = locked_fixture(tmp_path, monkeypatch)
+    locked = gate.verify_r3_lock(root)
+    assert len(locked["answers"]) == 20 and locked["rubric"] == RUBRIC.strip()
+    assert locked["locked_at"] > FROZEN_AT
+
+
+def test_evidence_hashes_that_do_not_match_the_manifest_are_rejected(tmp_path, monkeypatch):
+    root = locked_fixture(tmp_path, monkeypatch)
+    Image.new("RGB", (8, 8), (0, 0, 0)).save(root / controls.BLIND / "d01_crop.jpg")
+    with pytest.raises(ValueError, match="artifact hash mismatch"):
+        gate.verify_r3_lock(root)
+
+
+def test_an_answer_key_edited_after_the_lock_is_rejected(tmp_path, monkeypatch):
+    root = locked_fixture(tmp_path, monkeypatch)
+    key = json.loads((root / controls.KEY).read_text())
+    key["d01"]["usable"] = not key["d01"]["usable"]
+    (root / controls.KEY).write_text(json.dumps(key))
+    with pytest.raises(ValueError, match="artifact hash mismatch"):
+        gate.verify_r3_lock(root)
