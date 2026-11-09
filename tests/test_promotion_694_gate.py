@@ -290,13 +290,37 @@ LOCKED_AT = datetime(2026, 11, 9, 6, 0, tzinfo=timezone.utc)
 RUBRIC = "Grade the red box.\nusable: whole bird inside.\n"
 
 
-def run_receipt(tmp_path, name="run1", started=LOCKED_AT + timedelta(minutes=5), prompt=None, model="grok-4.7"):
+def run_receipt(tmp_path, name="run1", started=LOCKED_AT + timedelta(minutes=5), prompt=None, model="grok-4.7",
+                acp=False, task=None):
+    """A swarm run folder. CLI runs record the full prompt in result.json; ACP runs record none there.
+    Both record the requested task in request.json."""
     run = tmp_path / name
     run.mkdir()
-    (run / "result.json").write_text(json.dumps({
-        "startedAt": started.isoformat().replace("+00:00", "Z"), "model": model,
-        "prompt": f"Task header\n{RUBRIC if prompt is None else prompt}\nReturn JSON."}))
+    text = RUBRIC if prompt is None else prompt
+    result = {"startedAt": started.isoformat().replace("+00:00", "Z"), "model": model}
+    if not acp:
+        result["prompt"] = f"Task header\n{text}\nReturn JSON."
+    (run / "result.json").write_text(json.dumps(result))
+    (run / "request.json").write_text(json.dumps({"model": model, "task": f"Grade:\n{text if task is None else task}"}))
     return {"agent": "cursor", "ok": True, "model": model, "outputDir": name}
+
+
+def test_acp_receipt_without_a_recorded_prompt_is_bound_by_its_request(tmp_path):
+    judge = run_receipt(tmp_path, acp=True)
+    proof = gate.bind_receipt(tmp_path, judge, RUBRIC.strip(), LOCKED_AT)
+    assert proof["request_sha256"] == gate.sha256(tmp_path / "run1" / "request.json")
+
+
+def test_request_task_without_the_frozen_rubric_is_rejected(tmp_path):
+    judge = run_receipt(tmp_path, acp=True, task="usable if most of the bird is inside")
+    with pytest.raises(ValueError, match="frozen rubric"):
+        gate.bind_receipt(tmp_path, judge, RUBRIC.strip(), LOCKED_AT)
+
+
+def test_cli_prompt_must_also_carry_the_rubric_when_recorded(tmp_path):
+    judge = run_receipt(tmp_path, prompt="usable if most of the bird is inside", task=RUBRIC)
+    with pytest.raises(ValueError, match="frozen rubric"):
+        gate.bind_receipt(tmp_path, judge, RUBRIC.strip(), LOCKED_AT)
 
 
 def test_receipt_started_before_the_freeze_is_rejected(tmp_path):
