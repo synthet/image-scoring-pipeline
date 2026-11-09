@@ -417,3 +417,102 @@ def test_an_answer_key_edited_after_the_lock_is_rejected(tmp_path, monkeypatch):
     (root / controls.KEY).write_text(json.dumps(key))
     with pytest.raises(ValueError, match="artifact hash mismatch"):
         gate.verify_r3_lock(root)
+
+
+# --- Revision 3 (2026-11-09): round 1 stopped, a spare batch, both records bound by the lock ---
+
+RUBRIC4 = "Grade the red box.\nwrong_target: a bird that isn't the main subject.\n"
+
+
+def rev3_fixture(tmp_path, monkeypatch):
+    """Revision 2 freeze, a round 1 that stopped on wrong_target, the revision 3 freeze, round 2, and the lock."""
+    root = tmp_path / "promo"
+    source = tmp_path / "bird_v1_owner_labels" / "box_page"
+    source.mkdir(parents=True)
+    root.mkdir()
+    rows = ([{"image_id": str(i), "box_label": "wrong_target"} for i in range(1, 9)]
+            + [{"image_id": str(i), "box_label": "poor_crop"} for i in range(100, 110)]
+            + [{"image_id": str(i), "box_label": "usable"} for i in range(200, 210)])
+    with (source / "box_labels.csv").open("w", newline="", encoding="utf-8") as handle:
+        handle.write("image_id,run_id,region_id,box_label\n")
+        handle.writelines(f"{r['image_id']},1,1,{r['box_label']}\n" for r in rows)
+    wrong = {f"w{i}": {"image_id": i, "grade": "wrong_target", "usable": False} for i in range(1, 9)}
+    candidates = {"seed": "seed", "review_order_seed": "order",
+                  "strata": controls.candidate_lists(rows, [wrong, wrong], set(), "seed")}
+    (root / "candidates.json").write_text(json.dumps(candidates))
+    (root / "rubric.txt").write_text(RUBRIC)
+    (root / "amendment.md").write_text("amendment")
+    freeze = {"amendment": "amendment.md", "amendment_sha256": gate.sha256(root / "amendment.md"),
+              "rubric": "rubric.txt", "rubric_sha256": gate.sha256(root / "rubric.txt"),
+              "candidates": "candidates.json", "candidates_sha256": gate.sha256(root / "candidates.json"),
+              "source_labels_sha256": gate.sha256(source / "box_labels.csv"), "frozen_at": FROZEN_AT.isoformat()}
+    (root / controls.FREEZE).write_text(json.dumps(freeze))
+    monkeypatch.setattr(gate, "R3_FREEZE_SHA256", gate.sha256(root / controls.FREEZE))
+    stored = {r["image_id"]: r["box_label"] for r in rows}
+    first = controls.replay(candidates, [], stored)["next_round"]
+    unsure = {r["image_id"] for r in first if r["stratum"] == "wrong_target"}
+    unsure = set(sorted(unsure)[:2]) | {next(r["image_id"] for r in first if r["stratum"] == "poor_crop")}
+    round1 = []
+    for item in first:
+        blind = "unsure" if item["image_id"] in unsure else stored[str(item["image_id"])]
+        round1.append({**item, "round": 1, "blind": blind, "stored": stored[str(item["image_id"])],
+                       "decision": controls.decide(blind, stored[str(item["image_id"])])})
+    (root / controls.VALIDATION).write_text(json.dumps({"reviews": round1}))
+    batch_ids = list(range(500, 524))
+    replacement = candidates["strata"]["poor_crop"][6]
+    batch = {"spare_seed": "spares", "review_order_seed": "order4", "batch_low": batch_ids[:16],
+             "batch_rest": batch_ids[16:], "poor_crop_replacement": {"image_id": replacement, "position": 6},
+             "round2_review_order": sorted(batch_ids + [replacement], key=lambda i: controls.rank("order4", i))}
+    for name, text in (("amendment4.md", "revision 3"), ("rubric4.txt", RUBRIC4),
+                       ("batch.json", json.dumps(batch)), ("pbird.csv", "500,0.01\n")):
+        (root / name).write_text(text)
+    rev3 = {"amendment": "amendment4.md", "rubric": "rubric4.txt", "batch": "batch.json", "pbird_snapshot": "pbird.csv",
+            "revision2_freeze_sha256": gate.sha256(root / controls.FREEZE),
+            "round1_validation_sha256": gate.sha256(root / controls.VALIDATION),
+            "frozen_at": (FROZEN_AT + timedelta(days=1)).isoformat()}
+    for name in ("amendment", "rubric", "batch"):
+        rev3[f"{name}_sha256"] = gate.sha256(root / rev3[name])
+    rev3["pbird_snapshot_sha256"] = gate.sha256(root / "pbird.csv")
+    (root / controls.FREEZE4).write_text(json.dumps(rev3))
+    monkeypatch.setattr(gate, "REV3_FREEZE_SHA256", gate.sha256(root / controls.FREEZE4))
+    spare_order = sorted(batch_ids, key=lambda i: controls.rank("spares", i))
+    later = []
+    for item in controls.replay_rev3(candidates, batch, round1, [], stored)["next_round"]:
+        known = stored.get(str(item["image_id"])) if item["kind"] == "replacement" else None
+        blind = known or ("wrong_target" if item["image_id"] in spare_order[:2] else "usable")
+        later.append({**item, "round": 2, "blind": blind, "stored": known,
+                      "decision": "labelled" if known is None else controls.decide(blind, known)})
+    (root / controls.VALIDATION4).write_text(json.dumps({"reviews": later}))
+
+    def render(item, overview, crop):
+        for target in (overview, crop):
+            Image.new("RGB", (8, 8), (3, 3, 3)).save(target)
+
+    controls.lock_rev3(root, candidates, batch, stored, root / controls.VALIDATION, root / controls.VALIDATION4,
+                       root / "rubric4.txt", render, repo=tmp_path)
+    return root, spare_order[:2]
+
+
+def test_rev3_lock_verifies_with_both_records_and_the_new_rubric(tmp_path, monkeypatch):
+    root, new_wrong = rev3_fixture(tmp_path, monkeypatch)
+    locked = gate.verify_rev3_lock(root)
+    assert len(locked["answers"]) == 20 and locked["rubric"] == RUBRIC4.strip()
+    assert set(new_wrong) <= {a["image_id"] for a in locked["answers"].values() if a["grade"] == "wrong_target"}
+
+
+def test_rev3_round2_record_edited_after_the_lock_is_rejected(tmp_path, monkeypatch):
+    root, _ = rev3_fixture(tmp_path, monkeypatch)
+    data = json.loads((root / controls.VALIDATION4).read_text())
+    data["reviews"][0]["note"] = "changed"
+    (root / controls.VALIDATION4).write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="artifact hash mismatch"):
+        gate.verify_rev3_lock(root)
+
+
+def test_rev3_round1_record_changed_after_the_freeze_is_rejected(tmp_path, monkeypatch):
+    root, _ = rev3_fixture(tmp_path, monkeypatch)
+    data = json.loads((root / controls.VALIDATION).read_text())
+    data["reviews"][0]["note"] = "changed"
+    (root / controls.VALIDATION).write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="round 1 record changed"):
+        gate.verify_rev3_lock(root)
