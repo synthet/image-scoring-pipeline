@@ -202,17 +202,25 @@ def parse_time(value):
 
 
 def bind_receipt(repo, judge, rubric, locked_at):
-    """Tie one judge receipt to the locked draw: frozen rubric in its prompt, same model, started after the lock."""
-    path = inside(repo, f"{judge['outputDir']}/result.json")
-    result = read_json(path)
-    if rubric not in str(result.get("prompt") or ""):
+    """Tie one judge receipt to the locked draw: frozen rubric in what was sent, same model, started after the lock.
+
+    Every swarm run records its requested task in request.json. CLI runs also record the full prompt in
+    result.json; ACP runs (Cursor) don't, so the request is the record for them.
+    """
+    result_path = inside(repo, f"{judge['outputDir']}/result.json")
+    request_path = inside(repo, f"{judge['outputDir']}/request.json")
+    result, request = read_json(result_path), read_json(request_path)
+    if rubric not in str(request.get("task") or ""):
+        raise ValueError("receipt request lacks the frozen rubric")
+    if "prompt" in result and rubric not in str(result.get("prompt") or ""):
         raise ValueError("receipt prompt lacks the frozen rubric")
-    if result.get("model") != judge.get("model"):
+    if result.get("model") != judge.get("model") or request.get("model") != judge.get("model"):
         raise ValueError("receipt model differs from its panel record")
     started = parse_time(result.get("startedAt"))
     if started < locked_at:
         raise ValueError("receipt started before the controls were locked")
-    return {"started_at": started.isoformat(), "result_sha256": sha256(path)}
+    return {"started_at": started.isoformat(), "result_sha256": sha256(result_path),
+            "request_sha256": sha256(request_path)}
 
 
 def attempt_order(evidence, seat, chain):
