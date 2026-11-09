@@ -27,10 +27,10 @@ if str(_ROOT) not in sys.path:
 from modules.localization import (  # noqa: E402
     load_detector_context,
     localization_config,
-    localize_image,
     max_regions_per_class,
     weights_sha256,
 )
+from modules.localization_runner import localize_routed, scene_router_or_none  # noqa: E402
 
 log = logging.getLogger(__name__)
 EXPECTED_SHA256 = "6d09339fb3286c8d10395c29e3b0c14da92d86be5c9d4753c38d4a2ef2e447ba"
@@ -126,6 +126,8 @@ def run(path: Path, limit: int) -> Counter:
     conn = db.get_connector()
     counts: Counter = Counter()
     max_regions = max_regions_per_class(cfg)
+    # The rescan goes through the scene route like every other lane (#809); a skip is counted as "disabled".
+    router = scene_router_or_none()
     selected = pairs[:limit] if limit > 0 else pairs
     for n, (image_id, legacy_run_id) in enumerate(selected, 1):
         row = conn.query_one(_STATE_SQL, (int(image_id),))
@@ -133,7 +135,7 @@ def run(path: Path, limit: int) -> Counter:
         if state != "ready":
             counts[state] += 1
             continue
-        outcome = localize_image(int(image_id), row["file_path"] or "", ctx, max_regions=max_regions)
+        outcome = localize_routed(router, int(image_id), row["file_path"] or "", ctx, max_regions=max_regions)
         counts[outcome.status] += 1
         if outcome.unchanged:
             counts["unchanged"] += 1
