@@ -25,6 +25,8 @@ AMENDMENT_SHA256 = "c3a466ea739580ec269ce802466e436c1101b3a1c1d093081e8569ae7511
 JUDGE_FREEZE_SHA256 = "7a3684661f1dfcb3c55db1fcc199b010396870b878cf0ff2bee6a23a4cf7fd0c"
 # Rubric amendment, 2026-11-08 revision 2 (freeze-receipt-rubric-20261108.json).
 R3_FREEZE_SHA256 = "16d6571ec17d52b794a5028556273365972cfeeeff4a7013a8222a6bbf1b87ce"
+# Revision 3, 2026-11-09 (freeze-receipt-rubric-rev3-20261109.json).
+REV3_FREEZE_SHA256 = "e6cbfdc05b3645956dfc46d2e57112eb7e20bd5e9a8c0644a4634d3f639b9796"
 BANDS = ("large", "medium", "small")
 # Frozen fallback chains, in order. Cursor uses the base names of its ACP session model option.
 SEATS = {
@@ -391,7 +393,14 @@ def verify_r3_lock(root):
     freeze, candidates, stored, _ = controls.load_frozen(root)
     if sha256(inside(root, freeze["amendment"])) != freeze["amendment_sha256"]:
         raise ValueError("rubric amendment changed")
-    lock = read_json(root / controls.LOCK)
+    lock_path = root / controls.LOCK
+    files, locked_at = _read_lock(root, lock_path, freeze)
+    state = controls.replay(candidates, read_json(inside(root, files["validation"]["path"]))["reviews"], stored)
+    return _check_locked_draw(root, lock_path, files, locked_at, state, freeze, root / controls.BLIND)
+
+
+def _read_lock(root, lock_path, freeze):
+    lock = read_json(lock_path)
     files = lock["files"]
     verify_hashes(root, {entry["path"]: entry["sha256"] for entry in files.values()})
     if files["rubric"]["sha256"] != freeze["rubric_sha256"]:
@@ -399,7 +408,11 @@ def verify_r3_lock(root):
     locked_at = parse_time(lock["locked_at"])
     if locked_at <= parse_time(freeze["frozen_at"]):
         raise ValueError("lock precedes the freeze")
-    state = controls.replay(candidates, read_json(inside(root, files["validation"]["path"]))["reviews"], stored)
+    return files, locked_at
+
+
+def _check_locked_draw(root, lock_path, files, locked_at, state, freeze, blind_dir):
+    """The answer key must equal the replayed confirmed controls, and the manifest and images must match it."""
     if not state["complete"]:
         raise ValueError("label validation is not complete")
     answers = read_json(inside(root, files["answer_key"]["path"]))
@@ -411,15 +424,33 @@ def verify_r3_lock(root):
     manifest = read_json(inside(root, files["manifest"]["path"]))
     if {r["id"] for r in manifest["items"]} != set(answers) or manifest["rubric_sha256"] != freeze["rubric_sha256"]:
         raise ValueError("manifest differs from the answer key or the frozen rubric")
-    verify_hashes(root / controls.BLIND, manifest["sha256"])
+    verify_hashes(blind_dir, manifest["sha256"])
     rubric = inside(root, freeze["rubric"]).read_text(encoding="utf-8").strip()
     return {"answers": answers, "manifest": manifest, "locked_at": locked_at, "rubric": rubric,
-            "lock_sha256": sha256(root / controls.LOCK)}
+            "lock_sha256": sha256(lock_path)}
+
+
+def verify_rev3_lock(root):
+    """Revision 3: check both freezes, replay round 1 and the later rounds, and check the locked draw."""
+    from scripts.research.detector_benchmark import promotion_694_controls as controls
+
+    if sha256(root / controls.FREEZE4) != REV3_FREEZE_SHA256:
+        raise ValueError("revision 3 freeze receipt changed")
+    if sha256(root / controls.FREEZE) != R3_FREEZE_SHA256:
+        raise ValueError("rubric freeze receipt changed")
+    freeze, candidates, batch, stored, round1, _ = controls.load_frozen_rev3(root)
+    lock_path = root / controls.LOCK4
+    files, locked_at = _read_lock(root, lock_path, freeze)
+    if files["round1"]["sha256"] != freeze["round1_validation_sha256"]:
+        raise ValueError("locked round 1 record differs from the frozen one")
+    later = read_json(inside(root, files["round2"]["path"]))["reviews"]
+    state = controls.replay_rev3(candidates, batch, round1, later, stored)
+    return _check_locked_draw(root, lock_path, files, locked_at, state, freeze, root / controls.BLIND4)
 
 
 def calibration_report_r3(root, repo, panels):
-    """One control draw per seat under the 2026-11-08 rubric, with receipts bound to the locked draw."""
-    locked = verify_r3_lock(root)
+    """One control draw per seat under revision 3 (2026-11-09), with receipts bound to the locked draw."""
+    locked = verify_rev3_lock(root)
     votes, evidence, failures = collect_panels(repo, panels, locked["manifest"]["items"], JUDGES, chains=SEATS,
                                                binding=(locked["rubric"], locked["locked_at"]))
     stats, allowed, rejected = {}, {}, {}
