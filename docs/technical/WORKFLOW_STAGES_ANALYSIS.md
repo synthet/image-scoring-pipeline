@@ -1,3 +1,13 @@
+---
+type: Reference
+title: Vexlum Scoring workflow architecture
+description: Analysis of the scoring workflow stages and their architecture.
+resource: docs/technical/WORKFLOW_STAGES_ANALYSIS.md
+tags: [workflow, architecture]
+timestamp: 2026-06-01T00:00:00Z
+okf_version: 0.2
+---
+
 # Vexlum Scoring — workflow architecture
 
 ## Overview

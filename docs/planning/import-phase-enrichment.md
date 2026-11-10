@@ -1,3 +1,13 @@
+---
+type: Plan
+title: Import phase enrichment
+description: Prompt and plan to close import-phase data gaps that stall later phases.
+resource: docs/planning/import-phase-enrichment.md
+tags: [import, planning]
+timestamp: 2026-06-01T00:00:00Z
+okf_version: 0.2
+---
+
 # Prompt: Import Phase Enrichment — close the data gaps that stall later phases
 
 ## Context

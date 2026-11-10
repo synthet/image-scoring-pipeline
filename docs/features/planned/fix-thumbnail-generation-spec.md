@@ -1,3 +1,13 @@
+---
+type: Plan
+title: "Fix: run thumbnail generation failure"
+description: Spec for fixing a run that completed with all images missing thumbnails.
+resource: docs/features/planned/fix-thumbnail-generation-spec.md
+tags: [thumbnails, spec]
+timestamp: 2026-04-08T00:00:00Z
+okf_version: 0.2
+---
+
 # Fix: Run Thumbnail Generation Failure
 
 **Date:** 2026-04-11

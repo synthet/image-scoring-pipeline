@@ -1,3 +1,13 @@
+---
+type: Report
+title: Runs monitoring snapshot 2026-06-17
+description: Point-in-time snapshot of run monitoring state.
+resource: docs/reports/RUNS_MONITORING_SNAPSHOT_2026-06-17.md
+tags: [runs, monitoring]
+timestamp: 2026-06-17T00:00:00Z
+okf_version: 0.2
+---
+
 # Runs monitoring snapshot — 2026-06-17
 
 Point-in-time capture of `/ui/runs` and backing APIs while auto-drive was active on WebUI port **7860**.

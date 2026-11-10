@@ -1,3 +1,13 @@
+---
+type: Report
+title: Run orchestration audit 2026-04-17
+description: Audit of run orchestration behaviour and findings.
+resource: docs/reports/RUN_ORCHESTRATION_AUDIT_2026-04-17.md
+tags: [runs, audit]
+timestamp: 2026-04-17T00:00:00Z
+okf_version: 0.2
+---
+
 # Run Orchestration Audit — 2026-04-17
 
 Snapshot of bugs, defects, and gaps in job/run orchestration derived from `webui.log`, the PostgreSQL `jobs` / `job_phases` / `image_phase_status` tables, and the current codebase.
