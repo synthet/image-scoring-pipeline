@@ -134,3 +134,23 @@ def test_frozen_order_and_receipt_are_checked(tmp_path, monkeypatch):
     (tmp_path / "pre.md").write_text("edited\n", encoding="utf-8")
     with pytest.raises(ValueError, match="changed"):
         owner.load_frozen(tmp_path, rows)
+
+
+def test_delegated_note_conflicts_keep_the_owner_label_and_count_in_a_sensitivity(tmp_path):
+    order, path = items(), tmp_path / "record.json"
+    first = [r["token"] for r in order if r["batch"] == 1]
+    labels = {t: "usable" for t in first}
+    notes = {first[0]: "too tight", first[1]: "fine"}
+    with pytest.raises(ValueError, match="note conflict"):
+        owner.record_batch(path, order, 1, labels, notes, resolved={first[1]: {"label": "poor_crop"}})
+    owner.record_batch(path, order, 1, labels, notes,
+                       resolved={first[0]: {"label": "poor_crop", "evidence": "panel.json"}})
+    row = json.loads(path.read_text())["batches"][0]["rows"][0]
+    assert (row["label"], row["owner_label"], row["resolved_by"]) == ("poor_crop", "usable", "judges+jev")
+    for batch in range(2, 14):
+        owner.record_batch(path, order, batch, batch_labels(order, batch), {})
+    record = json.loads(path.read_text())
+    plain = gate.owner_bands(sample(), order, record)
+    strict = gate.owner_bands(sample(), order, record, delegated_unresolved=True)
+    band = next(b for b in ("large", "medium", "small") if plain[b]["resolved"] == 130 and plain[b]["usable"] == 129)
+    assert strict[band]["unresolved"] == 1 and strict[band]["usable"] == 129

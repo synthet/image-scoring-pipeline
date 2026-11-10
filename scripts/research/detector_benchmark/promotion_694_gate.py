@@ -358,8 +358,11 @@ def analyze_bands(frames, labels):
 
 
 
-def owner_bands(sample, items, record):
-    """Owner-labelled route (2026-11-09): all 13 batches, every frame once, ``unsure`` unresolved."""
+def owner_bands(sample, items, record, delegated_unresolved=False):
+    """Owner-labelled route (2026-11-09): all 13 batches, every frame once, ``unsure`` unresolved.
+
+    ``delegated_unresolved`` is the amendment's sensitivity: judge/Jev verdicts count as unresolved.
+    """
     from scripts.research.detector_benchmark import promotion_694_owner as owner
 
     batches = [b["batch"] for b in record["batches"]]
@@ -372,7 +375,8 @@ def owner_bands(sample, items, record):
             raise ValueError("owner record row is in the wrong batch")
     if any(row["label"] not in owner.LABEL_CHOICES for row in rows):
         raise ValueError("unknown owner label")
-    labels = {row["token"]: None if row["label"] == "unsure" else row["label"] for row in rows}
+    labels = {row["token"]: None if row["label"] == "unsure" or (delegated_unresolved and row.get("resolved_by"))
+              else row["label"] for row in rows}
     token = {r["image_id"]: r["token"] for r in items}
     frames = [{"id": token[r["image_id"]], "band": r["band"], "folder_id": r["folder_id"]} for r in sample]
     return analyze_bands(frames, labels)
@@ -393,8 +397,10 @@ def owner_report(root, repo, sample, frozen, record_path):
                                                                "rendition_hash")):
             raise ValueError("owner sample identity changed")
         verify_blind_files(repo, row, manifest["sha256"])
-    return {"status": "analyzed", "route": "owner_labels",
-            "bands": owner_bands(sample, items, read_json(record_path)),
+    record = read_json(record_path)
+    return {"status": "analyzed", "route": "owner_labels", "bands": owner_bands(sample, items, record),
+            "delegated": sum(bool(r.get("resolved_by")) for b in record["batches"] for r in b["rows"]),
+            "bands_delegated_unresolved": owner_bands(sample, items, record, delegated_unresolved=True),
             "record_sha256": sha256(record_path), "manifest_sha256": sha256(root / owner.MANIFEST),
             "owner_freeze_sha256": owner.FREEZE_SHA256, "frozen_files": frozen["files"], "promotions": 0}
 

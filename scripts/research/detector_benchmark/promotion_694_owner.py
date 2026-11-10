@@ -77,8 +77,12 @@ def note_conflicts(labels, notes):
     return flagged
 
 
-def record_batch(path, items, batch, labels, notes, original_sha256=None):
-    """Append one batch of the owner's labels. Batches go in order and are final once recorded."""
+def record_batch(path, items, batch, labels, notes, original_sha256=None, resolved=None):
+    """Append one batch of the owner's labels. Batches go in order and are final once recorded.
+
+    ``resolved`` maps note-conflict tokens the owner delegated (amendment 2026-11-09) to
+    ``{"label", "evidence"}``: a judge/Jev verdict, kept apart from the owner's own label.
+    """
     path = Path(path)
     data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"batches": []}
     done = [b["batch"] for b in data["batches"]]
@@ -93,9 +97,19 @@ def record_batch(path, items, batch, labels, notes, original_sha256=None):
         raise ValueError("unknown label")
     if not set(notes) <= set(tokens):
         raise ValueError("note for a frame outside the batch")
+    resolved = resolved or {}
+    if not set(resolved) <= set(note_conflicts(labels, notes)):
+        raise ValueError("only a note conflict the owner delegated can take a judge/Jev verdict")
+    if any(r["label"] not in LABEL_CHOICES for r in resolved.values()):
+        raise ValueError("unknown resolved label")
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    rows = [{"token": t, "label": labels[t], "note": notes.get(t, ""), "batch": batch, "recorded_at": now}
-            for t in tokens]
+    rows = []
+    for t in tokens:
+        row = {"token": t, "label": labels[t], "note": notes.get(t, ""), "batch": batch, "recorded_at": now}
+        if t in resolved:
+            row.update(label=resolved[t]["label"], owner_label=labels[t], resolved_by="judges+jev",
+                       evidence=resolved[t].get("evidence", ""))
+        rows.append(row)
     data["batches"].append({"batch": batch, "recorded_at": now, "original_sha256": original_sha256, "rows": rows})
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return {"batch": batch, "recorded": len(rows), "batches_done": len(done) + 1,
@@ -161,6 +175,8 @@ def main():
     record.add_argument("--labels", type=Path, required=True,
                         help='JSON {"labels": {token: label}, "notes": {token: text}}')
     record.add_argument("--original", type=Path, help="the owner's paste as sent, kept when notes were resolved")
+    record.add_argument("--resolved", type=Path,
+                        help='delegated note conflicts: JSON {token: {"label": ..., "evidence": ...}}')
     sub.add_parser("status")
     args = parser.parse_args()
     root, repo = args.root.resolve(), Path(__file__).resolve().parents[3]
@@ -173,7 +189,9 @@ def main():
         owner = json.loads(args.labels.read_text(encoding="utf-8"))
         original = sha256(args.original) if args.original else sha256(args.labels)
         print(json.dumps(record_batch(root / RECORD, items, args.batch, owner["labels"], owner.get("notes", {}),
-                                      original_sha256=original)))
+                                      original_sha256=original,
+                                      resolved=json.loads(args.resolved.read_text(encoding="utf-8"))
+                                      if args.resolved else None)))
     else:
         path = root / RECORD
         done = len(json.loads(path.read_text(encoding="utf-8"))["batches"]) if path.exists() else 0
