@@ -1,3 +1,13 @@
+---
+type: Guide
+title: Agent memory consolidation
+description: How agent session memory is logged, consolidated and promoted, and where its config lives.
+resource: docs/technical/AGENT_MEMORY.md
+tags: [agent-memory, transcripts, tooling]
+timestamp: 2026-11-10T00:00:00Z
+okf_version: 0.2
+---
+
 # Agent memory consolidation
 
 **Status:** Shipped (v1, deterministic merge). **Authority for daily use:** [`.agent-memory/CURSOR_USAGE.md`](../../.agent-memory/CURSOR_USAGE.md).

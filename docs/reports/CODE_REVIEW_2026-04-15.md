@@ -1,3 +1,13 @@
+---
+type: Report
+title: Code review of 2026-04-15 changes
+description: Audit of the 47 commits landed on 2026-04-15 with findings and follow-ups.
+resource: docs/reports/CODE_REVIEW_2026-04-15.md
+tags: [code-review, audit]
+timestamp: 2026-04-16T00:00:00Z
+okf_version: 0.2
+---
+
 # Code Review — 2026-04-15 Changes
 
 **Range reviewed:** `aaeca35..61c36b1` on `master` (47 commits, 79 files, +3068 / -2998)

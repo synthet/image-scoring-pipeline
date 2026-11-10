@@ -1,3 +1,13 @@
+---
+type: Report
+title: Work summary 2026-05-26
+description: Summary of the auto-drive reprocessing and missing composite aggregate fixes.
+resource: docs/reports/WORK_SUMMARY_2026-05-26.md
+tags: [work-summary, auto-drive, scoring, aggregates]
+timestamp: 2026-05-26T00:00:00Z
+okf_version: 0.2
+---
+
 # Work summary — 2026-05-26
 
 **Operator:** owner (Claude Opus 4.7 assist)
