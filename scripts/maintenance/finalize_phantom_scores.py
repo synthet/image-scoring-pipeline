@@ -15,9 +15,9 @@ Usage (WSL, project root):
   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)/FirebirdLinux/.../lib
 
   # Preview a single folder (no writes)
-  python scripts/maintenance/finalize_phantom_scores.py --scope /mnt/d/Photos/Z8/180-600mm/2026/2026-05-24
+  python scripts/maintenance/finalize_phantom_scores.py --scope /mnt/d/Photos/Camera/lens-a/2026/2026-05-24
   # Apply it
-  python scripts/maintenance/finalize_phantom_scores.py --scope /mnt/d/Photos/Z8/180-600mm/2026/2026-05-24 --apply
+  python scripts/maintenance/finalize_phantom_scores.py --scope /mnt/d/Photos/Camera/lens-a/2026/2026-05-24 --apply
   # Whole library preview
   python scripts/maintenance/finalize_phantom_scores.py --all
   # Specific images

@@ -1,3 +1,13 @@
+---
+type: Report
+title: Runs monitoring snapshot 2026-06-17
+description: Point-in-time snapshot of run monitoring state.
+resource: docs/reports/RUNS_MONITORING_SNAPSHOT_2026-06-17.md
+tags: [runs, monitoring]
+timestamp: 2026-06-17T00:00:00Z
+okf_version: 0.2
+---
+
 # Runs monitoring snapshot — 2026-06-17
 
 Point-in-time capture of `/ui/runs` and backing APIs while auto-drive was active on WebUI port **7860**.
@@ -22,7 +32,7 @@ Point-in-time capture of `/ui/runs` and backing APIs while auto-drive was active
 
 ## Dispatcher (snapshot time)
 
-- **Active runner**: `metadata` on job **4168** (`/mnt/d/Photos/Z8/180-600mm/2025/2025-11-09`).
+- **Active runner**: `metadata` on job **4168** (`/mnt/d/Photos/Camera/lens-a/2025/2025-11-09`).
 - **Queued**: **4169** (metadata multi-phase, `2025-11-11`), **4170** (maintenance).
 - **Run 4168 metadata progress**: 124 IPS `done`, 1 `running`; **412** `auditlog` rows for `run_id=4168`.
 

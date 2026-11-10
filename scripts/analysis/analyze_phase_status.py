@@ -23,7 +23,7 @@ Discrepancy types detected (GAP codes map to that document):
 
 Usage (WSL + ~/.venvs/tf):
   python scripts/analysis/analyze_phase_status.py
-  python scripts/analysis/analyze_phase_status.py --folder /mnt/d/Photos/Z8
+  python scripts/analysis/analyze_phase_status.py --folder /mnt/d/Photos/Camera
   python scripts/analysis/analyze_phase_status.py --phase scoring --verbose
   python scripts/analysis/analyze_phase_status.py --limit 5000 --output /tmp/report.json
 """

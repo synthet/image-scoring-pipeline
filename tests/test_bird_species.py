@@ -334,7 +334,7 @@ def test_dispatcher_routes_bird_species(monkeypatch):
 def test_runner_missing_file_marks_skipped_not_failed(monkeypatch):
     """File-not-found at classify time must record status='skipped' (terminal at
     current executor version) so the workflow heal stops re-queuing the folder.
-    Regression: bird_species heal loop on /mnt/d/Photos/Z8/180-600mm/2026/2026-05-09
+    Regression: bird_species heal loop on /mnt/d/Photos/Camera/lens-a/2026/2026-05-09
     where one image with last_error='File not found' kept respawning the same job.
     """
     import modules.bird_species as bs

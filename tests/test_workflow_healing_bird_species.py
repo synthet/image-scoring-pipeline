@@ -61,7 +61,7 @@ def test_heal_bird_species_includes_when_executor_version_changes(monkeypatch):
     @contextmanager
     def _connection():
         # Simulate one folder becoming eligible (e.g. old executor_version rows).
-        yield _FakeConn(folder_rows=[("/mnt/d/Photos/Z8/2026/2026-04-09", 12)])
+        yield _FakeConn(folder_rows=[("/mnt/d/Photos/Camera/2026/2026-04-09", 12)])
 
     monkeypatch.setattr(workflow_healing.db, "connection", _connection)
     monkeypatch.setattr(workflow_healing.db, "_get_db_engine", lambda: "firebird")

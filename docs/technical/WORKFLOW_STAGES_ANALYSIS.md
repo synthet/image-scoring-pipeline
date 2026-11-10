@@ -1,3 +1,13 @@
+---
+type: Reference
+title: Vexlum Scoring workflow architecture
+description: Analysis of the scoring workflow stages and their architecture.
+resource: docs/technical/WORKFLOW_STAGES_ANALYSIS.md
+tags: [workflow, architecture]
+timestamp: 2026-06-01T00:00:00Z
+okf_version: 0.2
+---
+
 # Vexlum Scoring — workflow architecture
 
 ## Overview
@@ -89,7 +99,7 @@ Cross-checks `image_phase_status` against real columns (`scores`, `keywords`, `i
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib
 source ~/.venvs/tf/bin/activate
 python scripts/analysis/analyze_phase_status.py
-python scripts/analysis/analyze_phase_status.py --folder /mnt/d/Photos/Z8 --output /tmp/phase_report.json
+python scripts/analysis/analyze_phase_status.py --folder /mnt/d/Photos/Camera --output /tmp/phase_report.json
 ```
 
 ### Write: targeted DB repairs

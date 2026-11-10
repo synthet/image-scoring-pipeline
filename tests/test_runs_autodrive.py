@@ -506,7 +506,7 @@ def test_auto_drive_plan_key_matches_enqueue_when_phases_narrowed(monkeypatch):
     (only ``db.get_jobs`` is faked); keying it on the bucket key (the prior bug)
     leaves the narrowed jobs uncounted and the guard never fires.
     """
-    folder = "/mnt/d/Photos/Z8/28-400mm/2026/2026-05-28"
+    folder = "/mnt/d/Photos/Camera/lens-c/2026/2026-05-28"
     enqueue_key = runs_autodrive._plan_key(folder, ["keywords"])
     structural_key = runs_autodrive._plan_key(folder, ["keywords", "bird_species"])
     assert enqueue_key != structural_key
@@ -885,7 +885,7 @@ def test_recent_auto_attempt_counts_windows_terminal_jobs_to_session(monkeypatch
 
 def test_auto_drive_loop_guard_forgives_pre_session_failures(monkeypatch):
     """A fresh drive session re-tries a folder stranded by failures from an earlier session."""
-    folder = "/mnt/d/Photos/Z8/105mm/2026/2026-07-04"
+    folder = "/mnt/d/Photos/Camera/lens-b/2026/2026-07-04"
     plan_key = runs_autodrive._plan_key(folder, ["indexing"])
 
     monkeypatch.setattr(runs_autodrive, "_reconcile_stale_ips_for_drive", lambda: None)
@@ -1914,7 +1914,7 @@ def test_auto_drive_explicit_paths_skip_library_reconcile_and_leaf_filter(monkey
 
 
 def test_resolve_auto_drive_enqueue_phases_includes_pipeline_prefix(monkeypatch):
-    folder = "/mnt/d/Photos/Z8/180-600mm/2026/2026-05-31"
+    folder = "/mnt/d/Photos/Camera/lens-a/2026/2026-05-31"
 
     def fake_plan(paths, stages, dry_run, include_stale_executor=False):
         return {
@@ -2071,7 +2071,7 @@ def test_maybe_schedule_post_audit_followup_scoring_gap_when_metadata_clean(monk
         4281,
         {
             "tool_id": "runs_auto_drive",
-            "scope_paths": ["/mnt/d/Photos/Z8/180-600mm/2026/2026-06-24"],
+            "scope_paths": ["/mnt/d/Photos/Camera/lens-a/2026/2026-06-24"],
             "target_phases": ["metadata", "scoring", "culling", "keywords", "bird_species"],
         },
         {

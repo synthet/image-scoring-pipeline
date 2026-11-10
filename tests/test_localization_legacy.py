@@ -118,7 +118,7 @@ def test_error_wins_over_geometry():
 # ---------------------------------------------------------------------------
 
 def test_redaction_drops_paths_but_keeps_the_code():
-    detail = "decode_error: cannot identify or decode RAW image file '/mnt/d/Photos/Z8/a.NEF'"
+    detail = "decode_error: cannot identify or decode RAW image file '/mnt/d/Photos/Camera/a.NEF'"
     out = redact_error_detail(detail)
     assert out.startswith("decode_error:")
     assert "/mnt/d/Photos" not in out

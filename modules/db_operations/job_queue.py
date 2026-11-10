@@ -21,7 +21,7 @@ def find_active_job_for_folder(
 
     "Same logical folder" means the canonicalized (WSL) form matches: a Windows
     submission ``D:\\Photos\\Z8\\2026-05-09`` and a WSL submission
-    ``/mnt/d/Photos/Z8/2026-05-09`` collapse to the same key. This is the
+    ``/mnt/d/Photos/Camera/2026-05-09`` collapse to the same key. This is the
     duplicate-job hazard the audit on 2026-05-09 surfaced (jobs 2351 vs 2352).
 
     "Active" means ``status IN (queued, running, paused, user_pause, restarting)``.

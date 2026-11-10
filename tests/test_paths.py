@@ -245,7 +245,7 @@ class TestRemapDockerProject:
         from modules import config
         monkeypatch.setattr(config, "BASE_DIR", "/app")
 
-        result = paths.remap_docker_project("/mnt/d/Photos/Z8/DSC_4093.NEF")
+        result = paths.remap_docker_project("/mnt/d/Photos/Camera/DSC_4093.NEF")
         assert result is None
 
     def test_no_remap_when_env_unset(self, monkeypatch):
@@ -313,8 +313,8 @@ class TestWorkflowHealingRegression:
     def test_mnt_path_resolves_on_windows(self, monkeypatch):
         """to_local converts WSL path to Windows drive format."""
         monkeypatch.setattr(paths, "RUNTIME_OS", "Windows")
-        result = paths.to_local("/mnt/d/Photos/Z8/2026/2026-05-07")
-        assert result == "D:/Photos/Z8/2026/2026-05-07"
+        result = paths.to_local("/mnt/d/Photos/Camera/2026/2026-05-07")
+        assert result == "D:/Photos/Camera/2026/2026-05-07"
 
     def test_resolve_scope_falls_through_to_drive_letter(self, monkeypatch):
         """resolve_to_existing on Windows tries the drive-letter conversion."""
@@ -322,14 +322,14 @@ class TestWorkflowHealingRegression:
         monkeypatch.delenv("IMAGE_SCORING_HOST_PROJECT_WSL", raising=False)
         monkeypatch.delenv("IMAGE_SCORING_HOST_PROJECT_WIN", raising=False)
 
-        target_win = os.path.normpath("D:/Photos/Z8/2026/2026-05-07")
+        target_win = os.path.normpath("D:/Photos/Camera/2026/2026-05-07")
 
         def fake_exists(p):
             return os.path.normpath(p) == target_win
 
         monkeypatch.setattr(os.path, "exists", fake_exists)
 
-        result = paths.resolve_to_existing("/mnt/d/Photos/Z8/2026/2026-05-07")
+        result = paths.resolve_to_existing("/mnt/d/Photos/Camera/2026/2026-05-07")
         assert result is not None
         assert os.path.normpath(result) == target_win
 
@@ -351,17 +351,17 @@ class TestApiResolvePattern:
         monkeypatch.delenv("IMAGE_SCORING_HOST_PROJECT_WSL", raising=False)
         monkeypatch.delenv("IMAGE_SCORING_HOST_PROJECT_WIN", raising=False)
 
-        db_path = "/mnt/d/Photos/Z8/DSC_1234.NEF"
+        db_path = "/mnt/d/Photos/Camera/DSC_1234.NEF"
 
         def fake_exists(p):
             norm = p.replace("\\", "/")
-            return norm == "D:/Photos/Z8/DSC_1234.NEF"
+            return norm == "D:/Photos/Camera/DSC_1234.NEF"
 
         monkeypatch.setattr(os.path, "exists", fake_exists)
 
         result = paths.resolve_to_existing(db_path)
         assert result is not None
-        assert result.replace("\\", "/") == "D:/Photos/Z8/DSC_1234.NEF"
+        assert result.replace("\\", "/") == "D:/Photos/Camera/DSC_1234.NEF"
 
     def test_resolve_returns_none_when_truly_missing(self, monkeypatch):
         """No variant exists → None, not an exception."""
@@ -533,7 +533,7 @@ class TestRoundTrip:
         assert paths.to_windows(input_path) == expected_win
 
     def test_wsl_to_windows_round_trip(self):
-        original = "/mnt/d/Photos/Z8/DSC_1234.NEF"
+        original = "/mnt/d/Photos/Camera/DSC_1234.NEF"
         assert paths.to_wsl(paths.to_windows(original)) == original
 
     def test_windows_to_wsl_round_trip(self):

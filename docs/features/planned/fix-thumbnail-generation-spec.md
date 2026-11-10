@@ -1,3 +1,13 @@
+---
+type: Plan
+title: "Fix: run thumbnail generation failure"
+description: Spec for fixing a run that completed with all images missing thumbnails.
+resource: docs/features/planned/fix-thumbnail-generation-spec.md
+tags: [thumbnails, spec]
+timestamp: 2026-04-08T00:00:00Z
+okf_version: 0.2
+---
+
 # Fix: Run Thumbnail Generation Failure
 
 **Date:** 2026-04-11
@@ -8,7 +18,7 @@
 
 ## Problem Statement
 
-Run #989 processed 3,364 images in `D:\Photos\Z8\180-600mm\2026\2026-04-08` but completed with **all images missing thumbnails** (`thumbnail_path = NULL`). The metadata phase (responsible for EXIF extraction, thumbnail generation, UUID assignment) reported "completed" with **0 work items** — it started but found no images to process.
+Run #989 processed 3,364 images in `D:\Photos\Camera\lens-a\2026\2026-04-08` but completed with **all images missing thumbnails** (`thumbnail_path = NULL`). The metadata phase (responsible for EXIF extraction, thumbnail generation, UUID assignment) reported "completed" with **0 work items** — it started but found no images to process.
 
 ### Symptoms
 

@@ -524,7 +524,7 @@ class MetadataRunner:
         # silently mark this phase complete with zero work and the orchestrator
         # would advance — leaving an entire folder un-touched until a Heal job
         # caught up days later (job 2140 vs heal job 2158 on folder
-        # /mnt/d/Photos/Z8/180-600mm/2026/2026-05-03). Treat the mismatch as a
+        # /mnt/d/Photos/Camera/lens-a/2026/2026-05-03). Treat the mismatch as a
         # hard failure so the operator can investigate path/folder_id drift.
         if (
             resolved_image_ids is None

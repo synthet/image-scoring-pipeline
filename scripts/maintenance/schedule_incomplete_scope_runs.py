@@ -15,7 +15,7 @@ Examples:
 
   # Submit up to 20 folders under a specific prefix:
   python scripts/maintenance/schedule_incomplete_scope_runs.py \\
-      --prefix /mnt/d/Photos/Z8 --max-runs 20
+      --prefix /mnt/d/Photos/Camera --max-runs 20
 
   # Include failed folders and full re-run (skip_done=false, force_rerun=true — same as modal "Force re-run"):
   python scripts/maintenance/schedule_incomplete_scope_runs.py \\

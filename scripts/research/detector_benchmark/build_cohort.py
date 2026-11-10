@@ -44,7 +44,7 @@ logger = logging.getLogger("build_cohort")
 BIRD_KEYWORD = "birds"
 NEGATIVE_EXCLUDE_KEYWORDS = ("birds", "wildlife", "animals")
 
-EAGLE_FOLDER = "/mnt/d/Photos/Z8/180-600mm/2026/2026-08-23/"
+EAGLE_FOLDER = "/mnt/d/Photos/Camera/lens-a/2026/2026-08-23/"
 
 #: (name, n, SQL predicate on images i). Predicates must be read-only expressions.
 STRATA = [

@@ -13,7 +13,7 @@ pass ``--apply``.
 Usage (WSL + ~/.venvs/tf):
   python scripts/maintenance/reset_failed_phase_rows_by_error.py \\
       --error-like "name 'scan_stop' is not defined" \\
-      --phase indexing --folder /mnt/d/Photos/Z8/105mm/2026/2026-07-04
+      --phase indexing --folder /mnt/d/Photos/Camera/lens-b/2026/2026-07-04
 
   # ...then re-run with --apply once the dry-run counts look right.
 """

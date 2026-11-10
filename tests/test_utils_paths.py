@@ -102,9 +102,9 @@ def test_convert_path_to_local_no_remap_outside_project(monkeypatch):
     """Paths outside the host project root are not touched by the Docker remap."""
     monkeypatch.setattr(platform, "system", lambda: "Linux")
     _patch_host_project_env(monkeypatch, "/app")
-    result = utils.convert_path_to_local("/mnt/d/Photos/Z8/DSC_4093.NEF")
+    result = utils.convert_path_to_local("/mnt/d/Photos/Camera/DSC_4093.NEF")
     # No remap → falls through to existing Linux behavior (no Windows-drive prefix).
-    assert result == "/mnt/d/Photos/Z8/DSC_4093.NEF"
+    assert result == "/mnt/d/Photos/Camera/DSC_4093.NEF"
 
 
 def test_convert_path_to_local_remap_disabled_when_env_unset(monkeypatch):

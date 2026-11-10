@@ -119,7 +119,7 @@ def test_is_image_scoring_complete_firebird_false_when_image_missing():
 def test_canon_path_matches_wsl_and_windows():
     from modules import workflow_healing as wh
 
-    a = wh._canon_path_for_active_match("/mnt/d/Photos/Z8/test")
+    a = wh._canon_path_for_active_match("/mnt/d/Photos/Camera/test")
     b = wh._canon_path_for_active_match("D:\\Photos\\Z8\\test")
     assert a == b
     assert a.endswith("/photos/z8/test")

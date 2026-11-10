@@ -287,10 +287,10 @@ def test_dispatcher_empty_scoring_advances_to_culling(monkeypatch):
     queued_job = {
         "id": 6518,
         "job_type": "scoring",
-        "input_path": "/mnt/d/Photos/Z8/105mm/2026/2026-07-04",
+        "input_path": "/mnt/d/Photos/Camera/lens-b/2026/2026-07-04",
         "queue_payload": json.dumps({
-            "input_path": "/mnt/d/Photos/Z8/105mm/2026/2026-07-04",
-            "scope_paths": ["/mnt/d/Photos/Z8/105mm/2026/2026-07-04"],
+            "input_path": "/mnt/d/Photos/Camera/lens-b/2026/2026-07-04",
+            "scope_paths": ["/mnt/d/Photos/Camera/lens-b/2026/2026-07-04"],
             "run_mode": "process_stale_or_missing",
             "phases": ["scoring", "culling"],
             "target_phases": ["scoring", "culling"],
@@ -339,7 +339,7 @@ def test_dispatcher_empty_scoring_advances_to_culling(monkeypatch):
     continuation_job = {
         "id": 6518,
         "job_type": "scoring",
-        "input_path": "/mnt/d/Photos/Z8/105mm/2026/2026-07-04",
+        "input_path": "/mnt/d/Photos/Camera/lens-b/2026/2026-07-04",
         "queue_payload": queued_job["queue_payload"],
         "_active_phase_code": "culling",
     }
@@ -435,8 +435,8 @@ def test_dispatcher_multi_stage_continuation_preserves_resolved_image_ids(monkey
     dispatcher = JobDispatcher(scoring_runner=scoring_runner, tagging_runner=tagging_runner)
 
     payload = {
-        "input_path": "/mnt/d/Photos/Z8/180-600mm/2026/2026-05-10",
-        "workspace_target": "/mnt/d/Photos/Z8/180-600mm/2026/2026-05-10",
+        "input_path": "/mnt/d/Photos/Camera/lens-a/2026/2026-05-10",
+        "workspace_target": "/mnt/d/Photos/Camera/lens-a/2026/2026-05-10",
         "workflow_template": "custom",
         "stage_codes": ["metadata", "score", "tag", "cluster"],
         "skip_existing": True,
@@ -449,7 +449,7 @@ def test_dispatcher_multi_stage_continuation_preserves_resolved_image_ids(monkey
     continuation_job = {
         "id": 2365,
         "job_type": "metadata",  # job_type stays as the originally-queued first op
-        "input_path": "/mnt/d/Photos/Z8/180-600mm/2026/2026-05-10",
+        "input_path": "/mnt/d/Photos/Camera/lens-a/2026/2026-05-10",
         "queue_payload": json.dumps(payload),
         "_active_phase_code": "scoring",
     }
@@ -482,7 +482,7 @@ def test_dispatcher_multi_stage_continuation_keywords_preserves_resolved_image_i
     dispatcher = JobDispatcher(tagging_runner=tagging_runner)
 
     payload = {
-        "input_path": "/mnt/d/Photos/Z8/180-600mm/2026/2026-05-10",
+        "input_path": "/mnt/d/Photos/Camera/lens-a/2026/2026-05-10",
         "stage_codes": ["cluster", "tag"],
         "resolved_image_ids": [101, 202, 303],
         "skip_existing": False,
@@ -490,7 +490,7 @@ def test_dispatcher_multi_stage_continuation_keywords_preserves_resolved_image_i
     continuation_job = {
         "id": 2393,
         "job_type": "clustering",
-        "input_path": "/mnt/d/Photos/Z8/180-600mm/2026/2026-05-10",
+        "input_path": "/mnt/d/Photos/Camera/lens-a/2026/2026-05-10",
         "queue_payload": json.dumps(payload),
         "_active_phase_code": "keywords",
     }
