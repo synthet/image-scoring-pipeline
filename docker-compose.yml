@@ -159,8 +159,11 @@ services:
       - gpu_shell_home:/root
       - hf_cache:/root/.cache/huggingface
       - torch_cache:/root/.cache/torch
-    # Override image entrypoint (webui launch.py) — idle so docker exec stays available
-    entrypoint: ["sleep", "infinity"]
+    # LAN SSH (key only). Published on all host interfaces; see GPU_SHELL_SSH_PORT.
+    ports:
+      - "${GPU_SHELL_SSH_PORT:-2222}:22"
+    # Override image entrypoint (webui launch.py). sshd, then idle for docker exec.
+    entrypoint: ["bash", "/app/scripts/docker_gpu_shell_sshd.sh"]
     gpus: all
     deploy:
       resources:
