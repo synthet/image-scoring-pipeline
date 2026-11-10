@@ -145,6 +145,61 @@ class PostgresMaintenanceTests(unittest.TestCase):
             self.assertEqual(c.fetchone()[0], 55.0)
         self.conn.rollback()
 
+    def test_recovery_replaces_rows_its_own_triggers_wrote(self):
+        # Restoring image_keywords fires the localization trigger, which writes a
+        # fresh localization_discovery_evidence row before the snapshot's own row
+        # is restored. Recovery must take the snapshot's values for rows its own
+        # transaction wrote, instead of refusing them as independent changes.
+        with self.conn.cursor() as c:
+            c.execute("SELECT keyword_id FROM localization_discovery_evidence LIMIT 1")
+            found = c.fetchone()
+            if not found:
+                self.skipTest("No localization evidence keyword in this restore")
+            keyword = found[0]
+            c.execute(
+                "INSERT INTO image_keywords(image_id,keyword_id) VALUES (%s,%s)",
+                (self.ids[0], keyword),
+            )
+            c.execute(
+                "SELECT to_jsonb(t) FROM localization_discovery_evidence t WHERE image_id=%s AND keyword_id=%s",
+                (self.ids[0], keyword),
+            )
+            before = c.fetchone()
+        self.conn.commit()
+        if before is None:
+            self.skipTest("The localization trigger wrote no evidence in this restore")
+        self.adapter.begin_batch(self.row)
+        snapshot = self.adapter.snapshot(self.row)
+        self.adapter.delete(self.row)
+        self.adapter.verify_removed(self.row)
+        self.conn.commit()
+        self.adapter.restore(self.row, snapshot)
+        self.adapter.check_identity(self.row)
+        with self.conn.cursor() as c:
+            c.execute(
+                "SELECT to_jsonb(t) FROM localization_discovery_evidence t WHERE image_id=%s AND keyword_id=%s",
+                (self.ids[0], keyword),
+            )
+            self.assertEqual(c.fetchone()[0], before[0])
+            c.execute(
+                "SELECT count(*) FROM image_keywords WHERE image_id=%s AND keyword_id=%s",
+                (self.ids[0], keyword),
+            )
+            self.assertEqual(c.fetchone()[0], 1)
+        self.conn.rollback()
+
+    def test_recovery_still_refuses_rows_changed_by_another_transaction(self):
+        self.adapter.begin_batch(self.row)
+        snapshot = self.adapter.snapshot(self.row)
+        self.adapter.delete(self.row)
+        self.conn.commit()
+        with self.conn.cursor() as c:
+            c.execute("UPDATE stacks SET name=%s WHERE id=%s", ("changed-" + self.token, self.stack))
+        self.conn.commit()
+        with self.assertRaisesRegex(SafetyError, r"public\.stacks .* columns \['name'\]"):
+            self.adapter.restore(self.row, snapshot)
+        self.conn.rollback()
+
     def test_repeated_db_delete_is_idempotent(self):
         self.adapter.begin_batch(self.row)
         self.adapter.delete(self.row)
