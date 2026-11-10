@@ -8,7 +8,7 @@
 
 ## Problem Statement
 
-Run #989 processed 3,364 images in `D:\Photos\Z8\180-600mm\2026\2026-04-08` but completed with **all images missing thumbnails** (`thumbnail_path = NULL`). The metadata phase (responsible for EXIF extraction, thumbnail generation, UUID assignment) reported "completed" with **0 work items** — it started but found no images to process.
+Run #989 processed 3,364 images in `D:\Photos\Camera\lens-a\2026\2026-04-08` but completed with **all images missing thumbnails** (`thumbnail_path = NULL`). The metadata phase (responsible for EXIF extraction, thumbnail generation, UUID assignment) reported "completed" with **0 work items** — it started but found no images to process.
 
 ### Symptoms
 

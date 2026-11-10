@@ -362,7 +362,7 @@ def test_find_active_job_collapses_windows_and_wsl_paths(monkeypatch):
         "FROM JOBS": [
             [
                 {"id": 2351, "input_path": "D:\\Photos\\Z8\\180-600mm\\2026\\2026-05-09"},
-                {"id": 2352, "input_path": "/mnt/d/Photos/Z8/180-600mm/2026/2026-05-09"},
+                {"id": 2352, "input_path": "/mnt/d/Photos/Camera/lens-a/2026/2026-05-09"},
             ],
         ],
     })
@@ -370,7 +370,7 @@ def test_find_active_job_collapses_windows_and_wsl_paths(monkeypatch):
 
     # Probe with the WSL form — should find the *first* matching active job.
     found = db.find_active_job_for_folder(
-        "/mnt/d/Photos/Z8/180-600mm/2026/2026-05-09"
+        "/mnt/d/Photos/Camera/lens-a/2026/2026-05-09"
     )
     assert found in (2351, 2352)
 
@@ -384,7 +384,7 @@ def test_find_active_job_returns_none_when_no_match(monkeypatch):
     })
     monkeypatch.setattr(db, "get_connector", lambda: fake_conn)
 
-    found = db.find_active_job_for_folder("/mnt/d/Photos/Z8/2026-05-09")
+    found = db.find_active_job_for_folder("/mnt/d/Photos/Camera/2026-05-09")
     assert found is None
 
 

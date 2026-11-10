@@ -6,7 +6,7 @@ In [modules/db_legacy.py:3643](../../modules/db_legacy.py#L3643) `register_image
 
 Meanwhile [modules/db_legacy.py:7360](../../modules/db_legacy.py#L7360) `get_phase_incomplete_sql()` defines `indexing` as incomplete when `image_hash IS NULL` — the import phase is marked "done" without producing the hash it claims to produce.
 
-Concrete example: `D:/Photos/Z8/180-600mm/2026/2026-04-09/DSC_9925.NEF` (image id 134849) — a Nikon NEF that after Import has no hash, no size, no dimensions, no capture time, no sidecar linkage, no preview. Every downstream phase has to re-stat, re-open, and re-probe the file.
+Concrete example: `D:/Photos/Camera/lens-a/2026/2026-04-09/DSC_9925.NEF` (image id 134849) — a Nikon NEF that after Import has no hash, no size, no dimensions, no capture time, no sidecar linkage, no preview. Every downstream phase has to re-stat, re-open, and re-probe the file.
 
 ## Goal
 

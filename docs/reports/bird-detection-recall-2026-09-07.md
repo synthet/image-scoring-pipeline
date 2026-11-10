@@ -23,7 +23,7 @@ accurate (see [Box accuracy](#box-accuracy)).
 ## Evidence
 
 All 59 export JPEGs resolve to indexed rows under
-`/mnt/d/Photos/Z8/180-600mm/2026/2026-08-23`. State counts:
+`/mnt/d/Photos/Camera/lens-a/2026/2026-08-23`. State counts:
 
 | `images.bird_bbox` state | Count |
 |--------------------------|-------|

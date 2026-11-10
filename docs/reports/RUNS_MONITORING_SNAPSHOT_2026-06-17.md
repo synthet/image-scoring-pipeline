@@ -22,7 +22,7 @@ Point-in-time capture of `/ui/runs` and backing APIs while auto-drive was active
 
 ## Dispatcher (snapshot time)
 
-- **Active runner**: `metadata` on job **4168** (`/mnt/d/Photos/Z8/180-600mm/2025/2025-11-09`).
+- **Active runner**: `metadata` on job **4168** (`/mnt/d/Photos/Camera/lens-a/2025/2025-11-09`).
 - **Queued**: **4169** (metadata multi-phase, `2025-11-11`), **4170** (maintenance).
 - **Run 4168 metadata progress**: 124 IPS `done`, 1 `running`; **412** `auditlog` rows for `run_id=4168`.
 

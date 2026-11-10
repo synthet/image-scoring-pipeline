@@ -57,7 +57,7 @@ For culling that predicate delegates to `get_culling_incomplete_predicate_sql` (
 
 `reconcile_stale_running_image_phases` (`db_legacy.py:6345`) flips rows `running → failed` with a raw UPDATE and never called `invalidate_folder_phase_aggregates`. Its sibling `reconcile_stale_running_phases_for_jobs` collects `folder_ids` before the update (`:7912`) and invalidates after (`:8001`).
 
-A container restart on 2026-08-31 interrupted selection job 6696 on `/mnt/d/Photos/Z8/180-600mm/2026/2026-08-23`. The no-heartbeat reaper flipped its 4,898 `running` culling rows to `failed` at 13:34-13:45, but `folders.phase_agg_json` kept a `culling: running 4898` snapshot from 05:09 with `phase_agg_dirty = 0`. `_build_bucket_from_summary` (`runs_autodrive.py:1388`) read `running > 0`, bucketed the folder `in_flight`, and the drive reported `waiting_in_flight` with `schedulable 0` — **for eight hours, waiting on a job that had already finished**.
+A container restart on 2026-08-31 interrupted selection job 6696 on `/mnt/d/Photos/Camera/lens-a/2026/2026-08-23`. The no-heartbeat reaper flipped its 4,898 `running` culling rows to `failed` at 13:34-13:45, but `folders.phase_agg_json` kept a `culling: running 4898` snapshot from 05:09 with `phase_agg_dirty = 0`. `_build_bucket_from_summary` (`runs_autodrive.py:1388`) read `running > 0`, bucketed the folder `in_flight`, and the drive reported `waiting_in_flight` with `schedulable 0` — **for eight hours, waiting on a job that had already finished**.
 
 It was a deadlock: the reconcile that would repair it runs in `_apply_preflight`, which only executes once a run is planned, and no run is planned while the drive is waiting.
 

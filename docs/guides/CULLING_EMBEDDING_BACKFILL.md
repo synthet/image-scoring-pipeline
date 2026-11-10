@@ -250,7 +250,7 @@ bash scripts/research/clip_culling/resume_recluster.sh
 DETACH=1 bash scripts/research/clip_culling/resume_recluster.sh
 
 # Single folder
-python scripts/research/clip_culling/recluster_single_folder.py /mnt/d/Photos/Z8/180-600mm/2026/2026-06-14
+python scripts/research/clip_culling/recluster_single_folder.py /mnt/d/Photos/Camera/lens-a/2026/2026-06-14
 ```
 
 **Prerequisites:** Docker Postgres on `127.0.0.1:5432` (`docker compose up -d db`; if

@@ -14,7 +14,7 @@ except ImportError:
 
 
 if __name__ == "__main__":
-    TARGET_FILE = r"D:/Photos/Z8/180-600mm/2025/2025-11-01/DSC_3953.NEF"
+    TARGET_FILE = r"D:/Photos/Camera/lens-a/2025/2025-11-01/DSC_3953.NEF"
 
     if not os.path.exists(TARGET_FILE):
         print("File not found")

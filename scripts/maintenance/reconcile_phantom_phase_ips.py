@@ -27,7 +27,7 @@ Usage (WSL, project root):
   python scripts/maintenance/reconcile_phantom_phase_ips.py --apply
 
   # Scope to one folder, or pick phases explicitly
-  python scripts/maintenance/reconcile_phantom_phase_ips.py --apply --scope /mnt/d/Photos/Z8/180-600mm/2026/2026-05-24
+  python scripts/maintenance/reconcile_phantom_phase_ips.py --apply --scope /mnt/d/Photos/Camera/lens-a/2026/2026-05-24
   python scripts/maintenance/reconcile_phantom_phase_ips.py --apply --phases scoring keywords culling
 """
 from __future__ import annotations

@@ -89,7 +89,7 @@ Cross-checks `image_phase_status` against real columns (`scores`, `keywords`, `i
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)/FirebirdLinux/Firebird-5.0.0.1306-0-linux-x64/opt/firebird/lib
 source ~/.venvs/tf/bin/activate
 python scripts/analysis/analyze_phase_status.py
-python scripts/analysis/analyze_phase_status.py --folder /mnt/d/Photos/Z8 --output /tmp/phase_report.json
+python scripts/analysis/analyze_phase_status.py --folder /mnt/d/Photos/Camera --output /tmp/phase_report.json
 ```
 
 ### Write: targeted DB repairs

@@ -10,7 +10,7 @@ Snapshot of bugs, defects, and gaps in job/run orchestration derived from `webui
 
 ### 1.1 `MultiModelMUSIQ.load_model` AttributeError (6 recent failures)
 
-- **Symptom:** `Error loading models: 'MultiModelMUSIQ' object has no attribute 'load_model'` — jobs 1239/1242/1244/1245 (Apr 16 04:49–05:06) all on `/mnt/d/Photos/Z8/180-600mm/2026/2026-04-09`.
+- **Symptom:** `Error loading models: 'MultiModelMUSIQ' object has no attribute 'load_model'` — jobs 1239/1242/1244/1245 (Apr 16 04:49–05:06) all on `/mnt/d/Photos/Camera/lens-a/2026/2026-04-09`.
 - **Reality:** `scripts/python/run_all_musiq_models.py:867` defines `load_model`. Same import path succeeds for other runs.
 - **Suspect:** `modules/scoring.py:27` sets `MultiModelMUSIQ = None` when import fails; a partial / swallowed import on some cold starts leaves `MultiModelMUSIQ` bound to a stub that lacks `load_model`, yet is not `None` (so the `_musiq_import_error` guard at `modules/scoring.py:126` is bypassed). Intermittent; likely an import-order race.
 - **Fix direction:** Harden the import guard — verify `hasattr(MultiModelMUSIQ, 'load_model')` before instantiation, or surface the real `_musiq_import_error` consistently.

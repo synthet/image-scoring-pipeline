@@ -3,7 +3,7 @@
 Unmark a folder as fully scored to allow re-scoring.
 
 Usage:
-    python scripts/unmark_folder.py --folder /mnt/d/Photos/Z8/180-600mm/2026/2026-01-25
+    python scripts/unmark_folder.py --folder /mnt/d/Photos/Camera/lens-a/2026/2026-01-25
     python scripts/unmark_folder.py --folder "D:\\Photos\\Z8\\2026"
 """
 import argparse

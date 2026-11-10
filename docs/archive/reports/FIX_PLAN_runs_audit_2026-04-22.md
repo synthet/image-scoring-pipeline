@@ -56,12 +56,12 @@ This makes the skip self-healing even if Change A misses an edge case.
   ```sql
   UPDATE folders SET is_fully_scored = 0
    WHERE path IN (
-     '/mnt/d/Photos/Z8/105mm/2026/2026-03-12',
-     '/mnt/d/Photos/Z8/105mm/2026/2026-03-19',
-     '/mnt/d/Photos/Z8/180-600mm/2026/2026-03-14',
-     '/mnt/d/Photos/Z8/180-600mm/2026/2026-03-22',
-     '/mnt/d/Photos/Z8/180-600mm/2026/2026-03-28',
-     '/mnt/d/Photos/Z8/180-600mm/2026/2026-04-02',
+     '/mnt/d/Photos/Camera/lens-b/2026/2026-03-12',
+     '/mnt/d/Photos/Camera/lens-b/2026/2026-03-19',
+     '/mnt/d/Photos/Camera/lens-a/2026/2026-03-14',
+     '/mnt/d/Photos/Camera/lens-a/2026/2026-03-22',
+     '/mnt/d/Photos/Camera/lens-a/2026/2026-03-28',
+     '/mnt/d/Photos/Camera/lens-a/2026/2026-04-02',
      '/mnt/d/Photos/Z6ii/28-400mm/2026/2026-03-15'
    );
   ```

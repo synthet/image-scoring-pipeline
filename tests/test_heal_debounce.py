@@ -15,7 +15,7 @@ def _reset_state():
 def test_first_call_runs_then_debounced(monkeypatch):
     _reset_state()
     monkeypatch.setattr(db_legacy, "_HEAL_DEBOUNCE_SECONDS", 5.0)
-    path = "/mnt/d/Photos/Z8/180-600mm/2026/2026-05-24"
+    path = "/mnt/d/Photos/Camera/lens-a/2026/2026-05-24"
     # First call for a folder runs.
     assert db_legacy._should_run_heal(path) is True
     # Immediate repeat (concurrent/duplicate force_refresh) is suppressed.
