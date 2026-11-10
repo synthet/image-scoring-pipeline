@@ -35,7 +35,7 @@ LABEL_CHOICES = ("usable", "poor_crop", "wrong_target", "no_bird", "unsure")
 NOTE_HINTS = {
     "no_bird": r"\bnot a bird\b|\bno bird\b",
     "poor_crop": r"clipped|\bcut\b|outside|too (tight|loose)",
-    "wrong_target": r"wrong (bird|target)|other bird|two birds|several birds",
+    "wrong_target": r"wrong (bird|target)|other bird|two birds|several birds|not the \w+ bird",
 }
 
 
