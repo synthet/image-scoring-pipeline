@@ -32,7 +32,7 @@ Replacing the teacher ensemble (MUSIQ, LIQE, TOPIQ, Q-Align) with one multi-head
 | [STUDENT_SCORER_RESULTS.md](STUDENT_SCORER_RESULTS.md) | **Append-only** run register — failures recorded as failures |
 | [STUDENT_SCORER_E2_CHECKPOINT.md](STUDENT_SCORER_E2_CHECKPOINT.md) | E2 human review gate — P0 render cache complete |
 | [STUDENT_SCORER_MODEL_CARD.md](STUDENT_SCORER_MODEL_CARD.md) | Model card template for a shadow-ready checkpoint |
-| [SESSION_STUDENT_SCORER_E2_2026-08-05.md](SESSION_STUDENT_SCORER_E2_2026-08-05.md) | Session record — render resume fix, 66k P0 cache, ConvNeXt train in flight |
+| SESSION_STUDENT_SCORER_E2_2026-08-05.md (private archive) | Session record — render resume fix, 66k P0 cache, ConvNeXt train in flight |
 
 **Status as of 2026-08-05:** E0 and E1 failed all three fidelity gates. The P0 render cache is complete
 (66,473 of 66,485 ok). The E2 seed-42 train was still running at last record with no gate outcome.

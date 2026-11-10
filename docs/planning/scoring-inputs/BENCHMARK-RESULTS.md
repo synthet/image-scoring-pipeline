@@ -13,7 +13,7 @@ Decision: **HOLD for every model and shared-cache scoring adoption**. Keep exist
 
 ## Frozen sample and exclusions
 
-The owner supplied `D:/Dropbox/Photos/Scoring/model-selection-2026-10-01`. Study `fe26c0e771036242`, sampling seed 20261001, uses a frozen library snapshot and human blind reviews. The study's initial REPORT.md predates the completed labels; the latest completed human review per unit was read from one export, without pooling duplicate exports.
+The owner supplied `<mirror-dir>/model-selection-2026-10-01`. Study `fe26c0e771036242`, sampling seed 20261001, uses a frozen library snapshot and human blind reviews. The study's initial REPORT.md predates the completed labels; the latest completed human review per unit was read from one export, without pooling duplicate exports.
 
 Of 130 completed human-reviewed units, 94 single-image units were excluded from within-group pick agreement. Four multi-image units were all-reject and had no starred best; they were excluded from forced-pick evaluation and must be retained for a future reject-all policy evaluation. The remaining **32 units (14 bursts, 18 stacks), 24 independent blocks and 121 unique accessible NEFs** form this comparison. There are no duplicate image sets. Split membership was preserved: 22 train, eight validation and **two test units**. No model training or tuning was performed.
 

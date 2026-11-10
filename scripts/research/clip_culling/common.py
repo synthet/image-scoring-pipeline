@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shared scaffolding for the OpenCLIP L/14 head spike harness (throwaway research).
 
-Plan: ``C:\\Users\\owner\\.cursor\\plans\\openclip_l14_head_spike_36b9b9aa.plan.md``.
+Plan: ``~/.cursor\\plans\\openclip_l14_head_spike_36b9b9aa.plan.md``.
 References: ``scripts/research/clip_culling/REFERENCES.md``.
 
 Write boundary

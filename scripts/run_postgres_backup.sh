@@ -12,7 +12,7 @@
 #   CONFIG_PATH           — alternate config.json
 #   BACKUP_DIR            — primary dump folder (default: <repo>/backups/postgres)
 #   RETENTION_DAYS        — prune primary dumps older than N days (default: 30, 0=skip)
-#   MIRROR_DIR            — mirror folder (default: Windows D:\Dropbox\Photos\Scoring)
+#   MIRROR_DIR            — mirror folder (default: $SCORING_BACKUP_MIRROR; empty skips mirror)
 #   MIRROR_RETENTION_DAYS — prune mirror dumps older than N days (default: 7, 0=no prune)
 
 set -euo pipefail
@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PS_SCRIPT="$REPO_ROOT/scripts/powershell/Backup-Postgres.ps1"
 
-DEFAULT_MIRROR_WINDOWS='D:\Dropbox\Photos\Scoring'
+DEFAULT_MIRROR_WINDOWS="${SCORING_BACKUP_MIRROR:-}"
 MIRROR_DIR="${MIRROR_DIR:-$DEFAULT_MIRROR_WINDOWS}"
 MIRROR_RETENTION_DAYS="${MIRROR_RETENTION_DAYS:-7}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"

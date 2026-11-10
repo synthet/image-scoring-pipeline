@@ -1,3 +1,13 @@
+---
+type: Report
+title: Auto-drive reprocessing investigation
+description: Investigation of auto-drive re-queuing folders whose images and phases were already done.
+resource: docs/reports/AUTODRIVE_REPROCESSING_INVESTIGATION_2026-05-26.md
+tags: [auto-drive, runs, reprocessing, investigation]
+timestamp: 2026-05-26T00:00:00Z
+okf_version: 0.2
+---
+
 # Auto-drive reprocessing investigation — 2026-05-26
 
 **Reporter:** owner (Claude Opus 4.7 assist)

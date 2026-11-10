@@ -145,5 +145,5 @@ Cropping helps most exactly when the bird is small in frame. Confidence rising a
 
 ## See also
 
-- Session record (build + corrections + Cursor close-out): [`SESSION_BIRD_CROP_FOCUS_2026-08-05.md`](SESSION_BIRD_CROP_FOCUS_2026-08-05.md)
+- Session record (build + corrections + Cursor close-out): `SESSION_BIRD_CROP_FOCUS_2026-08-05.md` (private archive)
 - Dual-arc hub: [`RESEARCH_SESSIONS_2026-08-05.md`](RESEARCH_SESSIONS_2026-08-05.md)

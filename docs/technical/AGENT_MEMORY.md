@@ -1,3 +1,13 @@
+---
+type: Guide
+title: Agent memory consolidation
+description: How agent session memory is logged, consolidated and promoted, and where its config lives.
+resource: docs/technical/AGENT_MEMORY.md
+tags: [agent-memory, transcripts, tooling]
+timestamp: 2026-11-10T00:00:00Z
+okf_version: 0.2
+---
+
 # Agent memory consolidation
 
 **Status:** Shipped (v1, deterministic merge). **Authority for daily use:** [`.agent-memory/CURSOR_USAGE.md`](../../.agent-memory/CURSOR_USAGE.md).
@@ -65,7 +75,7 @@ flowchart LR
 
 ### Config
 
-- [`scripts/transcript_mining/workspace_map.json`](../../scripts/transcript_mining/workspace_map.json) — Cursor workspace → repo names
+- [`scripts/transcript_mining/workspace_map.example.json`](../../scripts/transcript_mining/workspace_map.example.json) — Cursor workspace → repo names (copy to gitignored `workspace_map.json` for local roots)
 - [`scripts/transcript_mining/repo_profiles.json`](../../scripts/transcript_mining/repo_profiles.json) — tier A/B/C per repo
 - Package: [`scripts/agent_memory/transcripts.py`](../../scripts/agent_memory/transcripts.py)
 - Tests: [`tests/test_transcript_mining.py`](../../tests/test_transcript_mining.py)

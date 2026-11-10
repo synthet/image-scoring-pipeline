@@ -1,3 +1,13 @@
+---
+type: Report
+title: Code review of 2026-04-15 changes
+description: Audit of the 47 commits landed on 2026-04-15 with findings and follow-ups.
+resource: docs/reports/CODE_REVIEW_2026-04-15.md
+tags: [code-review, audit]
+timestamp: 2026-04-16T00:00:00Z
+okf_version: 0.2
+---
+
 # Code Review — 2026-04-15 Changes
 
 **Range reviewed:** `aaeca35..61c36b1` on `master` (47 commits, 79 files, +3068 / -2998)
@@ -107,7 +117,7 @@ This single commit is the main concern of this review. It bundles multiple unrel
 | File | Size | Problem |
 |------|------|---------|
 | `_db_methods.txt` | 32 KB, UTF-16 binary | Dump of db.py method signatures; dev scratch |
-| `analyze_dump.py` | 39 lines | **Contains hardcoded personal path** `c:\Users\owner\.claude\projects\d--Projects-image-scoring-pipeline\3d8d3903-c0d3-45d9-8a54-73dece21c79c.jsonl` (a Claude Code transcript UUID). Privacy/info-leak. |
+| `analyze_dump.py` | 39 lines | **Contains hardcoded personal path** `~\.claude\projects\d--Projects-image-scoring-pipeline\3d8d3903-c0d3-45d9-8a54-73dece21c79c.jsonl` (a Claude Code transcript UUID). Privacy/info-leak. |
 | `fix_all_backups_state.json` | 13 lines | Local script state (`H_junk: done`, `H_meta_z6ii: failed`...). Should be runtime state, not tracked. |
 | `docker_refresh_db.bat` | 48 lines | Local dev convenience; may be legitimate but add to `tools/` with a README entry, not repo root. |
 | `image-scoring-pipeline.sln` | 47 lines | Visual Studio solution file — fine if the team uses VS, but add to repo-root conventions doc or move to `.ide/`. |

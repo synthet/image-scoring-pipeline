@@ -354,3 +354,12 @@ GEMINI.md
 
 # Generated source-command aliases (duplicates of tracked framework-* skills)
 /.agents/skills/source-command-*/
+
+# Personal data kept local-only (photo-library inventories, session digests)
+/reports/clip-culling/prompt-quality/**/*.csv
+/api_output.json
+/reports/clip-culling/pick_review_manifest.json
+/notebooklm_docs.md
+/scripts/transcript_mining/workspace_map.json
+/docs/reports/SESSION_*.md
+**/_local/

@@ -20,8 +20,8 @@ Drop articles, papers, PDFs, images, and other reference material here. Use `/wi
 | [codebase-size-audit-2026-06-30-gallery.json](codebase-size-audit-2026-06-30-gallery.json) | Gallery LoC audit machine output (2026-06-30) |
 | [codebase-size-audit-2026-07-01-backend.json](codebase-size-audit-2026-07-01-backend.json) | Backend LoC audit machine output (2026-07-01) |
 | [codebase-size-audit-2026-07-01-gallery.json](codebase-size-audit-2026-07-01-gallery.json) | Gallery LoC audit machine output (2026-07-01) |
-| [picked-advisory-forensics-2026-06-21.json](picked-advisory-forensics-2026-06-21.json) | Agent cull picked-advisory forensics |
-| [2026-08-05-bird-crop-closeout-cursor.md](2026-08-05-bird-crop-closeout-cursor.md) | Cursor bird-crop study close-out session scratch (2026-08-05) |
-| [2026-08-05-student-scorer-e2-cursor.md](2026-08-05-student-scorer-e2-cursor.md) | Cursor student-scorer E2 session scratch (2026-08-05) |
+| picked-advisory-forensics-2026-06-21.json (private archive) | Agent cull picked-advisory forensics |
+| 2026-08-05-bird-crop-closeout-cursor.md (private archive) | Cursor bird-crop study close-out session scratch (2026-08-05) |
+| 2026-08-05-student-scorer-e2-cursor.md (private archive) | Cursor student-scorer E2 session scratch (2026-08-05) |
 | [2026-09-27-visual-domain-router-design.md](2026-09-27-visual-domain-router-design.md) | Visual domain router and specialist image analysis design proposal (user-provided, 2026-09-27); ingested as [planning/visual-domain-router.md](../planning/visual-domain-router.md) |
-| [2026-08-01-student-scorer-e2-claude.md](2026-08-01-student-scorer-e2-claude.md) | Claude E2 P0 render → train session scratch (2026-08-01→05) |
+| 2026-08-01-student-scorer-e2-claude.md (private archive) | Claude E2 P0 render → train session scratch (2026-08-01→05) |

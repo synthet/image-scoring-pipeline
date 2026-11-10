@@ -1,7 +1,7 @@
 ---
 name: backup-db
 description: >-
-  PostgreSQL custom-format backup for image-scoring-pipeline via Backup-Postgres.ps1. Use when the user runs /backup-db, asks for a local pg_dump, database backup, or Postgres dump. Default workflow keeps at most 3 dumps in backups/postgres and mirrors the latest copy to D:\Dropbox\Photos\Scoring (also capped at 3 files).
+  PostgreSQL custom-format backup for image-scoring-pipeline via Backup-Postgres.ps1. Use when the user runs /backup-db, asks for a local pg_dump, database backup, or Postgres dump. Default workflow keeps at most 3 dumps in backups/postgres and mirrors the latest copy to <mirror-dir> (also capped at 3 files).
 disable-model-invocation: true
 ---
 
@@ -18,14 +18,14 @@ Always pass **mirror** arguments and **count-based retention** so both locations
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\Backup-Postgres.ps1 `
   -MaxBackups 3 `
-  -MirrorDir "D:\Dropbox\Photos\Scoring" `
+  -MirrorDir "<mirror-dir>" `
   -MirrorMaxBackups 3 `
   -RetentionDays 0 `
   -MirrorRetentionDays 0
 ```
 
 - **Primary directory:** `backups\postgres` under repo root (default).
-- **Mirror directory:** `D:\Dropbox\Photos\Scoring` — created if missing.
+- **Mirror directory:** `<mirror-dir>` — created if missing.
 - **Rotation:** after each successful dump, oldest files beyond the third newest are deleted in each folder (newest kept by `LastWriteTime`).
 
 ## Without mirror
