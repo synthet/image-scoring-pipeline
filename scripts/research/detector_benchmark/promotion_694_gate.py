@@ -5,6 +5,7 @@ Run in gpu-shell: python -m scripts.research.detector_benchmark.promotion_694_ga
     analyze --calibration <new.json> --manifest <blind-manifest.json>
             --panel <panel.json> [--adjudications <json>] --output <new.json>
     calibrate-r3 --panel <panel.json> --output <new.json>
+    analyze-owner --record <owner-record.json> --output <new.json>
 All outputs are local, create-only artifacts; frozen inputs are never rewritten.
 """
 from __future__ import annotations
@@ -356,6 +357,53 @@ def analyze_bands(frames, labels):
     return result
 
 
+
+def owner_bands(sample, items, record, delegated_unresolved=False):
+    """Owner-labelled route (2026-11-09): all 13 batches, every frame once, ``unsure`` unresolved.
+
+    ``delegated_unresolved`` is the amendment's sensitivity: judge/Jev verdicts count as unresolved.
+    """
+    from scripts.research.detector_benchmark import promotion_694_owner as owner
+
+    batches = [b["batch"] for b in record["batches"]]
+    rows = [row for b in record["batches"] for row in b["rows"]]
+    batch_of = {r["token"]: r["batch"] for r in items}
+    if batches != list(range(1, owner.BATCHES + 1)) or sorted(r["token"] for r in rows) != sorted(batch_of):
+        raise ValueError("the owner record must cover all 390 frames in 13 batches")
+    for b in record["batches"]:
+        if any(row["batch"] != b["batch"] or batch_of[row["token"]] != b["batch"] for row in b["rows"]):
+            raise ValueError("owner record row is in the wrong batch")
+    if any(row["label"] not in owner.LABEL_CHOICES for row in rows):
+        raise ValueError("unknown owner label")
+    labels = {row["token"]: None if row["label"] == "unsure" or (delegated_unresolved and row.get("resolved_by"))
+              else row["label"] for row in rows}
+    token = {r["image_id"]: r["token"] for r in items}
+    frames = [{"id": token[r["image_id"]], "band": r["band"], "folder_id": r["folder_id"]} for r in sample]
+    return analyze_bands(frames, labels)
+
+
+def owner_report(root, repo, sample, frozen, record_path):
+    from scripts.research.detector_benchmark import promotion_694_owner as owner
+
+    items = owner.load_frozen(root, sample)
+    manifest = read_json(root / owner.MANIFEST)
+    if manifest["freeze_sha256"] != owner.FREEZE_SHA256 or [r["id"] for r in manifest["items"]] != [
+            r["token"] for r in items]:
+        raise ValueError("owner sample manifest belongs to a different freeze or order")
+    by_id = {r["image_id"]: r for r in sample}
+    for row, item in zip(manifest["items"], items):
+        if row["image_id"] != item["image_id"] or any(
+                row[k] != by_id[row["image_id"]][k] for k in ("band", "folder_id", "run_id", "region_id",
+                                                               "rendition_hash")):
+            raise ValueError("owner sample identity changed")
+        verify_blind_files(repo, row, manifest["sha256"])
+    record = read_json(record_path)
+    return {"status": "analyzed", "route": "owner_labels", "bands": owner_bands(sample, items, record),
+            "delegated": sum(bool(r.get("resolved_by")) for b in record["batches"] for r in b["rows"]),
+            "bands_delegated_unresolved": owner_bands(sample, items, record, delegated_unresolved=True),
+            "record_sha256": sha256(record_path), "manifest_sha256": sha256(root / owner.MANIFEST),
+            "owner_freeze_sha256": owner.FREEZE_SHA256, "frozen_files": frozen["files"], "promotions": 0}
+
 def verify_amendment(root):
     path = root / "freeze-receipt-judges-20261105.json"
     if sha256(path) != JUDGE_FREEZE_SHA256:
@@ -477,6 +525,9 @@ def main():
     parser.add_argument("--root", type=Path, default=Path(".agent/scratch/promotion-694"))
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("verify")
+    owner_cmd = sub.add_parser("analyze-owner")
+    owner_cmd.add_argument("--record", type=Path, required=True)
+    owner_cmd.add_argument("--output", type=Path, required=True)
     for action in ("calibrate", "analyze", "calibrate-r3"):
         cmd = sub.add_parser(action)
         cmd.add_argument("--panel", type=Path, action="append", required=True)
@@ -492,7 +543,9 @@ def main():
     if args.command == "verify":
         print(json.dumps({"status": "verified", "frames": len(sample), "files": frozen["files"]}))
         return
-    if args.command == "calibrate":
+    if args.command == "analyze-owner":
+        result = owner_report(root, repo, sample, frozen, args.record)
+    elif args.command == "calibrate":
         result = calibration_report(root, repo, args.panel)
     elif args.command == "calibrate-r3":
         result = calibration_report_r3(root, repo, args.panel)
@@ -538,7 +591,8 @@ def main():
                   "frozen_files": frozen["files"], "promotions": 0}
         result["calibration_sha256"] = sha256(args.calibration)
         result["adjudications_sha256"] = sha256(args.adjudications) if args.adjudications else None
-    result["panels"] = [str(inside(repo, p).relative_to(repo)) for p in args.panel]
+    if args.command != "analyze-owner":
+        result["panels"] = [str(inside(repo, p).relative_to(repo)) for p in args.panel]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("x", encoding="utf-8") as handle:
         json.dump(result, handle, indent=2, allow_nan=False)
