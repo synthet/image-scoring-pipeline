@@ -344,6 +344,20 @@ class PostgresAdapter:
                 raise SafetyError("Non-FK dependent image row remains")
         self.conn.rollback()
 
+    def _written_here(self, table, keys, row):
+        """True when the live row was last written by the current transaction."""
+        where = sql.SQL(" AND ").join(
+            sql.SQL("{}=%s").format(sql.Identifier(k)) for k in keys
+        )
+        own = self.query(
+            sql.SQL(
+                "SELECT (t.xmin::text::bigint = pg_current_xact_id()::text::bigint %% 4294967296)"
+                " AS own FROM {} t WHERE {}"
+            ).format(sql.Identifier(*table), where),
+            tuple(row[k] for k in keys),
+        )
+        return bool(own) and bool(own[0]["own"])
+
     def _insert_rows(self, table, rows, ignore_columns=()):
         columns = self.schema[table]
         primary = self.query(
@@ -382,12 +396,22 @@ class PostgresAdapter:
                     for k in compare.keys() | actual.keys()
                     if compare.get(k) != actual.get(k)
                 }
-                if any(k not in set_null or actual.get(k) is not None for k in changed):
+                blocking = sorted(
+                    k for k in changed if k not in set_null or actual.get(k) is not None
+                )
+                if blocking and not self._written_here(table, keys, row):
+                    # Name the relation, key and columns (never values) so a refusal
+                    # can be diagnosed without reading the frozen snapshot.
                     raise SafetyError(
-                        "Recovery would overwrite an independently changed database row"
+                        "Recovery would overwrite an independently changed database row: "
+                        f"{table[0]}.{table[1]} "
+                        f"{dict((k, row[k]) for k in keys)} columns {blocking}"
                     )
-                if changed:
-                    names = sorted(changed)
+                # Rows written by this recovery transaction (its own triggers, e.g.
+                # localization evidence when image_keywords is restored) take the
+                # snapshot's values; anything older still refuses above.
+                names = sorted(k for k in changed if k in row)
+                if names:
                     with self.conn.cursor() as c:
                         c.execute(
                             sql.SQL("UPDATE {} SET {} WHERE {}").format(
@@ -439,6 +463,11 @@ class PostgresAdapter:
                             )
                     adjusted = [{**r, "best_image_id": None} for r in tables[table]]
                     self._insert_rows(table, adjusted, ("best_image_id",))
+            restored = {
+                t: rs
+                for t, rs in tables.items()
+                if t not in (("public", "stacks"), ("public", "sub_stacks"))
+            }
             self._insert_rows(("public", "images"), tables.pop(("public", "images")))
             pending = {
                 t: rs
@@ -460,6 +489,11 @@ class PostgresAdapter:
                     progress = True
                 if not progress:
                     raise SafetyError("Unresolved recovery dependency cycle")
+            # Triggers fired by later inserts can rewrite rows restored earlier in
+            # this transaction. Re-apply the snapshot: identical rows are a no-op,
+            # rows this transaction changed are set back, anything else refuses.
+            for table, rows in restored.items():
+                self._insert_rows(table, rows)
             with self.conn.cursor() as c:
                 for table in (("public", "stacks"), ("public", "sub_stacks")):
                     for old in tables.get(table, []):
