@@ -382,9 +382,15 @@ class PostgresAdapter:
                     for k in compare.keys() | actual.keys()
                     if compare.get(k) != actual.get(k)
                 }
-                if any(k not in set_null or actual.get(k) is not None for k in changed):
+                conflicts = sorted(
+                    k for k in changed if k not in set_null or actual.get(k) is not None
+                )
+                if conflicts:
+                    # Names only: column values may hold paths or other user data.
+                    key = ",".join(f"{k}={row[k]}" for k in keys)
                     raise SafetyError(
-                        "Recovery would overwrite an independently changed database row"
+                        "Recovery would overwrite an independently changed database row: "
+                        f"{table[0]}.{table[1]} ({key}) columns {', '.join(conflicts)}"
                     )
                 if changed:
                     names = sorted(changed)
