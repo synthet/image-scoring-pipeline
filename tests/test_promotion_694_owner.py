@@ -77,6 +77,10 @@ def test_note_conflicts_flag_a_note_that_names_another_outcome():
     flagged = owner.note_conflicts({"v001": "usable", "v002": "poor_crop", "v003": "usable"},
                                    {"v001": "not a bird", "v002": "head clipped", "v003": ""})
     assert flagged == ["v001"]
+    multi = owner.note_conflicts({"v002": "usable", "v005": "usable", "v007": "wrong_target"},
+                                 {"v002": "perhaps not the best bird", "v005": "not the largest bird",
+                                  "v007": "not the best bird is picked"})
+    assert multi == ["v002", "v005"]
 
 
 def test_analysis_needs_every_batch(tmp_path):
