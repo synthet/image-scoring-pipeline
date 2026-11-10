@@ -9,7 +9,7 @@ okf_version: 0.2
 ---
 # Orientation research corrections and evaluation gates
 
-Reviewed the supplied `C:/Users/dmnsy/Downloads/deep-research-report.md` against our code and primary sources. The report is research input; its proposed commands and camera heuristics are not implementation instructions. Follow-up: [#570](https://github.com/synthet/image-scoring-pipeline/issues/570), [evaluation task](03-preprocessing-evaluation.md), [verification](VERIFICATION.md).
+Reviewed the supplied `~/Downloads/deep-research-report.md` against our code and primary sources. The report is research input; its proposed commands and camera heuristics are not implementation instructions. Follow-up: [#570](https://github.com/synthet/image-scoring-pipeline/issues/570), [evaluation task](03-preprocessing-evaluation.md), [verification](VERIFICATION.md).
 
 ## Corrections affecting implementation
 

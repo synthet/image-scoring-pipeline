@@ -110,10 +110,13 @@ def resolve_repo_path(projects_root: Path, repo_name: str) -> Path:
 
 
 def load_workspace_config(config_dir: Path) -> tuple[dict[str, Any], dict[str, Any], Path, Path]:
-    workspace_map = load_json_config(config_dir / "workspace_map.json")
+    map_path = config_dir / "workspace_map.json"
+    if not map_path.exists():
+        map_path = config_dir / "workspace_map.example.json"
+    workspace_map = load_json_config(map_path)
     repo_profiles = load_json_config(config_dir / "repo_profiles.json")
-    projects_root = Path(workspace_map.get("projects_root", "D:/Projects"))
-    cursor_root = Path(workspace_map.get("cursor_projects_root", ""))
+    projects_root = Path(workspace_map.get("projects_root", "D:/Projects")).expanduser()
+    cursor_root = Path(workspace_map.get("cursor_projects_root", "")).expanduser()
     return workspace_map, repo_profiles, projects_root, cursor_root
 
 

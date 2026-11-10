@@ -200,5 +200,5 @@ What the phase *does* leave behind is `modules/focus_quality.py`: a noise-aware 
 
 ## See also
 
-- Session record (Phase 4 build + Cursor addendum): [`SESSION_BIRD_CROP_FOCUS_2026-08-05.md`](SESSION_BIRD_CROP_FOCUS_2026-08-05.md)
+- Session record (Phase 4 build + Cursor addendum): `SESSION_BIRD_CROP_FOCUS_2026-08-05.md` (private archive)
 - Dual-arc hub: [`RESEARCH_SESSIONS_2026-08-05.md`](RESEARCH_SESSIONS_2026-08-05.md)

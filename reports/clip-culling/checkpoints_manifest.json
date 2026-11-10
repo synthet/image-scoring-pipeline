@@ -30,7 +30,7 @@
   },
   "aesthetic_head": {
     "url": "https://github.com/christophschuhmann/improved-aesthetic-predictor/raw/main/sac+logos+ava1-l14-linearMSE.pth",
-    "path": "/home/dmnsy/.cache/clip_culling/sac+logos+ava1-l14-linearMSE.pth",
+    "path": "~/.cache/clip_culling/sac+logos+ava1-l14-linearMSE.pth",
     "size": 3714759,
     "sha256": "21dd590f3ccdc646f0d53120778b296013b096a035a2718c9cb0d511bff0f1e0"
   }

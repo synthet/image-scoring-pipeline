@@ -10,7 +10,7 @@ okf_version: 0.2
 
 # Phantom culling `done` — folders that were never clustered
 
-**Reporter:** dmnsy (Claude Opus 5 assist)
+**Reporter:** owner (Claude Opus 5 assist)
 **Trigger:** Gallery showed 883 images from 2026-08-25 as 883 separate tiles with the Stacks toggle on, including obvious ten-frame bursts.
 **Status:** Fixed — [PR #343](https://github.com/synthet/image-scoring-pipeline/pull/343), closing [#340](https://github.com/synthet/image-scoring-pipeline/issues/340) and [#341](https://github.com/synthet/image-scoring-pipeline/issues/341). Backlog re-clustered; [#342](https://github.com/synthet/image-scoring-pipeline/issues/342) filed and deliberately not started.
 **See also:** [CULLING_NO_STACKS_INVESTIGATION_2026-03-15.md](CULLING_NO_STACKS_INVESTIGATION_2026-03-15.md) — the *same symptom* from a different cause (SelectionRunner phase-order bug, fixed 2026-03). Check both when "culling done but no stacks" recurs. Also [AUTODRIVE_REPROCESSING_INVESTIGATION_2026-05-26.md](AUTODRIVE_REPROCESSING_INVESTIGATION_2026-05-26.md) — a different auto-drive defect in the same policy layer.

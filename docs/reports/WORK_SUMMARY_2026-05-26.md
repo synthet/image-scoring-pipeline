@@ -1,6 +1,6 @@
 # Work summary — 2026-05-26
 
-**Operator:** dmnsy (Claude Opus 4.7 assist)
+**Operator:** owner (Claude Opus 4.7 assist)
 **Session focus:** Two related scoring/pipeline issues — auto-drive reprocessing already-done folders, and ~11k images missing composite aggregates despite per-model scores.
 
 ---

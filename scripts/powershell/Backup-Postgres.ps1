@@ -36,8 +36,8 @@
     .\Backup-Postgres.ps1
     .\Backup-Postgres.ps1 -RetentionDays 7
     .\Backup-Postgres.ps1 -BackupDir D:\Backups\postgres -RetentionDays 0
-    .\Backup-Postgres.ps1 -MirrorDir "D:\Dropbox\Photos\Scoring" -MirrorRetentionDays 7
-    .\Backup-Postgres.ps1 -MaxBackups 3 -MirrorDir "D:\Dropbox\Photos\Scoring" -MirrorMaxBackups 3 -RetentionDays 0 -MirrorRetentionDays 0
+    .\Backup-Postgres.ps1 -MirrorDir "<mirror-dir>" -MirrorRetentionDays 7
+    .\Backup-Postgres.ps1 -MaxBackups 3 -MirrorDir "<mirror-dir>" -MirrorMaxBackups 3 -RetentionDays 0 -MirrorRetentionDays 0
 #>
 [CmdletBinding()]
 param(

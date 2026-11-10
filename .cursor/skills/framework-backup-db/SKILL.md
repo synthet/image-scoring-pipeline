@@ -20,7 +20,7 @@ Use when the operator wants a **local dump** of the `image_scoring` PostgreSQL d
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\powershell\Backup-Postgres.ps1 `
      -MaxBackups 3 `
-     -MirrorDir "D:\Dropbox\Photos\Scoring" `
+     -MirrorDir "<mirror-dir>" `
      -MirrorMaxBackups 3 `
      -RetentionDays 0 `
      -MirrorRetentionDays 0
@@ -49,4 +49,4 @@ To **restore** a dump, use the sanctioned wrapper **`/restore-db`** (`.cursor/co
 
 ## Done when
 
-- A timestamped `image_scoring_*.dump` exists under the chosen backup directory, the run exited successfully, and when using the default workflow above the same filename exists under `D:\Dropbox\Photos\Scoring` with at most **3** dumps in each folder.
+- A timestamped `image_scoring_*.dump` exists under the chosen backup directory, the run exited successfully, and when using the default workflow above the same filename exists under `<mirror-dir>` with at most **3** dumps in each folder.

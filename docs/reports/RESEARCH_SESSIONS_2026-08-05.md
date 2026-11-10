@@ -24,15 +24,15 @@ scorer stays shadow-only and unwired from fusion, and no DDL or migration was ap
 | **In flight at pause** | Bird-crop Track A sequential classical measures; student-scorer full E2 seed-42 train |
 
 Later **transcript digests** (no raw exports in git) are indexed at
-[SESSION_TRANSCRIPT_DIGESTS.md](SESSION_TRANSCRIPT_DIGESTS.md).
+SESSION_TRANSCRIPT_DIGESTS.md (private archive).
 
 ## The records
 
 | Track | Agent / model | Record | Covers |
 |---|---|---|---|
-| Bird-crop ([#317](https://github.com/synthet/image-scoring-pipeline/issues/317)) | Claude Code, Opus 5 | [`SESSION_BIRD_CROP_FOCUS_2026-08-05.md`](SESSION_BIRD_CROP_FOCUS_2026-08-05.md) | Pinned Phase 2 re-sweep, Phase 4 classical-focus/AF research, `modules/focus_quality.py`, 15 corrections |
-| Bird-crop ([#317](https://github.com/synthet/image-scoring-pipeline/issues/317)) | Cursor Agent, Grok 4.5 | [`SESSION_BIRD_CROP_CLOSEOUT_2026-08-05.md`](SESSION_BIRD_CROP_CLOSEOUT_2026-08-05.md) | Multi-agent labelling, sequential Track A recovery, Arm B vs labels, CSV exporter, open todos |
-| Student scorer ([#323](https://github.com/synthet/image-scoring-pipeline/issues/323)) | Claude Code (Opus 5) **+** Cursor Agent (Grok 4.5) | [`../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md`](../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md) | Render resume fix, 66k P0 cache, train monitoring properties, error table, resume checklist |
+| Bird-crop ([#317](https://github.com/synthet/image-scoring-pipeline/issues/317)) | Claude Code, Opus 5 | `SESSION_BIRD_CROP_FOCUS_2026-08-05.md` (private archive) | Pinned Phase 2 re-sweep, Phase 4 classical-focus/AF research, `modules/focus_quality.py`, 15 corrections |
+| Bird-crop ([#317](https://github.com/synthet/image-scoring-pipeline/issues/317)) | Cursor Agent, Grok 4.5 | `SESSION_BIRD_CROP_CLOSEOUT_2026-08-05.md` (private archive) | Multi-agent labelling, sequential Track A recovery, Arm B vs labels, CSV exporter, open todos |
+| Student scorer ([#323](https://github.com/synthet/image-scoring-pipeline/issues/323)) | Claude Code (Opus 5) **+** Cursor Agent (Grok 4.5) | `../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md` (private archive) | Render resume fix, 66k P0 cache, train monitoring properties, error table, resume checklist |
 
 The two student-scorer records describe the same work from two angles and agree on every fact checked
 against each other, so they are consolidated into one page. Raw sources are archived unmodified under
@@ -88,7 +88,7 @@ shadow or change fusion without a new human decision.
 
 | Authoritative page | Role |
 |---|---|
-| [`../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md`](../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md) | Consolidated session record (render → train) |
+| `../research/SESSION_STUDENT_SCORER_E2_2026-08-05.md` (private archive) | Consolidated session record (render → train) |
 | [`../research/STUDENT_SCORER_PROTOCOL.md`](../research/STUDENT_SCORER_PROTOCOL.md) | Locked gates / commands |
 | [`../research/STUDENT_SCORER_RESULTS.md`](../research/STUDENT_SCORER_RESULTS.md) | Append-only experiment table |
 | [`../research/STUDENT_SCORER_STUDY.md`](../research/STUDENT_SCORER_STUDY.md) | Program overview |
@@ -225,9 +225,9 @@ This is the reusable part. Both workstreams lost work to the same causes.
 
 | File | Source |
 |---|---|
-| [2026-08-05-bird-crop-closeout-cursor.md](../raw/2026-08-05-bird-crop-closeout-cursor.md) | Cursor bird-crop close-out scratch |
-| [2026-08-05-student-scorer-e2-cursor.md](../raw/2026-08-05-student-scorer-e2-cursor.md) | Cursor E2 session scratch |
-| [2026-08-01-student-scorer-e2-claude.md](../raw/2026-08-01-student-scorer-e2-claude.md) | Claude E2 render/train scratch |
+| 2026-08-05-bird-crop-closeout-cursor.md (private archive) | Cursor bird-crop close-out scratch |
+| 2026-08-05-student-scorer-e2-cursor.md (private archive) | Cursor E2 session scratch |
+| 2026-08-01-student-scorer-e2-claude.md (private archive) | Claude E2 render/train scratch |
 
 ## See also
 

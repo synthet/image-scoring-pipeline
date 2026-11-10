@@ -62,5 +62,5 @@ See `scripts/research/student_scorer/` and `docs/research/STUDENT_SCORER_PROTOCO
 
 ## See also
 
-- E2 session record (P0 render → train at 2026-08-05 pause): [`SESSION_STUDENT_SCORER_E2_2026-08-05.md`](SESSION_STUDENT_SCORER_E2_2026-08-05.md)
+- E2 session record (P0 render → train at 2026-08-05 pause): `SESSION_STUDENT_SCORER_E2_2026-08-05.md` (private archive)
 - Dual-arc hub: [`RESEARCH_SESSIONS_2026-08-05.md`](../reports/RESEARCH_SESSIONS_2026-08-05.md)

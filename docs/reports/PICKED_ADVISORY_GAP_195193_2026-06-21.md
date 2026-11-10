@@ -16,7 +16,7 @@ Point-in-time research report for stack **#29157** / image **195193** (`DSC_8825
 
 **Living harness reference:** [study/agent-cull-cli-matrix.md](../study/agent-cull-cli-matrix.md) (commands, mode profiles, matrix artifacts).
 
-**Raw forensics JSON:** [raw/picked-advisory-forensics-2026-06-21.json](../raw/picked-advisory-forensics-2026-06-21.json)
+**Raw forensics JSON:** raw/picked-advisory-forensics-2026-06-21.json (private archive)
 
 ## Problem
 
