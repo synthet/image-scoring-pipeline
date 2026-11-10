@@ -351,3 +351,6 @@ models/*.manifest.json
 AGENTS.md
 CLAUDE.md
 GEMINI.md
+
+# Generated source-command aliases (duplicates of tracked framework-* skills)
+/.agents/skills/source-command-*/
