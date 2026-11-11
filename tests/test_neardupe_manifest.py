@@ -215,6 +215,61 @@ class MaintenanceTests(unittest.TestCase):
             executor.recover()
         self.assertEqual(order, [3, 1])
 
+    def test_interrupted_recovery_resumes_without_replaying_done_frames(self):
+        c = self.photos / "c.NEF"
+        c.write_bytes(b"raw-c")
+        self.db.ids.add(3)
+        self.manifest["entries"].append(
+            {
+                **self.row,
+                "image_id": 3,
+                "path": str(c),
+                "db_path": str(c),
+                "sha256": sha256(c),
+                "sidecars": [],
+            }
+        )
+        executor = self.executor()
+        executor.apply()
+        restore = self.db.restore
+        calls = []
+
+        def first_run(row, snapshot):
+            calls.append(row["image_id"])
+            if row["image_id"] == 1:
+                raise SafetyError("interrupted")
+            restore(row, snapshot)
+
+        with patch.object(self.db, "restore", side_effect=first_run):
+            with self.assertRaises(SafetyError):
+                executor.recover()
+        self.assertEqual(calls, [3, 1])
+        self.assertEqual(sha256(c), self.manifest["entries"][1]["sha256"])
+
+        # Replaying frame 3 would refuse, as the Postgres representative guard
+        # does once later frames restored an older representative.
+        def second_run(row, snapshot):
+            calls.append(row["image_id"])
+            if row["image_id"] == 3:
+                raise SafetyError("Representative changed independently")
+            restore(row, snapshot)
+
+        with patch.object(self.db, "restore", side_effect=second_run):
+            result = executor.recover()
+        self.assertEqual(calls, [3, 1, 1])
+        self.assertEqual(result["recovered"], 1)
+        self.assertEqual(result["already_recovered"], 1)
+        self.assertEqual(self.db.ids, {1, 2, 3})
+        self.assertEqual(sha256(self.row["path"]), self.row["sha256"])
+
+    def test_resumed_recovery_refuses_a_changed_recovered_file(self):
+        executor = self.executor()
+        executor.apply()
+        executor.recover()
+        Path(self.row["path"]).write_bytes(b"edited after recovery")
+        with self.assertRaises(SafetyError):
+            executor.recover()
+
     def test_apply_resume_and_recovery(self):
         e = self.executor()
         e.apply()
