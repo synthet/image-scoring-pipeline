@@ -446,6 +446,15 @@ class PostgresAdapter:
         try:
             self.begin_batch(row)
             tables = {(r["schema"], r["table"]): r["rows"] for r in snapshot["tables"]}
+            # stack_cache is derived: delete() drops the folder's rows and the gallery
+            # rebuilds missing ones. Its removal-time rows go stale as soon as sibling
+            # recoveries or a rebuild touch the stack, so invalidate instead of restoring.
+            cache = tables.pop(("public", "stack_cache"), [])
+            images = tables.get(("public", "images"), [])
+            cache_folders = sorted(
+                {r["folder_id"] for r in cache + images if r.get("folder_id") is not None}
+            )
+            cache_stacks = sorted({r["stack_id"] for r in cache})
             # Break the representative/member FK cycle while restoring roots.
             for table in (("public", "stacks"), ("public", "sub_stacks")):
                 if table in tables:
@@ -504,6 +513,11 @@ class PostgresAdapter:
                                 ).format(sql.Identifier(*table)),
                                 (old["best_image_id"], old["id"]),
                             )
+                if cache_folders or cache_stacks:
+                    c.execute(
+                        "DELETE FROM stack_cache WHERE folder_id=ANY(%s) OR stack_id=ANY(%s)",
+                        (cache_folders, cache_stacks),
+                    )
                 c.execute(
                     "DELETE FROM deleted_images WHERE original_id=%s AND image_uuid=%s AND original_path=%s AND NOT (id=ANY(%s))",
                     (
