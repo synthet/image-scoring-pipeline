@@ -200,6 +200,55 @@ class PostgresMaintenanceTests(unittest.TestCase):
             self.adapter.restore(self.row, snapshot)
         self.conn.rollback()
 
+    def test_recovery_invalidates_derived_stack_cache_instead_of_restoring_it(self):
+        # stack_cache is derived (the gallery rebuilds it when rows are missing). Sibling
+        # recoveries and rebuilds change it after a removal, which used to refuse the
+        # recovery as an independent change (lib37, stack 24000, 2026-11-11).
+        with self.conn.cursor() as c:
+            c.execute(
+                "INSERT INTO folders(path) VALUES (%s) RETURNING id",
+                (f"/tmp/neardupe-{self.token}",),
+            )
+            self.folder = c.fetchone()[0]
+            c.execute(
+                "UPDATE images SET folder_id=%s WHERE id=ANY(%s)", (self.folder, self.ids)
+            )
+            c.execute(
+                "INSERT INTO stack_cache(stack_id,image_count,rep_image_id,folder_id) VALUES (%s,2,%s,%s)",
+                (self.stack, self.ids[0], self.folder),
+            )
+        self.conn.commit()
+        try:
+            self.adapter.begin_batch(self.row)
+            snapshot = self.adapter.snapshot(self.row)
+            self.assertIn(
+                "stack_cache", {t["table"] for t in snapshot["tables"]}
+            )
+            self.adapter.delete(self.row)
+            self.conn.commit()
+            with self.conn.cursor() as c:  # a rebuild in another transaction
+                c.execute(
+                    "INSERT INTO stack_cache(stack_id,image_count,rep_image_id,folder_id) VALUES (%s,1,%s,%s)",
+                    (self.stack, self.ids[1], self.folder),
+                )
+            self.conn.commit()
+            self.adapter.restore(self.row, snapshot)
+            self.adapter.check_identity(self.row)
+            with self.conn.cursor() as c:
+                c.execute(
+                    "SELECT count(*) FROM stack_cache WHERE stack_id=%s OR folder_id=%s",
+                    (self.stack, self.folder),
+                )
+                self.assertEqual(c.fetchone()[0], 0)  # stale: the gallery rebuilds it
+            self.conn.rollback()
+        finally:
+            self.conn.rollback()
+            with self.conn.cursor() as c:
+                c.execute("DELETE FROM stack_cache WHERE folder_id=%s", (self.folder,))
+                c.execute("UPDATE images SET folder_id=NULL WHERE id=ANY(%s)", (self.ids,))
+                c.execute("DELETE FROM folders WHERE id=%s", (self.folder,))
+            self.conn.commit()
+
     def test_repeated_db_delete_is_idempotent(self):
         self.adapter.begin_batch(self.row)
         self.adapter.delete(self.row)
