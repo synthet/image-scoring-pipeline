@@ -40,6 +40,14 @@ are folded into the table, not into a second rollout:
 Diagrams of the data model, box flow, authority lifecycle and stage gates are in
 [localization-diagrams.md](localization-diagrams.md).
 
+**Status 2026-11-11 ([#694 owner validation](../../reports/localization-owner-validation-694-2026-11-11.md)):**
+
+- **#694 gate failed; nothing promoted.** The owner labelled all 390 frames. Large 121/130 (lower bound
+  0.874), medium 86/129 and small 79/126 all miss the 0.90 bar, mostly on poor crops. Active selections
+  are unchanged.
+- **Next:** label a sample of current production selections under the same standard, to separate a
+  stricter standard from weaker crops in this cohort.
+
 **Status 2026-11-05 ([rollout summary](../../reports/localization-rollout-summary-2026-11-04.md)):**
 
 - **Partly in production.** Localization runs on new images and region BioCLIP is live. Automatic

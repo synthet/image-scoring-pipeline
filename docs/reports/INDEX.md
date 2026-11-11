@@ -148,5 +148,6 @@ Superseded or snapshot-only; kept under [`../archive/reports/`](../archive/repor
 | [localization-continuation-2026-10-19](localization-continuation-2026-10-19.md) | Interrupted repair, historical box drift, local reader/outage fixes and fresh-backup admission preparation awaiting checkpoint/runtime acceptance. |
 | [localization-promotion-gate-2026-10-26](localization-promotion-gate-2026-10-26.md) | Hook repair verified, backfill/cohort freeze complete and WebUI restored; only Antigravity passes the 18/20 calibration threshold. |
 | [localization-rollout-summary-2026-11-04](localization-rollout-summary-2026-11-04.md) | Latest localization rollout overview: intentions, goal, background, live status, specs and features, and blockers. |
+| [localization-owner-validation-694-2026-11-11](localization-owner-validation-694-2026-11-11.md) | #694 owner labels on all 390 frames: no band reaches the 0.90 bar (large 121/130), so nothing is promoted; poor crops dominate. |
 
 **See also:** [Main docs index](../INDEX.md) · [Plans & proposals](../planning/INDEX.md)

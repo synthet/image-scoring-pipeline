@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-11-11] created | #694 owner validation: no band passes
+
+Added [the owner validation report](reports/localization-owner-validation-694-2026-11-11.md) and its reports-index row, and updated the rollout status. All 390 frames were owner-labelled. Every band misses the 0.90 Wilson bar (large 121/130), so nothing is promoted. The next goal is to label production selections under the same standard.
+
 ## [2026-11-05] edit | Record the bird box agreement outcome (#780)
 
 The owner review missed the promotion bar, so agreement stays a shadow measurement. Updated [the plan](planning/localization-rollout-plan-2026-11-04.md), [the diagrams](architecture/pipeline/localization-diagrams.md), the rollout status, and spec 08 and its plan. Recorded that the WebUI stopped because the laptop slept.
