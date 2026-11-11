@@ -420,9 +420,22 @@ class Executor:
         # DB adapter refuses overwriting independently recreated records and uses
         # the frozen rows to recover cascaded dependencies and only our tombstone.
         previous = self.events(allow_incomplete_tail=True, repair_tail=True)
-        recovered = 0
+        done = {e.get("image_id") for e in previous if e["event"] == "recovered"}
+        recovered = already = 0
         for row in reversed(self.entries):
             iid = row["image_id"]
+            if iid in done:
+                # Restored by an interrupted earlier run. Replaying its rows would
+                # meet representatives that later frames already set back, so
+                # only prove the frame is still exactly as recovered.
+                if any(
+                    not Path(o["path"]).is_file() or sha256(o["path"]) != o["sha256"]
+                    for o in [row, *row.get("sidecars", [])]
+                ):
+                    raise SafetyError("Recovered frame changed since its recovery")
+                self.db.check_identity(row)
+                already += 1
+                continue
             if not any(
                 e.get("image_id") == iid and e["event"] == "rows_backed_up"
                 for e in previous
@@ -480,4 +493,8 @@ class Executor:
             self.db.check_identity(row)
             self.append("recovered", image_id=iid)
             recovered += 1
-        return {"recovered": recovered, "manifest_sha256": self.digest}
+        return {
+            "recovered": recovered,
+            "already_recovered": already,
+            "manifest_sha256": self.digest,
+        }
