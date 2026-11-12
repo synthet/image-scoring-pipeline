@@ -147,3 +147,43 @@ def test_run_post_completion_audit_multiphase_uses_full_status(
     assert out.get("status") == "issues_remaining"
     assert out.get("pipeline_status") == "issues_remaining"
     assert out.get("executed_phases") == []
+
+
+@patch("modules.runs_autodrive.maybe_schedule_post_audit_followup")
+@patch.object(db, "_maybe_fail_job_on_post_audit_issues")
+@patch.object(db, "_append_job_log_line")
+@patch.object(db, "count_scoring_done_without_composite", return_value=32)
+@patch.object(db, "build_validation_repair_plan")
+@patch.object(db, "update_job_payload")
+@patch.object(db, "get_connector")
+def test_run_post_completion_audit_flags_scoring_done_without_composite(
+    mock_conn, mock_update, mock_plan, mock_count, _mock_log, _mock_fail, _mock_followup
+):
+    """#830: a done scoring phase with a NULL score_general must not audit as clean."""
+    mock_conn.return_value.query_one.return_value = {
+        "id": 7067,
+        "queue_payload": f'{{"scope_paths":["/tmp"],"run_mode":"{CANONICAL_RUN_MODE}"}}',
+        "status": "completed",
+        "job_type": "scoring",
+    }
+    mock_plan.return_value = {"issue_counts": {}, "stage_queues": {}, "dry_run": True}
+
+    out = db.run_post_completion_data_quality_audit(7067)
+    assert out is not None
+    assert out.get("status") == "issues_remaining"
+    assert out.get("issue_counts", {}).get("scoring_done_missing_composite") == 32
+    mock_count.assert_called_once_with("/tmp")
+
+
+def test_count_scoring_done_without_composite_uses_heal_predicate(monkeypatch):
+    seen = {}
+
+    class _Conn:
+        def query(self, sql, params=None):
+            seen["sql"], seen["params"] = sql, params
+            return [{"id": 1}, {"id": 2}]
+
+    monkeypatch.setattr(db, "get_connector", lambda: _Conn())
+    assert db.count_scoring_done_without_composite("/mnt/d/Photos/x") == 2
+    assert "score_general IS NULL" in seen["sql"] and "'done'" in seen["sql"]
+    assert seen["params"] == ("/mnt/d/Photos/x", "/mnt/d/Photos/x/%", "/mnt/d/Photos/x\\%")

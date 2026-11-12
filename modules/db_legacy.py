@@ -4689,7 +4689,16 @@ def run_post_completion_data_quality_audit(job_id: int):
 
     plan = build_validation_repair_plan(scope_paths, stages, dry_run=True)
     stage_queues_full = plan.get("stage_queues") or {}
-    ic = plan.get("issue_counts") or {}
+    ic = dict(plan.get("issue_counts") or {})
+    # The planner treats a done scoring phase with per-model rows as complete, so it cannot
+    # see a missing composite. Count it directly, read-only (#830).
+    try:
+        missing_composite = sum(count_scoring_done_without_composite(p) for p in scope_paths)
+    except Exception:
+        logger.debug("post-run audit: composite check failed for job %s", job_id, exc_info=True)
+        missing_composite = 0
+    if missing_composite:
+        ic["scoring_done_missing_composite"] = missing_composite
 
     # Whole-pipeline signal: drives chaining/diagnostics, not the badge.
     full_has_issues = any(int(v or 0) > 0 for v in ic.values()) or any(
@@ -6413,6 +6422,39 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
         except Exception:
             existing_image = None
 
+    # An index-only result (indexing registers a row that has no identity hash yet) carries
+    # no scores. Its defaults would reset an already-scored row's composite, rating and label
+    # through the ON CONFLICT update, so keep the stored values instead (issue #830).
+    _scores_provided = any(
+        key in result for key in (
+            "score", "score_technical", "score_general", "summary", "full_results",
+            "models", "individual_scores", "nef_metadata",
+        )
+    )
+
+    def _stored_scores(row_id):
+        if _scores_provided or not row_id:
+            return None
+        try:
+            row = get_connector().query_one(
+                "SELECT score, score_technical, score_aesthetic, score_general, model_version, "
+                "rating, label FROM images WHERE id = ?",
+                (row_id,),
+            )
+        except Exception:
+            logger.debug("upsert_image: could not read stored scores for id=%s", row_id, exc_info=True)
+            return None
+        if not row:
+            return None
+        return (
+            row.get("score"), row.get("score_technical"), row.get("score_aesthetic"),
+            row.get("score_general"), row.get("model_version"), row.get("rating"), row.get("label"),
+        )
+
+    _stored = _stored_scores(existing_image.get("id") if existing_image else None)
+    if _stored:
+        score, score_technical, score_aesthetic, score_general, model_version, rating, label = _stored
+
     # Prevent duplicates by image_uuid: if UUID exists in DB (different path), update that record instead of inserting
     meta_dict = result.get("metadata") if isinstance(result.get("metadata"), dict) else (
         json.loads(result.get("metadata")) if isinstance(result.get("metadata"), str) else None
@@ -6436,6 +6478,10 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
             if existing_path != image_path:
                 logger.info("Duplicate by UUID %s: updating existing id=%s path %s -> %s",
                             image_uuid_val[:16], existing_id, existing_path, image_path)
+                _stored = _stored_scores(existing_id)
+                if _stored:
+                    (score, score_technical, score_aesthetic, score_general,
+                     model_version, rating, label) = _stored
                 dup_core = (
                     job_id, image_path, file_name, file_type,
                     score,
@@ -12526,6 +12572,34 @@ def _should_run_heal(folder_path) -> bool:
         return True
 
 
+_SCORING_DONE_WITHOUT_COMPOSITE_SQL = """
+        SELECT i.id
+        FROM images i
+        JOIN folders f ON f.id = i.folder_id
+        JOIN image_phase_status ips ON ips.image_id = i.id
+        JOIN pipeline_phases pp ON pp.id = ips.phase_id
+        WHERE (f.path = ? OR f.path LIKE ? OR f.path LIKE ?)
+          AND LOWER(TRIM(pp.code)) = 'scoring'
+          AND LOWER(TRIM(ips.status)) = 'done'
+          AND (i.score_general IS NULL OR i.score_general <= 0)
+        """
+
+
+def count_scoring_done_without_composite(folder_path) -> int:
+    """Read-only: images under ``folder_path`` whose scoring phase is done but whose
+    ``score_general`` is NULL or <= 0. Same predicate as ``_heal_stale_phase_flags`` (#830)."""
+    from modules import utils
+
+    if not folder_path:
+        return 0
+    wsl_path = utils.convert_path_to_wsl(folder_path) if hasattr(utils, 'convert_path_to_wsl') else folder_path
+    target_path = wsl_path if wsl_path else folder_path
+    rows = get_connector().query(
+        _SCORING_DONE_WITHOUT_COMPOSITE_SQL, (target_path, target_path + "/%", target_path + "\\%")
+    )
+    return len(rows or [])
+
+
 def _heal_stale_phase_flags(folder_path):
     """Reset image_phase_status to 'not_started' where status is 'done' but
     actual data is missing.  Called during force-refresh so the UI accurately
@@ -12552,18 +12626,8 @@ def _heal_stale_phase_flags(folder_path):
 
     # --- Scoring: done flag but no actual scores ---
     scoring_rows = get_connector().query(
-        """
-        SELECT i.id
-        FROM images i
-        JOIN folders f ON f.id = i.folder_id
-        JOIN image_phase_status ips ON ips.image_id = i.id
-        JOIN pipeline_phases pp ON pp.id = ips.phase_id
-        WHERE (f.path = ? OR f.path LIKE ? OR f.path LIKE ?)
-          AND LOWER(TRIM(pp.code)) = 'scoring'
-          AND LOWER(TRIM(ips.status)) = 'done'
-          AND (i.score_general IS NULL OR i.score_general <= 0)
-        """,
-        (target_path, path_like_unix, path_like_win))
+        _SCORING_DONE_WITHOUT_COMPOSITE_SQL, (target_path, path_like_unix, path_like_win)
+    )
 
     for row in scoring_rows or []:
         set_image_phase_status(row["id"], "scoring", "not_started")
