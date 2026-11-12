@@ -78,6 +78,7 @@ Full list: [commands-requiring-confirmation.md](../agent-cli-hub/references/comm
 
 - **`gh` not authenticated:** `gh auth login`
 - **Line ending noise on Windows:** check `.gitattributes`; avoid mixed WSL/Windows edits on same checkout
+- **Whole-file diff from a small edit:** a file committed with CRLF, staged under `core.autocrlf=true`, becomes LF in the index and shows every line changed. Check: if `git diff --cached --stat` is far larger than your change but `git diff --cached --ignore-cr-at-eol --stat` is small, re-stage with `git -c core.autocrlf=false add <file>`. That is a per-command flag; never edit `.git/config`.
 - **Large diff:** use `git diff --stat` first, then per-file diffs
 
 ## Verification checklist
