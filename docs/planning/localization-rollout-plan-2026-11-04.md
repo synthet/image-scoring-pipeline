@@ -11,6 +11,8 @@ status: proposed
 
 # Localization rollout: updated plan
 
+> **Reassessed 2026-11-12:** see [localization-reassessment-2026-11-12.md](localization-reassessment-2026-11-12.md) (#856). It restores the goal and requirements and lists the owner's open decisions (D1–D6), which include whether Phase A should keep gating. Read it before acting on Phase A.
+
 Epic #345. Figures were checked against the schema, code and read-only queries on 2026-11-05 and will drift. Diagrams: [localization-diagrams.md](../architecture/pipeline/localization-diagrams.md). Design and history: [localization-rollout.md](../architecture/pipeline/localization-rollout.md).
 
 ## 1. North star and the production rule

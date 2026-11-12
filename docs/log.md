@@ -1140,3 +1140,7 @@ Deferred to stage 5: bounded decoded-image reuse, which was in the stage 3 scope
 ## [2026-11-07] updated | scene route facts (#809, #811)
 
 - 2026-11-07: updated - `planning/localization-rollout-plan-2026-11-04.md` (scene route already covers backfill, repair and recovery; two scripts bypass it; the classifier already has 9 subject classes and only the bird route is wired; SR-1 conflicts with the multi-label code).
+
+## [2026-11-12] added | localization reassessment (#856)
+
+- 2026-11-12: added - `planning/localization-reassessment-2026-11-12.md` (restored goal, R1–R7, AC1–AC6, drift findings F1–F8, owner decision register D1–D6; follow-ups #857, #858, #859). Updated - `planning/INDEX.md` and a pointer at the top of `planning/localization-rollout-plan-2026-11-04.md`.
