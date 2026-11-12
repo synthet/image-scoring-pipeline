@@ -100,7 +100,12 @@ Each step is reasonable taken alone. Together they moved six steps away from any
   - the stored run and the runtime decode can use different renditions;
   - top-box ranking can differ;
   - the 21,032 v0 runs come from another producer.
-- **Still unknown:** whether any other reader is sensitive to framing, such as keep-one `subject_evidence`, the gallery overlay or the near-dupe v2 SAM box prompt. [#857](https://github.com/synthet/image-scoring-pipeline/issues/857) finds out.
+- **Other readers ([#857 inventory](https://github.com/synthet/image-scoring-pipeline/issues/857#issuecomment-6826325805), 2026-11-12).** No live reader changes its output because of promotion. Readers of unselected images fall back as follows:
+  - species to the same detector;
+  - keypoints and near-dupe v2 to the current run;
+  - overlays to the compat `bird_bbox`.
+
+  The one reader that is sensitive to framing is the near-dupe v2 SAM box prompt, which uses no padding and is study tooling. It reacts to the box *itself*, whether or not it is selected. That points to box refinement (#715), not to re-gating.
 
 ### F3. The rubric changed three times
 - Revision 2 (11-08), revision 3 (11-09) and the owner-labels route (11-09) each changed the standard after the last result. The owner-labels preregistration says so itself.
@@ -171,7 +176,7 @@ Meanwhile, p1 user-facing bugs wait:
 | Issue | agent-flow | What |
 |---|---|---|
 | [#856](https://github.com/synthet/image-scoring-pipeline/issues/856) | af-qio52 | This reassessment |
-| [#857](https://github.com/synthet/image-scoring-pipeline/issues/857) | af-p05eq | Inventory of box and selection readers, with framing sensitivity |
+| [#857](https://github.com/synthet/image-scoring-pipeline/issues/857) | af-p05eq | Inventory of box and selection readers, with framing sensitivity. [Result posted](https://github.com/synthet/image-scoring-pipeline/issues/857#issuecomment-6826325805) |
 | [#858](https://github.com/synthet/image-scoring-pipeline/issues/858) | af-w95y8 | Species parity: selection crop vs embedded detector |
 | [#859](https://github.com/synthet/image-scoring-pipeline/issues/859) | af-blk0d | Drift guard for preregistrations and amendments |
 | [#715](https://github.com/synthet/image-scoring-pipeline/issues/715) | n/a | Comment: extend the mask-tightness signal to box refinement, using the 390 labels as development data |
