@@ -6,14 +6,14 @@ resource: planning/localization-reassessment-2026-11-12.md
 tags: [planning, localization, reassessment, requirements, decision-register, drift]
 timestamp: 2026-11-12T00:00:00Z
 okf_version: 0.2
-status: proposed
+status: accepted
 ---
 
 # Localization reassessment (2026-11-12)
 
 Tracking issue: [#856](https://github.com/synthet/image-scoring-pipeline/issues/856). It reviews [epic #345](https://github.com/synthet/image-scoring-pipeline/issues/345), the [rollout plan](localization-rollout-plan-2026-11-04.md), the [#694 owner validation](../reports/localization-owner-validation-694-2026-11-11.md), the commits since 2026-10-01, and the session transcripts from 2026-10-31 to 2026-11-11.
 
-**Nothing here is an owner decision.** Every item in the [decision register](#5-owner-decision-register) is open. A recommendation is only a recommendation, and it stays labelled as one.
+**Decisions:** on 2026-11-12 the owner adopted the recommended option for every item in the [decision register](#5-owner-decision-register), via `/go`. An agent did not choose them, and neither did Jev. Any later change is the owner's.
 
 ## In short
 
@@ -26,7 +26,7 @@ Tracking issue: [#856](https://github.com/synthet/image-scoring-pipeline/issues/
   - Close the #694 gate as failed and recorded.
   - Replace the framing gate with a consumer-fit check: [#857](https://github.com/synthet/image-scoring-pipeline/issues/857) inventory, then [#858](https://github.com/synthet/image-scoring-pipeline/issues/858) species parity.
   - Unblock the real automation work (Phases B and D) and the p1 user bugs.
-  - The owner decides all of this (D1–D6).
+  - The owner adopted all of this on 2026-11-12 (D1–D6, §5).
 
 ## 1. The goal, restored from its sources
 
@@ -162,14 +162,14 @@ Meanwhile, p1 user-facing bugs wait:
 
 ## 5. Owner decision register
 
-| # | Question | State | Recommendation (not a decision) |
+| # | Question | State | Decision (owner adopted the recommendation, 2026-11-12) |
 |---|---|---|---|
-| D1 | Which box consumers count right now: species only, or framing-sensitive readers too? | **Open** | Decide after #857. Until then, treat species as the only live consumer |
-| D2 | What happens to #694 and #851? | **Open** | Close #694 as failed and recorded (its ACs are met). Cancel #851, or re-scope it without the archive precondition, but only if D1 names a framing-sensitive consumer |
-| D3 | The 21,032 v0 runs: relocalize with v1, or a v0-producer policy? | **Open** (plan §6) | Relocalize with v1 after a timed 200-image pilot. That gives one producer, and #858 covers it |
-| D4 | What comes next? | **Open** | First #830 and #568 (user-facing, p1). Then Phase B, the scene backfill. Then #857 and #858, which are read-only and cheap. Then Phase D |
-| D5 | May Jev or an agent choose a route, standard or threshold? | **Open** | No. They recommend, and the owner decides (R7, as near-dupe v2 R8) |
-| D6 | Does box refinement need a framing gate, or only a consumer benchmark? | **Open** | A consumer benchmark only, unless D1 names a framing-sensitive reader. Develop on the 390 #694 labels |
+| D1 | Which box consumers count right now: species only, or framing-sensitive readers too? | **Decided** | Species is the only live consumer. #857 found one framing-sensitive reader, the near-dupe v2 SAM box prompt. It is study tooling, and it is sensitive to the box itself whether or not the box is selected, so it is served by refinement (#715), not by a selection gate |
+| D2 | What happens to #694 and #851? | **Decided** | Close #694 as failed and recorded (its ACs are met). Close #851 as not planned: its precondition can never be met, and D1 names no framing-sensitive *selection* consumer |
+| D3 | The 21,032 v0 runs: relocalize with v1, or a v0-producer policy? | **Decided** | Relocalize with v1, starting with a timed 200-image pilot (#810). Anything beyond the pilot stays a hard stop for the owner |
+| D4 | What comes next? | **Decided** | First #830 and #568 (user-facing, p1). Then Phase B: the scene backfill and the #810 pilot. Then #858 (#857 is done). Then Phase D |
+| D5 | May Jev or an agent choose a route, standard or threshold? | **Decided** | No. They recommend, and the owner decides (R7, as near-dupe v2 R8). The guard is #859 |
+| D6 | Does box refinement need a framing gate, or only a consumer benchmark? | **Decided** | A consumer benchmark only: species parity (#858) and near-dupe v2's own mask acceptance. Development uses the 390 #694 labels |
 
 ## 6. Follow-up work
 
