@@ -7,11 +7,10 @@ from scripts.research import species_parity_858 as SP
 
 
 def _row(image_id, a_top, b_top, *, a_conf=0.8, b_conf=0.7, a_box=(0.1, 0.1, 0.5, 0.5), b_box=(0.1, 0.1, 0.5, 0.5),
-         area=0.16, a_size=(1000, 800), b_size=(1000, 800)):
-    arm = lambda top, conf, box, size: {"top1": top, "conf": conf, "box": list(box) if box else None,  # noqa: E731
-                                        "size": list(size)}
-    return {"image_id": image_id, "area": area,
-            "arms": {"a": arm(a_top, a_conf, a_box, a_size), "b": arm(b_top, b_conf, b_box, b_size)}}
+         area=0.16, version="v1", aspect_mismatch=False, min_conf=0.5):
+    arm = lambda top, conf, box: {"top1": top, "conf": conf, "box": list(box) if box else None}  # noqa: E731
+    return {"image_id": image_id, "area": area, "detector_version": version, "aspect_mismatch": aspect_mismatch,
+            "min_confidence": min_conf, "arms": {"a": arm(a_top, a_conf, a_box), "b": arm(b_top, b_conf, b_box)}}
 
 
 def test_box_iou_identical_disjoint_and_missing():
@@ -40,7 +39,7 @@ def test_compare_counts_agreement_boxes_and_bands():
     rows = [
         _row(1, "Ardea cinerea", "Ardea cinerea", area=0.01),
         _row(2, "Ardea cinerea", "Ardea alba", area=0.05, b_box=(0.6, 0.6, 0.9, 0.9)),
-        _row(3, "Parus major", "Parus major", area=0.2, b_size=(2000, 1600)),
+        _row(3, "Parus major", "Parus major", area=0.2, aspect_mismatch=True),
         _row(4, "Pica pica", "Pica pica", area=0.3, b_box=None),
     ]
     rep = SP.compare(rows)
@@ -49,7 +48,7 @@ def test_compare_counts_agreement_boxes_and_bands():
     assert rep["box_iou"]["pairs_with_both_boxes"] == 3
     assert rep["box_iou"]["different_box"] == 1          # row 2: disjoint boxes
     assert rep["box_iou"]["b_without_box"] == 1          # row 4: embedded found no bird
-    assert rep["rendition_differs"] == 1                 # row 3
+    assert rep["aspect_mismatch"] == 1                   # row 3
     assert rep["top1_conf_delta_b_minus_a"]["mean"] == pytest.approx(-0.1)
     assert sum(b["pairs"] for b in rep["by_area_band"].values()) == 4
     assert [d["image_id"] for d in rep["disagreements"]] == [2]
@@ -97,3 +96,30 @@ def test_script_has_no_db_write_statements():
     src = (SP._ROOT / "scripts/research/species_parity_858.py").read_text(encoding="utf-8").upper()
     for verb in ("INSERT ", "UPDATE ", "DELETE ", "UPSERT", ".EXECUTE("):
         assert verb not in src
+
+
+def test_aspect_mismatch_uses_display_aspect():
+    assert SP.aspect_mismatch([1024, 683], [8256, 5504]) is False
+    assert SP.aspect_mismatch([683, 1024], [8256, 5504]) is True     # rotated rendition
+    assert SP.aspect_mismatch(None, [8256, 5504]) is None
+    assert SP.aspect_mismatch([1024, 683], [None, None]) is None
+
+
+def test_stored_output_agreement_counts_abstentions():
+    rows = [
+        _row(1, "A", "A", a_conf=0.9, b_conf=0.9),
+        _row(2, "A", "B", a_conf=0.3, b_conf=0.4),   # top-1 differs, both abstain -> same stored output
+        _row(3, "A", "A", a_conf=0.9, b_conf=0.4),   # top-1 same, b abstains -> different stored output
+    ]
+    rep = SP.compare(rows)
+    assert rep["top1_agree"]["n"] == 2
+    assert rep["stored_output_agree"]["n"] == 2 and rep["stored_output_agree"]["min_confidence"] == 0.5
+
+
+def test_compare_splits_by_detector_version():
+    rows = [_row(1, "A", "A", version="v0"), _row(2, "A", "B", version="v0"),
+            _row(3, "A", "A", version="v1"), _row(4, "A", "A", version="v1")]
+    rep = SP.compare(rows)
+    assert rep["by_detector_version"]["v0"]["top1_agree"]["n"] == 1
+    assert rep["by_detector_version"]["v1"]["top1_agree"]["n"] == 2
+    assert "by_detector_version" not in rep["by_detector_version"]["v0"]

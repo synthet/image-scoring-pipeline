@@ -9,6 +9,13 @@ An arm is either ``embedded`` (``classify(use_detector=True)``, the embedded det
 ``region:<field>`` (``classify(region=frame[<field>])``, a padded crop of a stored box; the embedded detector does
 not run). Both arms use the same model, species list and inference path as ``BirdSpeciesRunner``.
 
+``region:box`` is the counterfactual input after the frame's current run is **promoted to a selection**. Today an
+unselected current run is a shadow result: species reads only selections (``species_input_for_image``), and the
+retired-detector path (``stored_box_input`` → ``read_bird_bbox``) also ignores native current runs without a
+selection. So v0 against v1 matters to species only through promotion; ``by_detector_version`` splits the result.
+The report also compares the stored outcome at ``bird_species.min_confidence`` (abstentions included), which is
+what species persists, and flags frames whose decoded aspect differs from the run's display aspect.
+
 Three modes; run ``sample`` and ``run`` in gpu-shell from /app:
 
   # 1. Freeze a seeded sample of the #694 cohort (read-only): bird-tagged images whose current ``bird`` run is
@@ -42,6 +49,7 @@ if str(_ROOT) not in sys.path:
 
 SCHEMA = "species-parity-858/1"
 DIFFERENT_BOX_IOU = 0.5
+ASPECT_TOL = 0.02  # same tolerance as the skills pilot_eval display_mismatch
 
 _COHORT_SQL = """
 WITH bird AS (
@@ -49,7 +57,8 @@ WITH bird AS (
   JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id
   WHERE kd.keyword_norm LIKE 'bird%'
 )
-SELECT r.image_id, r.id AS run_id, r.detector_version, g.id AS region_id, g.confidence,
+SELECT r.image_id, r.id AS run_id, r.detector_version, r.display_width, r.display_height,
+       g.id AS region_id, g.confidence,
        g.x1, g.y1, g.x2, g.y2, i.file_path
 FROM image_localization_runs r
 JOIN bird b ON b.image_id = r.image_id
@@ -112,12 +121,25 @@ def band_for(area: float, cuts: tuple[float, float]) -> str:
     return "small" if area < cuts[0] else "medium" if area < cuts[1] else "large"
 
 
+def aspect_mismatch(size, display) -> bool | None:
+    """True when the image species decodes does not have the stored run's display aspect (boxes would shift)."""
+    if not size or not display or not all(display):
+        return None
+    a, d = size[0] / size[1], display[0] / display[1]
+    return abs(a - d) > ASPECT_TOL * d
+
+
+def stored_outcome(arm: dict, min_conf: float) -> str:
+    """What ``bird_species`` would persist: the top-1 name at or above ``min_conf``, else an abstention."""
+    return arm["top1"] if arm["conf"] >= min_conf else "<abstain>"
+
+
 def _ok(arm: dict | None) -> bool:
     return bool(arm) and not arm.get("error") and arm.get("top1") is not None
 
 
-def compare(rows: list[dict]) -> dict:
-    """Counts for one results file: each row has ``arms.a`` / ``arms.b`` with ``top1``, ``conf``, ``box``, ``size``.
+def compare(rows: list[dict], *, by_version: bool = True) -> dict:
+    """Counts for one results file: each row has ``arms.a`` / ``arms.b`` with ``top1``, ``conf`` and ``box``.
 
     Pairs where either arm failed are counted, not compared. No verdict: the parity threshold is the owner's.
     """
@@ -134,8 +156,13 @@ def compare(rows: list[dict]) -> dict:
             k = sum(1 for r in sel if r["arms"]["a"]["top1"] == r["arms"]["b"]["top1"])
             by_band[band] = {"pairs": len(sel), "agree": k, "disagree": len(sel) - k}
     deltas = [r["arms"]["b"]["conf"] - r["arms"]["a"]["conf"] for r in pairs]
-    rendition_differs = sum(1 for r in pairs if r["arms"]["a"].get("size") != r["arms"]["b"].get("size"))
-    return {
+    min_conf = next((r["min_confidence"] for r in rows if r.get("min_confidence") is not None), None)
+    stored = None
+    if min_conf is not None:
+        k = sum(1 for r in pairs if stored_outcome(r["arms"]["a"], min_conf) == stored_outcome(r["arms"]["b"], min_conf))
+        stored = {"min_confidence": min_conf, "n": k, "of": len(pairs),
+                  "rate": k / len(pairs) if pairs else None, "wilson95": wilson(k, len(pairs))}
+    out = {
         "frames": len(rows),
         "failed": {"a": sum(1 for r in rows if not _ok(r["arms"]["a"])),
                    "b": sum(1 for r in rows if not _ok(r["arms"]["b"]))},
@@ -152,11 +179,19 @@ def compare(rows: list[dict]) -> dict:
                     "a_without_box": sum(1 for r in pairs if r["arms"]["a"].get("box") is None)},
         "area_band_cuts": list(cuts) if cuts else None,
         "by_area_band": by_band,
-        "rendition_differs": rendition_differs,
+        "aspect_mismatch": sum(1 for r in rows if r.get("aspect_mismatch")),
+        "aspect_unknown": sum(1 for r in rows if r.get("aspect_mismatch") is None),
+        "stored_output_agree": stored,
         "disagreements": [{"image_id": r["image_id"], "a": r["arms"]["a"]["top1"], "b": r["arms"]["b"]["top1"],
                            "iou": box_iou(r["arms"]["a"].get("box"), r["arms"]["b"].get("box"))}
                           for r in pairs if r["arms"]["a"]["top1"] != r["arms"]["b"]["top1"]],
     }
+    if by_version:
+        versions = sorted({r.get("detector_version") or "unknown" for r in rows})
+        out["by_detector_version"] = {
+            v: compare([r for r in rows if (r.get("detector_version") or "unknown") == v], by_version=False)
+            for v in versions} if len(versions) > 1 else {}
+    return out
 
 
 def parse_arm(spec: str) -> tuple[str, str | None]:
@@ -195,6 +230,7 @@ def sample(out: Path, *, seed: int, size: int, exclude_manifest: Path | None) ->
         box = [r["x1"], r["y1"], r["x2"], r["y2"]]
         pool.append({"image_id": int(r["image_id"]), "file_path": r["file_path"], "run_id": int(r["run_id"]),
                      "region_id": int(r["region_id"]), "detector_version": r["detector_version"],
+                     "display": [r["display_width"], r["display_height"]],
                      "confidence": r["confidence"], "box": box, "area": box_area(box)})
     frames = draw(pool, seed=seed, size=size)
     with out.open("x", encoding="utf-8") as fh:
@@ -222,7 +258,12 @@ def _classify(clf, species, path, kind, frame, field) -> dict:
 
 
 def run(sample_path: Path, out: Path, arm_a: str, arm_b: str) -> Counter:
-    from modules.bird_species import _load_default_species, _resolve_inference_path, new_bioclip_classifier
+    from modules.bird_species import (
+        _load_default_species,
+        _resolve_inference_path,
+        min_confidence,
+        new_bioclip_classifier,
+    )
     from modules.thumbnails import open_oriented_for_ml
 
     arms = {"a": parse_arm(arm_a), "b": parse_arm(arm_b)}
@@ -230,6 +271,7 @@ def run(sample_path: Path, out: Path, arm_a: str, arm_b: str) -> Counter:
     if not species:
         raise RuntimeError("species list is empty")
     clf = new_bioclip_classifier()
+    min_conf = min_confidence()
     frames = [json.loads(line) for line in sample_path.read_text(encoding="utf-8").splitlines() if line]
     done = set()
     if out.exists():
@@ -241,16 +283,17 @@ def run(sample_path: Path, out: Path, arm_a: str, arm_b: str) -> Counter:
                 continue
             path = _resolve_inference_path(frame, frame["file_path"])
             rec = {"schema": SCHEMA, "image_id": frame["image_id"], "area": frame.get("area"),
+                   "detector_version": frame.get("detector_version"), "min_confidence": min_conf,
                    "arm_specs": {"a": arm_a, "b": arm_b}, "inference_path": path, "arms": {}}
             try:
                 size = list(open_oriented_for_ml(path).size)
             except Exception as exc:  # noqa: BLE001 — recorded per frame
                 size = None
                 rec["decode_error"] = f"{type(exc).__name__}: {exc}"[:200]
+            rec["size"] = size
+            rec["aspect_mismatch"] = aspect_mismatch(size, frame.get("display"))
             for key, (kind, field) in arms.items():
-                arm = _classify(clf, species, path, kind, frame, field)
-                arm["size"] = size
-                rec["arms"][key] = arm
+                rec["arms"][key] = _classify(clf, species, path, kind, frame, field)
             counts["ok" if all(_ok(a) for a in rec["arms"].values()) else "failed"] += 1
             fh.write(json.dumps(rec) + "\n")
             fh.flush()
@@ -265,7 +308,8 @@ def report(results: Path, out: Path) -> dict:
            "results_sha256": hashlib.sha256(results.read_bytes()).hexdigest(),
            "arm_specs": rows[0]["arm_specs"] if rows else None, **compare(rows)}
     out.write_text(json.dumps(rep, indent=1), encoding="utf-8")
-    print(json.dumps({k: rep[k] for k in ("pairs", "top1_agree", "box_iou", "rendition_differs")}, indent=1))
+    print(json.dumps({k: rep[k] for k in ("pairs", "top1_agree", "stored_output_agree", "box_iou", "aspect_mismatch")},
+                     indent=1))
     return rep
 
 
