@@ -6455,6 +6455,41 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
     if _stored:
         score, score_technical, score_aesthetic, score_general, model_version, rating, label = _stored
 
+    # The same index-only result carries no title, description or thumbnail either, so its
+    # defaults would blank the keywords phase's caption and the stored thumbnail paths. Keep
+    # the stored value for each of those fields the result leaves out (issue #861).
+    _keep_title = "title" not in result
+    _keep_description = "description" not in result
+    _keep_thumbnail = "thumbnail_path" not in result and "thumbnail_path_win" not in result
+
+    def _with_stored_display(row_id, values):
+        if not row_id or not (_keep_title or _keep_description or _keep_thumbnail):
+            return values
+        try:
+            row = get_connector().query_one(
+                "SELECT title, description, thumbnail_path, thumbnail_path_win "
+                "FROM images WHERE id = ?",
+                (row_id,),
+            )
+        except Exception:
+            logger.debug("upsert_image: could not read stored display fields for id=%s", row_id, exc_info=True)
+            return values
+        if not row:
+            return values
+        t, d, tp, tw = values
+        if _keep_title:
+            t = row.get("title")
+        if _keep_description:
+            d = row.get("description")
+        if _keep_thumbnail:
+            tp, tw = row.get("thumbnail_path"), row.get("thumbnail_path_win")
+        return t, d, tp, tw
+
+    title, description, thumbnail_path, thumbnail_path_win = _with_stored_display(
+        existing_image.get("id") if existing_image else None,
+        (title, description, thumbnail_path, thumbnail_path_win),
+    )
+
     # Prevent duplicates by image_uuid: if UUID exists in DB (different path), update that record instead of inserting
     meta_dict = result.get("metadata") if isinstance(result.get("metadata"), dict) else (
         json.loads(result.get("metadata")) if isinstance(result.get("metadata"), str) else None
@@ -6482,6 +6517,9 @@ def upsert_image(job_id, result, *, invalidate_agg=True, dirty_folder_ids=None):
                 if _stored:
                     (score, score_technical, score_aesthetic, score_general,
                      model_version, rating, label) = _stored
+                title, description, thumbnail_path, thumbnail_path_win = _with_stored_display(
+                    existing_id, (title, description, thumbnail_path, thumbnail_path_win),
+                )
                 dup_core = (
                     job_id, image_path, file_name, file_type,
                     score,
