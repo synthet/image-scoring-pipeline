@@ -267,6 +267,7 @@ def _verify(data, predictions, *, ids=None):
 def run(ids, species_list, cohort, full, snap, completed, profile="369"):
     from modules import bird_species as bs
     from modules import db
+    from modules.bird_species_eligibility import BIRD_SPECIES_TERMINAL_SKIP_REASONS
 
     species, predictions = preflight(ids, species_list, cohort, full, profile)
     frozen = _read(cohort, COHORT_SHA256)
@@ -314,7 +315,8 @@ def run(ids, species_list, cohort, full, snap, completed, profile="369"):
                 "JOIN pipeline_phases p ON p.id = ips.phase_id WHERE ips.image_id = ? AND p.code = 'bird_species'",
                 (iid,))
             if not phase or (phase["status"] != "done" and
-                             not (phase["status"] == "skipped" and phase["skip_reason"] == "no_species_match")):
+                             not (phase["status"] == "skipped"
+                                  and phase["skip_reason"] in BIRD_SPECIES_TERMINAL_SKIP_REASONS)):
                 raise ValueError(f"species refresh failed for image {iid}")
             _verify(baseline, predictions, ids=[iid])
             done.add(iid)

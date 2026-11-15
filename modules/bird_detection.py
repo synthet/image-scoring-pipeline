@@ -50,6 +50,23 @@ _DEFAULT_MAX_DET = 10
 BBOX_NOT_DETECTED = {"detected": False}
 
 
+def is_not_detected_sentinel(bbox) -> bool:
+    """True for a stored "the detector ran and found no bird" value (``BBOX_NOT_DETECTED``).
+
+    False for NULL (never scanned), a scan-failed sentinel (has ``error``), a real box, and
+    malformed payloads. Accepts the JSON text form stored in ``images.bird_bbox``.
+    """
+    if isinstance(bbox, (str, bytes)):
+        import json
+
+        try:
+            bbox = json.loads(bbox)
+        except ValueError:
+            return False
+    return (isinstance(bbox, dict) and bbox.get("detected") is False
+            and "error" not in bbox and "x1" not in bbox)
+
+
 def bbox_scan_failed(reason: str) -> dict:
     """Sentinel when a scan was attempted but could not produce a box (decode/IO/etc.).
 

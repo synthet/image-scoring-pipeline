@@ -123,50 +123,57 @@ def stored_box_input(image_id: int, choice: dict) -> dict:
     Crops to the stored compatibility box (``read_bird_bbox``, which follows
     ``localization.read_normalized_first``) as ``"stored_box"``, or classifies the whole frame as
     ``"full_frame"`` when there is no real box, the lookup fails, or a small selection was
-    excluded from region species (its stored box is that same small crop, #598). A failed lookup
-    is flagged ``lookup_failed`` so the runner retries it instead of abstaining (#869).
+    excluded from region species (its stored box is that same small crop, #598).
+
+    For #869 it also says why there is no box: ``stored_not_detected`` when the stored value is the
+    detector's "no bird" sentinel (species may abstain for good), ``lookup_failed`` when the lookup
+    raised. Anything else without a box (never scanned, a failed scan, a malformed payload) is
+    retried, not abstained.
     """
     region = None
     lookup_failed = False
+    not_detected = False
     if not choice.get("exclusion_reason"):
-        from modules.bird_detection import stored_box_region
+        from modules.bird_detection import is_not_detected_sentinel, stored_box_region
         from modules.localization_legacy import read_bird_bbox
 
         try:
-            region = stored_box_region(read_bird_bbox(db.get_connector(), int(image_id)))
+            raw = read_bird_bbox(db.get_connector(), int(image_id))
+            region = stored_box_region(raw)
+            not_detected = region is None and is_not_detected_sentinel(raw)
         except Exception:  # noqa: BLE001 -- a lookup failure is retried, never an abstention
             logger.warning("bird_species: stored box lookup failed for image_id=%s", image_id, exc_info=True)
             lookup_failed = True
     out = {**choice, "mode": "stored_box" if region else "full_frame", "region": region}
     if lookup_failed:
         out["lookup_failed"] = True
+    if not_detected:
+        out["stored_not_detected"] = True
     return out
 
 
 def no_box_outcome(choice: dict, classifier) -> str | None:
     """Whether a classify ran on the whole frame only because no bird box was found (#869).
 
-    ``"no_box"``: no bird box exists (the embedded detector found none or its scan failed for good,
-    or the retired-detector path has no stored box). Species abstains with ``no_bird_box``; the
-    whole-frame embedding is still kept. ``"transient"``: the box could not be looked up right now
-    (detector unavailable, stored-box lookup failed); store nothing and retry. ``None``: a box was
-    used, the classify failed (``last_error``), or a small selection was excluded on purpose (#598),
-    which keeps its current behaviour.
+    ``"no_box"``: the detector ran and found no bird (the embedded detector's not-detected result,
+    or that sentinel stored for the retired-detector path). Species abstains with ``no_bird_box``;
+    the whole-frame embedding is still kept. ``"transient"``: no box is available yet for any other
+    reason (a scan error, the detector unavailable, a stored box never scanned or malformed, a failed
+    lookup); store nothing and retry. ``None``: a box was used, the classify failed (``last_error``),
+    or a small selection was excluded on purpose (#598), which keeps its current behaviour.
     """
-    from modules.bird_detection import RETRYABLE_BBOX_ERRORS
-
     if getattr(classifier, "last_error", None) is not None:
         return None
     mode = choice.get("mode")
     if mode == "full_frame":
         if choice.get("exclusion_reason"):
             return None
-        return "transient" if choice.get("lookup_failed") else "no_box"
+        return "no_box" if choice.get("stored_not_detected") else "transient"
     if mode == "legacy":
         bbox = getattr(classifier, "last_bbox", None)
         if not isinstance(bbox, dict) or "x1" in bbox:
             return None
-        return "transient" if bbox.get("error") in RETRYABLE_BBOX_ERRORS else "no_box"
+        return "transient" if bbox.get("error") else "no_box"
     return None
 
 
@@ -679,7 +686,8 @@ class BirdSpeciesRunner:
             no_box=no_box_outcome(choice,self.classifier)
             if no_box=='transient':
                 bbox=getattr(self.classifier,'last_bbox',None) or {}
-                detail=bbox.get('error') if choice['mode']=='legacy' else 'stored_box_lookup_failed'
+                detail=(bbox.get('error') if choice['mode']=='legacy'
+                        else 'stored_box_lookup_failed' if choice.get('lookup_failed') else 'stored_box_unavailable')
                 store.fail(claim,f'no_bird_box_transient: {detail}')
                 return 0,1
             if no_box=='no_box':
@@ -795,7 +803,8 @@ class BirdSpeciesRunner:
             # is kept (E1); a box we could not look up right now is retried, not abstained.
             no_box = no_box_outcome(choice, self.classifier)
             if no_box == "transient":
-                detail = (bbox or {}).get("error") if choice["mode"] == "legacy" else "stored_box_lookup_failed"
+                detail = ((bbox or {}).get("error") if choice["mode"] == "legacy"
+                          else "stored_box_lookup_failed" if choice.get("lookup_failed") else "stored_box_unavailable")
                 db.set_image_phase_status(
                     row["id"],
                     phase_code,
