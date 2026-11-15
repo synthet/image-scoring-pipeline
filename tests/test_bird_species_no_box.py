@@ -30,14 +30,16 @@ class _Clf:
 @pytest.mark.parametrize("choice,clf,expected", [
     # Embedded detector ran and found no bird -> abstain.
     ({"mode": "legacy"}, _Clf(dict(BBOX_NOT_DETECTED)), "no_box"),
-    # A terminal scan error also leaves no box to classify -> abstain.
-    ({"mode": "legacy"}, _Clf(bbox_scan_failed("detect_error: boom")), "no_box"),
+    # Any scan error is retried; only a real not-detected result is final (#869 condition 2).
+    ({"mode": "legacy"}, _Clf(bbox_scan_failed("detect_error: boom")), "transient"),
     # The detector could not load: retry later, store nothing.
     ({"mode": "legacy"}, _Clf(bbox_scan_failed("detector_unavailable")), "transient"),
     # A box was found: classify as before.
     ({"mode": "legacy"}, _Clf(dict(_BOX), mode="detector_crop"), None),
-    # Retired detector, no stored box -> abstain; lookup failure -> retry.
-    ({"mode": "full_frame", "region": None}, _Clf(None), "no_box"),
+    # Retired detector: a stored not-detected sentinel abstains; never scanned, scan failed or a
+    # failed lookup is retried.
+    ({"mode": "full_frame", "region": None, "stored_not_detected": True}, _Clf(None), "no_box"),
+    ({"mode": "full_frame", "region": None}, _Clf(None), "transient"),
     ({"mode": "full_frame", "region": None, "lookup_failed": True}, _Clf(None), "transient"),
     # A small selection excluded on purpose (#598) keeps its current behaviour (out of scope).
     ({"mode": "full_frame", "region": None, "exclusion_reason": "selected_area_below_0.005"}, _Clf(None), None),
@@ -49,6 +51,21 @@ class _Clf:
 ])
 def test_no_box_outcome(choice, clf, expected):
     assert no_box_outcome(choice, clf) == expected
+
+
+@pytest.mark.parametrize("stored,not_detected", [
+    ({"detected": False}, True),
+    ('{"detected": false}', True),
+    (None, False),                                              # never scanned
+    ({"detected": False, "error": "file_missing"}, False),      # scan failed
+    ({"x1": 1, "y1": 2, "x2": 3, "y2": 4, "img_w": 10, "img_h": 10}, False),
+])
+def test_stored_box_input_flags_only_a_real_not_detected(monkeypatch, stored, not_detected):
+    monkeypatch.setattr("modules.localization_legacy.read_bird_bbox",
+                        lambda conn, image_id, prefer_normalized=None: stored)
+    monkeypatch.setattr(bs.db, "get_connector", lambda: object())
+    choice = bs.stored_box_input(3, {"mode": "legacy"})
+    assert bool(choice.get("stored_not_detected")) is not_detected
 
 
 def test_stored_box_lookup_failure_is_flagged(monkeypatch):
@@ -86,7 +103,8 @@ class _RunClf:
         return [("Purple Martin", 0.65)]
 
 
-def _run(monkeypatch, tmp_path, *, last_bbox, choice=None, refresh=False, detector_on=True, mode="full_frame"):
+def _run(monkeypatch, tmp_path, *, last_bbox, choice=None, refresh=False, detector_on=True, mode="full_frame",
+         stored=None):
     img = tmp_path / "a.jpg"
     img.write_bytes(b"x")
     rec = {"keywords": [], "exhausted": [], "phase": [], "embeddings": []}
@@ -96,7 +114,7 @@ def _run(monkeypatch, tmp_path, *, last_bbox, choice=None, refresh=False, detect
     monkeypatch.setattr(bs, "species_input_for_image", lambda image_id: choice or {"mode": "legacy"})
     monkeypatch.setattr("modules.bird_detection.embedded_detector_enabled", lambda: detector_on)
     monkeypatch.setattr("modules.localization_legacy.read_bird_bbox",
-                        lambda conn, image_id, prefer_normalized=None: None)
+                        lambda conn, image_id, prefer_normalized=None: stored)
     monkeypatch.setattr(runner, "_persist_bioclip_embedding", lambda image_id: rec["embeddings"].append(image_id))
     monkeypatch.setattr(bs, "write_legacy_bird_bbox", lambda i, b: None)
     monkeypatch.setattr(bs.db, "get_connector", lambda: object())
@@ -138,10 +156,28 @@ def test_detector_unavailable_is_retryable_and_stores_nothing(monkeypatch, tmp_p
     assert args[2] == "failed" and "detector_unavailable" in kw["error"]
 
 
-def test_retired_detector_without_a_stored_box_abstains(monkeypatch, tmp_path):
-    _, rec = _run(monkeypatch, tmp_path, last_bbox=None, detector_on=False)
+def test_retired_detector_with_stored_not_detected_abstains(monkeypatch, tmp_path):
+    _, rec = _run(monkeypatch, tmp_path, last_bbox=None, detector_on=False, stored={"detected": False})
     assert rec["keywords"] == []
     assert rec["exhausted"] == [(3, BIRD_SPECIES_NO_BOX_SKIP_REASON)]
+
+
+@pytest.mark.parametrize("stored", [None, {"detected": False, "error": "detect_error: boom"}])
+def test_retired_detector_without_a_scanned_box_retries(monkeypatch, tmp_path, stored):
+    """A never-scanned (NULL) or failed stored box is work still owed, not a final no_bird_box."""
+    result, rec = _run(monkeypatch, tmp_path, last_bbox=None, detector_on=False, stored=stored, refresh=True)
+    assert result == (0, 1)
+    assert rec["keywords"] == [] and rec["exhausted"] == []
+    (args, kw), = rec["phase"]
+    assert args[2] == "failed" and "stored_box_unavailable" in kw["error"]
+
+
+def test_embedded_detect_error_retries(monkeypatch, tmp_path):
+    result, rec = _run(monkeypatch, tmp_path, last_bbox=bbox_scan_failed("detect_error: boom"))
+    assert result == (0, 1)
+    assert rec["keywords"] == [] and rec["exhausted"] == []
+    (args, kw), = rec["phase"]
+    assert args[2] == "failed" and "detect_error" in kw["error"]
 
 
 def test_a_found_box_still_stores_the_species(monkeypatch, tmp_path):
