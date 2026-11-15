@@ -178,7 +178,7 @@ def _abstain_row(monkeypatch, tmp_path, *, refresh, last_error):
                         lambda image_id, legacy_csv, new_species: "birds,heron")
     monkeypatch.setattr(bs.db, "update_image_keywords_for_image", lambda image_id, csv, **kw: writes.append(csv))
     monkeypatch.setattr("modules.bird_species_eligibility.mark_species_exhausted",
-                        lambda image_id: exhausted.append(image_id))
+                        lambda image_id, **kw: exhausted.append(image_id))
     runner._process_bird_species_image_row(
         {"id": 3, "file_path": str(img)}, species_list=["Carolina Wren"], threshold=0.5, top_k=1,
         phase_code="bird_species", log=lambda *a, **kw: None, refresh=refresh)

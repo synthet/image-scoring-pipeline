@@ -217,7 +217,8 @@ class SpeciesStore:
         self._lineage(tx,claim,'embedding',space['id'],values)
         return True
 
-    def publish(self,claim,*,predictions=None,embedding=None,space_code='bioclip_2_crop',model_version='authority-species/1',source_observation=None):
+    def publish(self,claim,*,predictions=None,embedding=None,space_code='bioclip_2_crop',model_version='authority-species/1',source_observation=None,
+                no_match_reason='no_species_match'):
         def publish(tx):
             ctl=tx.query_one('SELECT * FROM localization_authority_control WHERE id=1 FOR SHARE')
             selection=claim['input_state']['semantic'].get('selection') or {}
@@ -250,7 +251,9 @@ class SpeciesStore:
                 if not embedded and predictions:
                     disposition='classified_embedding_preserved'
                 status='done' if predictions else 'skipped'
-                reason=None if predictions else 'no_species_match'
+                # The work disposition stays 'no_species_match' so the lifecycle views keep the embedding
+                # visible; the phase skip reason records why (#869: 'no_bird_box').
+                reason=None if predictions else no_match_reason
             else:
                 disposition={'preserve':'preserved','cleanup':'source_unavailable','out_of_scope':'out_of_scope'}[action]
                 status='done' if action=='preserve' else 'failed' if action=='cleanup' else 'skipped'

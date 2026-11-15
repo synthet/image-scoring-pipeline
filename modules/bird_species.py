@@ -123,18 +123,51 @@ def stored_box_input(image_id: int, choice: dict) -> dict:
     Crops to the stored compatibility box (``read_bird_bbox``, which follows
     ``localization.read_normalized_first``) as ``"stored_box"``, or classifies the whole frame as
     ``"full_frame"`` when there is no real box, the lookup fails, or a small selection was
-    excluded from region species (its stored box is that same small crop, #598).
+    excluded from region species (its stored box is that same small crop, #598). A failed lookup
+    is flagged ``lookup_failed`` so the runner retries it instead of abstaining (#869).
     """
     region = None
+    lookup_failed = False
     if not choice.get("exclusion_reason"):
         from modules.bird_detection import stored_box_region
         from modules.localization_legacy import read_bird_bbox
 
         try:
             region = stored_box_region(read_bird_bbox(db.get_connector(), int(image_id)))
-        except Exception:  # noqa: BLE001 -- a lookup failure must not cost the image its species
+        except Exception:  # noqa: BLE001 -- a lookup failure is retried, never an abstention
             logger.warning("bird_species: stored box lookup failed for image_id=%s", image_id, exc_info=True)
-    return {**choice, "mode": "stored_box" if region else "full_frame", "region": region}
+            lookup_failed = True
+    out = {**choice, "mode": "stored_box" if region else "full_frame", "region": region}
+    if lookup_failed:
+        out["lookup_failed"] = True
+    return out
+
+
+def no_box_outcome(choice: dict, classifier) -> str | None:
+    """Whether a classify ran on the whole frame only because no bird box was found (#869).
+
+    ``"no_box"``: no bird box exists (the embedded detector found none or its scan failed for good,
+    or the retired-detector path has no stored box). Species abstains with ``no_bird_box``; the
+    whole-frame embedding is still kept. ``"transient"``: the box could not be looked up right now
+    (detector unavailable, stored-box lookup failed); store nothing and retry. ``None``: a box was
+    used, the classify failed (``last_error``), or a small selection was excluded on purpose (#598),
+    which keeps its current behaviour.
+    """
+    from modules.bird_detection import RETRYABLE_BBOX_ERRORS
+
+    if getattr(classifier, "last_error", None) is not None:
+        return None
+    mode = choice.get("mode")
+    if mode == "full_frame":
+        if choice.get("exclusion_reason"):
+            return None
+        return "transient" if choice.get("lookup_failed") else "no_box"
+    if mode == "legacy":
+        bbox = getattr(classifier, "last_bbox", None)
+        if not isinstance(bbox, dict) or "x1" in bbox:
+            return None
+        return "transient" if bbox.get("error") in RETRYABLE_BBOX_ERRORS else "no_box"
+    return None
 
 
 # Default candidate species list (common North American names)
@@ -642,6 +675,15 @@ class BirdSpeciesRunner:
             if error:
                 store.fail(claim,error)
                 return 0,1
+            # No bird box: abstain instead of a whole-frame species, keep the embedding (#869, E1).
+            no_box=no_box_outcome(choice,self.classifier)
+            if no_box=='transient':
+                bbox=getattr(self.classifier,'last_bbox',None) or {}
+                detail=bbox.get('error') if choice['mode']=='legacy' else 'stored_box_lookup_failed'
+                store.fail(claim,f'no_bird_box_transient: {detail}')
+                return 0,1
+            if no_box=='no_box':
+                predictions=[]
             vec=getattr(self.classifier,'last_image_embedding',None)
             mode=getattr(self.classifier,'last_input_mode',None)
             space={'full_frame':'bioclip_2_image','region':'bioclip_2_crop','detector_crop':'bioclip_2_crop'}.get(mode)
@@ -651,7 +693,8 @@ class BirdSpeciesRunner:
             emb=config.get_config_section('embeddings') or {}
             version=(emb.get('model_versions') or {}).get(space) or getattr(self.classifier,'MODEL_ID','authority-species/1')
             published=store.publish(claim,predictions=predictions,embedding=vec,space_code=space,
-                                    model_version=version,source_observation=observe_source(row['file_path']))
+                                    model_version=version,source_observation=observe_source(row['file_path']),
+                                    no_match_reason='no_bird_box' if no_box=='no_box' else 'no_species_match')
             return (1,0) if published and predictions else (0,1)
         except Exception as exc:
             store.fail(claim,type(exc).__name__)
@@ -748,6 +791,23 @@ class BirdSpeciesRunner:
                         row.get("id"),
                     )
 
+            # No bird box: never store a species from the whole frame (#869). The embedding above
+            # is kept (E1); a box we could not look up right now is retried, not abstained.
+            no_box = no_box_outcome(choice, self.classifier)
+            if no_box == "transient":
+                detail = (bbox or {}).get("error") if choice["mode"] == "legacy" else "stored_box_lookup_failed"
+                db.set_image_phase_status(
+                    row["id"],
+                    phase_code,
+                    "failed",
+                    error=f"no_bird_box_transient: {detail}",
+                    executor_version=BIRD_SPECIES_RUNNER_VERSION,
+                )
+                log(f"{os.path.basename(file_path)}: no bird box yet ({detail}); will retry", "WARNING")
+                return 0, 1
+            if no_box == "no_box":
+                predictions = []
+
             if predictions:
                 from modules.bird_species_eligibility import build_bird_species_keyword_csv
 
@@ -785,7 +845,12 @@ class BirdSpeciesRunner:
                 log(f"{os.path.basename(file_path)}: {', '.join(new_species_kws)}{mode}")
                 return 1, 0
 
-            from modules.bird_species_eligibility import build_bird_species_keyword_csv, mark_species_exhausted
+            from modules.bird_species_eligibility import (
+                BIRD_SPECIES_NO_BOX_SKIP_REASON,
+                BIRD_SPECIES_NO_MATCH_SKIP_REASON,
+                build_bird_species_keyword_csv,
+                mark_species_exhausted,
+            )
 
             # Only a real abstention clears a stale label; a classify failure also returns [].
             if refresh and getattr(self.classifier, "last_error", "unknown") is None:
@@ -794,11 +859,10 @@ class BirdSpeciesRunner:
                 if "species:" in (db.get_resolved_image_keywords(int(row["id"]), legacy_fallback=existing,
                                                                  hide_internal=False) or "").lower():
                     db.update_image_keywords_for_image(row["id"], cleared, source="auto", scope="species")
-            mark_species_exhausted(int(row["id"]))
-            log(
-                f"{os.path.basename(file_path)}: no species above threshold "
-                f"(bird_species IPS skipped / no_species_match)",
-            )
+            reason = BIRD_SPECIES_NO_BOX_SKIP_REASON if no_box == "no_box" else BIRD_SPECIES_NO_MATCH_SKIP_REASON
+            mark_species_exhausted(int(row["id"]), skip_reason=reason)
+            what = "no bird box" if no_box == "no_box" else "no species above threshold"
+            log(f"{os.path.basename(file_path)}: {what} (bird_species IPS skipped / {reason})")
             return 0, 1
 
         except Exception as exc:
