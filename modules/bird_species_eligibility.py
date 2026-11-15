@@ -2,7 +2,8 @@
 
 Images are in scope when tagged with a birds-related keyword (see ``_sql_image_has_birds_keyword``).
 Species work is **pending** when in scope, no ``species:*`` keyword, and bird_species IPS is not
-``skipped`` with ``skip_reason=no_species_match`` (BioCLIP found no prediction above threshold).
+``skipped`` with ``skip_reason=no_species_match`` (BioCLIP found no prediction above threshold) or
+``no_bird_box`` (no bird box was found, so species abstained instead of classifying the whole frame, #869).
 
 The no-match terminal state lives in ``image_phase_status`` only — not as a user-facing keyword.
 The underlying ``birds`` tag is preserved for discovery and filtering.
@@ -16,6 +17,9 @@ BIRDS_SPECIES_EXHAUSTED_KEYWORD = "birds:species-exhausted"
 BIRDS_SPECIES_EXHAUSTED_NORM = BIRDS_SPECIES_EXHAUSTED_KEYWORD.lower()
 BIRDS_DISCOVERY_KEYWORD = "birds"
 BIRD_SPECIES_NO_MATCH_SKIP_REASON = "no_species_match"
+#: Species abstained because no bird box was found (#869). Terminal like ``no_species_match``.
+BIRD_SPECIES_NO_BOX_SKIP_REASON = "no_bird_box"
+BIRD_SPECIES_TERMINAL_SKIP_REASONS = (BIRD_SPECIES_NO_MATCH_SKIP_REASON, BIRD_SPECIES_NO_BOX_SKIP_REASON)
 
 
 class BirdSpeciesEligibility(str, Enum):
@@ -70,16 +74,16 @@ def build_bird_species_keyword_csv(
 
 
 def _sql_bird_species_exhausted_ips(table_alias: str = "i") -> str:
-    """True when bird_species IPS records a terminal no-species-match skip."""
+    """True when bird_species IPS records a terminal skip (no species match, or no bird box)."""
     prefix = f"{table_alias}." if table_alias else ""
-    reason = BIRD_SPECIES_NO_MATCH_SKIP_REASON.replace("'", "''")
+    reasons = ", ".join("'" + r.replace("'", "''") + "'" for r in BIRD_SPECIES_TERMINAL_SKIP_REASONS)
     return f"""EXISTS (
         SELECT 1 FROM image_phase_status ips_e
         JOIN pipeline_phases pp_e ON pp_e.id = ips_e.phase_id
         WHERE ips_e.image_id = {prefix}id
           AND LOWER(TRIM(pp_e.code)) = 'bird_species'
           AND LOWER(TRIM(ips_e.status)) = 'skipped'
-          AND LOWER(TRIM(COALESCE(ips_e.skip_reason, ''))) = '{reason}'
+          AND LOWER(TRIM(COALESCE(ips_e.skip_reason, ''))) IN ({reasons})
     )"""
 
 
@@ -128,7 +132,7 @@ def classify_image_row(
         return BirdSpeciesEligibility.EXHAUSTED
     st = (ips_status or "").strip().lower()
     skip = (ips_skip_reason or "").strip().lower()
-    if st == "skipped" and skip == BIRD_SPECIES_NO_MATCH_SKIP_REASON:
+    if st == "skipped" and skip in BIRD_SPECIES_TERMINAL_SKIP_REASONS:
         return BirdSpeciesEligibility.EXHAUSTED
     if st == "failed":
         return BirdSpeciesEligibility.FAILED
@@ -168,8 +172,11 @@ def mark_species_exhausted(
     *,
     existing_keywords_csv: str = "",
     dry_run: bool = False,
+    skip_reason: str = BIRD_SPECIES_NO_MATCH_SKIP_REASON,
 ) -> bool:
-    """Record terminal no-match in IPS so backlog queries skip the image.
+    """Record a terminal abstention in IPS so backlog queries skip the image.
+
+    ``skip_reason`` is ``no_species_match`` (default) or ``no_bird_box`` (#869).
 
     Does not mutate keywords — ``birds`` and other tags stay as-is.
     ``existing_keywords_csv`` is accepted for back-compat but ignored.
@@ -184,7 +191,7 @@ def mark_species_exhausted(
         image_id,
         "bird_species",
         "skipped",
-        skip_reason=BIRD_SPECIES_NO_MATCH_SKIP_REASON,
+        skip_reason=skip_reason,
         skipped_by="bird_species_eligibility",
         executor_version=BIRD_SPECIES_RUNNER_VERSION,
     )

@@ -404,7 +404,7 @@ def test_runner_writes_bioclip_species_confidence_maps(monkeypatch):
         last_bbox = None
 
         def classify(self, *args, **kwargs):
-            self.last_bbox = {"detected": False}
+            self.last_bbox = {"x1": 10, "y1": 10, "x2": 60, "y2": 60, "conf": 0.9, "img_w": 100, "img_h": 100}  # a found box (#869: no box means no species)
             return [("American Robin", 0.82), ("Mallard", 0.09)]
 
     runner = BirdSpeciesRunner()
@@ -458,7 +458,7 @@ def test_runner_writes_bioclip_species_confidence_maps(monkeypatch):
         "species:mallard": "bioclip",
     }
     assert any(args[2] == "done" for args, _ in status_calls)
-    assert bbox_writes == [(42, {"detected": False})]
+    assert bbox_writes == [(42, {"x1": 10, "y1": 10, "x2": 60, "y2": 60, "conf": 0.9, "img_w": 100, "img_h": 100})]
 
 
 def test_runner_preserves_birds_when_legacy_keywords_empty(monkeypatch):
@@ -470,7 +470,7 @@ def test_runner_preserves_birds_when_legacy_keywords_empty(monkeypatch):
         last_bbox = None
 
         def classify(self, *args, **kwargs):
-            self.last_bbox = {"detected": False}
+            self.last_bbox = {"x1": 10, "y1": 10, "x2": 60, "y2": 60, "conf": 0.9, "img_w": 100, "img_h": 100}  # a found box (#869: no box means no species)
             return [("American Robin", 0.82)]
 
     runner = BirdSpeciesRunner()
@@ -554,8 +554,9 @@ def test_runner_no_match_writes_ips_only(monkeypatch):
     assert status_calls[0][0][2] == "skipped"
 
 
-def test_runner_persists_detector_unavailable_sentinel_with_species(monkeypatch):
-    """When YOLO is unavailable, species tags still write and bird_bbox is not left NULL."""
+def test_runner_persists_detector_unavailable_sentinel_and_retries(monkeypatch):
+    """When YOLO is unavailable, bird_bbox is not left NULL, no whole-frame species is written and
+    the image is left retryable (#869)."""
     import modules.bird_species as bs
 
     class _FakeClassifier:
@@ -585,7 +586,8 @@ def test_runner_persists_detector_unavailable_sentinel_with_species(monkeypatch)
         "update_image_keywords_for_image",
         lambda *args, **kw: helper_calls.append((args, kw)),
     )
-    monkeypatch.setattr(_db, "set_image_phase_status", lambda *a, **kw: None)
+    status_calls = []
+    monkeypatch.setattr(_db, "set_image_phase_status", lambda *a, **kw: status_calls.append((a, kw)))
     monkeypatch.setattr(
         bs,
         "write_legacy_bird_bbox",
@@ -602,7 +604,8 @@ def test_runner_persists_detector_unavailable_sentinel_with_species(monkeypatch)
     )
 
     assert bbox_writes == [(206163, {"detected": False, "error": "detector_unavailable"})]
-    assert "species:Mourning Dove" in helper_calls[0][0][1]
+    assert helper_calls == []
+    assert [c[0][2] for c in status_calls if c[0][0] == 206163] == ["failed"]
 
 
 def test_classify_sets_detector_unavailable_when_ensure_returns_none(monkeypatch):

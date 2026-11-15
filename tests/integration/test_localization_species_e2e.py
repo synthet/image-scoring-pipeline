@@ -157,6 +157,23 @@ def test_runner_scalar_and_sql_completeness_share_selection_only_scope():
     assert not db.is_image_bird_species_complete(iid,include_bbox=False)
 
 
+def test_no_bird_box_publish_abstains_keeps_the_embedding_and_completes():
+    """#869: no bird box -> no species, the whole-frame embedding stays visible, the image leaves the backlog."""
+    store,_,species,_,iid,_=selected()
+    species.observe(iid,source_observation=SOURCE)
+    assert species.publish(species.claim_next(image_id=iid),predictions=[],embedding=[0.1]*768,space_code='bioclip_2_image',
+                           source_observation=SOURCE,no_match_reason='no_bird_box')
+    assert 'species:' not in (db.get_resolved_image_keywords(iid) or '').lower()
+    phase=store.conn.query_one("SELECT ips.status,ips.skip_reason FROM image_phase_status ips JOIN pipeline_phases pp "
+                               "ON pp.id=ips.phase_id WHERE ips.image_id=? AND pp.code='bird_species'",(iid,))
+    assert (phase['status'],phase['skip_reason'])==('skipped','no_bird_box')
+    work=store.conn.query_one('SELECT disposition FROM localization_species_work WHERE image_id=? ORDER BY id DESC',(iid,))
+    assert work['disposition']=='no_species_match'
+    assert store.conn.query("SELECT 1 FROM localization_visible_image_embeddings_768 v JOIN embedding_spaces es "
+                            "ON es.id=v.embedding_space_id WHERE v.image_id=? AND es.code='bioclip_2_image'",(iid,))
+    assert db.is_image_bird_species_complete(iid,include_bbox=False)
+
+
 def test_idle_lane_admits_due_gpu_species_work_as_one_bird_species_job():
     from modules import localization_lane as lane
     store,_,species,_,iid,_=selected()
