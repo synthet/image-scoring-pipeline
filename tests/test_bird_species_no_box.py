@@ -244,3 +244,20 @@ def test_authority_path_abstains_or_retries(monkeypatch, tmp_path, last_bbox, pu
     else:
         assert _FakeStore.published == []
     assert _FakeStore.failed == failed
+
+
+# --------------------------------------------------------------------------- reporting scripts (#873)
+
+@pytest.mark.parametrize("path,var", [
+    ("scripts/schedule_bird_species_bird_folders.py", "_IPS_NOT_EXHAUSTED"),
+    ("scripts/maintenance/backfill_bird_species_eligibility.py", "_SQL_SPECIES_NO_BIRDS"),
+])
+def test_reporting_scripts_treat_no_bird_box_as_terminal(path, var):
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("script_under_test", Path(__file__).parents[1] / path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    sql = getattr(module, var)
+    assert "'no_species_match'" in sql and "'no_bird_box'" in sql

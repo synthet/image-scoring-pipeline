@@ -155,6 +155,11 @@ export function GalleryPage() {
                     kind: 'phase_status' as const,
                     value: 'bird_species:skipped:no_species_match',
                   },
+                  {
+                    label: 'No bird box',
+                    kind: 'phase_status' as const,
+                    value: 'bird_species:skipped:no_bird_box',
+                  },
                   { label: 'Has species', kind: 'keyword' as const, value: 'species:' },
                 ] as const
               ).map((preset) => (
