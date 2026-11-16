@@ -5,8 +5,8 @@ then A runs again (``newer-freed``). ``older-freed`` is the replace pattern: A i
 
 Usage: python dml_free_order.py <model.onnx> <provider> <newer-freed|older-freed>
 
-On DirectML some graphs exit with a segfault (139) in ``newer-freed`` when A next runs; CPU, CUDA
-and OpenVINO pass.
+On DirectML some graphs die with an access violation in ``newer-freed`` when A next runs
+(PowerShell ``$LASTEXITCODE`` -1073741819 / 0xC0000005; Git Bash 139). CPU, CUDA and the OpenVINO EP pass.
 """
 
 import gc
@@ -24,6 +24,10 @@ def main() -> None:
     model, provider, order = sys.argv[1:4]
     if provider == "CUDAExecutionProvider":
         ort.preload_dlls()
+    if provider == "OpenVINOExecutionProvider":
+        import onnxruntime.tools.add_openvino_win_libs as ov_libs
+
+        ov_libs.add_openvino_libs_to_path()
     a = make_session(model, provider)
     inp = a.get_inputs()[0]
     shape = [d if isinstance(d, int) else 1 for d in inp.shape]

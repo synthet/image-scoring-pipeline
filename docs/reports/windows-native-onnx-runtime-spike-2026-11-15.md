@@ -94,7 +94,7 @@ Repro: [`dml_free_order.py`](../../scripts/research/ort_ep_spike/dml_free_order.
 
 - The crash fires when the surviving older session next runs, not at the free.
 - Only same-graph pairs were tested.
-- CUDA, CPU and OpenVINO pass the same sequence.
+- CUDA, CPU and the OpenVINO EP (CPU device, with `add_openvino_libs_to_path()`, so `get_providers()[0]` is `OpenVINOExecutionProvider`) pass the same sequence on both affected graphs, in both orders.
 - In a threaded variant (a long-lived session plus workers creating and freeing sessions), the crash also happened with one lock around every create, run and free.
 - This adds to the parity lesson in [ONNX_CONVERSION_FEASIBILITY.md](../planning/models/ONNX_CONVERSION_FEASIBILITY.md) that concurrent DirectML sessions crash. Serializing calls is not enough: keep one session per graph for the process lifetime, and never free a session while an older session of the same graph is alive.
 
@@ -144,7 +144,8 @@ ovnative\Scripts\python ov_probe.py <model.onnx> GPU ref.npz --precision f32
 winml\Scripts\python winml_list.py
 winml\Scripts\python winml_wrap.py ort_probe.py <model.onnx> DmlExecutionProvider ref.npz
 
-# DirectML session-lifetime crash (exit code 139 on affected graphs)
+# DirectML session-lifetime crash: on affected graphs the process dies with an access violation
+# ($LASTEXITCODE -1073741819 / 0xC0000005 in PowerShell; 139 in Git Bash)
 dml\Scripts\python dml_free_order.py <model.onnx> DmlExecutionProvider newer-freed
 ```
 
