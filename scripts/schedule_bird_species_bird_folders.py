@@ -72,19 +72,12 @@ ORDER BY 1
 """
 
 # ── Gap SQL: folders with at least one image that needs species ID ────────────
-# Pending = birds keyword, no species:*, and not IPS no_species_match skip
-# (see modules/bird_species_eligibility.py). PostgreSQL prefix via LIKE.
+# Pending = birds keyword, no species:*, and not a terminal IPS skip (no_species_match or
+# no_bird_box, #869; see modules/bird_species_eligibility.py). PostgreSQL prefix via LIKE.
+from modules.bird_species_eligibility import _sql_bird_species_exhausted_ips  # noqa: E402
 
-_IPS_NOT_EXHAUSTED = """
-AND NOT EXISTS (
-    SELECT 1
-    FROM image_phase_status ips_e
-    JOIN pipeline_phases pp_e ON pp_e.id = ips_e.phase_id
-    WHERE ips_e.image_id = i.id
-      AND LOWER(TRIM(pp_e.code)) = 'bird_species'
-      AND LOWER(TRIM(ips_e.status)) = 'skipped'
-      AND LOWER(TRIM(COALESCE(ips_e.skip_reason, ''))) = 'no_species_match'
-)
+_IPS_NOT_EXHAUSTED = f"""
+AND NOT {_sql_bird_species_exhausted_ips("i")}
 """
 
 _SQL_GAP_LIKE = f"""

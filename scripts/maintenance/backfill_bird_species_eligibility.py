@@ -128,7 +128,10 @@ WHERE EXISTS (
 )
 """
 
-_SQL_SPECIES_NO_BIRDS = """
+# Terminal skips: no_species_match or no_bird_box (#869).
+from modules.bird_species_eligibility import _sql_bird_species_exhausted_ips  # noqa: E402
+
+_SQL_SPECIES_NO_BIRDS = f"""
 SELECT i.id AS image_id
 FROM images i
 WHERE (
@@ -137,14 +140,7 @@ WHERE (
         JOIN keywords_dim kd ON kd.keyword_id = ik.keyword_id
         WHERE ik.image_id = i.id AND LOWER(kd.keyword_norm) LIKE 'species:%'
     )
-    OR EXISTS (
-        SELECT 1 FROM image_phase_status ips
-        JOIN pipeline_phases pp ON pp.id = ips.phase_id
-        WHERE ips.image_id = i.id
-          AND LOWER(TRIM(pp.code)) = 'bird_species'
-          AND LOWER(TRIM(ips.status)) = 'skipped'
-          AND LOWER(TRIM(COALESCE(ips.skip_reason, ''))) = 'no_species_match'
-    )
+    OR {_sql_bird_species_exhausted_ips("i")}
 )
 AND NOT EXISTS (
     SELECT 1 FROM image_keywords ik2
