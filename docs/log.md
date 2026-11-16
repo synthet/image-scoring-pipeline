@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-11-15] created | #875 Windows-native ONNX Runtime GPU/NPU spike
+
+Added [the spike report](reports/windows-native-onnx-runtime-spike-2026-11-15.md), its reports-index row and the probe scripts under `scripts/research/ort_ep_spike/`. DirectML, CUDA, OpenVINO and Windows ML from Python all ran natively on the 8 GB laptop, and it has no NPU. Corrected the Windows ML claims in [ONNX_CONVERSION_FEASIBILITY.md](planning/models/ONNX_CONVERSION_FEASIBILITY.md) and [WINDOWS_NATIVE_WEBUI_PLAN.md](planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md), and extended DirectML lesson 6 with the session-lifetime crash. Documentation and research scripts only.
+
 ## [2026-11-11] created | #694 owner validation: no band passes
 
 Added [the owner validation report](reports/localization-owner-validation-694-2026-11-11.md) and its reports-index row, and updated the rollout status. All 390 frames were owner-labelled. Every band misses the 0.90 Wilson bar (large 121/130), so nothing is promoted. The next goal is to label production selections under the same standard.

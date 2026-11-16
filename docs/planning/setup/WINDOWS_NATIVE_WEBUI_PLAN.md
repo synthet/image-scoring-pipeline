@@ -4,7 +4,7 @@ title: Windows-native WebUI and inference plan
 description: Current state of running the backend natively on Windows (no WSL/Docker), which models can run there and how, and the remaining work.
 resource: docs/planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md
 tags: [planning, setup, windows, onnx, inference, gpu-runner]
-timestamp: 2026-10-05T00:00:00Z
+timestamp: 2026-11-16T01:30:00Z
 okf_version: 0.2
 ---
 
@@ -22,7 +22,7 @@ Can the backend (WebUI + pipeline phases) run on a Windows host Python without W
 - **ONNX adds** a single runtime, pinned artifacts and a vendor-neutral path. Most models rate green or amber in the [ONNX feasibility matrix](../models/ONNX_CONVERSION_FEASIBILITY.md); MUSIQ is red. The RTMDet detector already runs through `onnxruntime`. The ONNX doc's runtime decision applies here:
   - `onnxruntime-gpu` (CUDA EP) is the primary target on NVIDIA.
   - `onnxruntime-directml` is a compatibility experiment only, because DirectML is in sustained engineering.
-  - WinML is for a future packaged app, not the Python backend.
+  - Windows ML now has a documented Python route, and it ran inference natively in the [2026-11-15 spike](../../reports/windows-native-onnx-runtime-spike-2026-11-15.md). It is a separate ORT distribution and needs the Windows App SDK runtime and a non-Store Python. Its NVIDIA EP (TensorRT-RTX) is not benchmarked yet.
 - **The shortest route to GPU scoring from a native host needs no conversion.** Run the Windows WebUI as host and route phases to the existing GPU runner via `gpu_runner.phases.*: "remote"`. The runner can be a Docker container on the same PC or on another PC.
 
 ## Current state (verified 2026-10-05)

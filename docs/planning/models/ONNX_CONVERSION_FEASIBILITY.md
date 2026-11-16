@@ -4,7 +4,7 @@ title: ONNX conversion feasibility
 description: Feasibility, pros/cons, and phased implementation plan for exporting the backend's scoring and auxiliary models to ONNX.
 resource: docs/planning/models/ONNX_CONVERSION_FEASIBILITY.md
 tags: [planning, models, onnx, inference]
-timestamp: 2026-10-05T00:00:00Z
+timestamp: 2026-11-16T01:30:00Z
 okf_version: 0.2
 ---
 
@@ -21,7 +21,7 @@ Can the models the backend runs in WSL / Docker `gpu-shell` be converted to ONNX
   - porting MUSIQ with significant effort, or
   - replacing it with the distilled **student scorer**. The student already predicts proxies for spaq, ava, liqe, topiq, arniqa and the composites (`modules/student_scoring.py` `TEACHER_PROXY_KEYS`).
 - **The main risk is score drift, not producing a file.** Fusion uses fixed percentile anchors calibrated on about 61k already-scored images, so any ONNX path must match the current scores almost exactly.
-- **For new Windows work, prefer CUDA EP on the target NVIDIA laptop and benchmark WinML as the vendor-neutral fallback.** ONNX Runtime now describes DirectML as sustained engineering and recommends WinML for new Windows projects. A Python integration can still use `onnxruntime-gpu` (CUDA) or `onnxruntime-directml`, but they are separate deployment choices rather than one universal wheel.
+- **For new Windows work, prefer CUDA EP on the target NVIDIA laptop and benchmark WinML as the vendor-neutral fallback.** ONNX Runtime now describes DirectML as sustained engineering and recommends WinML for new Windows projects. A Python integration can still use `onnxruntime-gpu` (CUDA) or `onnxruntime-directml`, but they are separate deployment choices rather than one universal wheel. Measured routes, parity settings and gotchas on the target laptop: [Windows-native ONNX Runtime spike](../../reports/windows-native-onnx-runtime-spike-2026-11-15.md) (#875).
 
 ## What “can be converted” means
 
@@ -64,7 +64,7 @@ No general ONNX export/runtime tooling is declared in the core requirements toda
 |---|---|---|
 | NVIDIA RTX 4060 laptop, Python backend | `onnxruntime-gpu` with `CUDAExecutionProvider`, then `CPUExecutionProvider` | **Primary benchmark target.** Pin an ORT version compatible with the installed CUDA/cuDNN major versions. ORT documents `preload_dlls()` for resolving the DLLs bundled with PyTorch or NVIDIA site packages on Windows. |
 | Mixed-vendor Windows Python | `onnxruntime-directml` | **Compatibility experiment, not the default.** DirectML is broadly available but is in sustained-engineering mode. Preserve the existing global serialization/opt-out lessons and benchmark every graph. |
-| Future packaged Windows application | WinML (`Microsoft.AI.MachineLearning`) | **Preferred new Windows API according to ONNX Runtime.** It can dynamically select execution providers, but adopting it from this Python backend would require an integration boundary (native helper, service or gallery-side implementation); it is not a drop-in Python backend change. |
+| Windows ML (packaged app or Python) | Windows ML (`onnxruntime-windowsml` + `wasdk-Microsoft.Windows.AI.MachineLearning`) | **Preferred new Windows API according to ONNX Runtime.** It selects execution providers from a catalog (TensorRT-RTX, OpenVINO, QNN, VitisAI). A documented Python route now exists and ran inference in-process in the [2026-11-15 spike](../../reports/windows-native-onnx-runtime-spike-2026-11-15.md). It is still a separate ORT distribution and needs the Windows App SDK runtime and a non-Store Python, so it is not a drop-in swap. |
 | CPU fallback | `onnxruntime` / `CPUExecutionProvider` | **Required correctness fallback and CI baseline.** It proves graph portability, not acceptable production throughput. |
 
 Do not install multiple mutually competing ORT Python distributions into the same production environment. Build separate locked Windows environment profiles for CUDA, DirectML and CPU, and have diagnostics record `ort.__version__`, available providers, selected provider and fallback nodes.
@@ -120,7 +120,9 @@ IQA export here.
      execution provider, as above.
 5. **Allow a per-model execution-provider opt-out.** Large CLIP graphs were unreliable on DirectML.
 6. **Serialize every DirectML session in a process through one global lock.** Concurrent
-   DirectML sessions crashed.
+   DirectML sessions crashed. The lock is not enough for some graphs: freeing a newer DirectML
+   session while an older session of the same graph is alive segfaults in a single thread, so keep
+   one session per graph for the process lifetime ([2026-11-15 spike](../../reports/windows-native-onnx-runtime-spike-2026-11-15.md#directml-session-lifetime-crash)).
 7. **Version-stamp derived caches.**
    - Bump an extractor or embedding version whenever preprocessing changes.
    - Drop dependent caches on the bump. A stale embedding cache once produced false regressions.
