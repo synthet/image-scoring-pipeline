@@ -6,6 +6,10 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-11-16] edit | #878 TensorRT-RTX results in the Windows-native ONNX spike
+
+Added the TensorRT-RTX (Windows ML catalog EP) section to [the spike report](reports/windows-native-onnx-runtime-spike-2026-11-15.md#tensorrt-rtx-via-windows-ml), after the owner approved the EP download. It is the fastest measured route on the seven graphs it builds. The embedded-NMS graph fails on a `TopK` limit, and parity differences run 1e-3 to 4e-2. Replaced the "not benchmarked" lines in [WINDOWS_NATIVE_WEBUI_PLAN.md](planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md) and added `scripts/research/ort_ep_spike/trt_rtx_probe.py`. Documentation and research scripts only.
+
 ## [2026-11-15] created | #875 Windows-native ONNX Runtime GPU/NPU spike
 
 Added [the spike report](reports/windows-native-onnx-runtime-spike-2026-11-15.md), its reports-index row and the probe scripts under `scripts/research/ort_ep_spike/`. DirectML, CUDA, OpenVINO and Windows ML from Python all ran natively on the 8 GB laptop, and it has no NPU. Corrected the Windows ML claims in [ONNX_CONVERSION_FEASIBILITY.md](planning/models/ONNX_CONVERSION_FEASIBILITY.md) and [WINDOWS_NATIVE_WEBUI_PLAN.md](planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md), and extended DirectML lesson 6 with the session-lifetime crash. Documentation and research scripts only.
