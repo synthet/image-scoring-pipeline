@@ -1,0 +1,9 @@
+cffi==2.1.1
+flatbuffers==25.12.19
+numpy==2.5.5
+onnxruntime==1.32.0
+packaging==26.3
+protobuf==7.36.2
+pycparser==3.12
+pyvips==3.2.0
+pyvips-binary==8.18.7
