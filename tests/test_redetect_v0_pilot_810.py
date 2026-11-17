@@ -75,3 +75,16 @@ def test_rollback_restores_v0_and_demotes_new_run():
         "UPDATE image_localization_runs SET is_current = FALSE WHERE id = 101 AND image_id = 1;",
         "UPDATE image_localization_runs SET is_current = TRUE WHERE id = 100 AND image_id = 1;",
     ]
+
+
+def test_draw_all_takes_every_eligible_frame_sorted():
+    pool = _pool(2000)[::-1]
+    out = p.draw_all(pool)
+    assert [f["image_id"] for f in out] == list(range(2000))
+
+
+def test_draw_all_works_where_a_stratified_draw_cannot():
+    pool = [f for f in _pool(90) if f["stratum"] != "large"]  # no large stratum
+    with pytest.raises(ValueError):
+        p.draw_stratified(pool, seed=1, size=60)
+    assert len(p.draw_all(pool)) == 60

@@ -170,6 +170,11 @@ def rollback_statements(manifest: dict, results: list[dict]) -> list[str]:
 
 # --------------------------------------------------------------------------- DB-backed modes
 
+def draw_all(pool: list[dict]) -> list[dict]:
+    """Every eligible frame, sorted by id: the manifest for a production batch (``--size 0``)."""
+    return sorted(pool, key=lambda f: f["image_id"])
+
+
 def snapshot(ids_file: Path, manifest_path: Path, *, seed: int, size: int) -> dict:
     from modules import db
 
@@ -205,7 +210,7 @@ def snapshot(ids_file: Path, manifest_path: Path, *, seed: int, size: int) -> di
     cuts = tercile_cuts([f["area"] for f in pool])
     for f in pool:
         f["stratum"] = stratum_for(f["area"], cuts)
-    frames = draw_stratified(pool, seed=seed, size=size)
+    frames = draw_all(pool) if size == 0 else draw_stratified(pool, seed=seed, size=size)
     manifest = {
         "schema": SCHEMA,
         "frozen_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -294,7 +299,7 @@ def main() -> int:
     s.add_argument("--image-ids-file", type=Path, required=True)
     s.add_argument("--manifest", type=Path, required=True)
     s.add_argument("--seed", type=int, default=810)
-    s.add_argument("--size", type=int, default=200)
+    s.add_argument("--size", type=int, default=200, help="stratified draw size; 0 = every eligible frame in the ids file")
     a = sub.add_parser("apply", help="re-detect the frozen frames with v1")
     a.add_argument("--manifest", type=Path, required=True)
     a.add_argument("--results", type=Path, required=True)
