@@ -4,7 +4,7 @@ title: Remote GPU runner
 description: Run a phase's model inference in a Docker container on another PC. The host sends the full input, the runner returns the full output, and the host keeps every database and XMP write.
 resource: guides/REMOTE_GPU_RUNNER.md
 tags: [docs, guides, gpu, remote, docker, runner, okf]
-timestamp: 2026-11-05T00:00:00Z
+timestamp: 2026-11-17T00:00:00Z
 okf_version: 0.3
 ---
 
@@ -123,7 +123,7 @@ Phases left at `local` keep using this machine's GPU.
 
 1. Run the same GPU-runner Compose service on the host machine, with the same phase configuration, weights, and bearer token. `fallback.local_url` identifies this service. When the host application runs inside Docker and the fallback service publishes its port on Windows, use `http://host.docker.internal:7870` instead of the container's loopback address.
 2. Optional, off by default: set `fallback.embedded` to `true` to allow embedded inference in the host process after both HTTP runners are unavailable. This loads every model the phase needs into the host (WebUI) process; prefer the local runner container. Install the normal inference dependencies and model weights in the host application's environment for embedded fallback. The existing GPU WebUI/gpu-shell image provides the inference stack. The embedded runner uses the host's normal model device selection; it requires enough RAM/VRAM to load the configured models.
-3. Watch host logs for `gpu_runner: phase ... uses ... (fallback)`. An unavailable backend opens its circuit; repeated failures increase the cooldown exponentially from `cooldown_seconds` to `max_cooldown_seconds`, with jitter between half and all of that interval. Only one caller probes a backend after its cooldown; other callers keep using fallback. A successful probe restores the preferred backend and resets its failure count. No service is started automatically.
+3. Watch host logs for `gpu_runner: phase ... uses ... (fallback)`. An unavailable backend opens its circuit. A completed worker failure (`500` with the worker's error envelope) opens it for that phase only, so a runner that cannot serve one phase (for example culling on a GPU its TensorFlow build does not support) keeps serving the others, and that phase still tries every backend in priority order. Connection failures, busy refusals and ambiguous responses open it for every phase. Repeated failures increase the cooldown exponentially from `cooldown_seconds` to `max_cooldown_seconds`, with jitter between half and all of that interval. Only one caller probes a circuit after its cooldown; other callers keep using fallback. A successful probe restores the preferred backend and resets its failure count. No service is started automatically.
 
 These fallback settings are the defaults even when omitted. Set `local_url` to an empty string to skip the local HTTP runner, `embedded` to `true` to allow loading models in the host, or `enabled` to `false` to restore strict remote-only behavior. The local service and embedded host must use the same detector weights for a localization context to remain valid during failover.
 
