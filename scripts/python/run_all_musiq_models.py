@@ -927,6 +927,10 @@ class MultiModelMUSIQ:
         import tensorflow as tf
 
         gpus = tf.config.experimental.list_physical_devices('GPU')
+        if gpus and not tf.config.get_visible_devices('GPU'):
+            # GPU hidden from TensorFlow (e.g. GPU_RUNNER_TF_DEVICE=cpu, #887): don't touch it.
+            logging.getLogger(__name__).info("GPU hidden from TensorFlow, using CPU")
+            gpus = []
         if gpus:
             try:
                 for gpu in gpus:
