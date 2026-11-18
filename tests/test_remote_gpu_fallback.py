@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from modules.remote_gpu import client as clients
-from modules.remote_gpu.contract import DETECT, KEYWORDS, RemoteGpuError
+from modules.remote_gpu.contract import DETECT, EMBEDDING, KEYWORDS, RemoteGpuError
 
 
 class Backend:
@@ -68,6 +68,77 @@ def test_failed_runner_is_cooled_down_then_preferred_again():
     assert len([e for e in events if e[0] == "remote"]) == 1
     now[0] = 31
     assert route.call(KEYWORDS, {}, b"image") == {"backend": "remote"}
+
+
+class PhaseBackend(Backend):
+    """Fails only the endpoints in ``failing``, like a worker whose model for one phase cannot run."""
+
+    def __init__(self, name, events, failing):
+        super().__init__(name, events)
+        self.failing = failing
+
+    def call(self, endpoint, *args, **kwargs):
+        self.events.append((self.base_url, "call", endpoint))
+        if endpoint in self.failing:
+            raise clients.RemoteGpuUnavailable("completed worker failure", phase_scoped=True)
+        return {"backend": self.base_url}
+
+
+def test_one_phase_failing_on_a_runner_keeps_that_runner_for_other_phases():
+    events = []
+    remote, second = Backend("remote", events, unavailable()), PhaseBackend("second", events, {EMBEDDING})
+    route = chain([remote, second, Backend("embedded", events)])
+    assert route.call(EMBEDDING, {}, b"batch") == {"backend": "embedded"}
+    assert route.call(KEYWORDS, {}, b"image") == {"backend": "second"}
+    # The failing phase skips the cooled-down backend without retrying it.
+    assert route.call(EMBEDDING, {}, b"batch") == {"backend": "embedded"}
+    assert [e for e in events if e[0] == "second" and e[1] == "call"] == [
+        ("second", "call", EMBEDDING), ("second", "call", KEYWORDS)]
+
+
+def test_phase_cooldown_recovers_per_phase_in_priority_order():
+    events, now = [], [0]
+    remote = Backend("remote", events, unavailable())
+    second = PhaseBackend("second", events, {EMBEDDING})
+    route = chain([remote, second, Backend("embedded", events)], now=lambda: now[0])
+    assert route.call(EMBEDDING, {}, b"batch") == {"backend": "embedded"}
+    second.failing = set()
+    now[0] = 31
+    assert route.call(EMBEDDING, {}, b"batch") == {"backend": "second"}
+    remote.error = None
+    now[0] = 200
+    assert route.call(EMBEDDING, {}, b"batch") == {"backend": "remote"}
+
+
+@pytest.mark.parametrize("error", [unavailable(), clients.RemoteGpuAmbiguous("read timeout after submit")])
+def test_runner_wide_failure_on_one_phase_cools_the_runner_for_every_phase(error):
+    events = []
+    remote = Backend("remote", events)
+    route = chain([remote, Backend("local", events)])
+    route.check_phase("culling")
+    route.check_phase("keywords")
+    remote.error = error
+    try:
+        route.call(EMBEDDING, {}, b"batch")
+    except clients.RemoteGpuAmbiguous:
+        pass
+    remote.error = None
+    assert route.call(KEYWORDS, {}, b"image") == {"backend": "local"}
+
+
+def test_completed_worker_failure_is_phase_scoped_but_connection_failure_is_not():
+    worker = SimpleNamespace(request=lambda *a, **k: httpx.Response(500, json={"error": "model failed"}))
+    with pytest.raises(clients.RemoteGpuUnavailable) as exc:
+        clients.GpuRunnerClient("http://r", "", http=worker).call(EMBEDDING, {}, b"batch")
+    assert exc.value.phase_scoped is True
+
+    def refuse(*args, **kwargs):
+        raise httpx.ConnectError("refused")
+
+    down = clients.GpuRunnerClient("http://r", "", http=SimpleNamespace(request=refuse), sleep=lambda *_: None)
+    with pytest.raises(clients.RemoteGpuUnavailable) as exc:
+        down.call(EMBEDDING, {}, b"batch")
+    assert exc.value.phase_scoped is False
 
 
 @pytest.mark.parametrize("message", ["HTTP 401", "config mismatch", "API version", "timed out", "invalid scoring"])

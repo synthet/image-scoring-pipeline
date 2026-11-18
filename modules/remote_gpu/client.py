@@ -260,7 +260,8 @@ class GpuRunnerClient:
                         error = None
                     # Worker error envelope confirms inference ended without a result.
                     if isinstance(error, dict) and error.get("error"):
-                        raise RemoteGpuUnavailable(f"GPU runner {path} returned a completed worker failure (HTTP 500)")
+                        raise RemoteGpuUnavailable(f"GPU runner {path} returned a completed worker failure (HTTP 500)",
+                                                   phase_scoped=True)
                 if response.status_code in (502, 504):
                     error_cls = RemoteGpuUnavailable if method == "GET" else RemoteGpuAmbiguous
                     raise error_cls(f"GPU runner {path} returned HTTP {response.status_code}")
@@ -373,13 +374,15 @@ class FallbackGpuClient:
         self._verified_detectors = set()
         self._lock = threading.RLock()
 
-    def _open_circuit(self, index, retry_after=0):
+    def _open_circuit(self, index, circuit, retry_after=0):
+        # ``circuit`` is the backend index, or (index, phase) after a completed worker
+        # failure, so a runner that cannot serve one phase keeps serving the others.
         with self._lock:
-            failures = min(31, self._failures.get(index, 0) + 1)
-            self._failures[index] = failures
+            failures = min(31, self._failures.get(circuit, 0) + 1)
+            self._failures[circuit] = failures
             ceiling = min(self._max_cooldown, self._cooldown * 2 ** (failures - 1))
             delay = max(ceiling * (0.5 + 0.5 * self._random()), retry_after)
-            self._unavailable_until[index] = self._clock() + delay
+            self._unavailable_until[circuit] = self._clock() + delay
             self._ready = {entry for entry in self._ready if entry[0] != index}
             # A recovered worker might have restarted with new weights.
             self._verified_detectors.discard(index)
@@ -387,13 +390,13 @@ class FallbackGpuClient:
 
     def _execute(self, phase, method, *args, **kwargs):
         for index, backend in enumerate(self.backends):
+            circuits = (index, (index, phase))
             with self._lock:
-                probing = index in self._unavailable_until
-                if probing:
-                    if self._unavailable_until[index] > self._clock() or index in self._probing:
-                        continue
-                    # Half-open: one caller probes; other callers keep using fallback.
-                    self._probing.add(index)
+                probing = [c for c in circuits if c in self._unavailable_until]
+                if any(self._unavailable_until[c] > self._clock() or c in self._probing for c in probing):
+                    continue
+                # Half-open: one caller probes; other callers keep using fallback.
+                self._probing.update(probing)
                 ready = (index, phase) in self._ready
             try:
                 if not ready:
@@ -404,22 +407,24 @@ class FallbackGpuClient:
                     self._verify_detector(index, backend)
                 result = status if method == "check_phase" and not ready else getattr(backend, method)(*args, **kwargs)
             except RemoteGpuUnavailable as exc:
-                delay = self._open_circuit(index, exc.retry_after)
-                logger.warning("gpu_runner: %s unavailable; trying next backend (cooldown %.0fs)",
-                               _backend_label(backend), delay)
+                scoped = getattr(exc, "phase_scoped", False)
+                delay = self._open_circuit(index, (index, phase) if scoped else index, exc.retry_after)
+                logger.warning("gpu_runner: %s unavailable%s; trying next backend (cooldown %.0fs)",
+                               _backend_label(backend), f" for {phase}" if scoped else "", delay)
                 continue
             except RemoteGpuAmbiguous:
-                self._open_circuit(index)
+                self._open_circuit(index, index)
                 logger.warning("gpu_runner: %s response is ambiguous; input not replayed, backend in cooldown",
                                _backend_label(backend))
                 raise
             finally:
                 if probing:
                     with self._lock:
-                        self._probing.discard(index)
+                        self._probing.difference_update(probing)
             with self._lock:
-                self._failures.pop(index, None)
-                self._unavailable_until.pop(index, None)
+                for circuit in circuits:
+                    self._failures.pop(circuit, None)
+                    self._unavailable_until.pop(circuit, None)
                 if self._active.get(phase) != index:
                     log = logger.warning if index else logger.info
                     log("gpu_runner: phase %s uses %s%s", phase, _backend_label(backend),

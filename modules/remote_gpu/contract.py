@@ -61,9 +61,11 @@ class RemoteGpuError(RuntimeError):
 class RemoteGpuUnavailable(RemoteGpuError):
     """Inference was refused or ended without a result; another backend may run it."""
 
-    def __init__(self, message, *, retry_after=0.0):
+    def __init__(self, message, *, retry_after=0.0, phase_scoped=False):
         super().__init__(message)
         self.retry_after = retry_after
+        # The runner answered but this phase's model failed; other phases may still use it.
+        self.phase_scoped = phase_scoped
 
 
 class RemoteGpuAmbiguous(RemoteGpuError):
