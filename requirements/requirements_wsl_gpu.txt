@@ -6,19 +6,21 @@ gast==0.6.0
 google-pasta==0.2.0
 grpcio==1.75.1
 h5py==3.14.0
-keras==3.11.3
+keras==3.15.1
 libclang==18.1.1
 Markdown==3.9
 ml_dtypes==0.5.3
 namex==0.1.0
 opt_einsum==3.4.0
 optree==0.17.0
-protobuf==5.29.5
+# TF 2.21 needs protobuf>=6.31.1; newest 6.x keeps firebird-base's 5.29 gencode one major away (#890).
+protobuf==6.33.6
 tensorboard==2.20.0
 tensorboard-data-server==0.7.2
-tensorflow==2.20.0
+# 2.21: the MLIR elementwise kernels JIT-compile on sm_120 (RTX 5090); 2.20's fail there (#887, #890).
+tensorflow==2.21.0
 tensorflow-hub>=0.16.1,<0.17
-tf_keras==2.20.1
+tf_keras==2.21.0
 termcolor==3.1.0
 wrapt==1.17.3
 
@@ -107,8 +109,7 @@ referencing==0.37.0
 rpds-py==0.30.0
 
 # Database
-firebird-driver==2.0.2
-firebird-base==2.0.2
+# Legacy Firebird driver: requirements/requirements_firebird_legacy.txt, installed with --no-deps.
 psycopg2-binary
 pgvector
 alembic>=1.13.0,<2.0

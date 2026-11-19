@@ -2,7 +2,7 @@
 # Optimized for WSL2 Ubuntu + TensorFlow GPU
 
 # Core TensorFlow with CUDA support
-tensorflow==2.20.0
+tensorflow==2.21.0
 
 # Image processing libraries
 opencv-python==4.12.0.88

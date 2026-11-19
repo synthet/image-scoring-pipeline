@@ -4,7 +4,7 @@ title: Remote GPU runner
 description: Run a phase's model inference in a Docker container on another PC. The host sends the full input, the runner returns the full output, and the host keeps every database and XMP write.
 resource: guides/REMOTE_GPU_RUNNER.md
 tags: [docs, guides, gpu, remote, docker, runner, okf]
-timestamp: 2026-11-17T00:00:00Z
+timestamp: 2026-11-19T00:00:00Z
 okf_version: 0.3
 ---
 
@@ -59,7 +59,7 @@ The construction point is the only branch: `new_keyword_scorer()`, `new_caption_
 
 Runner environment: `GPU_RUNNER_TOKEN` (required unless bound to loopback), `GPU_RUNNER_HOST`, `GPU_RUNNER_PORT`, `GPU_RUNNER_MAX_BODY_MB` (default 256), `GPU_RUNNER_MAX_CONCURRENCY` (default 4 admitted requests; beyond it the runner answers 503 and the host backs off), `GPU_RUNNER_UPLOAD_TIMEOUT_SECONDS` (default 60 seconds to receive the whole upload), `GPU_RUNNER_IDLE_EXIT_SECONDS` (default 0 = off; see [Idle recycle](#idle-recycle)), and `GPU_RUNNER_TF_DEVICE` (unset = TensorFlow uses the GPU; `cpu` hides the GPU from TensorFlow, see below). Inference itself runs one request at a time. Authentication, declared size, config fingerprint, and admission are checked before parsing an upload; streamed bytes are also capped. `/healthz` remains available without an inference admission slot.
 
-On a GPU the image's TensorFlow build has no kernels for (an RTX 50-series card, compute capability 12.0, with TF 2.20), TensorFlow models fail: MUSIQ `spaq`/`ava` return `failed` and culling returns HTTP 500, while the torch models work (#887). Set `GPU_RUNNER_TF_DEVICE=cpu` in that runner's `.env`. MUSIQ and the culling MobileNetV2 then run on CPU (slower) and the torch models keep the GPU. Other machines are unaffected.
+The image uses TensorFlow 2.21, which JIT-compiles its elementwise kernels for an RTX 50-series card (compute capability 12.0) on first use, so TensorFlow models run on that GPU too (#890). The compiled kernels persist in the runner's `nv_cache` volume. An image built with TF 2.20 has no working kernels for that card: MUSIQ `spaq`/`ava` return `failed` and culling returns HTTP 500, while the torch models work (#887). On such a runner, until it is rebuilt, set `GPU_RUNNER_TF_DEVICE=cpu` in its `.env`. MUSIQ and the culling MobileNetV2 then run on CPU (slower) and the torch models keep the GPU. Other machines are unaffected.
 
 To change these limits in Docker Compose, export the corresponding variable before starting the container. The concurrency limit includes requests waiting for inference and uploads still being received; choose it with the maximum body size and available RAM in mind.
 

@@ -1,0 +1,7 @@
+# Legacy Firebird driver (PostgreSQL is the primary engine). Install with:
+#   pip install --no-deps -r requirements/requirements_firebird_legacy.txt
+# Every firebird-base 2.x pins protobuf~=5.29, but TensorFlow 2.21 needs protobuf>=6.31.1 (#890).
+# firebird.driver still imports with protobuf 6/7; only that metadata pin conflicts, so --no-deps
+# skips it. python-dateutil, firebird-driver's other dependency, is pinned in the main requirements.
+firebird-driver==2.0.2
+firebird-base==2.0.2
