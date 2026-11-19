@@ -35,6 +35,9 @@ services:
       - hf_cache:/root/.cache/huggingface
       - torch_cache:/root/.cache/torch
       - keras_cache:/root/.keras
+      # CUDA JIT cache: TF 2.21 compiles its sm_120 kernels on first use; keeping them makes a
+      # recreated runner's first scoring call ~30% faster (#890).
+      - nv_cache:/root/.nv
     # Not scripts/docker_entrypoint.sh: that initializes the database and starts the WebUI.
     entrypoint: ["python", "-m", "modules.remote_gpu.server"]
     healthcheck:
@@ -56,3 +59,4 @@ volumes:
   hf_cache:
   torch_cache:
   keras_cache:
+  nv_cache:
