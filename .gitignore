@@ -199,6 +199,7 @@ diverse_picks.txt
 
 backups/
 config.json
+!.agent-flow/config.json
 environment.json
 secrets.json
 test_export.json
@@ -246,6 +247,7 @@ models/checkpoints/vila-tensorflow2-image-v1/
 # QPT V2 weights (download iqa.pth from KeiChiTse/QPT-V2; ~75MB, never commit)
 models/qpt_v2.pth
 models/*.pth
+models/*.pt
 
 # Visual Studio & Test Results
 .vs/
