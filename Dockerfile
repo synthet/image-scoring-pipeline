@@ -63,6 +63,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install --retries 10 --timeout 120 --upgrade pip \
     && python3 -m pip install --retries 10 --timeout 120 -r /tmp/requirements.txt
 
+# Legacy Firebird driver without its protobuf~=5.29 pin, which conflicts with TensorFlow 2.21 (#890).
+COPY requirements/requirements_firebird_legacy.txt /tmp/requirements_firebird_legacy.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m pip install --retries 10 --timeout 120 --no-deps -r /tmp/requirements_firebird_legacy.txt
+
 # Pinned ExifTool. Ubuntu 22.04's libimage-exiftool-perl is 12.40, which drops Nikon Z8
 # (AFInfo2 0400) AF geometry and FocusResult (#672). The symlink resolves to the bundled lib/.
 ARG EXIFTOOL_VERSION=13.52
