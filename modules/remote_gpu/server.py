@@ -516,6 +516,24 @@ def require_token(bind_host: str, token: str) -> None:
         raise SystemExit("GPU_RUNNER_TOKEN is required when binding a non-loopback address")
 
 
+def configure_tensorflow_devices() -> bool:
+    """``GPU_RUNNER_TF_DEVICE=cpu`` hides GPUs from TensorFlow before any model loads (#887).
+
+    For a runner whose GPU the image's TensorFlow build can't run (no kernels for its compute
+    capability): TensorFlow models (MUSIQ, culling MobileNetV2) run on CPU, torch models keep the GPU.
+    """
+    value = os.environ.get("GPU_RUNNER_TF_DEVICE", "").strip().lower()
+    if value in ("", "auto", "gpu"):
+        return False
+    if value != "cpu":
+        raise SystemExit(f"GPU_RUNNER_TF_DEVICE must be 'cpu', 'gpu' or 'auto', not {value!r}")
+    import tensorflow as tf
+
+    tf.config.set_visible_devices([], "GPU")
+    logger.info("gpu_runner: TensorFlow models run on CPU (GPU_RUNNER_TF_DEVICE=cpu); torch models keep the GPU")
+    return True
+
+
 def main() -> None:
     import uvicorn
 
@@ -524,6 +542,7 @@ def main() -> None:
     port = int(os.environ.get("GPU_RUNNER_PORT", "7870"))
     token = os.environ.get("GPU_RUNNER_TOKEN", "")
     require_token(host, token)
+    configure_tensorflow_devices()
     from modules.remote_gpu.client import mark_serving
 
     mark_serving()
