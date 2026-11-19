@@ -29,6 +29,8 @@ jobs:
           grep -Ev '^(nvidia-|cuda-bindings|cuda-pathfinder|triton==)' \
             requirements/requirements_wsl_gpu.txt > /tmp/requirements-coverage.txt
           pip install -r /tmp/requirements-coverage.txt
+          # Legacy Firebird driver without its protobuf~=5.29 pin, as in the Dockerfile (#890).
+          pip install --no-deps -r requirements/requirements_firebird_legacy.txt
           pip install pytest-cov coverage
 
       - name: Run backend coverage
