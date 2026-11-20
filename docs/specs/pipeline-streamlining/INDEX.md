@@ -32,6 +32,7 @@ numbered `AC-n`, which the `validate-implementation` skill verifies later.
 | 06 | [Species beyond birds](06-multi-taxon-species.md) | #413 | research → feature | 03, 05 |
 | 07 | [Blockers, decisions and suggestions](07-blockers-and-decisions.md) | #417 | register | — |
 | 08 | [Bird box agreement](08-bird-box-agreement.md) | #780 | feature (shadow) | 03 |
+| 09 | [Automatic selection for new bird runs](09-automatic-selection.md) (draft) | #867 | feature | 05, #810, #858, #869 |
 
 ## Dependencies
 
