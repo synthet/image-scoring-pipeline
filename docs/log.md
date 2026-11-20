@@ -6,6 +6,18 @@ Parse with: `grep "^## \[" docs/log.md | tail -10`
 
 ---
 
+## [2026-11-20] created | #867 spec 09 draft: automatic selection for new bird runs
+
+Added the draft [spec 09](specs/pipeline-streamlining/09-automatic-selection.md) and its row in the spec hub. It describes one versioned standalone rule inside `write_run` that selects the rank-0 region of each new current v1 run, or records a reason code, with species as the consumer outcome (#859). The owner delegated D1–D6 to sub-agent research plus Jev:
+- D1: no new pre-gate.
+- D2: a standalone rule.
+- D4: a new decisions table.
+- D5: a dry run, then an owner go for the write.
+- D6: #810 finishes first.
+- D3: no confidence step now; T is set once at #638 planning on fresh labels, enforced by AC-12.
+
+Documentation only.
+
 ## [2026-11-16] edit | #878 TensorRT-RTX results in the Windows-native ONNX spike
 
 Added the TensorRT-RTX (Windows ML catalog EP) section to [the spike report](reports/windows-native-onnx-runtime-spike-2026-11-15.md#tensorrt-rtx-via-windows-ml), after the owner approved the EP download. It is the fastest measured route on the seven graphs it builds. The embedded-NMS graph fails on a `TopK` limit, and parity differences run 1e-3 to 4e-2. Replaced the "not benchmarked" lines in [WINDOWS_NATIVE_WEBUI_PLAN.md](planning/setup/WINDOWS_NATIVE_WEBUI_PLAN.md) and added `scripts/research/ort_ep_spike/trt_rtx_probe.py`. Documentation and research scripts only.
