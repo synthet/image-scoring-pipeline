@@ -296,6 +296,7 @@ graphify-out/
 
 # Agent scratch / cache
 .agent/scratch/
+.agent/workspaces/
 brain/
 artifacts/brain/
 
