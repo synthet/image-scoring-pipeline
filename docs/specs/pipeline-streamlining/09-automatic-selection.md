@@ -13,7 +13,7 @@ status: draft
 
 **Issue:** #867 · **Hub:** [INDEX.md](INDEX.md) · **Epic:** #345 · **Depends on:** #810 (v0 re-detection), #858, #869
 
-**Status:** draft. D1, D2 and D4–D6 are decided (see [§ Decisions](#decisions)). D3, the confidence threshold, is still the owner's, and the rule isn't enabled until it is set.
+**Status:** draft, with D1–D6 decided (see [§ Decisions](#decisions)). Enabling waits for #810 to finish (D6), and the backfill write waits for the owner's go (D5).
 
 ## Summary
 
@@ -30,7 +30,7 @@ This spec adds one versioned standalone rule. It runs inside `write_run` (`modul
 - **When the outcome changes:** while the embedded detector is on, it runs the same `bird_detect_v1` at 0.25 and takes the highest-confidence box. So a selected or declined v1 frame gives species the same box. Species also does not re-run when a selection appears: stored species changes only on an overwrite run, or for images not yet classified (`modules/phases_policy.py`). The rule starts to matter for species output when #638 retires the embedded detector, because frames without a selection then abstain with `no_bird_box` (#869).
 - **If something goes wrong:** one command revokes every selection by its `selected_by` (AC-9). That restores the previous `bird_bbox`.
 - **Iteration count:** species parity between a selection box and the embedded detector has already run seven times on this metric: the #858 pilot, then #810 batches 1–6. On 2026-11-15 the owner said parity is not the criterion. This spec adds no eighth round (D1).
-- **Policy owner:** the owner delegated D1, D2 and D4–D6 to sub-agent research plus Jev on 2026-11-20 (receipt below). D3 stays the owner's.
+- **Policy owner:** the owner delegated D1–D6 to sub-agent research plus Jev on 2026-11-20 (receipt below).
 - **Resolution:** the existing evidence is reported with its interval and its limit in [§ Evidence](#evidence).
 
 ## Current state (2026-11-20, local database)
@@ -75,7 +75,7 @@ It runs inside `write_run`'s transaction, after the new run and its regions are 
 4. If the run's status is `disabled` with `error_code = scene_route`, record `scene_route_skip`.
 5. If the run's status is `no_detection`, or it has no rank-0 region, record `no_detection`.
 6. If the rank-0 region's area fraction is below `species_min_area` (0.005, the existing runtime-rule value), record `below_min_area`.
-7. If the rank-0 region's confidence is below **T** (D3), record `below_confidence`.
+7. If a threshold T has been recorded (`localization.auto_selection.min_confidence`, unset by default; see D3) and the rank-0 region's confidence is below it, record `below_confidence`.
 8. Otherwise call `select_region(..., selected_by="auto_select_rule/1:<rule sha>", evidence={…}, transaction=tx)`. The evidence holds the rule hash, run id, detector version and config hash, confidence, area and scene label. Any status other than `selected` is recorded as the reason.
 
 Errors and retryable statuses (`terminal_error`, `detector_unavailable`) record nothing and leave the image for the next attempt.
@@ -92,7 +92,8 @@ Errors and retryable statuses (`terminal_error`, `detector_unavailable`) record 
 - **AC-8** A dry-run command shall report, for current v1 runs without a selection, how many the rule would select and the count per reason code, without writing.
 - **AC-9** One command shall revoke every selection with a given `selected_by`, restoring the previous `bird_bbox`, with a dry-run mode that prints the count.
 - **AC-10** If the rule raises, `write_run` shall still commit the run, and the error shall be logged.
-- **AC-11** Tests shall cover each rule branch, AC-3 to AC-6, AC-10, and the `write_run` hook used by every call site in AC-7. The decisions table comes with its DDL in `modules/db_schema/`, an Alembic migration in `migrations/versions/` and an entry in `POSTGRES_APP_TABLES`.
+- **AC-11** Tests shall cover each rule branch, AC-3 to AC-6, AC-10, AC-12, and the `write_run` hook used by every call site in AC-7. The decisions table comes with its DDL in `modules/db_schema/`, an Alembic migration in `migrations/versions/` and an entry in `POSTGRES_APP_TABLES`.
+- **AC-12** Before the embedded detector can be turned off (#638), a check shall fail while either is true: no threshold T has been recorded with its labels, or any active `auto_select_rule` selection has `evidence.confidence` below the recorded T. The fix is a revoke filtered by `selected_by LIKE 'auto_select_rule/1:%'`, because `revoke_selection` itself has no selector guard.
 
 ## Decisions
 
@@ -102,7 +103,7 @@ The owner delegated D1–D6 on 2026-11-20 to sub-agent research (an Opus agent f
 |---|---|---|---|
 | D1 | Gate before enabling | **No new pre-gate** (Jev 0.89). The Evidence section is the one-time calibration; AC-9 is the rollback | A parity gate on v1 runs compares one detector with itself (600/600, IoU 0.999) and would be an eighth round of a metric the owner set aside |
 | D2 | Where the rule runs | **Standalone in `write_run`** (Jev 0.88) | The authority path needs the judge and 130-per-band qualification R6 rules out, hardcodes a 0.70 cut under a frozen hash, and its active mode would change species predicates for the 4,667 existing selections |
-| D3 | Confidence threshold T | **Owner's.** Jev deferred (0.70 on defer; T = 0.6 got 0.22) | T changes no species outcome while the embedded detector is on. Below 0.6, 9/17 v1 boxes were wrong, but the bins came after the data. Options: no extra step (0.25 plus minimum area), 0.6 labelled as chosen after the data and re-checked on fresh labels before #638, or another value |
+| D3 | Confidence threshold T | **No confidence step now. T is set once, at #638 planning, on fresh labels with bins fixed in advance, and enforced by AC-12** (Jev 0.76 after one re-ask; soundness 0.48, uncertain) | T changes no species outcome while the embedded detector is on. After the area step, #879 gives 5/12 boxes off-bird below 0.6 and 6/98 at 0.6 and above (p = 0.002). But the bins came after the data, 0.4 and 0.6 can't be told apart (p = 1.0), and the species outcome on off-bird crops is unmeasured. The species floor (0.5) is not a bird-presence check. A wrong label is worse than an abstention after #638 (Birds page keywords, the unique-species cull block), so AC-12 makes the T decision and the revoke a hard precondition of #638 |
 | D4 | Where reason codes live | **A new `image_localization_selection_decisions` table** with a migration (Jev 0.97) | No existing table fits: the authority evaluation table rejects other rule kinds, and `error_code` and `skip_reason` already mean detection |
 | D5 | Backfill of existing v1 runs | **AC-8 dry run first; the write needs a separate owner go** (Jev 0.73) | The write rewrites `bird_bbox` for thousands of images, and the older pool has the thinnest evidence (54 pairs) |
 | D6 | Order against #810 | **Finish #810, then enable and backfill in one pass** (Jev 0.88) | #810's `rollback.sql` only makes v0 current again. A selection written mid-run would stay on a demoted run after a rollback |

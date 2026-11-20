@@ -14,7 +14,7 @@ Added the draft [spec 09](specs/pipeline-streamlining/09-automatic-selection.md)
 - D4: a new decisions table.
 - D5: a dry run, then an owner go for the write.
 - D6: #810 finishes first.
-- D3, the confidence threshold, stays with the owner.
+- D3: no confidence step now; T is set once at #638 planning on fresh labels, enforced by AC-12.
 
 Documentation only.
 
