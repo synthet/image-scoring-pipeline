@@ -147,6 +147,16 @@ def result_record(image_id: int, row: dict | None, seconds: float) -> dict:
     return {"image_id": int(image_id), "v1": v1, "seconds": round(float(seconds), 3)}
 
 
+def should_redetect(current: dict | None, v0_run_id: int) -> bool:
+    """True when the frame still needs v1: its frozen v0 run is current, or a v1 attempt that
+    failed for an environmental reason is (af-ko8lx: a suspend interrupted it mid-batch)."""
+    if not current:
+        return False
+    if int(current["run_id"]) == v0_run_id:
+        return True
+    return current.get("detector_version") == V1_VERSION and current.get("status") == "retryable_error"
+
+
 def rollback_statements(manifest: dict, results: list[dict]) -> list[str]:
     """SQL that makes each frame's frozen v0 run current again (new run demoted, not deleted)."""
     v0_by_image = {int(f["image_id"]): int(f["v0"]["run_id"]) for f in manifest["frames"]}
@@ -276,7 +286,7 @@ def apply(manifest_path: Path, results_path: Path, *, limit: int) -> Counter:
         for n, frame in enumerate(todo, 1):
             image_id = int(frame["image_id"])
             current = conn.query_one(_CURRENT_SQL, (image_id,))
-            if not current or int(current["run_id"]) != int(frame["v0"]["run_id"]):
+            if not should_redetect(current, int(frame["v0"]["run_id"])):
                 counts["v0_no_longer_current"] += 1
                 log.warning("image %s: frozen v0 run is no longer current; skipped", image_id)
                 continue

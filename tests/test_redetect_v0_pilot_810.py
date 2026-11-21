@@ -66,6 +66,18 @@ def test_result_record_detected_and_skipped():
     assert p.result_record(3, None, 0.0)["v1"]["status"] == "missing"
 
 
+@pytest.mark.parametrize("current,expected", [
+    (None, False),
+    ({"run_id": 7, "detector_version": p.V0_VERSION, "status": "detected"}, True),
+    ({"run_id": 9, "detector_version": p.V1_VERSION, "status": "retryable_error"}, True),
+    ({"run_id": 9, "detector_version": p.V1_VERSION, "status": "detected"}, False),
+    ({"run_id": 9, "detector_version": p.V1_VERSION, "status": "terminal_error"}, False),
+    ({"run_id": 8, "detector_version": p.V0_VERSION, "status": "retryable_error"}, False),
+])
+def test_should_redetect_frozen_v0_or_a_retryable_v1_attempt(current, expected):
+    assert p.should_redetect(current, 7) is expected
+
+
 def test_rollback_restores_v0_and_demotes_new_run():
     manifest = {"frames": [{"image_id": 1, "v0": {"run_id": 100}}, {"image_id": 2, "v0": {"run_id": 200}}]}
     results = [{"image_id": 1, "v1": {"run_id": 101}}, {"image_id": 2, "v1": {"run_id": 200}},

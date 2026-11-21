@@ -370,6 +370,22 @@ def test_ac8_undecodable_source_is_terminal_and_redacted(tmp_path, writes):
     assert "secret-dir" not in (run["error_detail"] or "")
 
 
+def test_missing_file_in_a_reachable_folder_is_terminal(tmp_path, writes):
+    out = loc.localize_image(1, str(tmp_path / "gone.NEF"), _ctx(_FakeDetector()), max_regions=10)
+    run = writes[0][0]
+    assert out.status == run["status"] == "terminal_error"
+    assert run["error_code"] == "file_missing" and run["is_retryable"] is False
+
+
+def test_missing_folder_means_source_unavailable_and_is_retryable(tmp_path, writes):
+    # During a suspend the /mnt/d bind mount drops out, so the whole folder vanishes (af-ko8lx).
+    path = tmp_path / "unmounted" / "2026-04-08" / "DSC_6264.NEF"
+    out = loc.localize_image(1, str(path), _ctx(_FakeDetector()), max_regions=10)
+    run = writes[0][0]
+    assert out.status == run["status"] == "retryable_error"
+    assert run["error_code"] == "source_unavailable" and run["is_retryable"] is True
+
+
 def test_ac9_inference_error_is_retryable(jpeg, writes):
     out = loc.localize_image(1, jpeg, _ctx(_FakeDetector(error=RuntimeError("CUDA OOM"))), max_regions=10)
     run = writes[0][0]
