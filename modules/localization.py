@@ -536,6 +536,14 @@ def localize_image(
         _finish(run, [])
         return ImageOutcome(status=STATUS_RETRYABLE, error_detail=ctx.load_error)
 
+    if file_path and not os.path.exists(file_path) and not os.path.isdir(os.path.dirname(file_path)):
+        # The folder is gone too: the volume is unreachable (a bind mount drops out during a
+        # suspend), not the file deleted. Retryable, so bounded repair picks it up (af-ko8lx).
+        run.update(status=STATUS_RETRYABLE, is_retryable=True, error_code="source_unavailable",
+                   error_detail="source_unavailable")
+        _finish(run, [])
+        return ImageOutcome(status=STATUS_RETRYABLE, error_detail="source_unavailable")
+
     if not file_path or not os.path.exists(file_path):
         run.update(status=STATUS_TERMINAL, error_code="file_missing",
                    error_detail="file_missing")
